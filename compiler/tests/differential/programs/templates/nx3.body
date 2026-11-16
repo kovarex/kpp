@@ -1,0 +1,16 @@
+// a throw that reaches a noexcept function ends the program, through a pointer or a closure, not the catch
+void thrower() noexcept { throw 1; }
+struct T { void m() noexcept { throw 2; } };
+int main(int argc, char** argv)
+{
+  void (*p)() noexcept = thrower;
+  try {
+    if (argc == 1) p();
+    if (argc == 2) { auto l = []() noexcept { throw 3; }; l(); }
+    if (argc == 3) { T t; void (T::*m)() noexcept = &T::m; (t.*m)(); }
+    if (argc == 4) { auto l = []() noexcept { throw 4; }; void (*q)() noexcept = l; q(); }
+    if (argc == 5) { auto l = []() noexcept(false) { throw 5; }; l(); }
+  } catch (...) { printf("caught\n"); return 0; }
+  printf("no\n");
+  return 0;
+}

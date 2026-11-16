@@ -1,0 +1,100 @@
+// battery 36: an exception from a member's or a base's constructor destroys the parts already
+// built (members in reverse, the base after), never the one that threw nor the class's own
+// destructor; a handler by value copies the exception, by reference does not; the first matching
+// handler wins; a rethrow from a nested handler keeps the object; temporaries of the throwing
+// full-expression are destroyed.
+struct Trace
+{
+  int id;
+  Trace(int i) : id(i)
+  {
+    if (id == 3)
+      throw id * 10;
+    printf("+%d ", id);
+  }
+  Trace(const Trace& o) : id(o.id + 100) { printf("copy%d ", id); }
+  ~Trace() { printf("-%d ", id); }
+};
+struct BaseT
+{
+  Trace t{1};
+  BaseT() { printf("BaseT "); }
+  ~BaseT() { printf("~BaseT "); }
+};
+struct Whole : BaseT
+{
+  Trace a{2};
+  Trace b{3};
+  Trace c{4};
+  Whole() { printf("Whole "); }
+  ~Whole() { printf("~Whole "); }
+};
+struct Error
+{
+  int code;
+  Error(int c) : code(c) { printf("E%d ", code); }
+  Error(const Error& o) : code(o.code) { printf("Ecopy%d ", code); }
+  ~Error() { printf("~E%d ", code); }
+};
+struct Specific : Error
+{
+  Specific(int c) : Error(c) {}
+};
+int consume(const Trace& t, int v)
+{
+  if (v)
+    throw Specific(v);
+  return t.id;
+}
+int main()
+{
+  try
+  {
+    Whole w;
+  }
+  catch (int e)
+  {
+    printf("| caught %d\n", e);
+  }
+  try
+  {
+    throw Error(5);
+  }
+  catch (Error e)
+  {
+    printf("| by value %d ", e.code);
+  }
+  printf("\n");
+  try
+  {
+    throw Specific(6);
+  }
+  catch (Error& e)
+  {
+    printf("| first %d ", e.code);
+  }
+  catch (Specific& e)
+  {
+    printf("| never %d ", e.code);
+  }
+  printf("\n");
+  try
+  {
+    try
+    {
+      consume(Trace(8), 7);
+    }
+    catch (Error& e)
+    {
+      printf("| inner %d ", e.code);
+      e.code = 70;
+      throw;
+    }
+  }
+  catch (Specific& e)
+  {
+    printf("| outer %d ", e.code);
+  }
+  printf("\n");
+  return 0;
+}

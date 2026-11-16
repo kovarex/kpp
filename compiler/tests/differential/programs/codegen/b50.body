@@ -1,0 +1,67 @@
+// Temporaries: destroyed at the end of their full expression, in reverse order of construction,
+// in conditions (each test's own), loop conditions, default arguments, call chains, a ternary's
+// chosen branch only, and the range of a range-for (lives through the loop).
+char trail[1024];
+int pos = 0;
+void note(const char* s) { while (*s) trail[pos++] = *s++; trail[pos++] = ' '; trail[pos] = 0; }
+void noteInt(char tag, int v) { char t[16]; t[0] = tag; int n = 1; if (v >= 10) t[n++] = char('0' + v / 10); t[n++] = char('0' + v % 10); t[n] = 0; note(t); }
+
+struct T
+{
+  int v;
+  T(int x) : v(x) { noteInt('+', v); }
+  T(const T& o) : v(o.v + 50) { noteInt('c', v); }
+  ~T() { noteInt('-', v); }
+  bool ok() const { return v % 2 == 1; }
+  const T& self() const { return *this; }
+  T next() const { return T(v + 1); }
+};
+
+int use(const T& a, const T& b = T(7)) { return a.v + b.v; }
+
+struct Range
+{
+  int items[3] = {1, 2, 3};
+  T guard{8};
+  const int* begin() const { return items; }
+  const int* end() const { return items + 3; }
+};
+Range makeRange() { return Range{}; }
+
+int main()
+{
+  if (T(1).ok() && T(3).ok())
+    note("then");
+  printf("%s\n", trail);
+  pos = 0;
+  int n = 0;
+  while (T(n).v < 2)
+  {
+    note("body");
+    ++n;
+  }
+  printf("%s\n", trail);
+  pos = 0;
+  int r = use(T(2)) + use(T(4), T(5));
+  noteInt('=', r);
+  printf("%s\n", trail);
+  pos = 0;
+  int chain = T(1).next().next().self().v;
+  noteInt('=', chain);
+  printf("%s\n", trail);
+  pos = 0;
+  bool flag = true;
+  int picked = (flag ? T(6) : T(9)).v;
+  noteInt('=', picked);
+  printf("%s\n", trail);
+  pos = 0;
+  int total = 0;
+  for (int x : makeRange())
+  {
+    total += x;
+    note("item");
+  }
+  noteInt('=', total);
+  printf("%s\n", trail);
+  return 0;
+}

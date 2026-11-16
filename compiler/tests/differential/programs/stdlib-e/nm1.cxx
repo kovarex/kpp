@@ -1,0 +1,42 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <numeric>
+using std::gcd; using std::lcm; using std::accumulate;
+// <numeric>'s gcd, lcm and accumulate: signs, zero, unsigned values above i64's range, the result's
+// type (as its size), and accumulate's init type (int over doubles truncates each step).
+int main()
+{
+  long long pairs[][2] = {{12, 18}, {-12, 18}, {12, -18}, {-12, -18}, {0, 5}, {5, 0}, {0, 0}, {17, 5}, {1000000007, 998244353}, {4611686018427387904LL, 2}};
+  for (auto& p : pairs)
+    printf("gcd %lld %lld = %lld, lcm = %lld\n", p[0], p[1], (long long)gcd(p[0], p[1]), (long long)lcm(p[0], p[1]));
+  printf("gcd int int size %d\n", (int)sizeof(gcd(12, 18)));
+  printf("gcd u64 max, 5 = %llu\n", (unsigned long long)gcd(18446744073709551615ULL, 5ULL));
+  printf("gcd u64 2^63, 2^62 = %llu\n", (unsigned long long)gcd(9223372036854775808ULL, 4611686018427387904ULL));
+  printf("lcm u64 2^62, 3 = %llu\n", (unsigned long long)lcm(4611686018427387904ULL, 3ULL));
+  printf("gcd u32 4294967295, 65535 = %llu\n", (unsigned long long)gcd(4294967295U, 65535U));
+  printf("gcd unsigned char 200, 150 = %d\n", (int)gcd((unsigned char)200, (unsigned char)150));
+  double ds[] = {0.5, 1.5, 2.5, 3.75};
+  printf("accumulate doubles from 0.0 = %.17g\n", accumulate(ds, ds + 4, 0.0));
+  printf("accumulate doubles from int 0 = %d\n", (int)accumulate(ds, ds + 4, 0));
+  int is[] = {1, 2, 3, 4, 5};
+  printf("accumulate product = %d\n", accumulate(is, is + 5, 1, [](int a, int b) { return a * b; }));
+  printf("accumulate long long = %lld\n", (long long)accumulate(is, is + 5, 9000000000LL));
+  printf("accumulate empty = %d\n", accumulate(is, is, 7));
+  return 0;
+}

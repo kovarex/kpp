@@ -1,0 +1,104 @@
+// Jumps out of scopes holding objects with destructors: break, continue, return from nested loops,
+// goto backward and forward, switch fall-through with a case's block objects, and do-while continue.
+char trail[2048];
+int pos = 0;
+void note(const char* s) { while (*s) trail[pos++] = *s++; trail[pos++] = ' '; trail[pos] = 0; }
+void noteInt(char tag, int v) { char t[16]; t[0] = tag; int n = 1; if (v < 0) { t[n++] = '-'; v = -v; } if (v >= 10) t[n++] = char('0' + v / 10 % 10); t[n++] = char('0' + v % 10); t[n] = 0; note(t); }
+
+struct G
+{
+  int id;
+  G(int i) : id(i) { noteInt('+', id); }
+  ~G() { noteInt('-', id); }
+};
+
+int findPair(int target)
+{
+  G outer(1);
+  for (int i = 0; i < 4; ++i)
+  {
+    G row(10 + i);
+    for (int j = 0; j < 4; ++j)
+    {
+      G cell(20 + j);
+      if (i * j == target)
+        return i * 10 + j;
+      if (j == 2)
+        break;
+      if (j == 0)
+        continue;
+    }
+  }
+  return -1;
+}
+
+int gotos(int n)
+{
+  int count = 0;
+again:
+  {
+    G g(30 + count);
+    ++count;
+    if (count < n)
+      goto again;
+    if (count == n)
+      goto done;
+    note("never");
+  }
+done:
+  return count;
+}
+
+int sw(int k)
+{
+  int r = 0;
+  switch (k)
+  {
+    case 1:
+    {
+      G a(41);
+      r += 1;
+    }
+    [[fallthrough]]; case 2:
+    {
+      G b(42);
+      r += 2;
+      if (k == 2)
+        break;
+    }
+    [[fallthrough]]; case 3:
+      r += 3;
+      break;
+    default:
+    {
+      G d(49);
+      r = -1;
+    }
+  }
+  return r;
+}
+
+int main()
+{
+  noteInt('=', findPair(2));
+  printf("%s\n", trail);
+  pos = 0;
+  noteInt('=', gotos(3));
+  printf("%s\n", trail);
+  pos = 0;
+  for (int k = 1; k <= 4; ++k)
+    noteInt('=', sw(k));
+  printf("%s\n", trail);
+  pos = 0;
+  int i = 0;
+  do
+  {
+    G loop(50 + i);
+    ++i;
+    if (i == 2)
+      continue;
+    note("body");
+  } while (i < 3);
+  printf("%s\n", trail);
+  return 0;
+}

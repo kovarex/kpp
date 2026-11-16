@@ -1,0 +1,163 @@
+// battery i6: the compile-time interpreter against run time, where it can differ from a machine:
+// float arithmetic rounded to float at every step, float/double conversions, integer conversions of
+// out-of-range floats in range, signed right shifts, unsigned wrap in every width, virtual calls,
+// new/delete, pointer arithmetic over arrays, string literals, references, member pointers into
+// arrays of structs, unions' active member, lambdas, consteval, template variables.
+constexpr float floatSum(int n)
+{
+  float s = 0;
+  for (int i = 1; i <= n; ++i)
+    s += 1.0f / i;
+  return s;
+}
+constexpr float floatMix(float a, double b) { return a * (float)b + (float)(a / b); }
+constexpr double viaFloat(double d) { return (double)(float)d; }
+constexpr int truncs(double d) { return (int)d * 1000 + (int)(float)(d * 3); }
+constexpr int rshift(int v, int s) { return v >> s; }
+constexpr long long rshift64(long long v, int s) { return v >> s; }
+constexpr unsigned char ucwrap(unsigned char a, unsigned char b) { return (unsigned char)(a + b); }
+constexpr unsigned short uswrap(unsigned short a) { return (unsigned short)((unsigned)a * a); }
+constexpr unsigned long long ullwrap(unsigned long long a) { return a * a * a; }
+constexpr int negmod(int a, int b) { return a % b + a / b * 100; }
+constexpr float fdiv(float a, float b) { return a / b; }
+constexpr double fsqrtish(double x)
+{
+  double r = x;
+  for (int i = 0; i < 30; ++i)
+    r = (r + x / r) / 2;
+  return r;
+}
+class Shape
+{
+public:
+  constexpr virtual int area() const { return 0; }
+  constexpr virtual ~Shape() {}
+};
+class Rect : public Shape
+{
+public:
+  int w, h;
+  constexpr Rect(int w, int h) : w(w), h(h) {}
+  constexpr int area() const override { return w * h; }
+};
+class Square : public Rect
+{
+public:
+  constexpr Square(int s) : Rect(s, s) {}
+  constexpr int area() const override { return Rect::area() + 1; }
+};
+constexpr int virtuals()
+{
+  Rect r(3, 4);
+  Square q(5);
+  const Shape* shapes[] = {&r, &q};
+  int s = 0;
+  for (const Shape* p : shapes)
+    s = s * 100 + p->area();
+  return s;
+}
+constexpr int heap(int n)
+{
+  int* p = new int[n];
+  for (int i = 0; i < n; ++i)
+    p[i] = i * i;
+  int* q = p + n;
+  int s = 0;
+  while (q != p)
+  {
+    --q;
+    s = s * 3 + *q;
+  }
+  delete[] p;
+  return s;
+}
+constexpr int literal(const char* s)
+{
+  unsigned h = 0;
+  while (*s)
+    h = h * 31 + *s++;
+  return (int)(h >> 1);
+}
+struct Cell
+{
+  int a;
+  short b;
+};
+constexpr int memberPointers()
+{
+  Cell cells[3] = {{1, 2}, {3, 4}, {5, 6}};
+  int Cell::*pa = &Cell::a;
+  short Cell::*pb = &Cell::b;
+  int s = 0;
+  for (Cell& c : cells)
+  {
+    c.a = c.*pa + c.*pb;
+    s = s * 10 + c.*pa;
+  }
+  Cell& last = cells[2];
+  last.b = 9;
+  return s * 10 + cells[2].b;
+}
+union U
+{
+  int i;
+  float f;
+};
+constexpr int unions()
+{
+  U u{};
+  u.i = 5;
+  int a = u.i;
+  u.f = 2.5f;
+  return a * 10 + (int)(u.f * 2);
+}
+constexpr int lambdas(int n)
+{
+  int base = 3;
+  auto add = [base](int x) { return x + base; };
+  auto twice = [&](int x) { return add(add(x)); };
+  base = 100;
+  return twice(n) * 1000 + add(0);
+}
+consteval int sq(int x) { return x * x; }
+template <typename T> constexpr T limitish = T(1) / T(3);
+template <int N> constexpr int tri = N + tri<N - 1>;
+template <> constexpr int tri<0> = 0;
+constexpr float cf1 = floatSum(1000);
+constexpr float cf2 = floatMix(1.1f, 3.3);
+constexpr double cv = viaFloat(0.1);
+constexpr int ct = truncs(-2.7);
+constexpr int cr1 = rshift(-17, 2), cr2 = rshift(-1, 31);
+constexpr long long cr3 = rshift64(-1000000000000LL, 7);
+constexpr int cu1 = ucwrap(200, 100), cu2 = uswrap(65000);
+constexpr unsigned long long cu3 = ullwrap(0x123456789ULL);
+constexpr int cm = negmod(-17, 5);
+constexpr float cfd = fdiv(1.0f, 3.0f);
+constexpr double cs = fsqrtish(2.0);
+constexpr int cvirt = virtuals();
+constexpr int cheap = heap(8);
+constexpr int clit = literal("kpp compile-time");
+constexpr int cmp = memberPointers();
+constexpr int cun = unions();
+constexpr int clam = lambdas(7);
+constexpr int csq = sq(12);
+constexpr float clf = limitish<float>;
+constexpr double cld = limitish<double>;
+constexpr int ctri = tri<10>;
+int main(int argc, char**)
+{
+  int z = argc - 1;
+  printf("float %.9g %.9g | %.9g %.9g\n", cf1, cf2, floatSum(1000 + z), floatMix(1.1f + z, 3.3));
+  printf("viaFloat %.17g %.17g\n", cv, viaFloat(0.1 + z));
+  printf("truncs %d %d\n", ct, truncs(-2.7 + z));
+  printf("shift %d %d %lld | %d %d %lld\n", cr1, cr2, cr3, rshift(-17 + z, 2), rshift(-1 + z, 31), rshift64(-1000000000000LL + z, 7));
+  printf("wrap %d %d %llu | %d %d %llu\n", cu1, cu2, cu3, ucwrap(200 + z, 100), uswrap(65000 + z), ullwrap(0x123456789ULL + z));
+  printf("negmod %d %d\n", cm, negmod(-17 + z, 5));
+  printf("fdiv %.9g %.9g sqrt %.17g %.17g\n", cfd, fdiv(1.0f + z, 3.0f), cs, fsqrtish(2.0 + z));
+  printf("virtual %d %d heap %d %d\n", cvirt, virtuals(), cheap, heap(8 + z));
+  printf("literal %d %d\n", clit, literal(&"kpp compile-time"[z]));
+  printf("memberPointers %d %d unions %d %d\n", cmp, memberPointers(), cun, unions());
+  printf("lambdas %d %d sq %d\n", clam, lambdas(7 + z), csq);
+  printf("templates %.9g %.17g %d\n", clf, cld, ctri);
+  return 0;
+}

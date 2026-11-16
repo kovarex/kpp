@@ -1,0 +1,44 @@
+// battery i35: names in class templates with bases: a derived template's member hides the base's
+// overloads unless `using Base::f;` brings them back; a dependent base's member template called with
+// this->template; a dependent base's type through typename; an overload chosen between a base's and
+// the derived class's after using; a static member of a dependent base; a nested class of a template
+// reaching its outer class's members.
+template <typename T> struct Base
+{
+  int f(int) const { return 1; }
+  int f(double) const { return 2; }
+  template <int N> int scaled() const { return N * (int)sizeof(T); }
+  using value_type = T;
+  static constexpr int tag = 9;
+};
+template <typename T> struct Hiding : Base<T>
+{
+  int f(const char*) const { return 3; }
+};
+template <typename T> struct Unhiding : Base<T>
+{
+  using Base<T>::f;
+  int f(const char*) const { return 3; }
+  int g() const { return this->template scaled<3>() * 10 + Base<T>::tag; }
+  typename Base<T>::value_type zero() const { return typename Base<T>::value_type(); }
+};
+template <typename T> struct Outer
+{
+  T total = T(5);
+  struct Inner
+  {
+    int read(const Outer& o) const { return (int)o.total * 2; }
+  };
+};
+int main()
+{
+  Hiding<int> h;
+  Unhiding<short> u;
+  printf("hide %d\n", h.f("x"));
+  printf("unhide %d %d %d %d\n", u.f(1), u.f(1.5), u.f("x"), u.g());
+  printf("type %d %d\n", (int)sizeof(u.zero()), (int)u.zero());
+  Outer<double> o;
+  Outer<double>::Inner in;
+  printf("nested %d\n", in.read(o));
+  return 0;
+}

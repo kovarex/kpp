@@ -1,0 +1,136 @@
+// Operators: C++20 rewritten and reversed comparisons, <=>, prefix and postfix, operator-> chains,
+// compound assignment returning references, subscript proxies, call operators, conditions.
+struct Version
+{
+  int major, minor;
+  bool operator==(const Version& o) const { return major == o.major && minor == o.minor; }
+  int operator<=>(const Version& o) const { return major != o.major ? major - o.major : minor - o.minor; }
+};
+struct Meters
+{
+  double v;
+  bool operator==(double d) const { return v == d; }
+  bool operator<(double d) const { return v < d; }
+};
+bool operator<(double d, const Meters& m) { return d < m.v; }
+struct Counter
+{
+  int n = 0;
+  int log = 0;
+  Counter& operator++() { ++n; log = log * 10 + 1; return *this; }
+  Counter operator++(int) { Counter old = *this; ++n; log = log * 10 + 2; return old; }
+  Counter& operator+=(int k) { n += k; log = log * 10 + 3; return *this; }
+  Counter& operator-=(const Counter& o) { n -= o.n; log = log * 10 + 4; return *this; }
+};
+struct Inner
+{
+  int value = 42;
+};
+struct Ptr1
+{
+  Inner* p;
+  Inner* operator->() const { return p; }
+};
+struct Ptr2
+{
+  Ptr1 inner;
+  Ptr1 operator->() const { return inner; }
+};
+struct Grid
+{
+  int cells[4] = {1, 2, 3, 4};
+  struct Row
+  {
+    Grid* g;
+    int base;
+    int& operator[](int c) { return g->cells[base + c]; }
+  };
+  Row operator[](int r) { return Row{this, r * 2}; }
+};
+struct Adder
+{
+  int base;
+  int operator()(int x) const { return base + x; }
+  int operator()(int x, int y) const { return base + x * y; }
+  int operator()() const { return -base; }
+};
+struct Flag
+{
+  bool on;
+  explicit operator bool() const { return on; }
+  bool operator!() const { return !on; }
+};
+struct Vec
+{
+  int x, y;
+  Vec operator-() const { return Vec{-x, -y}; }
+  Vec operator+(const Vec& o) const { return Vec{x + o.x, y + o.y}; }
+  Vec operator*(int k) const { return Vec{x * k, y * k}; }
+  friend Vec operator*(int k, const Vec& v) { return Vec{v.x * k * 10, v.y * k * 10}; }
+  Vec& operator=(const Vec& o) { x = o.x; y = o.y; return *this; }
+};
+struct Bits
+{
+  unsigned v;
+  Bits operator|(Bits o) const { return Bits{v | o.v}; }
+  Bits& operator|=(Bits o) { v |= o.v; return *this; }
+  Bits operator~() const { return Bits{~v & 0xff}; }
+  bool operator==(const Bits&) const = default;
+};
+int main()
+{
+  Version a{1, 2}, b{1, 3}, c{1, 2};
+  printf("cmp %d %d %d %d %d %d\n", a == c, a != b, a < b, b > a, a <= c, b >= a);
+  Meters m{2.5};
+  printf("reversed %d %d %d %d\n", m == 2.5, 2.5 == m, m < 3.0, 1.0 < m);
+  printf("not equal reversed %d\n", 3.0 != m);
+  Counter k;
+  ++k;
+  k++;
+  ++(++k);
+  (k += 5) += 2;
+  Counter other;
+  other.n = 3;
+  k -= other;
+  Counter before = k++;
+  printf("counter %d %d %d %d\n", k.n, k.log, before.n, before.log);
+  Inner inner;
+  Ptr2 chain{Ptr1{&inner}};
+  chain->value += 1;
+  printf("arrow %d\n", chain->value);
+  Grid g;
+  g[1][0] = 30;
+  g[0][1] += 5;
+  printf("grid %d %d %d %d\n", g.cells[0], g.cells[1], g.cells[2], g.cells[3]);
+  Adder add{10};
+  printf("call %d %d %d\n", add(1), add(2, 3), add());
+  Flag yes{true}, no{false};
+  int count = 0;
+  if (yes)
+    ++count;
+  if (!no)
+    ++count;
+  while (no)
+    ++count;
+  printf("flag %d %d %d\n", count, yes && !no ? 1 : 0, (bool)no);
+  Vec v{1, 2};
+  Vec w = -v + v * 3;
+  Vec z = 2 * v;
+  Vec chained{0, 0};
+  Vec last{0, 0};
+  last = chained = w;
+  printf("vec %d %d %d %d %d %d\n", w.x, w.y, z.x, z.y, last.x, chained.y);
+  Bits b1{1}, b2{4};
+  Bits b3 = b1 | b2;
+  b3 |= Bits{16};
+  printf("bits %u %u %d %d\n", b3.v, (~b3).v, b3 == Bits{21}, b1 != b2);
+  int x = 5;
+  int& r = (x += 2);
+  r *= 3;
+  int y = (x = 4) + 1;
+  printf("lvalues %d %d\n", x, y);
+  int arr[3] = {7, 8, 9};
+  int* p = arr;
+  printf("ptr %d %d %d\n", *p++, *++p, p[-1]);
+  return 0;
+}

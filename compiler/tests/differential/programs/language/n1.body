@@ -1,0 +1,113 @@
+// switch, goto, loops: cleanups on every way out, jumps past declarations, conditions that declare
+struct T { int id; T(int i) : id(i) { printf("+%d ", id); } T(const T& o) : id(o.id + 100) { printf("c%d ", id); } ~T() { printf("-%d ", id); } operator bool() const { return id % 2 != 0; } operator int() const { return id; } };
+int sw(int x)
+{
+  int r = 0;
+  switch (x)
+  {
+    case 0: r += 1;
+    [[fallthrough]]; case 1: { T a(1); r += 2; if (x == 1) break; r += 4; }
+    [[fallthrough]]; case 2: r += 8; break;
+    case 3: { T b(3); for (int i = 0; i < 5; i++) { T c(30 + i); if (i == 1) continue; if (i == 2) break; r += 100; } }
+      [[fallthrough]];
+    default: r += 1000; break;
+    case -5: { T d(5); return r + 7; }
+    case 100: goto out;
+  }
+  r += 10000;
+out:
+  return r;
+}
+int sw2(char c, unsigned long long u, short s)
+{
+  int r = 0;
+  switch (c) { case 'a': r = 1; break; case '\xff': r = 2; break; case -128: r = 3; break; default: r = 4; }
+  switch (u) { case 0xffffffffffffffffull: r += 10; break; case 0x100000000ull: r += 20; break; case 0: r += 30; break; default: r += 40; }
+  switch (s) { case -1: r += 100; break; case 32767: r += 200; break; case -32768: r += 300; break; default: r += 400; }
+  return r;
+}
+enum class Co { red, green = 5, blue };
+const char* name(Co c) { switch (c) { case Co::red: return "red"; case Co::green: return "green"; case Co::blue: return "blue"; } return "none"; }
+int sw3(int x)
+{
+  switch (T t(x); t.id)
+  {
+    case 1: return 10;
+    case 2: { T u(t); return u.id; }
+    default: break;
+  }
+  switch (int y = x * 2) { case 4: return y; default: return -y; }
+}
+int nested(int a, int b)
+{
+  int r = 0;
+  switch (a) { case 1: switch (b) { case 1: r = 11; break; case 2: r = 12; r += 1; break; default: r = 19; } r += 100; break; case 2: r = 5; break; }
+  return r;
+}
+int gotos(int n)
+{
+  int i = 0; int r = 0;
+again:
+  { T a(i); if (i == n) goto done; r += a.id; i++; { T b(50 + i); if (i % 2) goto again; } }
+  goto again;
+done:
+  return r;
+}
+int back(int n)
+{
+  int count = 0;
+top:
+  T x(count);
+  if (count++ < n) goto top;
+  return count;
+}
+T make(int i) { return T(i); }
+int conds()
+{
+  int r = 0;
+  if (T a = make(3)) { r += a.id; printf("then "); } else { r -= a.id; printf("else "); }
+  if (T a = make(4)) { r += a.id; printf("then "); } else { r -= a.id; printf("else "); }
+  int n = 3;
+  while (T w = make(n)) { printf("w%d ", w.id); if (n == 7) break; n += 2; }
+  printf("| ");
+  n = 0;
+  while (T w = make(2 * n + 1)) { n++; if (n == 2) continue; if (n == 3) break; printf("body "); }
+  printf("| ");
+  //GAP for-cond
+  printf("| ");
+  for (T a(1), b(2); a.id < 3; a.id++, b.id++) printf("[%d %d] ", a.id, b.id);
+  printf("| ");
+  if (T a(5); a.id > 3) printf("big "); else printf("small ");
+  if (int q = 0; q) printf("q "); else if (int z = q + 1) printf("z%d ", z + q);
+  do { T d(9); if (d.id == 9) break; } while (true);
+  do { T d(8); r++; continue; } while (r < 3);
+  return r;
+}
+int rfor()
+{
+  int a[4] = { 1, 2, 3, 4 }; int r = 0;
+  for (int& x : a) { x *= 2; if (x == 6) continue; r += x; }
+  for (int x : a) { x = 0; }
+  for (auto x : { 10, 20, 30 }) { if (x == 30) break; r += x; }
+  int m[2][3] = { { 1, 2, 3 }, { 4, 5, 6 } };
+  for (auto& row : m) for (int& v : row) r += v * 100;
+  for (int i = 0, j = 10; i < j; i++, j--) r += 1000;
+  //GAP for-cond
+  return r;
+}
+int comma() { int a = 1, b = 2; int c = (a++, b++, a + b); for (int i = 0, j = 0; i < 3; i++, j += 2) c += j; return c; }
+int retcleanup() { T a(1); T b(2); return T(3).id + a.id * 10 + b.id * 100; }
+int main()
+{
+  for (int x : { 0, 1, 2, 3, 4, -5, 100 }) { int r = sw(x); printf("=> %d\n", r); }
+  printf("%d %d %d %d %d\n", sw2('a', 0, -1), sw2('\xff', ~0ull, 32767), sw2(-128, 0x100000000ull, -32768), sw2('b', 7, 0), sw2((char)255, 0xffffffffull, (short)65535));
+  printf("%s %s %s %s\n", name(Co::red), name(Co::green), name(Co::blue), name((Co)17));
+  for (int x : { 1, 2, 3 }) { int r = sw3(x); printf("=> %d\n", r); }
+  for (int a = 1; a < 5; a++) for (int b = 0; b < 3; b++) printf("%d ", nested(a, b)); printf("\n");
+  { int r = gotos(3); printf("=> %d\n", r); }
+  { int r = back(3); printf("=> %d\n", r); }
+  { int r = conds(); printf("=> %d\n", r); }
+  printf("%d %d\n", rfor(), comma());
+  { int r = retcleanup(); printf("=> %d\n", r); }
+  return 0;
+}

@@ -1,0 +1,108 @@
+// leaving try and catch blocks by return, break, continue and goto with live locals; rethrowing
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~Noisy() { printf("-%d ", id); }
+};
+int fromTry()
+{
+  Noisy outer(1);
+  try
+  {
+    Noisy inner(2);
+    return inner.id * 10;
+  }
+  catch (...)
+  {
+    return -1;
+  }
+}
+int fromCatch()
+{
+  Noisy outer(3);
+  try
+  {
+    Noisy inner(4);
+    throw Noisy(5);
+  }
+  catch (const Noisy& e)
+  {
+    Noisy handler(6);
+    return e.id;
+  }
+}
+int loops()
+{
+  int total = 0;
+  for (int i = 0; i < 4; ++i)
+  {
+    Noisy perPass(10 + i);
+    try
+    {
+      Noisy inTry(20 + i);
+      if (i == 1)
+        continue;
+      if (i == 3)
+        break;
+      if (i == 2)
+        throw i;
+      total += i;
+    }
+    catch (int v)
+    {
+      Noisy inCatch(30 + v);
+      total += 100;
+      continue;
+    }
+    total += 1000;
+  }
+  return total;
+}
+int jumps()
+{
+  int passes = 0;
+again:
+  try
+  {
+    Noisy inTry(40 + passes);
+    ++passes;
+    if (passes < 3)
+      goto again;
+  }
+  catch (...)
+  {
+  }
+  return passes;
+}
+int rethrows()
+{
+  try
+  {
+    try
+    {
+      throw Noisy(50);
+    }
+    catch (Noisy copy)
+    {
+      copy.id = 99;
+      throw;
+    }
+  }
+  catch (const Noisy& original)
+  {
+    return original.id;
+  }
+  return 0;
+}
+int main()
+{
+  printf("| %d\n", fromTry());
+  printf("| %d\n", fromCatch());
+  printf("| %d\n", loops());
+  printf("| %d\n", jumps());
+  printf("| %d\n", rethrows());
+  return 0;
+}

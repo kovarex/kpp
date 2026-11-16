@@ -1,0 +1,35 @@
+struct In { int a; int b; };
+struct Out { In in; int c; };
+union U { In in; int x; };
+struct V { union { int i; float f; }; int k; };
+struct DIn : In { };
+struct Conv { IMPLICIT operator In() const { return In{8, 9}; } };
+struct Name { char s[8]; int n; };
+struct D3 { Out o; int d; };
+struct WithArr { In pts[2]; int n; };
+
+int main()
+{
+  U u{1, 2};
+  U u1{1};
+  printf("%d %d %d %d\n", u.in.a, u.in.b, u1.in.a, u1.in.b);
+  V varr[2] = {1, 2, 3, 4};
+  V vs[] = {1, 2, 3, 4, 5};
+  printf("%d %d %d %d %d\n", varr[0].i, varr[0].k, varr[1].i, varr[1].k, (int)(sizeof(vs) / sizeof(V)));
+  DIn dd;
+  dd.a = 7;
+  dd.b = 6;
+  Out o2{dd, 5};
+  Out o3{Conv{}, 5};
+  printf("%d %d %d %d %d %d\n", o2.in.a, o2.in.b, o2.c, o3.in.a, o3.in.b, o3.c);
+  Name names[] = {"ab", 1, "cd", 2};
+  printf("%s %d %s %d %d\n", names[0].s, names[0].n, names[1].s, names[1].n, (int)(sizeof(names) / sizeof(Name)));
+  D3 q{1, 2, 3, 4};
+  D3 q2{In{5, 6}, 7, 8};
+  printf("%d %d %d %d %d %d %d %d\n", q.o.in.a, q.o.in.b, q.o.c, q.d, q2.o.in.a, q2.o.in.b, q2.o.c, q2.d);
+  WithArr wa[] = {1, 2, 3, 4, 5, 6};
+  printf("%d %d %d %d\n", (int)(sizeof(wa) / sizeof(WithArr)), wa[0].n, wa[1].pts[0].a, wa[1].pts[0].b);
+  In ins[3] = {In{1, 2}, 3, 4, In{5, 6}};
+  printf("%d %d %d %d %d %d\n", ins[0].a, ins[0].b, ins[1].a, ins[1].b, ins[2].a, ins[2].b);
+  return 0;
+}

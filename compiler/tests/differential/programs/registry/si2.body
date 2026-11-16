@@ -1,0 +1,114 @@
+int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }
+int calls = 0;
+int nextId() { return ++calls; }
+int counter() { static int n = say("n", 10); return n++; }
+template<class T> int perType() { static int n = say("perType", (int)sizeof(T)); return n++; }
+struct Cl { static int m() { static int k = say("Cl::m k", 100); return ++k; } template<int N> int t() { static int k = say("t k", N); return k += N; } };
+template<class T> struct TC { int f() { static int k = say("TC f", (int)sizeof(T)); return ++k; } static int s() { static int k = say("TC s", 5); return ++k; } };
+int zeroThenInit(int c)
+{
+  switch (c)
+  {
+    case 0:
+      static int s = say("switch s", 42);
+      return s;
+    case 1:
+      return s;
+  }
+  return -1;
+}
+struct Thrower { int v; Thrower(int x) : v(x) { printf("Thrower %d\n", x); if (x < 2) throw x; } };
+int attempts = 0;
+int retry()
+{
+  try { static Thrower t(attempts++); return t.v; }
+  catch (int e) { printf("caught %d\n", e); return -1; }
+}
+struct Peek { int x; Peek() { printf("Peek x=%d\n", x); x = 5; } };
+int peekLocal() { static Peek p; return p.x++; }
+int chain()
+{
+  static int a = say("a", 1);
+  static int b = say("b", a + 1);
+  static const int c = 7;
+  static constexpr int d = 8;
+  static int e[3] = {say("e0", 1)};
+  static int& r = a;
+  r++;
+  return a + b + c + d + e[0] + e[1];
+}
+int inLoop()
+{
+  int t = 0;
+  for (int i = 0; i < 3; i++)
+  {
+    static int s = say("in loop", i + 1);
+    s += i;
+    t += s;
+  }
+  return t;
+}
+int perIter(int n) { auto f = [] { static int k = say("lambda k", 3); return ++k; }; int t = 0; for (int i = 0; i < n; i++) t += f(); return t; }
+int genericLambda() { auto f = [](auto x) { static int k = say("generic k", (int)sizeof(x)); return ++k; }; return f(1) + f(1) + f(1.0) + f('c'); }
+struct Holder { int v; Holder(int x) : v(x) { printf("Holder %d\n", x); } };
+Holder& instance() { static Holder h(say("instance", 3)); return h; }
+int useInstance = instance().v;
+const char* name(int i) { static const char* names[] = {"zero", "one", "two"}; return names[i]; }
+int table(int i) { static const int t[] = {nextId(), nextId(), nextId()}; return t[i]; }
+struct Agg { int a; int b; int c = 3; };
+int aggStatic() { static Agg g = {say("g.a", 1)}; return g.a++ + g.b + g.c; }
+int bindStatic() { static auto [x, y, z] = Agg{4, 5}; return x++ + y; }
+int defArg(int x = counter()) { return x; }
+int staticInCondition(int x) { if (x > 0) { static int q = say("q", x); return q; } return 0; }
+int nestedStatic()
+{
+  struct L { static int f() { static int z = say("local class z", 2); return ++z; } };
+  return L::f() + L::f();
+}
+int recursive(int n) { static int depth = say("depth", 0); depth++; return n == 0 ? depth : recursive(n - 1); }
+int main()
+{
+  printf("main\n");
+  int r1 = counter(); int r2 = counter(); int r3 = counter();
+  printf("%d %d %d\n", r1, r2, r3);
+  r1 = perType<int>(); r2 = perType<int>(); r3 = perType<char>(); int r4 = perType<double>();
+  printf("%d %d %d %d\n", r1, r2, r3, r4);
+  r1 = Cl::m(); r2 = Cl::m();
+  printf("%d %d\n", r1, r2);
+  Cl c;
+  r1 = c.t<1>(); r2 = c.t<1>(); r3 = c.t<2>();
+  printf("%d %d %d\n", r1, r2, r3);
+  TC<int> a; TC<char> b; TC<int> a2;
+  r1 = a.f(); r2 = b.f(); r3 = a2.f(); r4 = TC<int>::s(); int r5 = TC<char>::s(); int r6 = TC<int>::s();
+  printf("%d %d %d %d %d %d\n", r1, r2, r3, r4, r5, r6);
+  printf("%d\n", zeroThenInit(1));
+  printf("%d\n", zeroThenInit(0));
+  printf("%d\n", zeroThenInit(1));
+  printf("%d\n", retry());
+  printf("%d\n", retry());
+  printf("%d\n", retry());
+  printf("%d\n", retry());
+  r1 = peekLocal(); r2 = peekLocal();
+  printf("%d %d\n", r1, r2);
+  r1 = chain(); r2 = chain();
+  printf("%d %d\n", r1, r2);
+  r1 = inLoop(); r2 = inLoop();
+  printf("%d %d\n", r1, r2);
+  r1 = perIter(2); r2 = perIter(2);
+  printf("%d %d\n", r1, r2);
+  printf("%d\n", genericLambda());
+  printf("%d %s %s\n", useInstance, name(1), name(2));
+  r1 = table(2); r2 = table(0); r3 = table(1);
+  printf("%d %d %d %d\n", r1, r2, r3, calls);
+  r1 = aggStatic(); r2 = aggStatic();
+  printf("%d %d\n", r1, r2);
+  r1 = bindStatic(); r2 = bindStatic();
+  printf("%d %d\n", r1, r2);
+  r1 = defArg(); r2 = defArg();
+  printf("%d %d\n", r1, r2);
+  r1 = staticInCondition(0); r2 = staticInCondition(3); r3 = staticInCondition(4);
+  printf("%d %d %d\n", r1, r2, r3);
+  printf("%d\n", nestedStatic());
+  printf("%d\n", recursive(3));
+  return 0;
+}

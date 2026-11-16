@@ -1,0 +1,65 @@
+// namespaces and overload resolution: ADL, using-declarations and directives, nested and inline
+// namespaces, hiding, value categories, qualification, promotions against conversions, templates
+// against non-templates, default arguments
+namespace Geo
+{
+  struct Point { int x, y; };
+  int describe(Point) { return 1; }
+  int scale(Point p, int k) { return (p.x + p.y) * k; }
+  namespace Detail
+  {
+    int helper() { return 7; }
+  }
+  inline namespace V2
+  {
+    int version() { return 2; }
+  }
+}
+namespace Other
+{
+  int describe(Geo::Point) { return 2; }
+  int helper() { return 70; }
+}
+int describe(int) { return 3; }
+int pick(int) { return 1; }
+int pick(long) { return 2; }
+int pick(double) { return 3; }
+int pick(const char*) { return 4; }
+int take(int&) { return 1; }
+int take(const int&) { return 2; }
+int take(int&&) { return 3; }
+int promote(int) { return 1; }
+int promote(unsigned) { return 2; }
+int promote(double) { return 3; }
+template<typename T> int generic(T) { return 10; }
+int generic(int) { return 20; }
+template<typename T> int generic(T*) { return 30; }
+int defaulted(int a, int b = 5) { return a * 10 + b; }
+struct Base { int f(int) { return 1; } int f(double) { return 2; } };
+struct Derived : Base { int f(char) { return 3; } };
+int main()
+{
+  Geo::Point p{1, 2};
+  printf("N1 %d %d %d\n", describe(p), Other::describe(p), describe(5));
+  printf("N2 %d %d %d\n", scale(p, 3), Geo::Detail::helper(), Geo::V2::version());
+  {
+    using namespace Other;
+    printf("N3 %d\n", helper());
+  }
+  short s = 1;
+  char c = 'a';
+  float f = 1.5f;
+  printf("O1 %d %d %d %d %d %d\n", pick(1), pick(1L), pick(1.0), pick(s), pick(c), pick(f));
+  printf("O2 %d\n", pick("x"));
+  int v = 0;
+  const int cv = 0;
+  printf("O3 %d %d %d %d\n", take(v), take(cv), take(5), take(static_cast<int&&>(v)));
+  unsigned char uc = 1;
+  printf("O4 %d %d %d\n", promote(uc), promote(true), promote(1.0f));
+  int* ip = &v;
+  printf("O5 %d %d %d %d\n", generic(1), generic(1.0), generic(ip), generic<int>(1));
+  printf("O6 %d %d\n", defaulted(1), defaulted(1, 2));
+  Derived d;
+  printf("O7 %d %d %d\n", d.f('x'), d.f(1), d.Base::f(1.0));
+  return 0;
+}

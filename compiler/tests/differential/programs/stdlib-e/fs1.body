@@ -1,0 +1,56 @@
+// path decomposition, normalisation and iteration (Windows' rules: \ and / are separators, C: and
+// \\server root names).
+void decompose(const char* text)
+{
+  filesystem::path p = text;
+  printf("--- %s\n", text);
+  show("string", p.string());
+  show("generic", p.generic_string());
+  show("root_name", p.root_name().string());
+  show("root_directory", p.root_directory().string());
+  show("root_path", p.root_path().string());
+  show("relative_path", p.relative_path().string());
+  show("parent_path", p.parent_path().string());
+  show("filename", p.filename().string());
+  show("stem", p.stem().string());
+  show("extension", p.extension().string());
+  flag("is_absolute", p.is_absolute());
+  flag("has_filename", p.has_filename());
+  show("lexically_normal", p.lexically_normal().string());
+  String elements;
+  for (const filesystem::path& e : p)
+  {
+    appendText(elements, e.string());
+    appendText(elements, "|");
+  }
+  show("elements", elements);
+  filesystem::path r = p;
+  show("remove_filename", r.remove_filename().string());
+  filesystem::path x = p;
+  show("replace_extension", x.replace_extension(".kpp").string());
+}
+
+void pair(const char* a, const char* b)
+{
+  filesystem::path p = a, q = b;
+  printf("--- %s , %s\n", a, b);
+  show("a / b", (p / q).string());
+  show("lexically_relative", p.lexically_relative(q).string());
+  show("lexically_proximate", p.lexically_proximate(q).string());
+  int c = p.compare(q);
+  number("compare sign", c < 0 ? -1 : c > 0 ? 1 : 0);
+  flag("==", p == q);
+}
+
+int main()
+{
+  const char* paths[] = {"C:\\a\\b.txt", "C:/a/b.tar.gz", "a/b/", "/a/b", "..", ".", "a/./b/../c", "\\\\server\\share\\x", "C:", "C:x",
+                         "file.", ".hidden", "a\\b/c", "", "/", "a/..", "../../x/./y/", "C:\\..\\a"};
+  for (const char* text : paths)
+    decompose(text);
+  const char* pairs[][2] = {{"a/b/c", "a/d"}, {"C:/x/y", "C:/x"}, {"a", "b"}, {"a/", "b"}, {"a", "/b"}, {"C:a", "D:b"}, {"C:/a", "b"},
+                            {"a", "C:b"}, {"C:a", "C:b"}, {"a/b", "a\\b"}, {"a/b", "a/b/"}, {"x", ""}, {"", "x"}, {"/a/b", "/a/b/c/d"}};
+  for (auto& p : pairs)
+    pair(p[0], p[1]);
+  return 0;
+}

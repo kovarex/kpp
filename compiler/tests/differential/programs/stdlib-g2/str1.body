@@ -1,0 +1,197 @@
+// String: searching, replacing, inserting, erasing, comparing, at their edges.
+
+void show(const char* what, const String& s)
+{
+  printf("%s: [%s] %lld\n", what, s.c_str(), (long long)s.size());
+}
+
+void pos(const char* what, size_t p)
+{
+  if (p == String::npos)
+    printf("%s: npos\n", what);
+  else
+    printf("%s: %lld\n", what, (long long)p);
+}
+
+int main()
+{
+  String s = "hello world, hello kpp";
+  pos("find hello", s.find("hello"));
+  pos("find hello 1", s.find("hello", 1));
+  pos("find empty", s.find(""));
+  pos("find empty at size", s.find("", s.size()));
+  pos("find empty past size", s.find("", s.size() + 1));
+  pos("find char", s.find('o'));
+  pos("find char from 5", s.find('o', 5));
+  pos("find char past", s.find('o', 100));
+  pos("find n", s.find("worldX", 0, 5));
+  pos("rfind hello", s.rfind("hello"));
+  pos("rfind hello 12", s.rfind("hello", 12));
+  pos("rfind hello 13", s.rfind("hello", 13));
+  pos("rfind empty", s.rfind(""));
+  pos("rfind empty 3", s.rfind("", 3));
+  pos("rfind char", s.rfind('l'));
+  pos("rfind char 0", s.rfind('h', 0));
+  pos("rfind miss", s.rfind('z'));
+  pos("find_first_of", s.find_first_of("ow"));
+  pos("find_first_of 5", s.find_first_of("ow", 5));
+  pos("find_first_of none", s.find_first_of("xyz"));
+  pos("find_first_of empty", s.find_first_of(""));
+  pos("find_last_of", s.find_last_of("lo"));
+  pos("find_last_of 10", s.find_last_of("lo", 10));
+  pos("find_first_not_of", s.find_first_not_of("helo"));
+  pos("find_first_not_of all", s.find_first_not_of(s));
+  pos("find_last_not_of", s.find_last_not_of("kp"));
+  pos("find_last_not_of 3", s.find_last_not_of("l", 3));
+  pos("find_first_of char", s.find_first_of('w'));
+  pos("find_last_not_of empty", String().find_last_not_of("a"));
+
+  String r = "abcdef";
+  r.replace(1, 2, "XYZ");
+  show("replace 1 2 XYZ", r);
+  r = "abcdef";
+  r.replace(4, 100, "!");
+  show("replace 4 100 !", r);
+  r = "abcdef";
+  r.replace(6, 0, "end");
+  show("replace at end", r);
+  r = "abcdef";
+  r.replace(0, 6, "");
+  show("replace all empty", r);
+  r = "abcdef";
+  r.replace(2, 1, 3, '-');
+  show("replace 2 1 3 -", r);
+  r = "abcdef";
+  r.replace(1, 3, "0123456789", 4);
+  show("replace with count", r);
+  r = "abcdef";
+  r.replace(1, 2, r);
+  show("replace with itself", r);
+  r = "abcdef";
+  r.replace(1, 2, r.c_str() + 2);
+  show("replace with own tail", r);
+  r = "abcdef";
+  r.replace(1, 4, r.c_str() + 3, 2);
+  show("replace own overlap", r);
+  r = "abcdef";
+  r.replace(r.begin() + 1, r.begin() + 3, "Q");
+  show("replace iterators", r);
+  r = "abcdef";
+  r.replace(2, 2, String("0123456"), 2, 3);
+  show("replace substring", r);
+  r = "abcdef";
+  try
+  {
+    r.replace(7, 1, "x");
+    show("replace past end", r);
+  }
+  catch (...)
+  {
+    printf("replace past end threw\n");
+  }
+
+  String i = "abc";
+  i.insert(0, "X");
+  show("insert 0", i);
+  i.insert(i.size(), "Y");
+  show("insert end", i);
+  i.insert(2, 3, '.');
+  show("insert count", i);
+  i.insert(1, i);
+  show("insert itself", i);
+  i = "abc";
+  i.insert(1, "0123", 2);
+  show("insert n", i);
+  i = "abc";
+  i.insert(i.begin() + 1, 'Z');
+  show("insert iterator", i);
+  try
+  {
+    i.insert(10, "x");
+  }
+  catch (...)
+  {
+    printf("insert past end threw\n");
+  }
+
+  String e = "0123456789";
+  e.erase(3, 2);
+  show("erase 3 2", e);
+  e.erase(5);
+  show("erase from 5", e);
+  e.erase(0, 0);
+  show("erase nothing", e);
+  e = "0123456789";
+  e.erase(e.begin() + 2);
+  show("erase iterator", e);
+  e.erase(e.begin(), e.begin() + 3);
+  show("erase range", e);
+  e = "0123456789";
+  e.erase(10, 5);
+  show("erase at size", e);
+  try
+  {
+    e.erase(11, 1);
+  }
+  catch (...)
+  {
+    printf("erase past end threw\n");
+  }
+
+  String t = "abcdef";
+  show("substr 2", t.substr(2));
+  show("substr 2 2", t.substr(2, 2));
+  show("substr 6", t.substr(6));
+  show("substr 4 100", t.substr(4, 100));
+  try
+  {
+    show("substr 7", t.substr(7));
+  }
+  catch (...)
+  {
+    printf("substr 7 threw\n");
+  }
+
+  printf("compare %d %d %d\n", String("abc").compare("abd") < 0, String("abc").compare("ab") > 0, String("abc").compare("abc") == 0);
+  printf("compare sub %d %d\n", String("xxabcxx").compare(2, 3, "abc") == 0, String("xxabcxx").compare(2, 3, "abcd", 3) == 0);
+  printf("compare sub2 %d\n", String("xxabcxx").compare(2, 3, String("--abc--"), 2, 3) == 0);
+  printf("less %d %d %d\n", String("a") < String("b"), String("ab") < String("a"), String("") < String("a"));
+  printf("high bytes %d\n", String("\xff") > String("a"));
+  printf("embedded zero %d %lld\n", String("a\0b", 3) == String("a\0c", 3), (long long)String("a\0b", 3).size());
+
+  String z = "abc";
+  z.resize(5);
+  printf("resize 5: %lld %d\n", (long long)z.size(), z[4] == 0);
+  z.resize(2);
+  show("resize 2", z);
+  z.resize(4, '*');
+  show("resize 4 *", z);
+  z.append("123", 2);
+  show("append n", z);
+  z.append(3, '+');
+  show("append count", z);
+  z.append(String("hello"), 1, 3);
+  show("append sub", z);
+  z.append(z);
+  show("append itself", z);
+  z.assign("xyz", 2);
+  show("assign n", z);
+  z.assign(String("hello"), 2, 10);
+  show("assign sub", z);
+  z.assign(4, 'q');
+  show("assign count", z);
+  z.push_back('!');
+  z.pop_back();
+  show("push pop", z);
+  printf("front back %c %c\n", z.front(), z.back());
+  printf("starts %d %d %d ends %d %d %d\n", String("hello").starts_with("he"), String("hello").starts_with(""), String("he").starts_with("hello"),
+         String("hello").ends_with("lo"), String("hello").ends_with('o'), String("lo").ends_with("hello"));
+  String big;
+  for (int k = 0; k < 100; ++k)
+    big.push_back(char('a' + k % 26));
+  big.replace(10, 50, "SHORT");
+  show("big replace shrink", big);
+  big.replace(5, 2, String(200, '#'));
+  printf("big replace grow: %lld %c %c\n", (long long)big.size(), big[5], big[205]);
+  return 0;
+}

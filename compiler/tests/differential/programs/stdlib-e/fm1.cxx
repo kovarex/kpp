@@ -1,0 +1,190 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <string_view>
+#include <cstring>
+#include <cmath>
+#include <type_traits>
+// text.md's pieces written with printf: each piece is its text.
+struct Piece
+{
+  std::string text;
+};
+std::string special(double d)
+{
+  if (d != d)
+    return "nan";
+  return d < 0 ? "-inf" : "inf";
+}
+std::string shortest(double d)
+{
+  if (std::isinf(d) || d != d)
+    return special(d);
+  if (d == 0)
+    return std::signbit(d) ? "-0" : "0";
+  char buf[512];
+  int p = 1;
+  for (; p < 17; ++p)
+  {
+    snprintf(buf, 64, "%.*e", p - 1, d);
+    if (strtod(buf, nullptr) == d)
+      break;
+  }
+  snprintf(buf, 512, "%.*e", p - 1, d);
+  int x = atoi(strchr(buf, 'e') + 1);
+  if (x >= -4 && (x < 16 || x < p))
+    snprintf(buf, 512, "%.*f", p - 1 - x > 0 ? p - 1 - x : 0, d);
+  return buf;
+}
+std::string textOf(const Piece& p) { return p.text; }
+std::string textOf(const std::string& s) { return s; }
+std::string textOf(const char* s) { return s; }
+using StringView = std::string_view;
+std::string textOf(std::string_view s) { return std::string(s); }
+std::string textOf(char c) { return std::string(1, c); }
+std::string textOf(bool b) { return b ? "true" : "false"; }
+std::string textOf(double d) { return shortest(d); }
+template <typename T> std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool> && !std::is_same_v<T, char>, std::string> textOf(T v)
+{
+  return std::is_signed_v<T> ? std::to_string((long long)v) : std::to_string((unsigned long long)v);
+}
+template <typename T> std::string& operator<<(std::string& s, const T& v) { return s += textOf(v); }
+template <typename T> unsigned long long bitsOf(T v) { return (unsigned long long)(std::make_unsigned_t<T>)v; }
+template <typename T> Piece hex(T v, int digits = 0) { char b[64]; snprintf(b, 64, "%0*llx", digits, bitsOf(v)); return {b}; }
+template <typename T> Piece hexUpper(T v, int digits = 0) { char b[64]; snprintf(b, 64, "%0*llX", digits, bitsOf(v)); return {b}; }
+template <typename T> Piece octal(T v, int digits = 0) { char b[64]; snprintf(b, 64, "%0*llo", digits, bitsOf(v)); return {b}; }
+template <typename T> Piece alignRight(const T& v, int width, char fill = ' ')
+{
+  std::string t = textOf(v);
+  bool left = width < 0;
+  size_t w = (size_t)(left ? -width : width);
+  if (t.size() >= w)
+    return {t};
+  return {left ? t + std::string(w - t.size(), fill) : std::string(w - t.size(), fill) + t};
+}
+template <typename T> Piece alignLeft(const T& v, int width, char fill = ' ') { return alignRight(v, -width, fill); }
+template <typename T> Piece zeroPadded(const T& v, int width)
+{
+  std::string t = textOf(v);
+  if (t.size() >= (size_t)width)
+    return {t};
+  size_t sign = (!t.empty() && (t[0] == '-' || t[0] == '+')) ? 1 : 0;
+  return {t.substr(0, sign) + std::string(width - t.size(), '0') + t.substr(sign)};
+}
+template <typename T> Piece withSign(const T& v)
+{
+  std::string t = textOf(v);
+  return {(!t.empty() && t[0] == '-') ? t : "+" + t};
+}
+Piece fixed(double d, int n)
+{
+  if (std::isinf(d) || d != d)
+    return {special(d)};
+  char b[512];
+  snprintf(b, 512, "%.*f", n, d);
+  return {b};
+}
+Piece significant(double d, int n)
+{
+  if (std::isinf(d) || d != d)
+    return {special(d)};
+  char b[512];
+  snprintf(b, 512, "%.*g", n, d);
+  return {b};
+}
+Piece scientific(double d, int n)
+{
+  if (std::isinf(d) || d != d)
+    return {special(d)};
+  char b[512];
+  snprintf(b, 512, "%.*e", n, d);
+  return {b};
+}
+Piece address(const void* p) { char b[32]; snprintf(b, 32, "%016llX", (unsigned long long)(size_t)p); return {b}; }
+// The formatting pieces (text.md) against the printf conversions they stand for: hex, hexUpper and
+// octal at every integer width (a negative value as its own type's bits), alignRight, alignLeft
+// (with a fill and a negative width), zeroPadded and withSign of integers and floating values,
+// fixed, significant and scientific with every precision class on edge values (ties, -0.0,
+// subnormals, the extremes, inf, nan), chars and bools as pieces, and pointers through address.
+template <typename T> void integers(const char* name, T value)
+{
+  String out;
+  out << StringView(name) << " " << value << " | " << hex(value) << " " << hex(value, 8) << " " << hexUpper(value) << " " << hexUpper(value, 4) << " | "
+      << octal(value) << " " << octal(value, 6) << " | [" << alignRight(value, 6) << "] [" << alignLeft(value, 6, '*') << "] ["
+      << alignRight(value, -6) << "] [" << alignRight(value, 1) << "] | " << zeroPadded(value, 6) << " " << withSign(value) << " "
+      << zeroPadded(withSign(value), 6) << " " << zeroPadded(value, 1);
+  printf("%s\n", out.c_str());
+}
+void floating(double d)
+{
+  String out;
+  out << d << " |";
+  for (int p : {0, 1, 2, 3, 6, 20})
+    out << " " << fixed(d, p);
+  out << " |";
+  for (int p : {1, 2, 6, 17})
+    out << " " << significant(d, p);
+  out << " |";
+  for (int p : {0, 1, 3, 16})
+    out << " " << scientific(d, p);
+  out << " | [" << zeroPadded(fixed(d, 2), 12) << "] [" << withSign(fixed(d, 1)) << "] [" << alignRight(fixed(d, 2), 12) << "] ["
+      << alignLeft(scientific(d, 2), 12, '.') << "] [" << zeroPadded(withSign(scientific(d, 1)), 12) << "] [" << withSign(significant(d, 3)) << "]";
+  printf("%s\n", out.c_str());
+}
+
+int main()
+{
+  integers<signed char>("i8", -1);
+  integers<signed char>("i8", -128);
+  integers<signed char>("i8", 127);
+  integers<unsigned char>("u8", 255);
+  integers<short>("i16", -1);
+  integers<short>("i16", -32768);
+  integers<unsigned short>("u16", 65535);
+  integers<int>("i32", 0);
+  integers<int>("i32", -1);
+  integers<int>("i32", 42);
+  integers<int>("i32", -42);
+  integers<int>("i32", 2147483647);
+  integers<int>("i32", -2147483647 - 1);
+  integers<unsigned>("u32", 4294967295u);
+  integers<long long>("i64", -1);
+  integers<long long>("i64", -9223372036854775807ll - 1);
+  integers<long long>("i64", 1234567890123ll);
+  integers<unsigned long long>("u64", 18446744073709551615ull);
+  double values[] = {0.0, -0.0, 1.0, -1.0, 0.5, 1.5, 2.5, -2.5, 0.125, 0.05, 0.15, 0.25, 0.35, 1.005, 2.675, 123456.789, -123456.789, 9.995, 99.5,
+                     1e-5, 1e-300, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 1e21, 1e100, 1.0 / 0.0 * 1.0, -1.0 / 0.0 * 1.0};
+  for (double d : values)
+    floating(d);
+  double nan = 0.0 / 0.0 * 1.0;
+  floating(nan);
+  floating(-nan);
+  String misc;
+  misc << 'A' << ' ' << true << ' ' << false << " [" << alignRight('x', 3) << "] [" << alignLeft(true, 6, '_') << "] [" << zeroPadded(-5, 4) << "] ["
+       << zeroPadded(withSign(3), 4) << "] [" << withSign(0) << "] [" << withSign(-0.0) << "] [" << withSign(fixed(-0.0, 1)) << "]";
+  printf("%s\n", misc.c_str());
+  int object = 0;
+  String a, b;
+  a << address(&object);
+  char hexText[32];
+  snprintf(hexText, 32, "%016llX", (unsigned long long)(size_t)&object);
+  printf("address matches %%016llX of the pointer: %d, length %d\n", (int)(strcmp(a.c_str(), hexText) == 0), (int)a.size());
+  b << address((void*)nullptr);
+  printf("null address [%s]\n", b.c_str());
+  return 0;
+}

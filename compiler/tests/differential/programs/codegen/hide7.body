@@ -1,0 +1,14 @@
+// a local lambda named like a function template whose return type is a template parameter deduced from a later argument
+template<typename It, typename T> T gatherAll(It first, It last, T init) { return init; }
+template<typename T> T firstOf(T a, T b) { return a; }
+template<typename A, typename T> T second(A a, T b) { return b; }
+int main()
+{
+  auto gatherAll = [](int v) { return v * 10; };
+  printf("H1 %d\n", gatherAll(5));
+  auto firstOf = [](int v) { return v * 20; };
+  printf("H2 %d\n", firstOf(5));
+  auto second = [](int v) { return v * 30; };
+  printf("H3 %d\n", second(5));
+  return 0;
+}

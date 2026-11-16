@@ -1,0 +1,36 @@
+struct In { int a; int b; };
+struct Out { In in; int c; };
+struct Big { long long x; };
+struct Two { int a; int b; int c; };
+
+const char* f(In) { return "f(In)"; }
+const char* f(Two) { return "f(Two)"; }
+const char* g(int) { return "g(int)"; }
+const char* g(In) { return "g(In)"; }
+const char* h(double) { return "h(double)"; }
+const char* h(Big) { return "h(Big)"; }
+const char* k(const In&) { return "k(const In&)"; }
+const char* k(long) { return "k(long)"; }
+const char* m(In, int) { return "m(In, int)"; }
+const char* m(Two, long) { return "m(Two, long)"; }
+const char* n(int (&)[2]) { return "n(int(&)[2])"; }
+const char* n(int (&)[3]) { return "n(int(&)[3])"; }
+const char* p(const int (&)[3]) { return "p(int[3])"; }
+const char* p(In) { return "p(In)"; }
+
+int main()
+{
+  printf("%s\n", f({1, 2, 3}));
+  printf("%s\n", g({1}));
+  printf("%s\n", g({1, 2}));
+  printf("%s\n", h({1}));
+  printf("%s\n", k({1, 2}));
+  printf("%s\n", k({1}));
+  printf("%s\n", m({1, 2}, 3));
+  printf("%s\n", m({1, 2, 3}, 3));
+  int a3[3] = {1, 2, 3};
+  printf("%s\n", n(a3));
+  printf("%s\n", p({1, 2, 3}));
+  printf("%s\n", p({1, 2}));
+  return 0;
+}

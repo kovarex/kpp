@@ -1,0 +1,9 @@
+// A destructor with no specifier is noexcept when its parts are: a throw in it ends the program.
+struct S { ~S() { printf("in\n"); fflush(stdout); throw 1; } };
+int main()
+{
+  try { S s; }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

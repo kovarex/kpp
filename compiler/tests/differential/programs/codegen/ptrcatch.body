@@ -1,0 +1,34 @@
+// a pointer handler takes a thrown pointer that converts to it
+class First
+{
+public:
+  int a = 1;
+  virtual ~First() {}
+};
+class Second
+{
+public:
+  int b = 2;
+  virtual ~Second() {}
+  virtual int which() const { return 2; }
+};
+class Both : public First, public Second
+{
+public:
+  int c = 3;
+  int which() const override { return 3; }
+};
+Both object;
+int main()
+{
+  try { throw &object; }
+  catch (Second* p) { printf("%d %d\n", p->b, p->which()); }
+  catch (...) { printf("other\n"); }
+  try { throw &object; }
+  catch (const Both* p) { printf("%d\n", p->c); }
+  catch (...) { printf("other\n"); }
+  try { throw &object; }
+  catch (void* p) { printf("%d\n", p == static_cast<void*>(&object) ? 1 : 0); }
+  catch (...) { printf("other\n"); }
+  return 0;
+}

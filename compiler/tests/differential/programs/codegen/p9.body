@@ -1,0 +1,78 @@
+// templates: statics per instance, specializations, overloads beside templates; lambdas captured
+// in loops; fold expressions' order; moves
+template<typename T> struct Counter { static int count; Counter() { ++count; } };
+template<typename T> int Counter<T>::count = 0;
+template<typename T> int tally() { static int calls = 0; return ++calls; }
+template<typename T> const char* kind(T) { return "template"; }
+const char* kind(int) { return "int"; }
+template<> const char* kind<double>(double) { return "double specialization"; }
+template<typename T> const char* ptr(T) { return "T"; }
+template<typename T> const char* ptr(T*) { return "T*"; }
+template<typename... Ts> int sum(Ts... ts) { return (ts + ... + 0); }
+template<typename... Ts> int count(Ts...) { return int(sizeof...(Ts)); }
+int order[8];
+int at = 0;
+int note(int v) { order[at++] = v; return v; }
+template<typename... Ts> void inOrder(Ts... ts) { (note(ts), ...); }
+template<typename... Ts> int minus(Ts... ts) { return (ts - ...); }
+template<typename... Ts> int minusLeft(Ts... ts) { return (... - ts); }
+template<typename T> T&& moved(T& t) { return static_cast<T&&>(t); }
+struct Box
+{
+  int value;
+  int moves = 0, copies = 0;
+  Box(int v) : value(v) {}
+  Box(const Box& o) : value(o.value), copies(o.copies + 1), moves(o.moves) {}
+  Box(Box&& o) : value(o.value), copies(o.copies), moves(o.moves + 1) { o.value = -1; }
+  Box& operator=(const Box& o) { value = o.value; copies = o.copies + 1; return *this; }
+  Box& operator=(Box&& o) { value = o.value; moves = o.moves + 1; o.value = -1; return *this; }
+};
+template<int N> struct Fact { static constexpr int value = N * Fact<N - 1>::value; };
+template<> struct Fact<0> { static constexpr int value = 1; };
+template<typename T, int N> int arraySize(T (&)[N]) { return N; }
+int main()
+{
+  Counter<int> a, b;
+  Counter<char> c;
+  printf("T1 %d %d\n", Counter<int>::count, Counter<char>::count);
+  tally<int>();
+  tally<int>();
+  printf("T2 %d %d\n", tally<int>(), tally<char>());
+  printf("T3 %s %s %s %s\n", kind(1), kind(2.0), kind('c'), kind(1.0f));
+  int x = 0;
+  printf("T4 %s %s\n", ptr(x), ptr(&x));
+  printf("T5 %d %d %d\n", sum(1, 2, 3), sum(), count(1, 'a', 2.0));
+  inOrder(1, 2, 3, 4);
+  printf("T6 %d %d %d %d\n", order[0], order[1], order[2], order[3]);
+  printf("T7 %d %d\n", minus(10, 3, 2), minusLeft(10, 3, 2));
+  printf("T8 %d\n", Fact<6>::value);
+  int arr[7];
+  printf("T9 %d\n", arraySize(arr));
+
+  int (*fns[3])();
+  int results[3];
+  auto l0 = [] { return 0; };
+  for (int i = 0; i < 3; ++i)
+  {
+    auto f = [i] { return i * 10; };
+    results[i] = f();
+  }
+  printf("L1 %d %d %d %d\n", results[0], results[1], results[2], l0());
+  int shared = 1;
+  auto byRef = [&shared] { return shared; };
+  auto byVal = [shared] { return shared; };
+  shared = 2;
+  printf("L2 %d %d\n", byRef(), byVal());
+
+  Box first(5);
+  Box second = moved(first);
+  printf("M1 %d %d %d %d\n", first.value, second.value, second.moves, second.copies);
+  Box third = second;
+  printf("M2 %d %d %d\n", third.value, third.moves, third.copies);
+  Box fourth(9);
+  fourth = moved(third);
+  printf("M3 %d %d %d\n", third.value, fourth.value, fourth.moves);
+  fourth = second;
+  printf("M4 %d %d\n", fourth.value, fourth.copies);
+  return 0;
+}

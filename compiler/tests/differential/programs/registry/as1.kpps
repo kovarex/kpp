@@ -1,0 +1,412 @@
+extern "C" int printf(const char* format, ...);
+// as1 (thread I, 2026-11-09): calls whose argument refers into the container itself, which std requires
+// to work as if the argument were read before the call: Vector's and Deque's push_back, emplace_back,
+// insert (one, n copies), emplace and resize of one of their own elements, with room and when they
+// grow; String's append, insert, replace and assign of its own text (as a string, a part, a pointer
+// into it, iterators), in place and when it grows; List's and ForwardList's remove of their own
+// element (LWG 526); the maps' and sets' erase of a key that lives in the node it erases; and
+// self-assignment. Elements are long strings, so a read of a moved or freed one shows.
+void showStrings(const char* label, const Vector<String>& v)
+{
+  printf("%s (%d):", label, (int)v.size());
+  for (const String& s : v)
+    printf(" %s", s.c_str());
+  printf("\n");
+}
+
+template <typename C> void showAll(const char* label, const C& c)
+{
+  printf("%s (%d):", label, (int)c.size());
+  for (const auto& s : c)
+    printf(" %s", s.c_str());
+  printf("\n");
+}
+
+void showForward(const char* label, const ForwardList<String>& c)
+{
+  int count = 0;
+  for (const String& s : c)
+    ++count;
+  printf("%s (%d):", label, count);
+  for (const String& s : c)
+    printf(" %s", s.c_str());
+  printf("\n");
+}
+
+void showText(const char* label, const String& s)
+{
+  printf("%s (%d): %s\n", label, (int)s.size(), s.c_str());
+}
+
+Vector<String> words(int count)
+{
+  const char* all[8] = {"alpha-long-enough-to-be-on-the-heap", "bravo-long-enough-to-be-on-the-heap",
+                        "charlie-long-enough-to-be-on-the-heap", "delta-long-enough-to-be-on-the-heap",
+                        "echo-long-enough-to-be-on-the-heap", "foxtrot-long-enough-to-be-on-the-heap",
+                        "golf-long-enough-to-be-on-the-heap", "hotel-long-enough-to-be-on-the-heap"};
+  Vector<String> result;
+  for (int i = 0; i < count; ++i)
+    result.push_back(String(all[i % 8]));
+  return result;
+}
+
+Vector<String> full(int count)
+{
+  Vector<String> v = words(count);
+  v.shrink_to_fit();
+  return v;
+}
+
+Vector<String> roomy(int count)
+{
+  Vector<String> v = words(count);
+  v.reserve(64);
+  return v;
+}
+
+void vectors()
+{
+  {
+    Vector<String> v = full(4);
+    v.push_back(v[0]);
+    showStrings("push_back own, growing", v);
+    v = roomy(4);
+    v.push_back(v[1]);
+    showStrings("push_back own, room", v);
+    v = full(4);
+    v.emplace_back(v[2]);
+    showStrings("emplace_back own, growing", v);
+    v = roomy(4);
+    v.emplace_back(v[3]);
+    showStrings("emplace_back own, room", v);
+    v = full(4);
+    String& last = v.emplace_back(v.back());
+    printf("emplace_back returns the new one: %d\n", (int)(&last == &v.back()));
+  }
+  {
+    Vector<String> v = roomy(5);
+    v.insert(v.begin(), v[2]);
+    showStrings("insert own before it, room", v);
+    v = full(5);
+    v.insert(v.begin(), v[2]);
+    showStrings("insert own before it, growing", v);
+    v = roomy(5);
+    v.insert(v.begin() + 1, v.back());
+    showStrings("insert last, room", v);
+    v = full(5);
+    v.insert(v.begin() + 1, v.back());
+    showStrings("insert last, growing", v);
+    v = roomy(5);
+    v.insert(v.begin() + 3, v[1]);
+    showStrings("insert own after it, room", v);
+    v = roomy(5);
+    v.insert(v.end(), v[0]);
+    showStrings("insert own at the end, room", v);
+    v = full(5);
+    v.insert(v.end(), v[0]);
+    showStrings("insert own at the end, growing", v);
+  }
+  {
+    Vector<String> v = roomy(5);
+    v.insert(v.begin() + 1, 3, v[2]);
+    showStrings("insert 3 of own, room", v);
+    v = full(5);
+    v.insert(v.begin() + 1, 3, v[2]);
+    showStrings("insert 3 of own, growing", v);
+    v = roomy(5);
+    v.insert(v.begin(), 2, v.back());
+    showStrings("insert 2 of the last, room", v);
+    v = roomy(3);
+    v.insert(v.begin() + 1, 6, v[0]);
+    showStrings("insert 6 of own past the old end, room", v);
+  }
+  {
+    Vector<String> v = roomy(5);
+    v.emplace(v.begin(), v[3]);
+    showStrings("emplace own, room", v);
+    v = full(5);
+    v.emplace(v.begin(), v[3]);
+    showStrings("emplace own, growing", v);
+    v = roomy(5);
+    v.emplace(v.begin() + 2, v[2]);
+    showStrings("emplace own at its place, room", v);
+  }
+  {
+    Vector<String> v = full(3);
+    v.resize(6, v[1]);
+    showStrings("resize with own, growing", v);
+    v = roomy(3);
+    v.resize(6, v[2]);
+    showStrings("resize with own, room", v);
+  }
+  {
+    Vector<String> v = words(4);
+    Vector<String>& same = v;
+    v = same;
+    showStrings("self assignment", v);
+    v.swap(same);
+    showStrings("self swap", v);
+  }
+}
+
+Deque<String> deque(int count)
+{
+  Deque<String> d;
+  Vector<String> w = words(count);
+  for (const String& s : w)
+    d.push_back(s);
+  return d;
+}
+
+void deques()
+{
+  Deque<String> d = deque(40);
+  d.push_back(d[0]);
+  d.push_front(d.back());
+  d.push_back(d[1]);
+  d.push_front(d[d.size() - 2]);
+  printf("deque pushes (%d): %s %s %s %s\n", (int)d.size(), d[0].c_str(), d[1].c_str(), d[d.size() - 2].c_str(), d.back().c_str());
+  d = deque(12);
+  d.insert(d.begin() + 2, d[5]);
+  showAll("deque insert own, front half", d);
+  d = deque(12);
+  d.insert(d.end() - 2, d[1]);
+  showAll("deque insert own, back half", d);
+  d = deque(12);
+  d.insert(d.begin() + 3, d[1]);
+  showAll("deque insert an earlier own, front half", d);
+  d = deque(12);
+  d.insert(d.end() - 3, d[10]);
+  showAll("deque insert a later own, back half", d);
+  d = deque(12);
+  d.insert(d.begin() + 3, 2, d[4]);
+  showAll("deque insert 2 of own, front half", d);
+  d = deque(12);
+  d.insert(d.end() - 2, 3, d[11]);
+  showAll("deque insert 3 of the last, back half", d);
+  d = deque(12);
+  d.emplace(d.begin() + 1, d[3]);
+  showAll("deque emplace own, front half", d);
+  d = deque(12);
+  d.emplace(d.end() - 1, d[7]);
+  showAll("deque emplace own, back half", d);
+  d = deque(5);
+  d.resize(9, d[0]);
+  showAll("deque resize with own", d);
+  d = deque(3);
+  d.emplace_back(d.front());
+  d.emplace_front(d.back());
+  showAll("deque emplace at the ends", d);
+}
+
+String text()
+{
+  return String("0123456789abcdefghijklmnopqrstuvwxyz");
+}
+
+String roomyText()
+{
+  String s = text();
+  s.reserve(500);
+  return s;
+}
+
+void strings()
+{
+  String s = text();
+  s.append(s);
+  showText("append itself", s);
+  s = roomyText();
+  s.append(s);
+  showText("append itself, room", s);
+  s = text();
+  s.append(s, 2, 5);
+  showText("append own part", s);
+  s = text();
+  s.append(s.c_str() + 30);
+  showText("append own pointer", s);
+  s = text();
+  s.append(s.c_str() + 3, 4);
+  showText("append own pointer and count", s);
+  s = roomyText();
+  s.append(s.c_str() + 3, 4);
+  showText("append own pointer and count, room", s);
+  s = text();
+  s.append(s.begin() + 1, s.begin() + 6);
+  showText("append own iterators", s);
+  s = text();
+  s.insert(0, s);
+  showText("insert itself at 0", s);
+  s = roomyText();
+  s.insert(4, s);
+  showText("insert itself at 4, room", s);
+  s = text();
+  s.insert(4, s);
+  showText("insert itself at 4", s);
+  s = text();
+  s.insert(1, s.c_str() + 5);
+  showText("insert own pointer", s);
+  s = roomyText();
+  s.insert(1, s.c_str() + 5);
+  showText("insert own pointer, room", s);
+  s = roomyText();
+  s.insert(1, s.c_str() + 5, 3);
+  showText("insert own pointer and count, room", s);
+  s = roomyText();
+  s.insert(10, s.c_str() + 5, 8);
+  showText("insert own pointer across the place, room", s);
+  s = roomyText();
+  s.insert(s.begin() + 2, s.begin() + 5, s.end());
+  showText("insert own iterators, room", s);
+  s = text();
+  s.replace(1, 3, s);
+  showText("replace with itself", s);
+  s = roomyText();
+  s.replace(1, 3, s);
+  showText("replace with itself, room", s);
+  s = roomyText();
+  s.replace(1, 3, s, 4, 6);
+  showText("replace with own part, room", s);
+  s = roomyText();
+  s.replace(10, 6, s, 4, 3);
+  showText("replace with a shorter own part, room", s);
+  s = roomyText();
+  s.replace(2, 5, s.c_str() + 8, 3);
+  showText("replace with own pointer, room", s);
+  s = roomyText();
+  s.replace(2, 3, s.c_str() + 1, 9);
+  showText("replace with a longer own pointer across it, room", s);
+  s = roomyText();
+  s.replace(5, 20, s.c_str() + 10, 20);
+  showText("replace with own overlapping, room", s);
+  s = text();
+  s.replace(0, 10, s.c_str() + 1);
+  showText("replace with own pointer to the end", s);
+  s = text();
+  s.assign(s, 3, 5);
+  showText("assign own part", s);
+  s = text();
+  s.assign(s.c_str() + 4);
+  showText("assign own pointer", s);
+  s = text();
+  s.assign(s.c_str() + 4, 3);
+  showText("assign own pointer and count", s);
+  s = text();
+  s.assign(s.begin() + 2, s.end());
+  showText("assign own iterators", s);
+  s = text();
+  s = s.c_str() + 2;
+  showText("= own pointer", s);
+  s = text();
+  String& same = s;
+  s = same;
+  showText("self assignment", s);
+  s.assign(same);
+  showText("assign itself", s);
+  s = text();
+  s.push_back(s[0]);
+  s.push_back(s.back());
+  showText("push_back own", s);
+  s = text();
+  s.insert(s.size(), s.c_str());
+  showText("insert own text at the end", s);
+  s = text();
+  s.insert(s.begin(), s.back());
+  showText("insert own char", s);
+}
+
+void lists()
+{
+  List<String> l;
+  Vector<String> w = words(8);
+  for (int i = 0; i < 8; ++i)
+  {
+    l.push_back(w[i % 3]);
+    l.push_back(w[3 + i % 2]);
+  }
+  printf("list remove own front: %d\n", (int)l.size());
+  l.remove(l.front());
+  showAll("list after", l);
+  l.remove(*next(l.begin(), 1));
+  showAll("list remove own second", l);
+  l.insert(l.begin(), l.back());
+  l.push_front(l.back());
+  l.push_back(l.front());
+  showAll("list insert own", l);
+  l.resize(l.size() + 2, l.front());
+  showAll("list resize with own", l);
+  ForwardList<String> f;
+  for (int i = 0; i < 8; ++i)
+    f.push_front(w[i % 3]);
+  f.remove(f.front());
+  showForward("forward_list remove own front", f);
+  f.push_front(f.front());
+  f.insert_after(f.begin(), f.front());
+  showForward("forward_list insert own", f);
+  f.resize(6, f.front());
+  showForward("forward_list resize with own", f);
+}
+
+void maps()
+{
+  Vector<String> w = words(8);
+  Map<String, int> m;
+  for (int i = 0; i < 6; ++i)
+    m[w[i]] = i;
+  int erased = (int)m.erase(m.begin()->first);
+  printf("map erase own key %d, size %d, first %s\n", erased, (int)m.size(), m.begin()->first.c_str());
+  erased = (int)m.erase(prev(m.end())->first);
+  printf("map erase own last key %d, size %d\n", erased, (int)m.size());
+  MultiMap<String, int> mm;
+  for (int i = 0; i < 9; ++i)
+    mm.insert(Pair<String, int>(w[i % 3], i));
+  erased = (int)mm.erase(mm.begin()->first);
+  printf("multimap erase own key %d, size %d, first %s\n", erased, (int)mm.size(), mm.begin()->first.c_str());
+  erased = (int)mm.erase(prev(mm.end())->first);
+  printf("multimap erase own last key %d, size %d\n", erased, (int)mm.size());
+  Set<String> s(w.begin(), w.end());
+  erased = (int)s.erase(*s.begin());
+  printf("set erase own %d, size %d, first %s\n", erased, (int)s.size(), s.begin()->c_str());
+  MultiSet<String> ms;
+  for (int i = 0; i < 12; ++i)
+    ms.insert(w[i % 4]);
+  erased = (int)ms.erase(*ms.begin());
+  printf("multiset erase own %d, size %d, first %s\n", erased, (int)ms.size(), ms.begin()->c_str());
+  erased = (int)ms.erase(*next(ms.begin(), 4));
+  printf("multiset erase own middle %d, size %d\n", erased, (int)ms.size());
+  HashMap<String, int> h;
+  for (int i = 0; i < 8; ++i)
+    h[w[i]] = i;
+  String firstKey = h.begin()->first;
+  erased = (int)h.erase(h.begin()->first);
+  printf("hash map erase own key %d, size %d, still there %d\n", erased, (int)h.size(), (int)(h.find(firstKey) != h.end()));
+  HashSet<String> hs(w.begin(), w.end());
+  String firstWord = *hs.begin();
+  erased = (int)hs.erase(*hs.begin());
+  printf("hash set erase own %d, size %d, still there %d\n", erased, (int)hs.size(), (int)(hs.find(firstWord) != hs.end()));
+  h.clear();
+  h[w[0]] = 1;
+  h[w[1]] = 2;
+  for (int i = 0; i < 40; ++i)
+  {
+    String key = w[i % 8] + String("+") + w[(i / 8) % 8];
+    h.try_emplace(key, h.at(w[i % 2]));
+  }
+  int sum = 0;
+  for (const auto& entry : h)
+    sum += entry.second;
+  printf("hash map try_emplace of own values while growing: size %d, sum %d\n", (int)h.size(), sum);
+  Map<String, int>& sameMap = m;
+  m = sameMap;
+  printf("map self assignment %d\n", (int)m.size());
+}
+
+int main()
+{
+  vectors();
+  deques();
+  strings();
+  lists();
+  maps();
+  return 0;
+}

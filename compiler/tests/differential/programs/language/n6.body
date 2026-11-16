@@ -1,0 +1,63 @@
+// operators: every overloadable one, member and free, conversions, ordering of user operators, new and delete
+struct V { int x, y; V(int a = 0, int b = 0) : x(a), y(b) {}
+  V operator+(const V& o) const { return V(x + o.x, y + o.y); } V operator-(const V& o) const { return V(x - o.x, y - o.y); } V operator*(int k) const { return V(x * k, y * k); } V operator-() const { return V(-x, -y); } V operator+() const { return *this; }
+  V& operator+=(const V& o) { x += o.x; y += o.y; return *this; } V& operator*=(int k) { x *= k; y *= k; return *this; }
+  V& operator++() { x++; return *this; } V operator++(int) { V t = *this; y++; return t; } V& operator--() { x--; return *this; } V operator--(int) { V t = *this; y--; return t; }
+  bool operator==(const V& o) const { return x == o.x && y == o.y; } bool operator<(const V& o) const { return x < o.x; }
+  int operator[](int i) const { return i ? y : x; } int& operator[](int i) { return i ? y : x; } int operator()(int a, int b) const { return x * a + y * b; } int operator()() const { return x + y; }
+  explicit operator bool() const { return x != 0 || y != 0; } bool operator!() const { return x == 0 && y == 0; } int operator~() const { return ~x; }
+  V operator,(int k) const { return V(x + k, y); } int operator%(int k) const { return x % k; } V operator<<(int k) const { return V(x << k, y); } V operator>>(int k) const { return V(x >> k, y); }
+  V operator&(const V& o) const { return V(x & o.x, y & o.y); } V operator|(const V& o) const { return V(x | o.x, y | o.y); } V operator^(const V& o) const { return V(x ^ o.x, y ^ o.y); }
+  bool operator&&(const V& o) const { printf("and "); return x && o.x; } bool operator||(const V& o) const { printf("or "); return x || o.x; } };
+V operator*(int k, const V& v) { return V(k * v.x + 1, k * v.y + 1); }
+V operator/(const V& v, int k) { return V(v.x / k, v.y / k); }
+struct Ptr { V* p; int calls = 0; V* operator->() { calls++; return p; } V& operator*() { return *p; } };
+struct Ptr2 { Ptr q; Ptr& operator->() { return q; } };
+struct Mem { int a = 5; int f() { return a; } template<class M> int operator->*(M m) { return this->*m; } };
+struct Cnt { static int live; int v; Cnt(int x = 0) : v(x) { live++; } ~Cnt() { live--; } void* operator new(size_t n) { printf("new%d ", (int)n); return ::operator new(n); } void operator delete(void* p) { printf("del "); ::operator delete(p); } void* operator new[](size_t n) { printf("new[] "); return ::operator new[](n); } void operator delete[](void* p) { printf("del[] "); ::operator delete[](p); } };
+int Cnt::live = 0;
+class Vb { public: virtual ~Vb() { printf("~Vb "); } void operator delete(void* p, size_t n) { printf("del%d ", (int)n); ::operator delete(p); } };
+class Vd : public Vb { public: int a[10]; ~Vd() { printf("~Vd "); } };
+struct Conv { int v; Conv(int x) : v(x) {} IMPLICIT operator int() const { printf("int "); return v; } IMPLICIT operator double() const { printf("double "); return v + 0.5; } explicit operator const char*() const { return "text"; } };
+struct OnlyInt { int v; IMPLICIT operator int() const { return v; } };
+struct Bool { IMPLICIT operator bool() const { return true; } };
+struct Lit { long double v; };
+Lit operator""_x(long double d) { return Lit{ d * 2 }; }
+int operator""_n(unsigned long long n) { return (int)n + 1; }
+const char* operator""_s(const char* s, size_t n) { return s + n / 2; }
+struct Cmp { int v; auto operator<=>(const Cmp& o) const = default; };
+struct Str { char c[8]; Str(const char* s) { int i = 0; while (s[i]) { c[i] = s[i]; i++; } c[i] = 0; } Str& operator=(const char* s) { c[0] = s[0]; return *this; } IMPLICIT operator const char*() const { return c; } char& operator[](size_t i) { return c[i]; } };
+struct AddrOf { int v = 1; int* operator&() { return nullptr; } };
+struct Fn { int (*f)(int); IMPLICIT operator decltype(f)() const { return f; } };
+int twice(int x) { return x * 2; }
+struct Order { int id; Order(int i) : id(i) {} Order& operator=(const Order& o) { printf("assign%d ", o.id); id = o.id; return *this; } };
+int main()
+{
+  V a(1, 2), b(3, 4);
+  V c = a + b * 2 - -a; printf("%d %d\n", c.x, c.y);
+  V d = 2 * a; V e = a * 2; V g = a / 1; printf("%d %d %d %d %d %d\n", d.x, d.y, e.x, e.y, g.x, g.y);
+  V h = a; h += b; h *= 2; printf("%d %d\n", h.x, h.y);
+  V i = a; V j = i++; V k = ++i; V l = i--; V m = --i; printf("%d %d %d %d %d %d %d %d %d %d\n", i.x, i.y, j.x, j.y, k.x, k.y, l.x, l.y, m.x, m.y);
+  printf("%d %d %d %d\n", a == b, a != b, a < b, a == V(1, 2));
+  a[1] = 9; const V ca = a; printf("%d %d %d %d\n", a[1], ca[0], a(2, 3), a());
+  if (a) printf("true "); if (!a) printf("not "); if (!V()) printf("zero "); printf("%d %d\n", (bool)a, ~a);
+  V n = (a, 5); printf("%d %d\n", n.x, n.y);
+  printf("%d %d %d\n", a % 2, (a << 2).x, (a >> 1).x); V o = a & b; V q = a | b; V r = a ^ b; printf("%d %d %d\n", o.x, q.x, r.x);
+  printf("%d ", a && b); printf("%d\n", V() || b);
+  Ptr p{ &a }; p->x = 40; printf("%d %d %d\n", (*p).x, p->y, p.calls);
+  Ptr2 p2{ { &b } }; printf("%d %d\n", p2->x, p2.q.calls);
+  Mem mem; printf("%d\n", mem->*(&Mem::a));
+  { Cnt* x = new Cnt(1); printf("%d ", Cnt::live); delete x; Cnt* y = new Cnt[3]; printf("%d ", Cnt::live); delete[] y; Cnt* z = ::new Cnt; ::delete z; printf("%d\n", Cnt::live); }
+  { Vb* v = new Vd; delete v; printf("\n"); }
+  Conv cv(3); int ci = cv; double cd = cv; float cf = (float)(int)cv; printf("%d %.1f %.1f %s\n", ci, cd, cf, (const char*)cv);
+  OnlyInt oi{ 7 }; printf("%d %d %d %d %d\n", oi + 1, oi * oi, -oi, oi == 7, (int)(double)oi); double dd = oi; long long lq = oi; char ch = oi; printf("%.1f %lld %d\n", dd, lq, ch);
+  int arr[10] = { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90 }; printf("%d %d\n", arr[oi]);
+  Bool bo; printf("%d %d %d\n", bo + 1, bo ? 1 : 2, bo == true);
+  printf("%.1f %d %s\n", (double)(1.5_x).v, 41_n, "abcd"_s);
+  Cmp x1{ 1 }, x2{ 2 }; printf("%d %d %d %d %d\n", x1 < x2, x1 > x2, x1 <= x2, x1 == x2, x1 != x2);
+  Str s("hey"); printf("%s %c %d\n", (const char*)s, s[1], (int)sizeof(s)); s = "x"; printf("%s\n", (const char*)s);
+  AddrOf ao; printf("%d\n", &ao == nullptr);
+  Order o1(1), o2(2), o3(3); o1 = o2 = o3; printf("%d %d\n", o1.id, o2.id); (o1 = o2) = o3; printf("\n");
+  int z = 5; z = z++ + 1; printf("%d\n", z); int y2 = 2; y2 += y2 *= 3; printf("%d\n", y2); int ar2[3] = { 0, 0, 0 }; int ix = 0; ar2[ix++] = ix; printf("%d %d %d\n", ar2[0], ar2[1], ix);
+  return 0;
+}

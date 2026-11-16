@@ -1,0 +1,32 @@
+struct T { explicit operator bool() const { return true; } int id; T(int i = 0) : id(i) { printf("+%d ", id); } T(const T& o) : id(o.id + 100) { printf("c%d ", id); } T(T&& o) : id(o.id + 200) { printf("m%d ", id); } ~T() { printf("-%d ", id); } T operator+(const T& o) const { return T(id + o.id); } T self() const { return *this; } };
+T make(int i) { return T(i); }
+T pass(T t) { return t; }
+int use(const T& t) { return t.id; }
+int byval(T t) { return t.id; }
+struct Holder { T a; T b; };
+struct Ctor { T a; Ctor(int i) : a(make(i)) {} };
+struct Ctor2 { T a; Ctor2(const T& x) : a(x + make(1)) {} };
+int main()
+{
+  T x(1);
+  printf("\nA "); { T a = x + make(2); }
+  printf("\nB "); { T a[2] = { x + make(2), x + make(3) }; }
+  printf("\nC "); { Holder h{ x + make(2), x + make(3) }; }
+  printf("\nD "); { const T& r = x + make(2); }
+  printf("\nE "); { T&& r = x + make(2); }
+  printf("\nF "); { use(x + make(2)); }
+  printf("\nG "); { byval(x + make(2)); }
+  printf("\nH "); { x + make(2); }
+  printf("\nI "); { T* p = new T(x + make(2)); delete p; }
+  printf("\nJ "); { T a[1] = { make(2) }; }
+  printf("\nK "); { Holder h{ make(2), make(3) }; }
+  printf("\nL "); { pass(x + make(2)); }
+  printf("\nM "); { T a = make(2).self(); }
+  printf("\nN "); { Holder h{ make(2).self(), pass(make(3)) }; }
+  printf("\nO "); { T a[2] = { pass(x), make(3).self() }; }
+  printf("\nP "); { Ctor c(2); }
+  printf("\nQ "); { Ctor2 c(x); }
+  printf("\nS "); { if (T a = x + make(2)) {} }
+  printf("\n");
+  return 0;
+}

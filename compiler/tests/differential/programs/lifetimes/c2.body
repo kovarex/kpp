@@ -1,0 +1,33 @@
+constexpr int shiftIntoSign() { return 3 << 31; }
+constexpr int negShiftLeft() { int x = -1; return x << 1; }
+constexpr int narrowConv() { long long x = 5000000000LL; return (int)x; }
+constexpr short compound() { short s = 32767; s += 1; return s; }
+constexpr int charOver() { signed char c = 127; c++; return c; }
+constexpr unsigned unsignedWrap() { unsigned x = 4294967295u; return x + 1; }
+constexpr int negRightShift() { return -17 >> 2; }
+constexpr unsigned char ucharWrap() { unsigned char c = 250; c += 10; return c; }
+constexpr long long fromDouble() { return (long long)-1234567.9; }
+constexpr unsigned fromNegDouble() { return (unsigned)(int)-3.5; }
+constexpr int truncTowardZero() { return -7 / 2 + 7 % -3; }
+constexpr int mixedSign() { return (-1 < 0u) ? 1 : 2; }
+constexpr unsigned long long bigShift() { return 1ull << 63; }
+constexpr int minLiteral() { return -2147483647 - 1; }
+constexpr double toDouble() { return (double)9007199254740993LL; }
+constexpr float toFloat() { return (float)16777217; }
+constexpr int a1 = shiftIntoSign(), a2 = negShiftLeft(), a3 = narrowConv(), a5 = charOver(), a7 = negRightShift();
+constexpr short a4 = compound();
+constexpr unsigned a6 = unsignedWrap();
+constexpr unsigned char a8 = ucharWrap();
+constexpr long long a9 = fromDouble();
+constexpr unsigned a10 = fromNegDouble();
+constexpr int a11 = truncTowardZero(), a12 = mixedSign(), a14 = minLiteral();
+constexpr unsigned long long a13 = bigShift();
+constexpr double a15 = toDouble();
+constexpr float a16 = toFloat();
+int main()
+{
+  printf("%d %d %d %d %d %u %d %d %lld %u %d %d %llu %d %.1f %.1f\n", a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, (double)a16);
+  volatile int r1 = 3, r2 = -1;
+  printf("%d %d %d\n", r1 << 31, r2 << 1, (int)(signed char)(r1 * 100));
+  return 0;
+}

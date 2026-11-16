@@ -1,0 +1,198 @@
+// constexpr-heavy code: loops, recursion, arrays and structs built at compile time, compile-time
+// sorting and string processing, templates computed from constants, consteval, if constexpr.
+constexpr int factorial(int n) { return n <= 1 ? 1 : n * factorial(n - 1); }
+constexpr long long fib(int n)
+{
+  long long a = 0, b = 1;
+  for (int i = 0; i < n; ++i)
+  {
+    long long t = a + b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+constexpr int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
+constexpr bool isPrime(int n)
+{
+  if (n < 2)
+    return false;
+  for (int d = 2; d * d <= n; ++d)
+    if (n % d == 0)
+      return false;
+  return true;
+}
+constexpr int countPrimes(int limit)
+{
+  int count = 0;
+  for (int i = 0; i < limit; ++i)
+    count += isPrime(i) ? 1 : 0;
+  return count;
+}
+struct Point
+{
+  int x, y;
+  constexpr Point(int x, int y) : x(x), y(y) {}
+  constexpr Point operator+(Point o) const { return Point(x + o.x, y + o.y); }
+  constexpr int dot(Point o) const { return x * o.x + y * o.y; }
+};
+constexpr Point sumPoints(int n)
+{
+  Point p(0, 0);
+  for (int i = 1; i <= n; ++i)
+    p = p + Point(i, -i * 2);
+  return p;
+}
+struct Table
+{
+  int values[16];
+};
+constexpr Table squares()
+{
+  Table t{};
+  for (int i = 0; i < 16; ++i)
+    t.values[i] = i * i;
+  return t;
+}
+constexpr Table sorted()
+{
+  Table t{};
+  unsigned seed = 12345;
+  for (int i = 0; i < 16; ++i)
+  {
+    seed = (seed * 1103515245u + 12345u) & 0x7fffffffu;
+    t.values[i] = (int)(seed % 1000);
+  }
+  for (int i = 1; i < 16; ++i)
+    for (int j = i; j > 0 && t.values[j - 1] > t.values[j]; --j)
+    {
+      int tmp = t.values[j];
+      t.values[j] = t.values[j - 1];
+      t.values[j - 1] = tmp;
+    }
+  return t;
+}
+constexpr int length(const char* s)
+{
+  int n = 0;
+  while (s[n])
+    ++n;
+  return n;
+}
+constexpr unsigned hash(const char* s)
+{
+  unsigned h = 2166136261u;
+  for (int i = 0; s[i]; ++i)
+    h = (h ^ (unsigned char)s[i]) * 16777619u;
+  return h;
+}
+constexpr int countChar(const char* s, char c)
+{
+  int n = 0;
+  for (; *s; ++s)
+    if (*s == c)
+      ++n;
+  return n;
+}
+template<int N>
+struct Pow2
+{
+  static constexpr long long value = 2 * Pow2<N - 1>::value;
+};
+template<>
+struct Pow2<0>
+{
+  static constexpr long long value = 1;
+};
+template<typename T>
+constexpr int describe()
+{
+  if constexpr (sizeof(T) == 1)
+    return 1;
+  else if constexpr (sizeof(T) <= 4)
+    return 4;
+  else
+    return 8;
+}
+consteval int compileOnly(int x) { return x * 3 + 1; }
+constexpr int withLambda(int n)
+{
+  auto twice = [](int v) { return v * 2; };
+  int total = 0;
+  for (int i = 0; i < n; ++i)
+    total += twice(i);
+  return total;
+}
+template<int... Ns>
+constexpr int sumAll() { return (Ns + ... + 0); }
+constexpr int arraySum(const int (&a)[5])
+{
+  int s = 0;
+  for (int v : a)
+    s += v;
+  return s;
+}
+constexpr int digits[5] = {3, 1, 4, 1, 5};
+enum class Color { Red = 1, Green = 2, Blue = 4 };
+constexpr int mask(Color a, Color b) { return (int)a | (int)b; }
+constexpr unsigned long long bits(unsigned long long v)
+{
+  int n = 0;
+  while (v)
+  {
+    v &= v - 1;
+    ++n;
+  }
+  return n;
+}
+constexpr double halve(double d, int times)
+{
+  for (int i = 0; i < times; ++i)
+    d /= 2;
+  return d;
+}
+
+static_assert(factorial(10) == 3628800, "factorial");
+static_assert(gcd(1071, 462) == 21, "gcd");
+static_assert(Pow2<40>::value == 1099511627776LL, "pow2");
+
+constexpr int primes = countPrimes(2000);
+constexpr Point summed = sumPoints(50);
+constexpr Table table = squares();
+constexpr Table order = sorted();
+constexpr unsigned nameHash = hash("factorio");
+constexpr int lettersInName = length("constexpr evaluation");
+int sized[factorial(4)];
+int counted[countChar("a,b,c,d,e", ',') + 1];
+
+int main()
+{
+  printf("factorial %d fib %lld\n", factorial(12), fib(90));
+  printf("primes %d\n", primes);
+  printf("summed %d %d dot %d\n", summed.x, summed.y, summed.dot(Point(2, 3)));
+  printf("table %d %d\n", table.values[7], table.values[15]);
+  for (int v : order.values)
+    printf("%d ", v);
+  printf("\n");
+  printf("hash %u letters %d\n", nameHash, lettersInName);
+  printf("sized %d counted %d\n", (int)(sizeof(sized) / sizeof(int)), (int)(sizeof(counted) / sizeof(int)));
+  printf("pow2 %lld\n", Pow2<62>::value);
+  printf("describe %d %d %d\n", describe<char>(), describe<int>(), describe<double>());
+  printf("compileOnly %d\n", compileOnly(14));
+  printf("withLambda %d\n", withLambda(10));
+  constexpr int folded = sumAll<1, 2, 3, 4, 5, 6>();
+  printf("sumAll %d\n", folded);
+  printf("arraySum %d\n", arraySum(digits));
+  printf("mask %d\n", mask(Color::Red, Color::Blue));
+  printf("bits %llu\n", bits(0xf0f0f0f0f0f0ull));
+  printf("halve %.10f\n", halve(1.0, 20));
+  int runtime = 7;
+  printf("runtime factorial %d isPrime %d\n", factorial(runtime), isPrime(runtime * 13));
+  switch (hash("blue"))
+  {
+    case hash("red"): printf("red\n"); break;
+    case hash("blue"): printf("blue\n"); break;
+    default: printf("none\n"); break;
+  }
+  return 0;
+}

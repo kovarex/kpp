@@ -1,0 +1,49 @@
+// battery i22: layout against clang's for the same target: sizes and alignments with padding, empty
+// bases (the empty base optimization, two empty bases, an empty member), alignas on members and
+// types, unions of differently aligned members, a class with a vtable and bases, nested arrays,
+// offsets read through pointers (no offsetof), a derived class reusing no tail padding.
+struct E1 {};
+struct E2 {};
+struct WithEmptyBase : E1 { int x; };
+struct TwoEmpty : E1, E2 { char c; };
+struct EmptyMember { E1 e; int x; };
+struct Padded { char a; double b; char c; };
+struct Packed2 { char a; char b; short c; };
+struct alignas(16) Aligned { int x; };
+struct HasAligned { char c; Aligned a; };
+struct MemberAlign { char c; alignas(8) int x; };
+union Mixed { char c; double d; int arr[3]; };
+class Virtual
+{
+public:
+  virtual ~Virtual() {}
+  int x;
+};
+class DerivedV : public Virtual
+{
+public:
+  char tail;
+};
+struct Nested { short s[3]; Padded p[2]; };
+struct TailBase { int i; char c; };
+struct TailDerived : TailBase { char d; };
+struct Bits { unsigned a : 3; unsigned b : 7; char after; };
+template <typename T> long long offsetOf(const T& object, const void* member) { return (const char*)member - (const char*)&object; }
+int main()
+{
+  printf("empty %d %d %d %d %d\n", (int)sizeof(E1), (int)sizeof(WithEmptyBase), (int)sizeof(TwoEmpty), (int)sizeof(EmptyMember), (int)alignof(E1));
+  printf("padded %d %d %d %d\n", (int)sizeof(Padded), (int)alignof(Padded), (int)sizeof(Packed2), (int)alignof(Packed2));
+  printf("aligned %d %d %d %d %d %d\n", (int)sizeof(Aligned), (int)alignof(Aligned), (int)sizeof(HasAligned), (int)alignof(HasAligned), (int)sizeof(MemberAlign), (int)alignof(MemberAlign));
+  printf("union %d %d\n", (int)sizeof(Mixed), (int)alignof(Mixed));
+  printf("virtual %d %d %d\n", (int)sizeof(Virtual), (int)sizeof(DerivedV), (int)alignof(DerivedV));
+  printf("nested %d %d %d\n", (int)sizeof(Nested), (int)sizeof(TailDerived), (int)sizeof(Bits));
+  Padded p{};
+  HasAligned h{};
+  MemberAlign m{};
+  Nested n{};
+  TailDerived t{};
+  DerivedV d;
+  printf("offsets %lld %lld %lld %lld %lld %lld\n", offsetOf(p, &p.b), offsetOf(p, &p.c), offsetOf(h, &h.a), offsetOf(m, &m.x), offsetOf(n, &n.p[1].c), offsetOf(t, &t.d));
+  printf("offsets %lld %lld\n", offsetOf(d, &d.x), offsetOf(d, &d.tail));
+  return 0;
+}

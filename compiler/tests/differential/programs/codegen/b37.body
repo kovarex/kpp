@@ -1,0 +1,65 @@
+// battery 37: bit-fields: a defaulted == compares the fields, never the storage unit's other bits
+// (padding written through the object's bytes); a signed field wraps (C++20: modulo) and reads
+// sign-extended; a bool field takes any nonzero value as true; bit-fields of a union and of a
+// derived class after its base's members; sizeof; a copy keeps the fields.
+struct F
+{
+  unsigned a : 3;
+  unsigned b : 5;
+  bool operator==(const F&) const = default;
+};
+struct G
+{
+  int s : 4;
+  bool flag : 1;
+  unsigned rest : 11;
+};
+union U
+{
+  unsigned word;
+  struct
+  {
+    unsigned low : 8;
+    unsigned high : 24;
+  } parts;
+};
+struct BaseB
+{
+  int x = 1;
+  unsigned k : 2;
+};
+struct DerivedB : BaseB
+{
+  unsigned m : 6;
+  unsigned n : 10;
+};
+int main()
+{
+  F x{1, 2};
+  F y{1, 2};
+  ((unsigned char*)&y)[3] = 0xFF;
+  ((unsigned char*)&y)[1] = 0x55;
+  printf("eq %d %d\n", (int)(x == y), (int)(x != y));
+  G g{};
+  g.s = -3;
+  int before = g.s;
+  g.s = 9;
+  int wrapped = g.s;
+  g.flag = 2;
+  g.rest = 4097;
+  printf("signed %d %d %d %u\n", before, wrapped, (int)g.flag, g.rest);
+  U u;
+  u.word = 0x12345678;
+  printf("union %x %x\n", u.parts.low, u.parts.high);
+  u.parts.low = 0xAB;
+  printf("union %x\n", u.word);
+  DerivedB d;
+  d.x = 5;
+  d.k = 3;
+  d.m = 63;
+  d.n = 1000;
+  DerivedB copy = d;
+  printf("derived %d %u %u %u %d\n", copy.x, copy.k, copy.m, copy.n, (int)sizeof(DerivedB));
+  printf("sizes %d %d %d\n", (int)sizeof(F), (int)sizeof(G), (int)sizeof(U));
+  return 0;
+}

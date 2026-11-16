@@ -1,0 +1,269 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <string_view>
+#include <stdexcept>
+using StringView = std::string_view;
+using OutOfRange = std::out_of_range;
+// String and StringView against std::string and std::string_view, swept over every position: the
+// find family (string, character, pointer and count forms; every pos up to past the end and npos;
+// empty needles), substr, compare, replace, insert and erase at every position and count (an
+// out-of-range position throws), and the same operations with an argument that points into the
+// string itself, short and past a reallocation.
+unsigned long long hash = 1469598103934665603ull;
+void mix(long long x)
+{
+  hash = (hash ^ (unsigned long long)x) * 1099511628211ull;
+}
+void mixText(const String& s)
+{
+  mix((long long)s.size());
+  for (size_t i = 0; i < s.size(); ++i)
+    mix(s[i]);
+}
+void report(const char* label)
+{
+  printf("%-34s %016llx\n", label, hash);
+  hash = 1469598103934665603ull;
+}
+long long position(size_t p) { return p == String::npos ? -1 : (long long)p; }
+
+int main()
+{
+  const char* hays[] = {"", "a", "abcabcab", "aaaa", "xyz\0xy", "the quick brown fox jumps over the lazy dog the end"};
+  int hayLengths[] = {0, 1, 8, 4, 6, 51};
+  const char* needles[] = {"", "a", "ab", "abc", "ca", "b", "aa", "xy", "the", "z", "dog the end!", "o"};
+  for (int h = 0; h < 6; ++h)
+  {
+    String hay(hays[h], hayLengths[h]);
+    StringView view(hay.data(), hay.size());
+    for (const char* n : needles)
+    {
+      String needle(n);
+      for (size_t pos = 0; pos <= hay.size() + 2; ++pos)
+      {
+        mix(position(hay.find(needle, pos)));
+        mix(position(hay.rfind(needle, pos)));
+        mix(position(hay.find_first_of(needle, pos)));
+        mix(position(hay.find_last_of(needle, pos)));
+        mix(position(hay.find_first_not_of(needle, pos)));
+        mix(position(hay.find_last_not_of(needle, pos)));
+        mix(position(view.find(StringView(needle.data(), needle.size()), pos)));
+        mix(position(view.rfind(StringView(needle.data(), needle.size()), pos)));
+        mix(position(view.find_first_of(StringView(needle.data(), needle.size()), pos)));
+        mix(position(view.find_last_not_of(StringView(needle.data(), needle.size()), pos)));
+        for (size_t count = 0; count <= needle.size(); ++count)
+        {
+          mix(position(hay.find(n, pos, count)));
+          mix(position(hay.rfind(StringView(n, count), pos)));
+          mix(position(hay.find_first_of(StringView(n, count), pos)));
+          mix(position(hay.find_last_not_of(StringView(n, count), pos)));
+        }
+      }
+      mix(position(hay.find(needle, String::npos)));
+      mix(position(hay.rfind(needle, String::npos)));
+      mix(position(hay.rfind(needle)));
+      mix(position(hay.find_last_of(needle)));
+      mix(position(hay.find_last_not_of(needle)));
+      mix(position(view.rfind(StringView(needle.data(), needle.size()))));
+      mix(hay.compare(needle) < 0 ? -1 : hay.compare(needle) > 0 ? 1 : 0);
+      mix(view.compare(StringView(needle.data(), needle.size())) < 0 ? -1 : view.compare(StringView(needle.data(), needle.size())) > 0 ? 1 : 0);
+      mix((int)hay.starts_with(StringView(needle.data(), needle.size())));
+      mix((int)hay.ends_with(StringView(needle.data(), needle.size())));
+    }
+    for (char c : {'a', 'b', 'x', '\0', 'e', 'q'})
+      for (size_t pos = 0; pos <= hay.size() + 2; ++pos)
+      {
+        mix(position(hay.find(c, pos)));
+        mix(position(hay.rfind(c, pos)));
+        mix(position(view.find(c, pos)));
+        mix(position(view.rfind(c, pos)));
+        mix(position(hay.find_first_not_of(c, pos)));
+        mix(position(hay.find_last_not_of(c, pos)));
+      }
+    printf("hay %d:", h);
+    report(" finds");
+    for (size_t pos = 0; pos <= hay.size() + 2; ++pos)
+      for (size_t count = 0; count <= hay.size() + 2; ++count)
+      {
+        try
+        {
+          mixText(hay.substr(pos, count));
+        }
+        catch (const OutOfRange&)
+        {
+          mix(-7);
+        }
+        try
+        {
+          StringView part = view.substr(pos, count);
+          mix((long long)part.size());
+          mix(part.empty() ? 0 : part[0]);
+        }
+        catch (const OutOfRange&)
+        {
+          mix(-8);
+        }
+        for (const char* n : {"", "ab", "abcabcab", "zzz"})
+        {
+          try
+          {
+            int c = hay.compare(pos, count, String(n));
+            mix(c < 0 ? -1 : c > 0 ? 1 : 0);
+          }
+          catch (const OutOfRange&)
+          {
+            mix(-9);
+          }
+          try
+          {
+            String r = hay;
+            r.replace(pos, count, String(n));
+            mixText(r);
+          }
+          catch (const OutOfRange&)
+          {
+            mix(-10);
+          }
+          try
+          {
+            String r = hay;
+            r.replace(pos, count, n, 1);
+            mixText(r);
+          }
+          catch (const OutOfRange&)
+          {
+            mix(-11);
+          }
+        }
+        try
+        {
+          String r = hay;
+          r.erase(pos, count);
+          mixText(r);
+        }
+        catch (const OutOfRange&)
+        {
+          mix(-12);
+        }
+      }
+    for (size_t pos = 0; pos <= hay.size() + 2; ++pos)
+    {
+      for (const char* n : {"", "Q", "0123456789012345678901234567890123456789"})
+      {
+        try
+        {
+          String r = hay;
+          r.insert(pos, String(n));
+          mixText(r);
+        }
+        catch (const OutOfRange&)
+        {
+          mix(-13);
+        }
+        try
+        {
+          String r = hay;
+          r.insert(pos, n);
+          mixText(r);
+        }
+        catch (const OutOfRange&)
+        {
+          mix(-14);
+        }
+      }
+      try
+      {
+        String r = hay;
+        r.insert(pos, 3, '#');
+        mixText(r);
+      }
+      catch (const OutOfRange&)
+      {
+        mix(-15);
+      }
+    }
+    printf("hay %d:", h);
+    report(" substr, compare, replace, insert");
+  }
+
+  // Arguments inside the string itself, short and long (a reallocation on the way).
+  const char* bases[] = {"abc", "abcdefghij", "0123456789abcdefghijklmnopqrstuvwxyz"};
+  for (const char* b : bases)
+  {
+    String base(b);
+    size_t n = base.size();
+    for (size_t pos = 0; pos <= n; ++pos)
+    {
+      String s = base;
+      s.insert(pos, s);
+      mixText(s);
+      s = base;
+      s.insert(pos, s.c_str() + 1);
+      mixText(s);
+      s = base;
+      s.insert(pos, s.c_str() + pos / 2, n - pos / 2);
+      mixText(s);
+      s = base;
+      s.append(s.c_str() + pos);
+      mixText(s);
+      s = base;
+      s.append(s.c_str(), pos);
+      mixText(s);
+      s = base;
+      s.append(s);
+      mixText(s);
+      for (size_t count = 0; count <= n - pos; ++count)
+      {
+        s = base;
+        s.replace(pos, count, s);
+        mixText(s);
+        s = base;
+        s.replace(pos, count, s.c_str() + count / 2);
+        mixText(s);
+        s = base;
+        s.replace(pos, count, s.c_str() + pos, n - pos);
+        mixText(s);
+        s = base;
+        s.assign(s.c_str() + pos, count);
+        mixText(s);
+      }
+      s = base;
+      s = s.substr(pos);
+      mixText(s);
+      s = base;
+      s.assign(s.c_str() + pos);
+      mixText(s);
+    }
+    printf("[%s]", b);
+    report(" aliased arguments");
+  }
+  String grow("x");
+  for (int i = 0; i < 12; ++i)
+    grow.append(grow);
+  printf("doubling %d times: size %d\n", 12, (int)grow.size());
+  String s = "hello";
+  s.insert(s.begin() + 2, 'X');
+  auto it = s.insert(s.end(), 'Y');
+  printf("iterator inserts [%s] returned position %d\n", s.c_str(), (int)(it - s.begin()));
+  auto e = s.erase(s.begin() + 1);
+  printf("iterator erase [%s] returned position %d\n", s.c_str(), (int)(e - s.begin()));
+  e = s.erase(s.begin() + 1, s.begin() + 3);
+  printf("iterator range erase [%s] returned position %d\n", s.c_str(), (int)(e - s.begin()));
+  return 0;
+}

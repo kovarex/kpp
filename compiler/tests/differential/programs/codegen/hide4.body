@@ -1,0 +1,7 @@
+// a local lambda named like a library function template (accumulate, Algorithm.kpp)
+int main()
+{
+  auto accumulate = [](int v) { return v * 10; };
+  printf("H1 %d\n", accumulate(5));
+  return 0;
+}

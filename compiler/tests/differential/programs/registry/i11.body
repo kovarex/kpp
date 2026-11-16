@@ -1,0 +1,69 @@
+// battery i11: class templates with operators: hidden friends defined in a class template, member
+// operator templates, conversion operator templates, a template's default arguments that use its
+// parameters, operators chosen between a member template and a free template, compound assignment
+// through templates, comparison of instances with different arguments, user-defined literals-free
+// arithmetic types in folds, virtual functions of class templates overridden by a derived template.
+template <typename T> struct Vec
+{
+  T x, y;
+  friend Vec operator+(Vec a, Vec b) { return Vec{a.x + b.x, a.y + b.y}; }
+  friend bool operator==(const Vec& a, const Vec& b) { return a.x == b.x && a.y == b.y; }
+  template <typename S> Vec operator*(S s) const { return Vec{T(x * s), T(y * s)}; }
+  template <typename U> explicit operator Vec<U>() const { return Vec<U>{U(x), U(y)}; }
+  Vec& operator+=(const Vec& o) { x += o.x; y += o.y; return *this; }
+  T dot(const Vec& o, T scale = T(1)) const { return (x * o.x + y * o.y) * scale; }
+};
+template <typename T, typename U> auto cross(const Vec<T>& a, const Vec<U>& b) { return a.x * b.y - a.y * b.x; }
+
+template <typename T> class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual T area() const = 0;
+  virtual T scaled(T k) const { return area() * k; }
+};
+template <typename T> class Square : public Shape<T>
+{
+public:
+  T side;
+  explicit Square(T s) : side(s) {}
+  T area() const override { return side * side; }
+};
+template <typename T> class Twice : public Square<T>
+{
+public:
+  explicit Twice(T s) : Square<T>(s) {}
+  T scaled(T k) const override { return Square<T>::scaled(k) * 2; }
+};
+
+template <typename T> struct Money
+{
+  long long cents;
+  Money operator+(const Money& o) const { return Money{cents + o.cents}; }
+};
+template <typename... M> auto total(M... m) { return (m + ...); }
+
+template <typename T, int N = sizeof(T) * 2, typename R = Vec<T>> R defaulted() { return R{T(N), T(N + 1)}; }
+
+int main()
+{
+  Vec<int> a{1, 2}, b{3, 4};
+  Vec<int> c = a + b;
+  Vec<int> d = a * 2.6;
+  Vec<double> e = (Vec<double>)a;
+  Vec<double> f = e * 1.5;
+  c += a;
+  printf("vec %d %d %d %d %g %g %g %g %d\n", c.x, c.y, d.x, d.y, e.x, e.y, f.x, f.y, (int)(a + b == Vec<int>{4, 6}));
+  printf("dot %d %d %g cross %g %d\n", a.dot(b), a.dot(b, 3), e.dot(f), cross(a, f), cross(a, b));
+  Square<int> s(3);
+  Twice<double> t(1.5);
+  Shape<int>* ps = &s;
+  Shape<double>* pt = &t;
+  printf("virtual %d %d %g %g\n", ps->area(), ps->scaled(2), pt->area(), pt->scaled(2));
+  Money<int> m1{150}, m2{275}, m3{5};
+  printf("fold %lld\n", total(m1, m2, m3).cents);
+  Vec<short> ds = defaulted<short>();
+  Vec<double> dd = defaulted<double, 3>();
+  printf("defaults %d %d %g %g\n", ds.x, ds.y, dd.x, dd.y);
+  return 0;
+}

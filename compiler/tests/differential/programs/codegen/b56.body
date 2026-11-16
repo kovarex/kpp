@@ -1,0 +1,73 @@
+// Static storage: globals initialized in order of definition (dynamic ones calling functions), a
+// function-local static initialized once on first pass (also in a recursion and per template
+// instance), static members of a class template per instance, inline static members, statics
+// whose initializer reads another static.
+char trail[1024];
+int pos = 0;
+void note(const char* s) { while (*s) trail[pos++] = *s++; trail[pos++] = ' '; trail[pos] = 0; }
+
+int counter = 0;
+int next(const char* who) { note(who); return ++counter; }
+
+int first = next("first");
+int second = next("second") * 10 + first;
+
+struct Reg
+{
+  int id;
+  Reg(const char* who) : id(next(who)) {}
+};
+Reg r1{"r1"};
+Reg r2{"r2"};
+
+int localStatic(int depth)
+{
+  static int calls = next("local");
+  if (depth > 0)
+    return localStatic(depth - 1) + calls;
+  return calls;
+}
+
+template<class T>
+int perType()
+{
+  static int value = next(sizeof(T) == 4 ? "int" : "dbl");
+  return value;
+}
+
+template<class T>
+struct Counter
+{
+  static int made;
+  static inline int seen = 100;
+  Counter() { ++made; ++seen; }
+};
+template<class T>
+int Counter<T>::made = 0;
+
+struct Config
+{
+  static inline int base = 7;
+  static const int derived;
+};
+const int Config::derived = Config::base * 3;
+
+int main()
+{
+  printf("%s\n", trail);
+  printf("%d %d %d %d\n", first, second, r1.id, r2.id);
+  pos = 0;
+  trail[0] = 0;
+  int a = localStatic(3);
+  int b = localStatic(0);
+  printf("%d %d %s\n", a, b, trail);
+  pos = 0;
+  trail[0] = 0;
+  int i1 = perType<int>(), d1 = perType<double>(), i2 = perType<int>();
+  printf("%d %d %d %s\n", i1, d1, i2, trail);
+  Counter<int> c1, c2;
+  Counter<char> c3;
+  printf("%d %d %d %d\n", Counter<int>::made, Counter<char>::made, Counter<int>::seen, Counter<char>::seen);
+  printf("%d %d\n", Config::base, Config::derived);
+  return 0;
+}

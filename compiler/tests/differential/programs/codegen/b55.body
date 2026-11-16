@@ -1,0 +1,61 @@
+// Virtual function corners: a default argument comes from the static type, a qualified call does not
+// dispatch, a derived overload hides the base's unless a using-declaration brings them, a pure
+// virtual with a body called by name, a pointer to a virtual member dispatches, final functions.
+class Shape
+{
+public:
+  virtual ~Shape() = default;
+  virtual int area(int scale = 1) const { return 10 * scale; }
+  virtual int name() const = 0;
+  int describe() const { return area() * 100 + name(); }
+  virtual int over(int x) const { return x; }
+  virtual int over(double x) const { return int(x * 10); }
+};
+int Shape::name() const { return 1; }
+
+class Square : public Shape
+{
+public:
+  int side = 3;
+  int area(int scale = 2) const override { return side * side * scale; }
+  int name() const override { return Shape::name() + 5; }
+  int over(int x) const override { return x + 1000; }
+};
+
+class Hiding : public Square
+{
+public:
+  int over(int x) const override { return x + 2000; }
+};
+
+class Using : public Square
+{
+public:
+  using Shape::over;
+  int over(int x) const override { return x + 3000; }
+};
+
+class Final final : public Square
+{
+public:
+  int name() const final { return 77; }
+};
+
+int main()
+{
+  Square s;
+  Shape& asShape = s;
+  printf("%d %d %d\n", s.area(), asShape.area(), s.Shape::area());
+  printf("%d %d\n", s.describe(), s.name());
+  Hiding h;
+  Using u;
+  printf("%d %d %d\n", h.over(1), u.over(1), u.over(1.5));
+  Shape& hs = h;
+  printf("%d %d\n", hs.over(1), hs.over(2.5));
+  int (Shape::*pf)(int) const = &Shape::area;
+  int (Shape::*pn)() const = &Shape::name;
+  Final f;
+  Shape* ps = &f;
+  printf("%d %d %d %d\n", (asShape.*pf)(4), (ps->*pn)(), (ps->*pf)(1), f.describe());
+  return 0;
+}

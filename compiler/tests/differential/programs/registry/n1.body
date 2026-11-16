@@ -1,0 +1,77 @@
+// battery n1: initialization: aggregates with fewer values than members (the rest from their default
+// member initializers or value-initialized), nested aggregates with and without inner braces, arrays of
+// aggregates, designated initializers skipping members, default member initializers that read earlier
+// members, value-initialization `T()` / `T{}` against default-initialization `T t;` of a class with a
+// user constructor and one without, `new T` against `new T()`, a member array with a partial list,
+// a constructor's member initializer list overriding a default member initializer, a union's first
+// member, a const member and a reference member in an aggregate.
+struct Point { int x; int y = 7; int z; };
+struct Rect { Point a; Point b; int tag = -1; };
+struct Defaults
+{
+  int base = 10;
+  int twice = base * 2;
+  int plusOne{base + 1};
+  double ratio = 0.5;
+};
+struct WithCtor
+{
+  int v;
+  int w = 3;
+  WithCtor() : v(42) {}
+};
+struct Plain { int a; double b; char c[3]; };
+struct Override
+{
+  int m = 100;
+  int n = m + 1;
+  Override() : m(5) {}
+  explicit Override(int k) : n(k) {}
+};
+union U { int i; char c[4]; };
+struct Holder
+{
+  const int fixed;
+  int& ref;
+  int arr[4];
+};
+int main()
+{
+  Point p{1};
+  Point q{1, 2, 3};
+  Point r{};
+  printf("partial %d %d %d | %d %d %d | %d %d %d\n", p.x, p.y, p.z, q.x, q.y, q.z, r.x, r.y, r.z);
+  Rect rect{{1, 2, 3}, {4}};
+  Rect flat{1, 2, 3, 4};
+  printf("nested %d %d %d %d %d | %d %d %d %d %d %d %d\n", rect.a.x, rect.a.z, rect.b.x, rect.b.y, rect.tag, flat.a.x, flat.a.y, flat.a.z, flat.b.x, flat.b.y, flat.b.z, flat.tag);
+  Point arr[3] = {{1, 2, 3}, {4}};
+  printf("array %d %d %d %d %d %d\n", arr[0].z, arr[1].x, arr[1].y, arr[2].x, arr[2].y, arr[2].z);
+  Point d{.x = 5, .z = 9};
+  Rect dr{.b = {.y = 1}, .tag = 2};
+  printf("designated %d %d %d | %d %d %d %d\n", d.x, d.y, d.z, dr.a.y, dr.b.x, dr.b.y, dr.tag);
+  Defaults def;
+  Defaults def2{3};
+  printf("defaults %d %d %d %g | %d %d %d\n", def.base, def.twice, def.plusOne, def.ratio, def2.base, def2.twice, def2.plusOne);
+  WithCtor wc{};
+  WithCtor wc2;
+  Plain pv{};
+  Plain pv2 = Plain();
+  printf("value %d %d %d %d | %d %g %d %d\n", wc.v, wc.w, wc2.v, wc2.w, pv.a, pv.b, pv.c[2], pv2.a);
+  Plain* heap = new Plain();
+  int* ints = new int[4]();
+  int* some = new int[4]{1, 2};
+  printf("new %d %g %d %d %d %d\n", heap->a, heap->b, ints[3], some[0], some[1], some[3]);
+  delete heap;
+  delete[] ints;
+  delete[] some;
+  Override o1;
+  Override o2(9);
+  printf("override %d %d %d %d\n", o1.m, o1.n, o2.m, o2.n);
+  U u{0x01020304};
+  printf("union %d %d\n", u.i, u.c[0] == 4 || u.c[0] == 1);
+  int target = 5;
+  Holder h{8, target, {1, 2}};
+  h.ref = 6;
+  printf("holder %d %d %d %d %d\n", h.fixed, target, h.arr[0], h.arr[1], h.arr[3]);
+  return 0;
+}

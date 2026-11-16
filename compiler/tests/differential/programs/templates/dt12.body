@@ -1,0 +1,12 @@
+// An implicit destructor of a member class with a defaulted noexcept destructor: its helper ends the program.
+struct T { ~T() noexcept(false) { printf("T\n"); fflush(stdout); throw 1; } };
+struct S { T t; ~S() noexcept = default; };
+struct H { S s; int x = 3; };
+void f() { H h; }
+int main()
+{
+  try { f(); }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

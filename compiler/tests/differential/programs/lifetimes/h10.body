@@ -1,0 +1,14 @@
+class V1 { public: int a = 1; virtual ~V1() {} virtual int f() { return 1; } };
+class V0 { public: int a = 2; virtual ~V0() {} };
+using Al = V1;
+class V3 : public V0, public V1 { public: typedef V1 super; int f() override { return 3; } int g() { return super::f() * 10 + Al::f(); } int h() { return super::a * 10 + Al::a + V0::a; } };
+V1 proto;
+class W : public V1 { public: int f() override { return 9; } int d() { return 9; } };
+struct Id { int id; constexpr Id(int v) : id(v) {} constexpr int get() const { return id; } };
+struct P : Id { constexpr P() : Id(1) {} };
+struct Q : Id { constexpr Q() : Id(2) {} };
+struct T : P, Q { constexpr int a() const { return P::id * 10 + Q::id; } constexpr int b() const { return P::get() * 10 + Q::get(); } constexpr int c() const { return this->Q::id; } };
+constexpr int ca = T{}.a();
+constexpr int cb = T{}.b();
+constexpr int cc = T{}.c();
+int main() { V3 v; W w; printf("%d %d %d\n", v.g(), v.h(), w.d()); printf("%d %d %d\n", ca, cb, cc); T t; printf("%d %d %d\n", t.a(), t.b(), t.c()); return 0; }

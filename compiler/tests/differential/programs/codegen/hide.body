@@ -1,0 +1,19 @@
+// a local variable hides a function of the same name: the call goes to the local
+int twice(int x) { return 2 * x; }
+struct Functor { int k; int operator()(int x) const { return k * x; } };
+int (*pointer)(int) = nullptr;
+int thrice(int x) { return 3 * x; }
+int main()
+{
+  auto twice = [](int x) { return 5 * x; };
+  printf("H1 %d\n", twice(10));
+  {
+    Functor thrice{7};
+    printf("H2 %d\n", thrice(10));
+  }
+  printf("H3 %d\n", thrice(10));
+  int (*local)(int) = ::twice;
+  printf("H4 %d\n", local(10));
+  printf("H5 %d\n", ::twice(10));
+  return 0;
+}

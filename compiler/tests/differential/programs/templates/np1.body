@@ -1,0 +1,19 @@
+// CTAD with no initializer deduces an empty pack, or the defaults.
+template <typename... T> struct NP { static constexpr int count = sizeof...(T); NP() {} };
+template <typename T = int> struct Def { T v{}; int size() const { return sizeof(T); } };
+template <typename T = char, typename U = double> struct Two { int size() const { return sizeof(T) + sizeof(U); } };
+template <typename... T> struct Agg { };
+int main()
+{
+  NP p;
+  printf("%d\n", p.count);
+  Def d;
+  printf("%d\n", d.size());
+  Two t;
+  printf("%d\n", t.size());
+  static NP s;
+  printf("%d\n", s.count);
+  const NP c;
+  printf("%d\n", c.count);
+  return 0;
+}

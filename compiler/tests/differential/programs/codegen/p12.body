@@ -1,0 +1,22 @@
+// C variadic arguments: float to double, small integers and bool to int, enums, pointers
+enum Small : unsigned char { S = 200 };
+enum class Wide : long long { W = 0x100000000ll };
+int main()
+{
+  float f = 1.5f;
+  char c = 'A';
+  signed char sc = -3;
+  unsigned char uc = 250;
+  short s = -300;
+  unsigned short us = 65000;
+  bool b = true;
+  Small sm = S;
+  printf("V1 %.2f %d %d %d %d %d %d %d\n", f, c, sc, uc, s, us, b, sm);
+  printf("V2 %lld %u\n", (long long)Wide::W, (unsigned)uc);
+  int* p = nullptr;
+  printf("V3 %d\n", p == nullptr);
+  printf("V4 %.3f %.3f\n", f * 2, 0.1f + 0.2f);
+  long long big = 0x123456789ll;
+  printf("V5 %lld %llx\n", big, (unsigned long long)big);
+  return 0;
+}

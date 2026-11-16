@@ -1,0 +1,63 @@
+// casts: pointers through offset bases (null stays null), C-style casts, reinterpret, const, references, numbers
+class A { public: int a = 1; virtual ~A() {} virtual int id() { return 1; } };
+class B { public: int b = 2; virtual ~B() {} virtual int bid() { return 2; } };
+class C : public A, public B { public: int c = 3; int id() override { return 3; } int bid() override { return 30; } };
+struct P1 { int x = 10; };
+struct P2 { int y = 20; };
+struct PD : public P1, public P2 { int z = 30; };
+class Priv : private P2 { public: int w = 40; P2* me() { return this; } };
+class Fwd;
+Fwd* fwdOf(void* p) { return (Fwd*)p; }
+enum E : unsigned char { e1 = 200 };
+enum class S : short { neg = -3 };
+int takesB(B* b) { return b ? b->bid() : -1; }
+int takesP2(P2* p) { return p ? p->y : -1; }
+int takesRef(B& b) { return b.b; }
+B* identity(C* c) { return c; }
+const P2* constUp(const PD* d) { return d; }
+int fi(int x) { return x + 1; }
+int main()
+{
+  C c; PD d; d.x = 11; d.y = 21; d.z = 31;
+  C* nc = nullptr; PD* nd = nullptr;
+  B* nb = nc; P2* np = nd; printf("%d %d %d %d\n", nb == nullptr, np == nullptr, (B*)nc == nullptr, static_cast<P2*>(nd) == nullptr);
+  printf("%d %d %d\n", takesB(nc), takesP2(nd), identity(nullptr) == nullptr);
+  B* bn = nullptr; P2* pn = nullptr; printf("%d %d %d\n", (C*)bn == nullptr, static_cast<PD*>(pn) == nullptr, dynamic_cast<C*>(bn) == nullptr);
+  B* b = &c; C* back = static_cast<C*>(b); C* back2 = (C*)b; printf("%d %d %d %d\n", back == &c, back2 == &c, b == &c, (void*)b == (void*)&c);
+  A* a = &c; printf("%d %d %d\n", (void*)a == (void*)&c, a == &c, (A*)&c == a);
+  P2* p2 = &d; PD* dd = static_cast<PD*>(p2); PD* de = (PD*)p2; printf("%d %d %d %d\n", p2->y, dd->z, de->x, (int)((char*)p2 - (char*)&d));
+  P2& r2 = d; PD& rd = static_cast<PD&>(r2); PD& re = (PD&)r2; printf("%d %d %d\n", r2.y, rd.z, re.x);
+  printf("%d %d\n", takesRef(c), ((B&)c).b);
+  void* vp = &d; PD* fromVoid = (PD*)vp; P1* asP1 = (P1*)vp; printf("%d %d\n", fromVoid->z, asP1->x);
+  void* vb = p2; P2* fromVb = (P2*)vb; printf("%d\n", fromVb->y);
+  P2* rein = reinterpret_cast<P2*>(&d); printf("%d\n", rein->y);
+  Priv pv; P2* pp = (P2*)&pv; printf("%d %d\n", pp->y, pp == pv.me());
+  P2 alone; PD* wrong = (PD*)&alone; printf("%d\n", wrong->y);
+  const PD cd; PD* un = const_cast<PD*>(&cd); printf("%d\n", un->z); const P2* cu = constUp(&cd); printf("%d\n", cu->y);
+  int i = 5; const int* ci = &i; int* mi = const_cast<int*>(ci); *mi = 6; int& mr = const_cast<int&>(*ci); mr = 7; printf("%d\n", i);
+  int* ip = (int*)ci; *ip = 8; printf("%d\n", i);
+  float f = 1.0f; printf("%x %x\n", *(unsigned*)&f, reinterpret_cast<unsigned&>(f));
+  unsigned u = 0x40000000; printf("%.1f %.1f\n", *(float*)&u, reinterpret_cast<float&>(u));
+  double dv = 1.0; long long& lr = reinterpret_cast<long long&>(dv); lr += 1; printf("%.17g\n", dv);
+  unsigned char bytes[4] = { 1, 2, 3, 4 }; printf("%x %x\n", *(unsigned*)bytes, *(unsigned short*)(bytes + 1));
+  long long addr = (long long)&i; int* fromInt = (int*)addr; printf("%d %d\n", *fromInt, (int)((unsigned long long)&i == (unsigned long long)addr));
+  printf("%d %d %d\n", (bool)&i, !!(void*)0, (int)(bool)nullptr);
+  printf("%d %d %d %d\n", (int)e1, (int)(E)300, (int)S::neg, (int)(S)70000);
+  printf("%u %d %d\n", (unsigned)S::neg, (int)(unsigned char)S::neg, (int)(signed char)e1);
+  printf("%d %d %d\n", (int)2.9, (int)-2.9, (int)(float)16777217);
+  printf("%d %d %u %d\n", (char)300, (short)70000, (unsigned)-1, (unsigned char)-1);
+  printf("%lld %llu %lld\n", (long long)-1, (unsigned long long)-1, (long long)(unsigned)-1);
+  printf("%lld %d\n", (long long)(int)0x80000000u, (int)(long long)0x100000005ll);
+  printf("%.1f %.1f %d\n", (double)(float)0.1 == 0.1 ? 1.0 : 0.0, (float)1 / 3 > 0.33f ? 1.0 : 0.0, (int)(double)(1ll << 53));
+  int (*fp)(int) = fi; void* fv = (void*)fp; int (*fb)(int) = (int (*)(int))fv; printf("%d\n", fb(1));
+  typedef int (*F2)(int, int); F2 f2 = (F2)fi; printf("%d\n", f2 != nullptr);
+  printf("%d %d\n", int(3.7), double(3) == 3.0);
+  using Ptr = int*; int z = 4; printf("%d\n", *Ptr(&z));
+  printf("%d\n", static_cast<int>(3.99) + static_cast<int>('a') + static_cast<int>(true));
+  printf("%d %d\n", (int)sizeof((char)1), (int)sizeof((short)1 + (short)1));
+  auto* ca = static_cast<A*>(&c); auto* cb = static_cast<B*>(&c); printf("%d %d %d %d\n", ca->id(), cb->bid(), static_cast<A&>(c).id(), c.B::bid());
+  A* va[2] = { &c, nullptr }; B* vb2[2] = { (C*)va[0], (C*)nullptr }; printf("%d %d\n", vb2[0]->b, vb2[1] == nullptr);
+  bool bb = (B*)nc; printf("%d\n", bb);
+  bool same = (A*)&c == (A*)(C*)(B*)&c; printf("%d\n", same);
+  return 0;
+}

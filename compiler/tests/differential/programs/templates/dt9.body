@@ -1,0 +1,46 @@
+// noexcept of delete, of a call returning a class, of a pseudo destructor.
+template <typename T> T&& dv() noexcept;
+struct Plain { ~Plain() {} };
+struct Throwing { ~Throwing() noexcept(false) {} };
+struct OwnDelete { static void operator delete(void* p) noexcept(false) { free(p); } };
+struct OwnDeleteDefault { static void operator delete(void* p) { free(p); } };
+struct OwnDeleteNoexcept { static void operator delete(void* p) noexcept { free(p); } };
+class Base { public: virtual ~Base() noexcept(false) {} };
+class Derived : public Base { public: ~Derived() noexcept {} };
+Plain makePlain() noexcept;
+Throwing makeThrowing() noexcept;
+Plain makePlainMayThrow();
+template <typename T> void pseudo(T* p) { printf("%d\n", noexcept(p->~T())); }
+int main()
+{
+  Plain* a = nullptr;
+  Throwing* b = nullptr;
+  int* i = nullptr;
+  OwnDelete* c = nullptr;
+  OwnDeleteDefault* d = nullptr;
+  OwnDeleteNoexcept* e = nullptr;
+  Base* f = nullptr;
+  Derived* g = nullptr;
+  printf("%d\n", noexcept(delete a));
+  printf("%d\n", noexcept(delete b));
+  printf("%d\n", noexcept(delete i));
+  printf("%d\n", noexcept(delete[] i));
+  printf("%d\n", noexcept(delete[] a));
+  printf("%d\n", noexcept(delete[] b));
+  printf("%d\n", noexcept(delete c));
+  printf("%d\n", noexcept(delete d));
+  printf("%d\n", noexcept(delete e));
+  printf("%d\n", noexcept(delete f));
+  printf("%d\n", noexcept(delete g));
+  printf("%d\n", noexcept(g->~Derived()));
+  printf("%d\n", noexcept(g->Base::~Base()));
+  printf("%d\n", noexcept(a->~Plain()));
+  printf("%d\n", noexcept(b->~Throwing()));
+  printf("%d\n", noexcept(makePlain()));
+  printf("%d\n", noexcept(makeThrowing()));
+  printf("%d\n", noexcept(makePlainMayThrow()));
+  pseudo(i);
+  pseudo(a);
+  pseudo(b);
+  return 0;
+}

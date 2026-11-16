@@ -1,0 +1,25 @@
+// a member function qualified through an alias in a template, a constructor's initializers
+template<class B1, class B2> class Mix : public B1, public B2 { public: using First = B1; using Second = B2; int a() { return Second::v() * 10 + First::v(); } int b() { return B2::x * 10 + B1::x; } };
+class M1 { public: int x = 1; int v() { return 3; } };
+class M2 { public: int x = 2; int v() { return 4; } };
+class Init : public M1, public M2 { public: int k; int j = M2::x * 100; Init() : k(M2::x + M1::x * 10) {} };
+class St : public M1, public M2 { public: static int count; int z() { return St::count + M2::x; } };
+int St::count = 5;
+class Op1 { public: int v = 1; Op1 operator+(int x) { Op1 r; r.v = v + x; return r; } };
+class Op0 { public: int w = 2; };
+class Op2 : public Op0, public Op1 { public: int f() { return Op1::operator+(4).v; } };
+class Conv1 { public: int c = 3; operator int() { return c; } };
+class Conv2 : public Op0, public Conv1 { public: int f() { return Conv1::operator int(); } };
+class Ref1 { public: int& r; Ref1(int& x) : r(x) {} };
+class Ref2 : public Op0, public Ref1 { public: Ref2(int& x) : Ref1(x) {} int f() { return ++Ref1::r; } };
+class Bit1 { public: int pad = 5; unsigned a : 3; unsigned b : 5; };
+class Bit2 : public Op0, public Bit1 { public: int f() { Bit1::a = 5; Bit1::b = 9; return Bit1::a * 100 + Bit1::b; } };
+class Arr1 { public: int a[3] = {1, 2, 3}; };
+class Arr2 : public Op0, public Arr1 { public: int f() { int s = 0; for (int x : Arr1::a) s += x; return s + Arr1::a[1]; } };
+class Nest { public: class In { public: int v = 7; int g() { return v; } }; };
+class Tpl1 { public: int t = 8; template<class T> T as() { return T(t); } };
+class Tpl2 : public Op0, public Tpl1 { public: double f() { return Tpl1::as<double>() + 0.5; } double g() { return Tpl1::template as<double>() + 0.25; } };
+int main() {
+  Mix<M1, M2> m; printf("%d %d\n", m.a(), m.b()); Mix<M2, M1> n; printf("%d %d\n", n.a(), n.b());
+  Init i; printf("%d %d\n", i.k, i.j); St s; printf("%d\n", s.z()); Op2 o; printf("%d\n", o.f()); Conv2 c; printf("%d\n", c.f());
+  int x = 1; Ref2 r(x); printf("%d %d\n", r.f(), x); Bit2 b; printf("%d\n", b.f()); Arr2 a; printf("%d\n", a.f()); Tpl2 t; printf("%.2f %.2f\n", t.f(), t.g()); return 0; }

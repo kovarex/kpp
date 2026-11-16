@@ -1,0 +1,55 @@
+// battery i9: pack expansions in every context: base lists (`struct All : Ts...`), using-declarations
+// of a pack (`using Ts::call...`), lambda captures of a pack (by copy and by init-capture), generic
+// variadic lambdas, nested expansions (pairs of packs), expansions inside braced arrays, sizeof...
+// of an expanded alias, fold over a member call, packs of non-types in arrays, index of a type.
+struct One { int call(int) const { return 1; } int id() const { return 10; } };
+struct Two { int call(double) const { return 2; } int id() const { return 20; } };
+struct Three { int call(const char*) const { return 3; } int id() const { return 30; } };
+template <typename... Ts> struct All : Ts...
+{
+  using Ts::call...;
+  int ids() const { return (Ts::id() + ...); }
+};
+template <typename... T> auto captureCopy(T... v)
+{
+  return [v...](int k) { return ((v * k) + ... + 0); };
+}
+template <typename... T> auto captureInit(T... v)
+{
+  return [v...]() { return ((v * 2) + ...); };
+}
+template <typename... A> struct Outer
+{
+  template <typename... B> static int pairs(A... a, B... b) { return ((a * 10 + b) + ...); }
+};
+template <typename... T> int arr(T... v)
+{
+  int values[] = {0, (int)v..., 100};
+  int s = 0;
+  for (int x : values)
+    s = s * 3 + x;
+  return s + (int)(sizeof(values) / sizeof(values[0]));
+}
+template <int... N> int nontype()
+{
+  static constexpr int table[] = {N * N...};
+  int s = 0;
+  for (int t : table)
+    s += t;
+  return s * 10 + (int)sizeof...(N);
+}
+template <typename T, typename... Ts> struct IndexOf;
+template <typename T, typename... Ts> struct IndexOf<T, T, Ts...> { static constexpr int value = 0; };
+template <typename T, typename U, typename... Ts> struct IndexOf<T, U, Ts...> { static constexpr int value = 1 + IndexOf<T, Ts...>::value; };
+template <typename... T> int applyAll(T... f) { return (f(2) * ... * 1); }
+template <typename F, typename... T> int callEach(F f, T... v) { int s = 0; ((s = s * 10 + f(v)), ...); return s; }
+int main()
+{
+  auto c = captureCopy(1, 2, 3);
+  auto d = captureInit(4, 5);
+  printf("captures %d %d\n", c(10), d());
+  printf("index %d %d\n", IndexOf<char, int, short, char>::value, IndexOf<int, int>::value);
+  printf("apply %d\n", applyAll([](int x) { return x + 1; }, [](int x) { return x * 5; }));
+  printf("each %d\n", callEach([](auto x) { return (int)sizeof(x); }, 'a', 1, 2.0, (short)1));
+  return 0;
+}

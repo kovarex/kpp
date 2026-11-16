@@ -1,0 +1,119 @@
+extern "C" int printf(const char* format, ...);
+extern "C" int strncmp(const char* a, const char* b, usize n);
+// er1 (thread I, 2026-11-09): ErrorCode, Errc and SystemError against std::error_code, std::errc and
+// std::system_error: the value and category of each way to make one, clear and assign, comparison
+// with another code and with every Errc (the system category's mapping of each system error to a
+// condition, on Windows std's table of Windows errors, elsewhere errno), the Errc values themselves.
+std::Errc conditions[26] = {
+  std::Errc::operation_not_permitted, std::Errc::no_such_file_or_directory, std::Errc::no_such_process, std::Errc::interrupted, std::Errc::io_error,
+  std::Errc::resource_unavailable_try_again, std::Errc::illegal_byte_sequence, std::Errc::permission_denied, std::Errc::device_or_resource_busy,
+  std::Errc::file_exists, std::Errc::cross_device_link, std::Errc::no_such_device, std::Errc::not_a_directory, std::Errc::is_a_directory,
+  std::Errc::invalid_argument, std::Errc::too_many_files_open, std::Errc::file_too_large, std::Errc::no_space_on_device, std::Errc::read_only_file_system,
+  std::Errc::resource_deadlock_would_occur, std::Errc::filename_too_long, std::Errc::function_not_supported, std::Errc::directory_not_empty,
+  std::Errc::not_supported, std::Errc::operation_not_supported, std::Errc::timed_out};
+
+const char* category(const std::ErrorCode& ec)
+{
+  return ec.category().name();
+}
+
+void describe(const char* label, const std::ErrorCode& ec)
+{
+  bool asBool = false;
+  if (ec)
+    asBool = true;
+  printf("%s: value %d category %s bool %d\n", label, ec.value(), category(ec), (int)asBool);
+}
+
+void matches(const char* label, const std::ErrorCode& ec)
+{
+  printf("%s:", label);
+  int count = 0;
+  for (int i = 0; i < 26; ++i)
+  {
+    bool equal = ec == conditions[i];
+    bool reversed = conditions[i] == ec;
+    bool different = ec != conditions[i];
+    if (equal)
+    {
+      printf(" %d", i);
+      ++count;
+    }
+    if (equal != reversed || equal == different)
+      printf(" (inconsistent at %d)", i);
+  }
+  printf(" (%d)\n", count);
+}
+
+int main()
+{
+  printf("errc values:");
+  for (int i = 0; i < 26; ++i)
+    printf(" %d", (int)conditions[i]);
+  printf("\n");
+
+  std::ErrorCode none;
+  describe("default", none);
+  matches("default matches", none);
+  std::ErrorCode made = std::make_error_code(std::Errc::no_such_file_or_directory);
+  describe("made", made);
+  matches("made matches", made);
+  std::ErrorCode generic(13, std::genericCategory());
+  describe("generic 13", generic);
+  matches("generic 13 matches", generic);
+  std::ErrorCode system2(2, std::systemCategory());
+  describe("system 2", system2);
+  matches("system 2 matches", system2);
+  std::ErrorCode zeroGeneric(0, std::genericCategory());
+  describe("generic 0", zeroGeneric);
+  matches("generic 0 matches", zeroGeneric);
+
+  std::ErrorCode changed = made;
+  changed.assign(5, std::systemCategory());
+  describe("assigned", changed);
+  changed.clear();
+  describe("cleared", changed);
+  std::ErrorCode fromGeneric = made;
+  fromGeneric.clear();
+  describe("cleared from generic", fromGeneric);
+
+  printf("code ==: %d %d %d %d %d\n", (int)(made == std::make_error_code(std::Errc::no_such_file_or_directory)), (int)(made == std::ErrorCode(2, std::systemCategory())),
+         (int)(none == std::ErrorCode()), (int)(none == zeroGeneric), (int)(made != std::ErrorCode(2, std::genericCategory())));
+  printf("category ==: %d %d %d\n", (int)(made.category() == std::genericCategory()), (int)(none.category() == std::systemCategory()),
+         (int)(std::genericCategory() == std::systemCategory()));
+  printf("names: %s %s\n", std::genericCategory().name(), std::systemCategory().name());
+  printf("errc 0: %d %d %d %d\n", (int)(none == (std::Errc)0), (int)(zeroGeneric == (std::Errc)0), (int)(made == (std::Errc)0), (int)(none != (std::Errc)0));
+
+  int errors[46] = {1, 2, 3, 4, 5, 6, 8, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 29, 30, 31, 32, 33, 36, 38, 39, 50, 53, 67, 80,
+                    82, 87, 110, 112, 123, 145, 158, 161, 170, 183, 206, 267};
+  for (int e : errors)
+  {
+    printf("system %d", e);
+    matches("", std::ErrorCode(e, std::systemCategory()));
+  }
+  for (int e : errors)
+  {
+    printf("generic %d", e);
+    matches("", std::ErrorCode(e, std::genericCategory()));
+  }
+
+  try
+  {
+    throw std::SystemError(made, std::String("prefix"));
+  }
+  catch (const std::RuntimeError& e)
+  {
+    const char* text = e.what();
+    printf("what starts with the prefix: %d\n", (int)(strncmp(text, "prefix: ", 8) == 0));
+  }
+  try
+  {
+    throw std::SystemError(std::ErrorCode(22, std::genericCategory()), std::String("second"));
+  }
+  catch (const std::SystemError& e)
+  {
+    describe("code of the error", e.code());
+    matches("its matches", e.code());
+  }
+  return 0;
+}

@@ -1,0 +1,90 @@
+// battery 30: virtual calls while constructing and destroying, default arguments of virtual
+// functions, temporaries bound to references (lifetime extension through members and ?:), lambda
+// captures (by value at creation, mutable state, init-captures), C++17's evaluation order for
+// assignment, <<, subscripts and member calls.
+class Base
+{
+public:
+  int tag = 1;
+  Base() { report("Base()"); }
+  virtual ~Base() { report("~Base"); }
+  virtual void who(const char* phase) { printf("%s: Base\n", phase); }
+  void report(const char* phase) { who(phase); }
+  virtual int scale(int k = 10) { return k; }
+};
+class Derived : public Base
+{
+public:
+  Derived() { report("Derived()"); }
+  ~Derived() override { report("~Derived"); }
+  void who(const char* phase) override { printf("%s: Derived\n", phase); }
+  int scale(int k = 20) override { return k * 2; }
+};
+
+struct Noisy
+{
+  int v;
+  Noisy(int x) : v(x) { printf("+%d ", v); }
+  Noisy(const Noisy& o) : v(o.v) { printf("c%d ", v); }
+  ~Noisy() { printf("-%d ", v); }
+};
+struct Holder
+{
+  Noisy n;
+  int extra;
+};
+Noisy make(int v) { return Noisy(v); }
+Holder makeHolder(int v) { return Holder{Noisy(v), v * 2}; }
+
+int counter = 0;
+int next() { return ++counter; }
+int trace(const char* name, int v)
+{
+  printf("%s ", name);
+  return v;
+}
+
+int main()
+{
+  {
+    Derived d;
+    Base* b = &d;
+    printf("scale %d %d\n", b->scale(), d.scale());
+  }
+  printf("--\n");
+  {
+    const Noisy& r = make(1);
+    printf("| %d |\n", r.v);
+    const int& member = makeHolder(2).extra;
+    printf("| %d |\n", member);
+    const Noisy& pick = counter == 0 ? make(3) : make(4);
+    printf("| %d |\n", pick.v);
+  }
+  printf("\n--\n");
+  {
+    int x = 1;
+    auto byValue = [x]() { return x * 10; };
+    auto byRef = [&x]() { return x * 10; };
+    x = 5;
+    auto counterLambda = [n = 0]() mutable { return ++n; };
+    counterLambda();
+    counterLambda();
+    auto initCapture = [y = x + 1, &x]() { return y * 100 + x; };
+    x = 7;
+    printf("%d %d %d %d\n", byValue(), byRef(), counterLambda(), initCapture());
+  }
+  printf("--\n");
+  {
+    int a[4] = {0, 0, 0, 0};
+    int i = 0;
+    a[trace("index", i)] = trace("value", 7);
+    printf("| %d\n", a[0]);
+    int j = 1;
+    j = j++ + 10;
+    printf("j %d\n", j);
+    int k = 0;
+    a[k++] = k;
+    printf("a %d %d k %d\n", a[0], a[1], k);
+  }
+  return 0;
+}

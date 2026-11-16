@@ -1,0 +1,15 @@
+// a local lambda named like a function template: the call goes to the lambda
+template<typename T> T sumOf(T a, T b) { return a + b; }
+template<typename T> T one(T a) { return a + 1000; }
+int plain(int a) { return a + 2000; }
+int main()
+{
+  auto sumOf = [](int v) { return v * 100; };
+  printf("H1 %d\n", sumOf(3));
+  auto one = [](int v) { return v * 10; };
+  printf("H2 %d\n", one(3));
+  auto plain = [](int v) { return v * 7; };
+  plain(1);
+  printf("H3 %d\n", plain(3));
+  return 0;
+}

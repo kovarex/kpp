@@ -1,0 +1,87 @@
+template<class T> struct Und
+{
+  enum : T { big = (T)-1, low = 1 };
+  enum class E : T { a = 2, b = (T)(sizeof(T) * 3) };
+  E field = E::b;
+  static long long viaMember() { return (long long)big + (long long)sizeof(E); }
+  E twice(E x) const { return (E)((T)x * 2); }
+  int sw(E x) const
+  {
+    switch (x)
+    {
+      case E::a: return 10;
+      case E::b: return 20;
+    }
+    return 30;
+  }
+};
+template<class T> struct Tr { using type = T; };
+template<class T> struct Via { enum class F : typename Tr<T>::type { x = 7 }; };
+template<class T> struct Outer { template<class U> struct Inner { enum : U { a = 100 }; enum class G : T { z = 3 }; }; };
+
+int a1[sizeof(Und<short>::E)];
+int a2[sizeof(Und<long long>::E)];
+static_assert(sizeof(Und<unsigned char>::E) == 1, "size");
+static_assert(sizeof(Und<long long>::big) == 8, "size");
+static_assert((long long)Und<long long>::big == -1, "value");
+static_assert((int)Und<unsigned char>::big == 255, "value");
+
+int which(int) { return 1; }
+int which(long long) { return 2; }
+int which(unsigned char) { return 3; }
+int which(short) { return 4; }
+
+template<class E> long long asLong(E e) { return (long long)e; }
+
+struct Hold
+{
+  Und<unsigned char>::E c;
+  Und<long long>::E l;
+  Und<short>::E s;
+};
+struct Bits
+{
+  Und<signed char>::E s : 3;
+  Und<unsigned char>::E u : 3;
+};
+Und<short>::E global1 = Und<short>::E::b;
+const auto global2 = Und<long long>::big;
+Und<unsigned char>::E arr[3] = {Und<unsigned char>::E::a, Und<unsigned char>::E::b, Und<unsigned char>::E::a};
+Und<signed char>::E pass(Und<signed char>::E x) { return (Und<signed char>::E)((signed char)x + 1); }
+Und<long long>::E passLong(Und<long long>::E x) { return (Und<long long>::E)((long long)x + 0x100000000ll); }
+
+int main()
+{
+  printf("%d %d %d\n", (int)Und<unsigned char>::big, (int)Und<unsigned char>::E::a, (int)sizeof(Und<short>::E));
+  printf("%lld %lld\n", (long long)Und<long long>::big, (long long)Und<short>::big);
+  printf("%d %d %d\n", (int)sizeof(a1), (int)sizeof(a2), (int)sizeof(Und<unsigned>::big));
+  printf("%d %d\n", (int)sizeof(Und<long long>::big + 0), (int)sizeof(Und<unsigned char>::big + 0));
+  printf("%d\n", Und<unsigned char>::big << 1);
+  printf("%d %d %d %d\n", which(Und<long long>::big), which(Und<unsigned char>::big), which(Und<short>::big), which(Und<int>::big));
+  printf("%lld %lld %lld\n", Und<long long>::viaMember(), Und<unsigned char>::viaMember(), Und<short>::viaMember());
+  Und<short> us;
+  printf("%d %d\n", (int)us.field, (int)us.twice(Und<short>::E::a));
+  Und<long long> ul;
+  printf("%d %d %d\n", (int)sizeof(us), (int)sizeof(ul), ul.sw(Und<long long>::E::b));
+  printf("%d %d\n", (int)sizeof(Via<short>::F), (int)Via<short>::F::x);
+  printf("%d %d %d\n", (int)sizeof(Outer<long long>::Inner<char>::a), (int)sizeof(Outer<long long>::Inner<char>::G), (int)Outer<long long>::Inner<char>::G::z);
+  printf("%lld %lld\n", asLong(Und<long long>::big), asLong(Und<unsigned char>::big));
+  printf("%d %d\n", (int)sizeof(Hold), (int)((char*)&((Hold*)64)->s - (char*)64));
+  Bits bits;
+  bits.s = (Und<signed char>::E)-1;
+  bits.u = (Und<unsigned char>::E)7;
+  printf("%d %d %d\n", (int)bits.s, (int)bits.u, (int)sizeof(Bits));
+  printf("%d %lld %d\n", (int)global1, (long long)global2, (int)arr[1]);
+  printf("%d %lld\n", (int)pass((Und<signed char>::E)-3), (long long)passLong((Und<long long>::E)5));
+  Und<long long>::E* p = nullptr;
+  printf("%d\n", (int)((char*)(p + 2) - (char*)p));
+  Und<unsigned char>::E* q = arr;
+  printf("%d\n", (int)q[2]);
+  printf("%d\n", (Und<unsigned char>::E)200 > (Und<unsigned char>::E)100);
+  printf("%d\n", (Und<signed char>::E)-56 < (Und<signed char>::E)100);
+  bool isBig = Und<unsigned long long>::big > 0;
+  printf("%d %llu\n", isBig, (unsigned long long)Und<unsigned long long>::big);
+  auto v = Und<long long>::big;
+  printf("%d %lld\n", (int)sizeof(v), (long long)v);
+  return 0;
+}

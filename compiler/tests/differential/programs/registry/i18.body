@@ -1,0 +1,43 @@
+// battery i18: enumerations: underlying types (signed, unsigned, char, 64-bit), values past the
+// enumerators (a cast into an enum with a fixed type), negative enumerators, implicit values after an
+// explicit one, unscoped enum promotion in arithmetic and comparison, scoped enum casts, sizeof,
+// switch over an enum with fallthrough and default, enum as template argument, bit operations
+// through casts, `using enum`, an enum's value in a constexpr table.
+enum Small : unsigned char { s0, s1 = 200, s2 };
+enum class Big : long long { b0 = -1, b1 = 0x100000000LL, b2 };
+enum Plain { p0 = -3, p1, p2, p3 = 10, p4 };
+enum class Flags : unsigned { none = 0, a = 1, b = 2, c = 4, all = 7 };
+enum Unsized { u0, u1 = 0x7fffffff };
+template <Plain P> int at() { return (int)P * 10; }
+int name(Plain p)
+{
+  switch (p)
+  {
+    case p0: return 100;
+    case p1:
+    case p2: return 200;
+    case p3: break;
+    default: return -1;
+  }
+  return 300;
+}
+constexpr int table[] = {p0, p1, p2, p3, p4};
+int main()
+{
+  printf("values %d %d %d %lld %lld %lld\n", (int)s0, (int)s1, (int)s2, (long long)Big::b0, (long long)Big::b1, (long long)Big::b2);
+  printf("plain %d %d %d %d %d\n", p0, p1, p2, p3, p4);
+  printf("sizes %d %d %d %d %d\n", (int)sizeof(Small), (int)sizeof(Big), (int)sizeof(Plain), (int)sizeof(Flags), (int)sizeof(Unsized));
+  Small past = (Small)255;
+  Flags f = (Flags)((unsigned)Flags::a | (unsigned)Flags::c);
+  printf("past %d %u %d\n", (int)past, (unsigned)f, (int)(f == Flags::all));
+  printf("promote %d %d %d %d\n", p0 + 1, p0 < p1, s2 * 2, (int)(s1 + s2));
+  printf("switch %d %d %d %d %d\n", name(p0), name(p1), name(p2), name(p3), name(p4));
+  printf("template %d %d\n", at<p1>(), at<p4>());
+  printf("table %d %d %d\n", table[0], table[4], (int)(sizeof(table) / sizeof(table[0])));
+  unsigned char raw = (unsigned char)s2;
+  Plain fromInt = (Plain)11;
+  printf("casts %d %d %d\n", raw, (int)fromInt, (int)(fromInt == p4));
+  Big big = Big::b2;
+  printf("big %d %d\n", (int)(big > Big::b1), (int)((long long)big >> 32));
+  return 0;
+}

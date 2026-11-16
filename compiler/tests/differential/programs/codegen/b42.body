@@ -1,0 +1,21 @@
+class A { public: virtual ~A() {} int a = 1; };
+class B { public: virtual ~B() {} int b = 2; };
+class C : public A, public B { public: int c = 3; };
+int calls = 0;
+C global;
+B* next() { ++calls; return &global; }
+A* nextA() { ++calls; return &global; }
+int main()
+{
+  B* pb = &global;
+  const B* cpb = &global;
+  B* none = nullptr;
+  printf("%s %s %s\n", dynamic_cast<void*>(pb) == (void*)&global ? "true" : "false", dynamic_cast<const void*>(cpb) == (const void*)&global ? "true" : "false", dynamic_cast<void*>(none) == nullptr ? "true" : "false");
+  A* up = dynamic_cast<A*>(nextA());
+  B* same = dynamic_cast<B*>(next());
+  C* down = dynamic_cast<C*>(next());
+  printf("%d %s %s %s\n", calls, up == static_cast<A*>(&global) ? "true" : "false", same == pb ? "true" : "false", down == &global ? "true" : "false");
+  void* top = dynamic_cast<void*>(next());
+  printf("%d %s\n", calls, top == (void*)&global ? "true" : "false");
+  return 0;
+}

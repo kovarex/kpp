@@ -1,0 +1,65 @@
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+void show(const char* label, const String& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, i64 n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { sort(v.begin(), v.end()); }
+void appendText(String& to, const String& s) { to << s; }
+// chrono: casts (truncating, floor, ceil, round to even), negative values, float durations, arithmetic
+// and comparisons across periods (the common type), ratios, time points.
+template <typename D> void count(const char* label, const D& d) { printf("%s: %lld\n", label, (long long)d.count()); }
+template <typename D> void countf(const char* label, const D& d) { printf("%s: %.6f\n", label, (double)d.count()); }
+
+int main()
+{
+  long long values[] = {-2500, -1500, -1001, -1000, -999, -500, -1, 0, 1, 499, 500, 501, 999, 1000, 1500, 2500, 3500};
+  for (long long v : values)
+  {
+    Milliseconds ms(v);
+    printf("--- %lld ms\n", v);
+    count("cast s", durationCast<Seconds>(ms));
+    count("floor s", floor<Seconds>(ms));
+    count("ceil s", ceil<Seconds>(ms));
+    count("round s", round<Seconds>(ms));
+    countf("double s", Duration<double>(ms));
+    count("cast min", durationCast<Minutes>(ms * 100));
+  }
+  count("1 s + 1 ms", Seconds(1) + Milliseconds(1));
+  count("1 min - 1 s", Minutes(1) - Seconds(1));
+  printf("1 h / 7 min: %lld\n", (long long)(Hours(1) / Minutes(7)));
+  count("1 h % 7 min", Hours(1) % Minutes(7));
+  count("100 ms % 30", Milliseconds(100) % 30);
+  count("3 s * 4", Seconds(3) * 4);
+  count("4 * 3 s", 4 * Seconds(3));
+  count("10 s / 4", Seconds(10) / 4);
+  countf("10 s / 4.0", Duration<double>(Seconds(10)) / 4.0);
+  count("-7 s / 2", Seconds(-7) / 2);
+  count("-7 s % 2 s", Seconds(-7) % Seconds(2));
+  printf("1 s == 1000 ms: %d\n", (int)(Seconds(1) == Milliseconds(1000)));
+  printf("1 min < 61 s: %d\n", (int)(Minutes(1) < Seconds(61)));
+  printf("1 min > 59999 ms: %d\n", (int)(Minutes(1) > Milliseconds(59999)));
+  printf("1 day in h: %lld\n", (long long)durationCast<Hours>(Days(1)).count());
+  printf("ratio 2/4: %lld/%lld\n", (long long)Ratio<2, 4>::num, (long long)Ratio<2, 4>::den);
+  printf("ratio -3/6: %lld/%lld\n", (long long)Ratio<-3, 6>::num, (long long)Ratio<-3, 6>::den);
+  printf("ratio 3/-6: %lld/%lld\n", (long long)Ratio<3, -6>::num, (long long)Ratio<3, -6>::den);
+  Duration<double, Ratio<1, 1000>> fms(2.5);
+  count("2.5 ms cast us", durationCast<Microseconds>(fms));
+  count("2.5 ms floor ms", floor<Milliseconds>(fms));
+  count("2.5 ms round ms", round<Milliseconds>(fms));
+  count("3.5 ms round ms", round<Milliseconds>(Duration<double, Ratio<1, 1000>>(3.5)));
+  count("-2.5 ms round ms", round<Milliseconds>(Duration<double, Ratio<1, 1000>>(-2.5)));
+  Duration<long long, Ratio<1, 3>> third(1);
+  count("1/3 s in ms", durationCast<Milliseconds>(third));
+  count("1/3 s + 1 ms (common)", third + Milliseconds(1));
+  TimePoint<SystemClock, Seconds> tp(Seconds(10));
+  count("tp + 5 ms", (tp + Milliseconds(5)).time_since_epoch());
+  count("tp - 3 s", (tp - Seconds(3)).time_since_epoch());
+  count("tp2 - tp", (TimePoint<SystemClock, Seconds>(Seconds(25)) - tp));
+  count("timePointCast to min", timePointCast<Minutes>(TimePoint<SystemClock, Seconds>(Seconds(150))).time_since_epoch());
+  printf("tp < tp + 1: %d\n", (int)(tp < tp + Seconds(1)));
+  printf("steady is steady: %d\n", (int)SteadyClock::is_steady);
+  auto a = SteadyClock::now(), b = SteadyClock::now();
+  printf("steady never goes back: %d\n", (int)(b >= a));
+  printf("system epoch is 1970: %d\n", (int)(durationCast<Days>(SystemClock::now().time_since_epoch()).count() > 19000));
+  return 0;
+}

@@ -1,0 +1,13 @@
+template <int N> struct E { using type = short; static constexpr int k = 1; int f() const { return 10; } };
+template <> struct E<0> { using type = long long; static constexpr int k = 2; int f() const { return 20; } };
+template <int N> struct D : E<N - 3> {};
+template <int N> struct G : E<N> {};
+int main()
+{
+  D<3>::type a = 1;
+  G<0>::type b = 1;
+  D<3> d;
+  G<0> g;
+  printf("%d %d %d %d %d %d\n", (int)sizeof(a), (int)sizeof(b), D<3>::k, G<0>::k, d.f(), g.f());
+  return 0;
+}

@@ -1,0 +1,97 @@
+// member initialization order, default member initializers using other members, delegating and
+// inherited constructors, placement new and explicit destruction, unions with class members,
+// lambdas capturing this, slicing, self-assignment
+
+int seq = 0;
+int next(const char* what) { printf("%s%d ", what, seq); return seq++; }
+struct Ordered
+{
+  int b = next("b");
+  int a;
+  int c = a + b;
+  Ordered() : a(next("a")) {}
+  Ordered(int) : Ordered() { printf("delegated "); }
+};
+class Base
+{
+public:
+  int x, y;
+  Base(int v) : x(v), y(v * 2) {}
+  Base(int v, int w) : x(v), y(w) {}
+  virtual ~Base() {}
+  virtual int sum() const { return x + y; }
+};
+class Derived : public Base
+{
+public:
+  using Base::Base;
+  int z = 100;
+  int sum() const override { return x + y + z; }
+};
+struct Noisy
+{
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  ~Noisy() { printf("-%d ", id); }
+};
+union Holder
+{
+  Noisy n;
+  int raw;
+  Holder() : raw(7) {}
+  ~Holder() {}
+};
+struct Counter
+{
+  int value = 0;
+  auto adder() { return [this](int d) { value += d; return value; }; }
+  auto copyAdder() { return [copy = *this](int d) mutable { copy.value += d; return copy.value; }; }
+};
+struct Point
+{
+  int x = 0, y = 0;
+  Point& operator=(const Point& o)
+  {
+    if (this == &o) { printf("self "); return *this; }
+    x = o.x;
+    y = o.y;
+    return *this;
+  }
+};
+int main()
+{
+  Ordered o;
+  printf("| %d %d %d\n", o.a, o.b, o.c);
+  Ordered d(1);
+  printf("| %d %d %d\n", d.a, d.b, d.c);
+  Derived one(3), two(4, 5);
+  Base& asBase = two;
+  printf("I %d %d %d\n", one.sum(), two.sum(), asBase.sum());
+  Base sliced = two;
+  printf("S %d\n", sliced.sum());
+  alignas(alignof(Noisy)) unsigned char storage[sizeof(Noisy)];
+  Noisy* placed = new (storage) Noisy(42);
+  printf("P %d ", placed->id);
+  placed->~Noisy();
+  printf("\n");
+  Holder h;
+  printf("U %d ", h.raw);
+  new (&h.n) Noisy(9);
+  printf("%d ", h.n.id);
+  h.n.~Noisy();
+  h.raw = 11;
+  printf("%d\n", h.raw);
+  Counter c;
+  auto add = c.adder();
+  add(2);
+  add(3);
+  auto copyAdd = c.copyAdder();
+  int fromCopy = copyAdd(10);
+  printf("L %d %d\n", c.value, fromCopy);
+  Point p{1, 2};
+  p = p;
+  Point q;
+  q = p;
+  printf("A %d %d\n", q.x, q.y);
+  return 0;
+}

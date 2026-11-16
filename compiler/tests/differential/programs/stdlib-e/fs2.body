@@ -1,0 +1,79 @@
+// filesystem's operations in a directory of their own: what each returns, what is there afterwards,
+// and the error codes (as booleans: their messages and values are each library's).
+void writeFile(const filesystem::path& p, const char* text)
+{
+  FILE* f = fopen(p.string().c_str(), "wb");
+  fputs(text, f);
+  fclose(f);
+}
+
+void listing(const char* label, const filesystem::path& dir)
+{
+  Vector<String> names;
+  for (const auto& entry : filesystem::directory_iterator(dir))
+  {
+    String name = entry.path().filename().string();
+    appendText(name, entry.is_directory() ? "/" : "");
+    names.push_back(name);
+  }
+  sortStrings(names);
+  String all;
+  for (const String& n : names)
+  {
+    appendText(all, n);
+    appendText(all, " ");
+  }
+  show(label, all);
+}
+
+int main()
+{
+  filesystem::path root = filesystem::temp_directory_path() / "kpp-fs2-battery";
+  filesystem::remove_all(root);
+  flag("exists before", filesystem::exists(root));
+  flag("create_directories", filesystem::create_directories(root / "a" / "b" / "c"));
+  flag("create_directories again", filesystem::create_directories(root / "a" / "b" / "c"));
+  flag("create_directory existing", filesystem::create_directory(root / "a"));
+  flag("create_directory new", filesystem::create_directory(root / "d"));
+  ErrorCode ec;
+  flag("create_directory without parent", filesystem::create_directory(root / "x" / "y", ec));
+  flag("  error", bool(ec));
+  writeFile(root / "a" / "one.txt", "hello");
+  writeFile(root / "a" / "two.txt", "hello, world");
+  number("file_size", (long long)filesystem::file_size(root / "a" / "two.txt"));
+  ec.clear();
+  number("file_size missing", (long long)filesystem::file_size(root / "nothing", ec));
+  flag("  error", bool(ec));
+  flag("is_regular_file", filesystem::is_regular_file(root / "a" / "one.txt"));
+  flag("is_directory", filesystem::is_directory(root / "a"));
+  flag("is_directory of a file", filesystem::is_directory(root / "a" / "one.txt"));
+  flag("is_empty dir d", filesystem::is_empty(root / "d"));
+  flag("is_empty dir a", filesystem::is_empty(root / "a"));
+  listing("a", root / "a");
+  flag("copy_file", filesystem::copy_file(root / "a" / "one.txt", root / "d" / "copy.txt"));
+  ec.clear();
+  flag("copy_file onto existing", filesystem::copy_file(root / "a" / "one.txt", root / "d" / "copy.txt", ec));
+  flag("  error", bool(ec));
+  flag("copy_file skip_existing", filesystem::copy_file(root / "a" / "two.txt", root / "d" / "copy.txt", filesystem::copy_options::skip_existing));
+  number("  size kept", (long long)filesystem::file_size(root / "d" / "copy.txt"));
+  flag("copy_file overwrite_existing", filesystem::copy_file(root / "a" / "two.txt", root / "d" / "copy.txt", filesystem::copy_options::overwrite_existing));
+  number("  size now", (long long)filesystem::file_size(root / "d" / "copy.txt"));
+  filesystem::rename(root / "d" / "copy.txt", root / "d" / "moved.txt");
+  listing("d after rename", root / "d");
+  filesystem::copy(root / "a", root / "e", filesystem::copy_options::recursive);
+  listing("e (recursive copy of a)", root / "e");
+  listing("e/b", root / "e" / "b");
+  flag("remove file", filesystem::remove(root / "d" / "moved.txt"));
+  flag("remove missing", filesystem::remove(root / "d" / "moved.txt"));
+  ec.clear();
+  flag("remove non-empty dir", filesystem::remove(root / "a", ec));
+  flag("  error", bool(ec));
+  flag("equivalent", filesystem::equivalent(root / "a" / ".." / "a" / "one.txt", root / "a" / "one.txt"));
+  show("relative of canonical", filesystem::canonical(root / "a" / "b" / ".." / "one.txt").lexically_relative(filesystem::canonical(root)).generic_string());
+  show("weakly_canonical", filesystem::weakly_canonical(root / "a" / "missing" / ".." / "x").lexically_relative(filesystem::canonical(root)).generic_string());
+  number("remove_all", (long long)filesystem::remove_all(root / "e"));
+  number("remove_all missing", (long long)filesystem::remove_all(root / "e"));
+  number("remove_all root", (long long)filesystem::remove_all(root));
+  flag("exists after", filesystem::exists(root));
+  return 0;
+}

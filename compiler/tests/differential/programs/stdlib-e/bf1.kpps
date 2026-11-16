@@ -1,0 +1,298 @@
+extern "C" int printf(const char* format, ...);
+// Bitset, ForwardList, Function and the tail of the algorithms against std.
+template <size_t N> void show(const char* label, const Bitset<N>& b)
+{
+  printf("%s %s count=%d all=%d any=%d none=%d\n", label, b.to_string().c_str(), (int)b.count(), (int)b.all(), (int)b.any(), (int)b.none());
+}
+template <size_t N> void shifts()
+{
+  Bitset<N> b;
+  b.set();
+  show("all", b);
+  for (int s : {0, 1, 7, 63, 64, 65, 127, 128, 129, 1000})
+  {
+    Bitset<N> l = b << s, r = b >> s;
+    show("shl", l);
+    show("shr", r);
+  }
+  show("not", ~b);
+  Bitset<N> c;
+  show("notempty", ~c);
+  c.flip();
+  show("flip", c);
+  c.reset(0);
+  c.flip(N - 1);
+  show("edited", c);
+  printf("eq %d %d\n", (int)(b == c), (int)(b != c));
+}
+template <size_t N> void numbers()
+{
+  Bitset<N> b;
+  b.set(N - 1);
+  try { printf("ullong %llu\n", (unsigned long long)b.to_ullong()); }
+  catch (const OverflowError&) { printf("ullong overflow\n"); }
+}
+struct Count
+{
+  static int live;
+  int v;
+  Count(int v) : v(v) { live++; }
+  Count(const Count& o) : v(o.v) { live++; }
+  ~Count() { live--; }
+  bool operator==(const Count& o) const { return v == o.v; }
+  bool operator<(const Count& o) const { return v < o.v; }
+};
+int Count::live = 0;
+void printList(const char* label, const ForwardList<int>& l)
+{
+  printf("%s:", label);
+  for (int x : l)
+    printf(" %d", x);
+  printf("\n");
+}
+struct Keyed
+{
+  int key;
+  int order;
+};
+void lists()
+{
+  ForwardList<int> l = {5, 3, 9, 1, 3, 7};
+  printList("start", l);
+  l.push_front(8);
+  l.emplace_front(2);
+  printList("pushed", l);
+  l.pop_front();
+  auto it = l.insert_after(l.before_begin(), 4);
+  printf("inserted %d\n", *it);
+  it = l.insert_after(it, 6);
+  printList("inserted", l);
+  it = l.erase_after(it);
+  printf("after erase %d\n", *it);
+  printList("erased", l);
+  auto first = l.begin();
+  auto last = first;
+  ++last; ++last; ++last;
+  it = l.erase_after(first, last);
+  printf("range erase at %d, same %d\n", *it, (int)(it == last));
+  printList("range", l);
+  auto second = l.begin();
+  ++second;
+  auto empty = l.erase_after(l.begin(), second); // (first, first + 1): nothing goes
+  printf("empty range %d\n", *empty);
+  printList("nothing", l);
+  ForwardList<int> m = {1, 2, 2, 3, 2, 2};
+  printf("remove %d\n", (int)m.remove(2));
+  printList("removed", m);
+  ForwardList<int> n = {1, 2, 3, 4, 5, 6};
+  printf("removeIf %d\n", (int)n.removeIf([](int x) { return x % 2 == 0; }));
+  printList("odd", n);
+  n.reverse();
+  printList("reversed", n);
+  ForwardList<int> none;
+  none.reverse();
+  none.sort();
+  printList("none", none);
+  printf("empty %d %d\n", (int)none.empty(), (int)n.empty());
+  ForwardList<int> s = {4, 1, 3, 2, 5, 0};
+  s.sort();
+  printList("sorted", s);
+  s.sort([](int a, int b) { return a > b; });
+  printList("descending", s);
+  // stable
+  ForwardList<Keyed> k;
+  for (int i = 0; i < 40; i++)
+    k.push_front(Keyed{(i * 7) % 5, i});
+  k.sort([](const Keyed& a, const Keyed& b) { return a.key < b.key; });
+  for (const Keyed& x : k)
+    printf(" %d/%d", x.key, x.order);
+  printf("\n");
+  // copies, moves, comparison
+  ForwardList<int> a = {1, 2, 3}, b = a;
+  b.front() = 9;
+  printList("a", a);
+  printList("b", b);
+  ForwardList<int> c = move(b);
+  printList("moved", c);
+  printf("moved from empty %d\n", (int)b.empty());
+  a = c;
+  printList("assigned", a);
+  a = {7, 8};
+  printList("list assigned", a);
+  ForwardList<int>& alias = a;
+  a = alias;
+  printList("self", a);
+  ForwardList<int> p = {1, 2}, q = {1, 2, 3}, r = {1, 3};
+  printf("cmp %d %d %d %d %d\n", (int)(p == q), (int)(p != q), (int)(p < q), (int)(q < r), (int)(r > q));
+  // element of the list itself given to remove: the value must survive its node
+  ForwardList<int> self = {1, 2, 1, 3, 1};
+  printf("self remove %d\n", (int)self.remove(self.front()));
+  printList("self removed", self);
+  {
+    ForwardList<Count> o;
+    o.push_front(Count(1));
+    o.emplace_front(2);
+    o.emplace_front(1);
+    printf("live %d\n", Count::live);
+    o.remove(o.front());
+    printf("live %d\n", Count::live);
+    o.clear();
+    printf("live %d\n", Count::live);
+  }
+  printf("live %d\n", Count::live);
+}
+int twice(int x) { return x * 2; }
+struct Adder
+{
+  int by;
+  int calls = 0;
+  int operator()(int x) { calls++; return x + by; }
+};
+void functions()
+{
+  Function<int(int)> f;
+  printf("empty %d %d\n", (int)(bool)f, (int)(f == nullptr));
+  try { f(1); printf("called\n"); }
+  catch (const BadFunctionCall&) { printf("bad call\n"); }
+  f = twice;
+  printf("pointer %d\n", f(4));
+  int base = 10;
+  f = [base](int x) { return base + x; };
+  printf("lambda %d\n", f(4));
+  Function<int(int)> g = f;
+  f = nullptr;
+  printf("copy %d, source %d\n", g(1), (int)(bool)f);
+  Function<int(int)> h = move(g);
+  printf("moved %d\n", h(2));
+  // A copy of the state: each Function its own.
+  Adder adder{1};
+  Function<int(int)> one = adder, two = one;
+  one(1); one(1);
+  int fromTwo = two(1), fromOne = one(1);
+  printf("state %d %d %d\n", adder.calls, fromTwo, fromOne);
+  // ref: the object itself
+  Function<int(int)> byRef = ref(adder);
+  byRef(1); byRef(1);
+  printf("through ref %d\n", adder.calls);
+  // conversions of the result and the arguments
+  Function<double(int)> d = [](int x) { return x / 2; };
+  printf("double %g\n", d(5));
+  Function<void(int)> v = [](int x) { return x; };
+  v(1);
+  Function<long long(char)> w = [](int x) { return x + 1; };
+  printf("widened %lld\n", w('a'));
+  Function<int(int&)> mutating = [](int& x) { return ++x; };
+  int n = 1;
+  mutating(n);
+  printf("by reference %d\n", n);
+  Function<String(const String&)> text = [](const String& s) { return s + "!"; };
+  printf("%s\n", text("hi").c_str());
+  // the live count: copies destroyed
+  {
+    Count c(5);
+    int before = Count::live;
+    Function<int()> k = [c] { return c.v; };
+    Function<int()> k2 = k;
+    printf("captures %d\n", Count::live - before);
+    k = nullptr;
+    printf("captures %d\n", Count::live - before);
+    k2 = [] { return 0; };
+    printf("captures %d\n", Count::live - before);
+  }
+  Vector<Function<int()>> many;
+  for (int i = 0; i < 4; i++)
+    many.push_back([i] { return i * i; });
+  for (auto& m : many)
+    printf(" %d", m());
+  printf("\n");
+}
+void printVector(const char* label, const Vector<int>& v)
+{
+  printf("%s:", label);
+  for (int x : v)
+    printf(" %d", x);
+  printf("\n");
+}
+void tail()
+{
+  Vector<int> v = {1, 2, 3, 4, 5, 0, 0, 0};
+  auto end = copyBackward(v.begin(), v.begin() + 5, v.end());
+  printf("backward at %d\n", (int)(end - v.begin()));
+  printVector("copyBackward", v);
+  Vector<int> w = {1, 2, 3, 4, 5, 6};
+  end = moveBackward(w.begin(), w.begin() + 4, w.end());
+  printf("backward at %d\n", (int)(end - w.begin()));
+  printVector("moveBackward", w);
+  Vector<int> f(5);
+  auto fe = fillN(f.begin(), 3, 7);
+  printf("fillN at %d\n", (int)(fe - f.begin()));
+  fe = fillN(f.begin(), 0, 9);
+  printf("fillN at %d\n", (int)(fe - f.begin()));
+  fe = fillN(f.begin(), -2, 9);
+  printf("fillN at %d\n", (int)(fe - f.begin()));
+  printVector("fillN", f);
+  int next = 0;
+  fe = generateN(f.begin(), 4, [&next] { return next += 2; });
+  printVector("generateN", f);
+  fe = generateN(f.begin(), -1, [&next] { return next += 2; });
+  printf("generateN at %d, next %d\n", (int)(fe - f.begin()), next);
+  Vector<int> g(3);
+  auto ge = copyN(f.begin(), 2, g.begin());
+  printf("copyN at %d\n", (int)(ge - g.begin()));
+  ge = copyN(f.begin(), 0, g.begin());
+  printf("copyN at %d\n", (int)(ge - g.begin()));
+  printVector("copyN", g);
+  Vector<int> s = {1, 2, 3, 2, 5}, e;
+  printf("until %d %d\n", (int)(isSortedUntil(s.begin(), s.end()) - s.begin()), (int)(isSortedUntil(e.begin(), e.end()) - e.begin()));
+  Vector<int> x = {1, 2}, y = {1, 2, 3}, z = {1, 3};
+  auto three = [](const Vector<int>& a, const Vector<int>& b)
+  {
+    auto r = lexicographicalCompareThreeWay(a.begin(), a.end(), b.begin(), b.end());
+    return r < 0 ? -1 : r > 0 ? 1 : 0;
+  };
+  printf("three %d %d %d %d %d\n", three(x, y), three(y, x), three(x, x), three(y, z), three(e, e));
+  double zero = 0.0;
+  Vector<double> nan1 = {1.0, zero / zero}, nan2 = {1.0, 2.0};
+  auto r = lexicographicalCompareThreeWay(nan1.begin(), nan1.end(), nan2.begin(), nan2.end());
+  printf("nan %d %d %d\n", (int)(r < 0), (int)(r > 0), (int)(r == 0));
+}
+int main()
+{
+  shifts<1>();
+  shifts<10>();
+  shifts<63>();
+  shifts<64>();
+  shifts<65>();
+  shifts<128>();
+  shifts<130>();
+  numbers<1>();
+  numbers<32>();
+  numbers<33>();
+  numbers<64>();
+  numbers<65>();
+  numbers<130>();
+  Bitset<70> b;
+  b[3] = true;
+  b[69] = b[3];
+  bool inverted = ~b[3];
+  b[4].flip();
+  printf("%s %d %d\n", b.to_string('.', 'x').c_str(), (int)inverted, (int)b.test(69));
+  b &= ~b;
+  show("cleared", b);
+  Bitset<70> c, d;
+  c.set(1); c.set(68); d.set(68); d.set(2);
+  show("and", c & d);
+  show("or", c | d);
+  show("xor", c ^ d);
+  c <<= 2;
+  show("shifted", c);
+  d >>= 66;
+  show("shifted", d);
+  c.set(0, false);
+  c.set(5, true);
+  show("set", c);
+  lists();
+  functions();
+  tail();
+  return 0;
+}

@@ -1,0 +1,2 @@
+class A { public: int a = 1; virtual ~A() {} };
+int main() { A* z = nullptr; try { printf("%d\n", typeid(*z) == typeid(A)); } catch (...) { printf("bad_typeid\n"); } return 0; }

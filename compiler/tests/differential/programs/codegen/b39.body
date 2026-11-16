@@ -1,0 +1,54 @@
+// battery 39: pointers to members and functions: a pointer to a virtual member function calls the
+// override, one to a base's member applies to a derived object (and to a second base's part), a
+// pointer to a data member reads and writes, null member pointers compare, captureless lambdas as
+// function pointers, an array of function pointers, a function returning a function pointer.
+class Shape
+{
+public:
+  int sides = 0;
+  virtual int area() const { return 0; }
+  int twice() const { return area() * 2; }
+  virtual ~Shape() {}
+};
+class Extra
+{
+public:
+  int bonus = 7;
+  int addBonus(int v) const { return v + bonus; }
+};
+class Square : public Shape, public Extra
+{
+public:
+  int side = 3;
+  int area() const override { return side * side; }
+};
+int add(int a, int b) { return a + b; }
+int sub(int a, int b) { return a - b; }
+int mul(int a, int b) { return a * b; }
+using Op = int (*)(int, int);
+Op choose(char c) { return c == '+' ? add : c == '-' ? sub : mul; }
+int main()
+{
+  Square sq;
+  int (Shape::*virt)() const = &Shape::area;
+  int (Shape::*plain)() const = &Shape::twice;
+  int (Extra::*second)(int) const = &Extra::addBonus;
+  const Shape& asShape = sq;
+  printf("member fn %d %d %d %d\n", (sq.*virt)(), (asShape.*virt)(), (sq.*plain)(), (sq.*second)(5));
+  int Square::*field = &Square::side;
+  int Shape::*baseField = &Shape::sides;
+  int Extra::*secondField = &Extra::bonus;
+  sq.*field = 4;
+  sq.*baseField = 4;
+  sq.*secondField = 10;
+  printf("member data %d %d %d %d %d\n", sq.*field, sq.*baseField, sq.*secondField, sq.area(), sq.addBonus(1));
+  int Square::*none = nullptr;
+  printf("null %d %d\n", (int)(none == nullptr), (int)(field != nullptr));
+  Op lambda = [](int a, int b) { return a * 10 + b; };
+  Op table[3] = {add, sub, lambda};
+  int sum = 0;
+  for (Op op : table)
+    sum = sum * 100 + op(7, 3);
+  printf("functions %d %d %d %d\n", sum, choose('+')(2, 3), choose('-')(2, 3), choose('*')(2, 3));
+  return 0;
+}

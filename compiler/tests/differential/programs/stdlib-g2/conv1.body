@@ -1,0 +1,136 @@
+// Text to numbers (stoi, stol, stoll, stoul, stoull, stof, stod) and StringView, at their edges.
+
+void tryInt(const char* text, int base)
+{
+  try
+  {
+    size_t used = 0;
+    long long v = stoll(String(text), &used, base);
+    printf("stoll(%s, %d) = %lld used %d\n", text, base, v, (int)used);
+  }
+  catch (const InvalidArgument&)
+  {
+    printf("stoll(%s, %d) invalid\n", text, base);
+  }
+  catch (const OutOfRange&)
+  {
+    printf("stoll(%s, %d) out of range\n", text, base);
+  }
+}
+
+void tryInt32(const char* text)
+{
+  try
+  {
+    size_t used = 0;
+    int v = stoi(String(text), &used);
+    printf("stoi(%s) = %d used %d\n", text, v, (int)used);
+  }
+  catch (const InvalidArgument&)
+  {
+    printf("stoi(%s) invalid\n", text);
+  }
+  catch (const OutOfRange&)
+  {
+    printf("stoi(%s) out of range\n", text);
+  }
+}
+
+void tryUnsigned(const char* text)
+{
+  try
+  {
+    size_t used = 0;
+    unsigned long long v = stoull(String(text), &used);
+    printf("stoull(%s) = %llu used %d\n", text, v, (int)used);
+  }
+  catch (const InvalidArgument&)
+  {
+    printf("stoull(%s) invalid\n", text);
+  }
+  catch (const OutOfRange&)
+  {
+    printf("stoull(%s) out of range\n", text);
+  }
+}
+
+void tryDouble(const char* text)
+{
+  try
+  {
+    size_t used = 0;
+    double v = stod(String(text), &used);
+    printf("stod(%s) = %.17g used %d\n", text, v, (int)used);
+  }
+  catch (const InvalidArgument&)
+  {
+    printf("stod(%s) invalid\n", text);
+  }
+  catch (const OutOfRange&)
+  {
+    printf("stod(%s) out of range\n", text);
+  }
+}
+
+void tryFloat(const char* text)
+{
+  try
+  {
+    size_t used = 0;
+    float v = stof(String(text), &used);
+    printf("stof(%s) = %.9g used %d\n", text, v, (int)used);
+  }
+  catch (const InvalidArgument&)
+  {
+    printf("stof(%s) invalid\n", text);
+  }
+  catch (const OutOfRange&)
+  {
+    printf("stof(%s) out of range\n", text);
+  }
+}
+
+int main()
+{
+  for (const char* t : {"0", "42", "-42", "+7", "  12", "\t\n 5x", "x5", "", " ", "-", "+", "9223372036854775807", "9223372036854775808", "-9223372036854775808",
+                        "-9223372036854775809", "99999999999999999999", "0x1A", "012", "1e3", "3.9", "--1", "- 1"})
+    tryInt(t, 10);
+  for (const char* t : {"0x1A", "1A", "ff", "-ff", "0X", "z", "777"})
+    tryInt(t, 16);
+  for (const char* t : {"0x1A", "012", "0b1", "10"})
+    tryInt(t, 0);
+  for (const char* t : {"777", "8", "-17"})
+    tryInt(t, 8);
+  for (const char* t : {"zz", "ZZ", "10"})
+    tryInt(t, 36);
+  for (const char* t : {"2147483647", "2147483648", "-2147483648", "-2147483649", "123abc"})
+    tryInt32(t);
+  for (const char* t : {"18446744073709551615", "18446744073709551616", "-1", "-0", " +3"})
+    tryUnsigned(t);
+  for (const char* t : {"0", "1.5", "-1.5e3", ".5", "5.", "1e", "1e+", "inf", "-INF", "infinity", "nan", "NaN(123)", "0x1p4", "0x.8", "1e400", "-1e400", "1e-400",
+                        "4.9e-324", "2.2250738585072011e-308", " 7", "abc", "1,5", "1.7976931348623157e308", "0.30000000000000004", "123456789012345678901234567890"})
+    tryDouble(t);
+  for (const char* t : {"0.1", "3.4028235e38", "3.5e38", "1e-46", "1.4e-45", "16777217"})
+    tryFloat(t);
+
+  StringView v = "hello world";
+  printf("view find %d rfind %d substr [%s] size %d\n", (int)v.find("o"), (int)v.rfind("o"), String(v.substr(6)).c_str(), (int)v.size());
+  StringView w = v;
+  w.remove_prefix(2);
+  w.remove_suffix(3);
+  printf("view trimmed [%s] starts %d ends %d\n", String(w).c_str(), (int)w.starts_with("ll"), (int)w.ends_with("wo"));
+  // (kpp: does not compile)
+  // (kpp: does not compile)
+  printf("view substr at end [%s]\n", String(v.substr(11)).c_str());
+  try
+  {
+    v.substr(12);
+    printf("view substr past end did not throw\n");
+  }
+  catch (...)
+  {
+    printf("view substr past end threw\n");
+  }
+  printf("to_string %s %s %s\n", toString(-123).c_str(), toString(18446744073709551615ULL).c_str(), toString(2147483647).c_str());
+  return 0;
+}

@@ -1,0 +1,74 @@
+// virtual calls in constructors and destructors
+class A { public: int tag = 1; A() { printf("A: %d\n", who()); touch(); } virtual ~A() { printf("~A: %d\n", who()); touch(); } virtual int who() { return 1; } virtual void hook() { printf("A::hook\n"); } void touch() { hook(); } };
+class B : public A { public: int v = 22; B() { printf("B: %d\n", who()); touch(); } ~B() override { printf("~B: %d\n", who()); touch(); } int who() override { return v; } void hook() override { printf("B::hook %d\n", v); } };
+class C : public B { public: int w = 33; C() { printf("C: %d\n", who()); touch(); } ~C() override { printf("~C: %d\n", who()); touch(); } int who() override { return w; } void hook() override { printf("C::hook %d\n", w); } };
+void chain() { C c; printf("mid %d\n", c.who()); }
+// multiple bases: the second base sees itself, also through a pointer the first stored
+class M1;
+M1* g1 = nullptr;
+class M1 { public: int x = 1; M1(); virtual ~M1(); virtual int f() { return 100; } };
+M1::M1() { g1 = this; printf("M1 %d\n", f()); }
+M1::~M1() { printf("~M1 %d\n", f()); }
+class M2 { public: int y = 2; M2() { printf("M2 %d %d\n", f(), g1->f()); } virtual ~M2() { printf("~M2 %d %d\n", f(), g1->f()); } virtual int f() { return 200; } };
+class M3 : public M1, public M2 { public: int z = 3; M3() { printf("M3 %d %d %d\n", f(), M1::f(), M2::f()); } ~M3() override { printf("~M3 %d\n", f()); } int f() override { return 300; } };
+void multiple() { M3 m; M1& a = m; M2& b = m; printf("%d %d\n", a.f(), b.f()); }
+// member initializers and members given this
+class Own;
+class Part { public: Own* o; Part(Own* p); ~Part(); };
+class Base2 { public: Base2() {} virtual ~Base2() {} virtual int id() { return 1; } };
+class Own : public Base2 { public: int n; Part part; int k; Own() : n(id() * 7), part(this), k(id() + 1) { printf("Own %d %d %d\n", n, k, id()); } ~Own() override { printf("~Own\n"); } int id() override { return 5; } };
+class Own2 : public Own { public: int id() override { return 9; } };
+Part::Part(Own* p) : o(p) { printf("Part %d\n", p->id()); }
+Part::~Part() { printf("~Part %d\n", o->id()); }
+void members() { Own2 a; printf("final %d\n", a.id()); }
+// base's arguments evaluated with a virtual call on a base already built
+class V0 { public: int q = 3; virtual ~V0() {} virtual int val() { return q; } };
+class V1 { public: int r; V1(int x) : r(x) { printf("V1 %d\n", x); } virtual ~V1() {} };
+class V2 : public V0, public V1 { public: V2() : V1(V0::val() + 1) { printf("V2 %d\n", val()); } int val() override { return 40; } };
+void args() { V2 v; printf("%d\n", v.r); }
+// dynamic_cast and typeid during construction and destruction
+class T0 { public: virtual ~T0(); T0(); virtual int f() { return 0; } };
+class T1 : public T0 { public: T1(); ~T1() override; int f() override { return 1; } };
+class T2 : public T1 { public: T2(); ~T2() override; int f() override { return 2; } };
+T0::T0() { printf("%d %d %d %d\n", dynamic_cast<T1*>(this) != nullptr, dynamic_cast<T0*>(this) == this, typeid(*this) == typeid(T0), typeid(*this) == typeid(T2)); }
+T1::T1() { T0* p = this; printf("%d %d %d %d\n", dynamic_cast<T1*>(p) != nullptr, dynamic_cast<T2*>(p) != nullptr, typeid(*p) == typeid(T1), p->f()); }
+T2::T2() { T0* p = this; printf("%d %d %d %d\n", dynamic_cast<T1*>(p) != nullptr, dynamic_cast<T2*>(p) != nullptr, typeid(*p) == typeid(T2), p->f()); }
+T2::~T2() { T0* p = this; printf("~%d %d\n", dynamic_cast<T2*>(p) != nullptr, typeid(*p) == typeid(T2)); }
+T1::~T1() { T0* p = this; printf("~%d %d %d\n", dynamic_cast<T2*>(p) != nullptr, dynamic_cast<T1*>(p) != nullptr, typeid(*p) == typeid(T1)); }
+T0::~T0() { printf("~%d %d\n", dynamic_cast<T1*>(this) != nullptr, typeid(*this) == typeid(T0)); }
+void rtti() { T2 t; }
+// cross casts while the second base is built
+class X1 { public: virtual ~X1() {} };
+class X2 { public: X2(); virtual ~X2(); };
+class X3 : public X1, public X2 { public: X3() { printf("X3 %d\n", dynamic_cast<X1*>(static_cast<X2*>(this)) != nullptr); } };
+X2::X2() { printf("X2 %d %d\n", dynamic_cast<X1*>(this) != nullptr, dynamic_cast<X3*>(this) != nullptr); }
+X2::~X2() { printf("~X2 %d\n", dynamic_cast<X1*>(this) != nullptr); }
+void crossing() { X3 x; }
+// a constructor that throws: destructors see their own class
+class E0 { public: virtual ~E0() { printf("~E0 %d\n", f()); } virtual int f() { return 0; } };
+class E1 : public E0 { public: E1() { printf("E1 %d\n", f()); } ~E1() override { printf("~E1 %d\n", f()); } int f() override { return 1; } };
+class E2 : public E1 { public: E2() { printf("E2 %d\n", f()); throw 3; } ~E2() override { printf("~E2 never\n"); } int f() override { return 2; } };
+void throwing() { try { E2 e; } catch (int x) { printf("caught %d\n", x); } try { E0* p = new E2; delete p; } catch (int x) { printf("caught %d\n", x); } }
+// member function pointers, lambdas, a stored std-less callback
+class F0 { public: int (F0::*pm)(); F0() { pm = &F0::v; printf("%d\n", (this->*pm)()); auto l = [this] { return v(); }; printf("%d\n", l()); } virtual ~F0() { printf("%d\n", (this->*pm)()); } virtual int v() { return 1; } };
+class F1 : public F0 { public: F1() { printf("%d\n", (this->*pm)()); } int v() override { return 2; } };
+void pointers() { F1 f; printf("%d\n", (f.*f.pm)()); }
+// arrays, new, placement, temporaries, member objects
+class G0 { public: int i; G0() : i(0) { printf("G0 %d\n", g()); } virtual ~G0() { printf("~G0 %d\n", g()); } virtual int g() { return 0; } };
+class G1 : public G0 { public: int g() override { return 1; } ~G1() override { printf("~G1 %d\n", g()); } };
+class G2 { public: G1 m; G1 arr[2]; };
+alignas(16) char buffer[256];
+void arrays() { { G1 a[2]; } G1* p = new G1[2]; delete[] p; G1* q = new (buffer) G1; q->~G1(); G1(); { G2 s; } G0* v = new G1; delete v; }
+// a template base
+template<class T> class Tb { public: Tb() { printf("Tb %d\n", name()); } virtual ~Tb() { printf("~Tb %d\n", name()); } virtual int name() { return sizeof(T); } };
+class Td : public Tb<int> { public: Td() { printf("Td %d\n", name()); } int name() override { return 77; } };
+template<class T> class Tm : public Tb<T> { public: int name() override { return 88; } Tm() { printf("Tm %d\n", this->name()); } };
+void templates() { Td t; Tm<double> m; }
+// a virtual destructor called explicitly and qualified calls inside destructors
+class Q0 { public: virtual ~Q0() { printf("~Q0\n"); } virtual int f() { return 1; } };
+class Q1 : public Q0 { public: ~Q1() override { printf("~Q1 %d %d\n", f(), Q0::f()); } int f() override { return 2; } };
+void qualified() { alignas(16) char b[64]; Q0* p = new (b) Q1; p->~Q0(); printf("%d\n", 1); }
+// final class, a call that needs no vtable in the constructor
+class Fi final : public Q0 { public: Fi() { printf("%d\n", f()); } int f() override { return 9; } };
+void finals() { Fi x; }
+int main() { chain(); multiple(); members(); args(); rtti(); crossing(); throwing(); pointers(); arrays(); templates(); qualified(); finals(); return 0; }

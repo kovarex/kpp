@@ -1,0 +1,71 @@
+// pointer handlers: exact matches for T*&, conversions for T* and const T&, nullptr, null pointers
+struct A { int a = 1; };
+struct B { int b = 2; };
+struct C : A, B { int c = 3; };
+C object;
+int which(int kind)
+{
+  try
+  {
+    if (kind == 0) throw &object;
+    if (kind == 1) throw static_cast<C*>(nullptr);
+    if (kind == 2) throw nullptr;
+    if (kind == 3) throw "text";
+    if (kind == 4) throw static_cast<const C*>(&object);
+    if (kind == 5) throw static_cast<B*>(&object);
+    if (kind == 6) throw 5;
+  }
+  catch (B*& exact)
+  {
+    printf("exact B*& %d ", exact ? exact->b : -1);
+    return 1;
+  }
+  catch (B* const& p)
+  {
+    printf("B* const& %d %d ", p ? p->b : -1, p == static_cast<B*>(&object));
+    return 2;
+  }
+  catch (char* p)
+  {
+    printf("char* ");
+    return 3;
+  }
+  catch (const void* p)
+  {
+    printf("const void* %d ", p == static_cast<const void*>(&object));
+    return 4;
+  }
+  catch (...)
+  {
+    printf("any ");
+    return 5;
+  }
+  return 0;
+}
+int byValue(int kind)
+{
+  try
+  {
+    if (kind == 0) throw &object;
+    if (kind == 1) throw static_cast<C*>(nullptr);
+    if (kind == 2) throw nullptr;
+  }
+  catch (const A* p)
+  {
+    printf("const A* %d ", p ? p->a : -1);
+    return 1;
+  }
+  catch (...)
+  {
+    return 5;
+  }
+  return 0;
+}
+int main()
+{
+  for (int kind = 0; kind <= 6; ++kind)
+    printf("| %d\n", which(kind));
+  for (int kind = 0; kind <= 2; ++kind)
+    printf("| %d\n", byValue(kind));
+  return 0;
+}

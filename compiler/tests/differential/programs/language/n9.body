@@ -1,0 +1,96 @@
+// templates as the game writes them: partial ordering, specialization, CRTP, tag dispatch, non-type parameters, deduction
+template<class T> const char* kind(T) { return "T"; }
+template<class T> const char* kind(T*) { return "T*"; }
+template<class T> const char* kind(const T*) { return "const T*"; }
+template<class T, int N> const char* kind(T (&)[N]) { return "T[N]"; }
+const char* kind(int) { return "int"; }
+const char* kind(const char*) { return "cstr"; }
+template<> const char* kind<double>(double) { return "double spec"; }
+template<class T> const char* rfk(T&) { return "T&"; }
+template<class T> const char* rfk(const T&) { return "const T&"; }
+template<class T> const char* rfk(T&&) { return "T&&"; }
+template<class T> struct S { static const char* n() { return "primary"; } };
+template<class T> struct S<T*> { static const char* n() { return "ptr"; } };
+template<class T> struct S<const T> { static const char* n() { return "const"; } };
+template<class T> struct S<const T*> { static const char* n() { return "ptr const"; } };
+template<class T, int N> struct S<T[N]> { static const char* n() { return "array"; } };
+template<class T> struct S<T&> { static const char* n() { return "ref"; } };
+template<class R, class... A> struct S<R(A...)> { static const char* n() { return "fn"; } };
+template<class R, class C> struct S<R C::*> { static const char* n() { return "member"; } };
+template<> struct S<int> { static const char* n() { return "int"; } };
+template<class A, class B> struct P2 { static int n() { return 0; } };
+template<class A> struct P2<A, A> { static int n() { return 1; } };
+template<class A> struct P2<A, int> { static int n() { return 2; } };
+template<> struct P2<int, int> { static int n() { return 3; } };
+template<class A, class B> struct P2<A*, B*> { static int n() { return 4; } };
+template<class D> struct Crtp { int run() { return static_cast<D*>(this)->impl() * 2; } static int count; int shared() { return D::value; } };
+template<class D> int Crtp<D>::count = 0;
+struct C1 : public Crtp<C1> { int impl() { return 1; } static const int value = 7; };
+struct C2 : public Crtp<C2> { int impl() { return 2; } static const int value = 8; };
+template<int N> struct Fact { static const long long value = N * Fact<N - 1>::value; };
+template<> struct Fact<0> { static const long long value = 1; };
+template<unsigned char C> constexpr int charv = C;
+template<long long N> constexpr long long llv = N * 2;
+template<bool B, class T, class F> struct If { using type = T; };
+template<class T, class F> struct If<false, T, F> { using type = F; };
+template<auto V> constexpr auto autoV = V;
+template<class T, T V> struct Const { static constexpr T value = V; };
+enum Tag { ta, tb };
+template<Tag G> int tagged() { return G == ta ? 1 : 2; }
+template<class T> struct Count { static int n; Count() { n++; } };
+template<class T> int Count<T>::n = 0;
+template<class T = int, int N = sizeof(T)> struct Def { static int v() { return N; } };
+template<template<class> class C, class T> struct Wrap { C<T> c; int size() { return sizeof(c); } };
+template<class T> struct One { T t; };
+template<class... Ts> struct Pack { static constexpr int n = sizeof...(Ts); };
+template<class T, class... Ts> int sum(T t, Ts... ts) { if constexpr (sizeof...(ts) == 0) return t; else return t + sum(ts...); }
+template<class... Ts> int cnt(Ts&&...) { return sizeof...(Ts); }
+template<class T> int deduce(T a, T b) { return 1; }
+int deduce(int a, double b) { return 2; }
+template<class T> T maxOf(T a, T b) { return a > b ? a : b; }
+template<class R, class A> R conv(A a) { return (R)a; }
+template<class T> auto addr(T& t) -> decltype(&t) { return &t; }
+template<class T> decltype(auto) pass(T&& t) { return static_cast<T&&>(t); }
+template<class F, class... A> auto invoke2(F f, A... a) { return f(a...); }
+template<class T, int N> constexpr int lenOf(T (&)[N]) { return N; }
+template<class T> struct Mem { T v; template<class U> Mem<U> as() const { return Mem<U>{ (U)v }; } template<class U> IMPLICIT operator Mem<U>() const { return Mem<U>{ (U)(v + 1) }; } };
+template<class T> struct Outer2 { template<class U> struct In { static int n() { return sizeof(T) * 10 + sizeof(U); } }; };
+template<class T> int useIn() { return Outer2<T>::template In<char>::n(); }
+template<class T> struct Ctad { T v; Ctad(T x) : v(x) {} };
+struct Plain { int a; template<class T> Plain(T t) : a(sizeof(T)) {} Plain(int) : a(-1) {} };
+template<class T> struct IsPtr { static constexpr bool v = false; }; template<class T> struct IsPtr<T*> { static constexpr bool v = true; };
+template<class T> int dispatch(T t) { if constexpr (IsPtr<T>::v) return *t; else return t + 1; }
+template<int I> struct Idx { static int get(int (&a)[3]) { return a[I]; } };
+template<class T> void bump(T& t) { t += 1; }
+template<class T> struct Node { T v; Node<T>* next = nullptr; int len() { return next ? 1 + next->len() : 1; } };
+int main()
+{
+  int i = 0; const int ci = 0; int arr[3] = { 0 }; const char* s = "x"; double d = 1; float f = 1;
+  printf("%s %s %s %s %s %s %s %s\n", kind(1), kind(f), kind(d), kind(&i), kind(&ci), "x", kind(s), kind("lit"));
+  printf("%s %s %s %s\n", rfk(i), rfk(ci), rfk(1), rfk(static_cast<int&&>(i)));
+  printf("%s %s %s %s %s %s %s %s %s %s %s\n", S<char>::n(), S<int>::n(), S<int*>::n(), S<const int>::n(), S<const int*>::n(), S<int[3]>::n(), S<int&>::n(), S<int(char)>::n(), S<int C1::*>::n(), S<int* const>::n(), "x");
+  printf("%d %d %d %d %d\n", P2<char, double>::n(), P2<char, char>::n(), P2<char, int>::n(), P2<int, int>::n(), P2<int*, char*>::n());
+  C1 c1; C2 c2; C1::count = 5; printf("%d %d %d %d %d %d\n", c1.run(), c2.run(), Crtp<C1>::count, Crtp<C2>::count, c1.shared(), c2.shared());
+  printf("%lld %d %lld %d\n", Fact<15>::value, charv<200>, llv<5000000000>, (int)sizeof(If<(sizeof(int) > 2), char, double>::type));
+  printf("%d %d %d %d\n", autoV<5>, (int)autoV<'c'>, 8, (int)Const<char, 'a'>::value);
+  printf("%d %d\n", tagged<ta>(), tagged<tb>());
+  Count<int> a1, a2; Count<char> a3; printf("%d %d %d\n", Count<int>::n, Count<char>::n, Count<double>::n);
+  printf("%d %d %d\n", Def<>::v(), Def<char>::v(), Def<char, 9>::v());
+  Wrap<One, double> w; printf("%d\n", w.size());
+  printf("%d %d %d %d %d\n", Pack<>::n, Pack<int, char>::n, sum(1), sum(1, 2, 3), cnt(1, i, s));
+  printf("%d %d %d %d\n", deduce(1, 2), deduce(1, 2.0), deduce(1.0, 2.0), maxOf<double>(1, 2.5) > 2);
+  printf("%d %d %.1f\n", conv<int>(2.5), conv<char, int>(321), conv<double>(1));
+  printf("%d %d\n", addr(i) == &i, addr(arr) == &arr);
+  int&& rr = pass(1); printf("%d ", rr); pass(i) = 5; printf("%d\n", i);
+  printf("%d\n", invoke2([](int a, int b) { return a * b; }, 3, 4));
+  printf("%d %d\n", lenOf(arr), lenOf("abcd"));
+  Mem<double> m{ 2.5 }; Mem<int> mi = m.as<int>(); Mem<int> mj = m; printf("%d %d\n", mi.v, mj.v);
+  printf("%d %d\n", useIn<int>(), Outer2<char>::In<double>::n());
+  Ctad c{ 5 }; Ctad c3{ 2.5 }; printf("%d %d %d\n", (int)sizeof(c.v), (int)sizeof(c3.v), 1);
+  Plain p1(1), p2(1.0), p3('c'); printf("%d %d %d\n", p1.a, p2.a, p3.a);
+  int v = 7; printf("%d %d\n", dispatch(&v), dispatch(v));
+  int a3b[3] = { 1, 2, 3 }; printf("%d\n", Idx<2>::get(a3b));
+  char ch = 127; bump(ch); float ff = 1.5f; bump(ff); printf("%d %.1f\n", ch, ff);
+  Node<int> n1{ 1 }, n2{ 2, &n1 }; printf("%d\n", n2.len());
+  return 0;
+}

@@ -1,0 +1,25 @@
+// a local lambda named like a copy of the library's accumulate
+template<typename It, typename T>
+T gatherAll(It first, It last, T init)
+{
+  for (; first != last; ++first)
+    init = static_cast<T&&>(init) + *first;
+  return init;
+}
+template<typename It, typename T, typename F>
+T gatherAll(It first, It last, T init, F op)
+{
+  for (; first != last; ++first)
+    init = op(static_cast<T&&>(init), *first);
+  return init;
+}
+int main()
+{
+  auto gatherAll = [](int v) { return v * 10; };
+  printf("H1 %d\n", gatherAll(5));
+  auto max = [](int v) { return v * 20; };
+  printf("H2 %d\n", max(5));
+  auto find = [](int v) { return v * 30; };
+  printf("H3 %d\n", find(5));
+  return 0;
+}

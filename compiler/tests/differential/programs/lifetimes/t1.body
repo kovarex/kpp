@@ -1,0 +1,81 @@
+// thread_local: one object per thread, initialized on the thread's first use (dynamic) or before
+// (constant), destroyed when the thread ends, in reverse order of construction; static thread_local
+// members and locals; the address differs per thread.
+extern "C" uintptr_t _beginthreadex(void* security, unsigned stack, unsigned (*start)(void*), void* arg, unsigned flags, unsigned* id);
+extern "C" unsigned long WaitForSingleObject(void* handle, unsigned long milliseconds);
+extern "C" int CloseHandle(void* handle);
+
+int events[64];
+int logged = 0;
+void note(int v)
+{
+  events[logged++] = v;
+}
+
+int counter = 0;
+int nextId() { return ++counter; }
+
+thread_local int constantInit = 5;
+thread_local int dynamicInit = nextId() * 100;
+
+struct Tracked
+{
+  int id;
+  Tracked(int i) : id(i) { note(1000 + i); }
+  ~Tracked() { note(2000 + id); }
+};
+
+thread_local Tracked first{1};
+thread_local Tracked second{2};
+
+struct Holder
+{
+  static thread_local int perThread;
+};
+thread_local int Holder::perThread = 7;
+
+int localCount()
+{
+  thread_local int calls = 0;
+  return ++calls;
+}
+
+Tracked& lazyLocal()
+{
+  thread_local Tracked inFunction{3};
+  return inFunction;
+}
+
+unsigned worker(void* arg)
+{
+  int which = *(int*)arg;
+  constantInit += which;
+  Holder::perThread += which;
+  note(10 + which);
+  note(dynamicInit);
+  note(first.id + second.id);
+  note(localCount());
+  note(localCount());
+  note(lazyLocal().id);
+  note(constantInit);
+  note(Holder::perThread);
+  return 0;
+}
+
+int main()
+{
+  printf("main %d %d %d\n", constantInit, Holder::perThread, localCount());
+  int one = 1;
+  void* t = (void*)_beginthreadex(nullptr, 0, worker, &one, 0, nullptr);
+  WaitForSingleObject(t, 0xffffffff);
+  CloseHandle(t);
+  int two = 2;
+  t = (void*)_beginthreadex(nullptr, 0, worker, &two, 0, nullptr);
+  WaitForSingleObject(t, 0xffffffff);
+  CloseHandle(t);
+  printf("main again %d %d %d\n", constantInit, Holder::perThread, localCount());
+  for (int i = 0; i < logged; ++i)
+    printf("%d ", events[i]);
+  printf("\n");
+  return 0;
+}

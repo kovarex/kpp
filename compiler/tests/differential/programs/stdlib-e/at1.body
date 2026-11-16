@@ -1,0 +1,100 @@
+// Attributes: the ones with meaning (layout of [[no_unique_address]] and alignas, control flow through
+// [[fallthrough]], [[likely]] and [[unlikely]], [[noreturn]] functions) and that the rest are taken.
+struct Empty
+{
+};
+struct Other
+{
+};
+struct WithEmpty
+{
+  int value;
+  [[no_unique_address]] Empty tag;
+};
+struct WithTwo
+{
+  [[no_unique_address]] Empty a;
+  [[no_unique_address]] Other b;
+  int value;
+};
+struct SameTwice
+{
+  [[no_unique_address]] Empty a;
+  [[no_unique_address]] Empty b; // (two of one empty type: distinct addresses)
+  char c;
+};
+struct alignas(32) Aligned
+{
+  char c;
+};
+struct Members
+{
+  char c;
+  alignas(16) int i;
+  alignas(8) char d;
+};
+
+[[nodiscard]] int important() { return 42; }
+[[deprecated("use important")]] int old() { return 7; }
+[[nodiscard("because")]] int reasoned() { return 1; }
+
+int classify(int n)
+{
+  int r = 0;
+  switch (n)
+  {
+  case 0:
+    r += 1;
+    [[fallthrough]];
+  case 1:
+    r += 10;
+    [[fallthrough]];
+  case 2:
+    r += 100;
+    break;
+  default:
+    r = -1;
+  }
+  return r;
+}
+
+int branch(int n)
+{
+  if (n > 0) [[likely]]
+    return 1;
+  else [[unlikely]]
+    return 2;
+}
+
+[[noreturn]] void fail(int code)
+{
+  printf("fail %d\n", code);
+  fflush(stdout);
+  exit(code == 3 ? 0 : 1);
+}
+
+int pick([[maybe_unused]] int unused, int used)
+{
+  [[maybe_unused]] int local = 5;
+  return used;
+}
+
+int main()
+{
+  printf("sizeof WithEmpty %d\n", (int)sizeof(WithEmpty));
+  printf("sizeof WithTwo %d\n", (int)sizeof(WithTwo));
+  printf("sizeof SameTwice %d\n", (int)sizeof(SameTwice));
+  SameTwice twice;
+  printf("SameTwice a and b distinct %d\n", (int)((void*)&twice.a != (void*)&twice.b));
+  printf("sizeof Aligned %d alignof %d\n", (int)sizeof(Aligned), (int)alignof(Aligned));
+  printf("sizeof Members %d alignof %d offsets i %d d %d\n", (int)sizeof(Members), (int)alignof(Members), (int)offsetof(Members, i), (int)offsetof(Members, d));
+  alignas(64) char buffer[3];
+  printf("buffer aligned %d\n", (int)(((unsigned long long)(void*)buffer) % 64 == 0));
+  Aligned many[3];
+  printf("array stride %d\n", (int)((char*)&many[1] - (char*)&many[0]));
+  printf("important %d old %d reasoned %d\n", important(), old(), reasoned());
+  for (int n = -1; n < 4; ++n)
+    printf("classify %d -> %d, branch %d\n", n, classify(n), branch(n));
+  printf("pick %d\n", pick(1, 2));
+  fail(3);
+}

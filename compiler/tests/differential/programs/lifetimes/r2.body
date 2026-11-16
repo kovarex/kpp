@@ -1,0 +1,136 @@
+// Concepts and requires-clauses: subsumption between constrained overloads, requires-expressions
+// (simple, type, compound, nested requirements), constrained partial specializations, constrained
+// members of class templates, abbreviated function templates, conjunctions and disjunctions.
+template<typename T>
+struct IsInt
+{
+  static constexpr bool value = false;
+};
+template<> struct IsInt<int> { static constexpr bool value = true; };
+template<> struct IsInt<unsigned> { static constexpr bool value = true; };
+template<> struct IsInt<short> { static constexpr bool value = true; };
+template<> struct IsInt<long long> { static constexpr bool value = true; };
+template<> struct IsInt<char> { static constexpr bool value = true; };
+template<> struct IsInt<bool> { static constexpr bool value = true; };
+template<typename T>
+struct IsFloat
+{
+  static constexpr bool value = false;
+};
+template<> struct IsFloat<float> { static constexpr bool value = true; };
+template<> struct IsFloat<double> { static constexpr bool value = true; };
+template<typename T>
+concept Integral = IsInt<T>::value;
+template<typename T>
+concept Signed = Integral<T> && (T(-1) < T(0));
+template<typename T>
+concept Floating = IsFloat<T>::value;
+template<typename T>
+concept Number = Integral<T> || Floating<T>;
+template<typename T>
+concept HasSize = requires(const T& t) {
+  t.size();
+  { t.size() } -> Integral;
+};
+template<typename T>
+concept HasValueType = requires { typename T::value_type; };
+template<typename T>
+concept Addable = requires(T a, T b) { a + b; };
+template<typename T>
+concept Small = sizeof(T) <= 2;
+
+template<Integral T>
+const char* kind(T) { return "integral"; }
+template<Signed T>
+const char* kind(T) { return "signed"; }
+template<Floating T>
+const char* kind(T) { return "floating"; }
+template<typename T>
+const char* kind(T) { return "other"; }
+
+template<typename T>
+  requires Number<T>
+const char* num(T) { return "number"; }
+template<typename T>
+  requires Number<T> && Small<T>
+const char* num(T) { return "small number"; }
+
+template<typename T>
+struct Traits
+{
+  static constexpr int id = 0;
+};
+template<Integral T>
+struct Traits<T>
+{
+  static constexpr int id = 1;
+};
+template<Signed T>
+struct Traits<T>
+{
+  static constexpr int id = 2;
+};
+template<Floating T>
+struct Traits<T>
+{
+  static constexpr int id = 3;
+};
+
+struct Sized
+{
+  int n;
+  int size() const { return n; }
+};
+struct SizedWrong
+{
+  const char* size() const { return "no"; }
+};
+struct WithValue
+{
+  using value_type = int;
+};
+
+template<typename T>
+struct Container
+{
+  T item;
+  int describe() const requires Integral<T> { return 1; }
+  int describe() const requires Floating<T> { return 2; }
+  int describe() const { return 3; }
+};
+
+template<typename T>
+int sizeOrZero(const T& t)
+{
+  if constexpr (HasSize<T>)
+    return (int)t.size();
+  else
+    return 0;
+}
+
+template<Number T>
+auto twice(T x) { return x + x; }
+
+template<typename T>
+  requires(!Integral<T>)
+int notIntegral(T) { return 1; }
+int notIntegral(int) { return 2; }
+
+int main()
+{
+  unsigned u = 1;
+  printf("kind %s %s %s %s %s\n", kind(u), kind(-1), kind(1.5), kind("x"), kind('c'));
+  printf("num %s %s %s\n", num(1), num((short)1), num(2.0));
+  printf("traits %d %d %d %d %d\n", Traits<unsigned>::id, Traits<long long>::id, Traits<double>::id, Traits<Sized>::id, Traits<bool>::id);
+  printf("concepts %d %d %d %d %d %d\n", HasSize<Sized>, HasSize<SizedWrong>, HasSize<int>, HasValueType<WithValue>, HasValueType<Sized>, Addable<Sized>);
+  printf("small %d %d %d\n", Small<char>, Small<short>, Small<int>);
+  Container<int> ci{1};
+  Container<float> cf{1.0f};
+  Container<Sized> cs{{1}};
+  printf("members %d %d %d\n", ci.describe(), cf.describe(), cs.describe());
+  Sized s{7};
+  printf("ifconstexpr %d %d\n", sizeOrZero(s), sizeOrZero(5));
+  printf("abbreviated %d %.1f\n", twice(21), twice(1.25));
+  printf("negated %d %d\n", notIntegral(1), notIntegral(1.0));
+  return 0;
+}

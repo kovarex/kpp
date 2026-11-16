@@ -1,0 +1,8 @@
+int main()
+{
+  auto gl = [](auto... xs) { return (xs + ... + 0); };
+  printf("%d\n", gl(1, 2, 3));
+  auto g0 = [](auto... xs) { return (int)sizeof...(xs); };
+  printf("%d %d\n", g0(), g0(1, 'a'));
+  return 0;
+}

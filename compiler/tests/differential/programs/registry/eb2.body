@@ -1,0 +1,18 @@
+enum Unsigned4 { u0, u1, u2, u3 };
+enum class Color : signed char { red = -2, green = 1 };
+struct S { Unsigned4 u : 2; Color c : 3; };
+constexpr int atCompileTime()
+{
+  S s{};
+  s.c = Color::red;
+  s.u = u3;
+  return (int)s.c * 10 + (int)s.u;
+}
+constexpr int ct = atCompileTime();
+int main()
+{
+  S v{};
+  v.u = u3;
+  printf("%d %d %d %d\n", (int)v.u, (int)(v.u == u3), ct, atCompileTime());
+  return 0;
+}

@@ -1,0 +1,120 @@
+// battery i21: exceptions: handler order (derived before base, by reference and by value), catch (...)
+// and rethrow (`throw;`), a thrown object's copies, locals destroyed in reverse order while unwinding
+// through loops and nested scopes, a partly built object's members destroyed when its constructor
+// throws, an exception caught and another thrown from the handler, a template's exception type, the
+// noexcept operator.
+int trace = 0;
+void note(int d) { trace = trace * 10 + d; }
+struct Guard
+{
+  int id;
+  Guard(int id) : id(id) {}
+  ~Guard() { note(id); }
+};
+class Base
+{
+public:
+  int code;
+  Base(int c) : code(c) {}
+  virtual ~Base() {}
+  virtual int kind() const { return 1; }
+};
+class Derived : public Base
+{
+public:
+  Derived(int c) : Base(c) {}
+  int kind() const override { return 2; }
+};
+template <typename T> struct Boxed { T value; };
+struct Member { int id; Member(int id) : id(id) {} ~Member() { note(id); } };
+struct Builder
+{
+  Member a;
+  Member b;
+  Member c;
+  Builder() : a(1), b(2), c((throw Derived(7), 3)) {}
+};
+int handlers(int which)
+{
+  try
+  {
+    Guard g(5);
+    if (which == 0)
+      throw Derived(10);
+    if (which == 1)
+      throw Base(20);
+    if (which == 2)
+      throw 30;
+    throw Boxed<short>{40};
+  }
+  catch (Derived& d) { return d.code + d.kind(); }
+  catch (Base b) { return b.code + b.kind() * 100; }
+  catch (const Boxed<short>& b) { return b.value + 1000; }
+  catch (...) { return -1; }
+}
+int rethrow()
+{
+  try
+  {
+    try
+    {
+      throw Derived(3);
+    }
+    catch (...)
+    {
+      note(8);
+      throw;
+    }
+  }
+  catch (Base& b) { return b.kind() * 10 + b.code; }
+}
+int unwind()
+{
+  trace = 0;
+  try
+  {
+    Guard outer(1);
+    for (int i = 2; i < 6; ++i)
+    {
+      Guard inner(i);
+      if (i == 4)
+      {
+        Guard deep(9);
+        throw i;
+      }
+    }
+  }
+  catch (int v) { note(v); }
+  return trace;
+}
+int partial()
+{
+  trace = 0;
+  try { Builder b; }
+  catch (Base& e) { note(e.code); }
+  return trace;
+}
+int fromHandler()
+{
+  try
+  {
+    try { throw 1; }
+    catch (int v) { throw Derived(v + 40); }
+  }
+  catch (Derived& d) { return d.code; }
+  return 0;
+}
+void mayThrow() {}
+void never() noexcept {}
+int main()
+{
+  printf("handlers %d %d %d %d\n", handlers(0), handlers(1), handlers(2), handlers(3));
+  trace = 0;
+  int r = rethrow();
+  printf("rethrow %d %d\n", r, trace);
+  printf("unwind %d\n", unwind());
+  printf("partial %d\n", partial());
+  printf("fromHandler %d\n", fromHandler());
+  printf("noexcept %d %d %d\n", (int)noexcept(never()), (int)noexcept(mayThrow()), (int)noexcept(1 + 2));
+  return 0;
+}

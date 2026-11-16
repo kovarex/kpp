@@ -1,0 +1,55 @@
+// Pointers to data members: their size (4 bytes in MSVC's ABI, 8 in Itanium's), null, comparison,
+// use through objects and pointers, a base's member as a derived class's (the offset grows), arrays
+// and classes holding them, a template argument, and compile-time sizeof agreeing with run time.
+struct A
+{
+  int a = 1;
+  double d = 2.5;
+};
+struct B
+{
+  int b = 3;
+  char c = 'c';
+};
+struct C : A, B
+{
+  int own = 4;
+};
+template<int N>
+struct Size
+{
+  static constexpr int value = N;
+};
+struct Holder
+{
+  int B::*field;
+  char tag;
+};
+template<int C::*M>
+int read(const C& c) { return c.*M; }
+
+int main()
+{
+  C c;
+  int B::*pb = &B::b;
+  int C::*pc = pb;
+  int C::*own = &C::own;
+  int A::*none = nullptr;
+  printf("%d %d %d %d\n", c.*pb, c.*pc, c.*own, none == nullptr ? 1 : 0);
+  printf("%d %d %d\n", pc == &C::b ? 1 : 0, pc != own ? 1 : 0, (bool)none ? 1 : 0);
+  C* p = &c;
+  p->*own = 40;
+  printf("%d %d\n", c.own, p->*pc);
+  int C::*fields[3] = {&C::a, &C::b, &C::own};
+  int sum = 0;
+  for (int C::*f : fields)
+    sum += c.*f;
+  printf("%d\n", sum);
+  Holder h{&B::b, 'h'};
+  printf("%d %c %d\n", c.*h.field, h.tag, read<&C::own>(c));
+  constexpr int compileTime = sizeof(int A::*);
+  int runTime = sizeof(int A::*);
+  printf("%d %d %d %d %d\n", Size<sizeof(int A::*)>::value, compileTime, runTime, (int)sizeof(Holder), (int)sizeof(fields));
+  printf("%d %d\n", (int)alignof(int A::*), (int)alignof(Holder));
+  return 0;
+}

@@ -1,0 +1,18 @@
+struct Bits { unsigned a : 3; unsigned b : 5; int c; };
+struct Q { int v; Q() : v(42) {} };
+struct Left { int x; int y; int z = 7; Q q; };
+struct RefHolder { int& r; int v; };
+struct Gap { int a : 3; int : 2; int b : 3; int c; };
+template<class T, class... A> T make(A... v) { return T{v...}; }
+template<class T, class... A> T makeRef(A&&... v) { return T{static_cast<A&&>(v)...}; }
+int main()
+{
+  Bits s1 = make<Bits>(1u, 2u);
+  printf("%u %u %d\n", s1.a, s1.b, s1.c);
+  Left l = make<Left>(1, 2);
+  printf("%d %d %d %d\n", l.x, l.y, l.z, l.q.v);
+  int i = 11;
+  Gap g2{1, 2, 3};
+  printf("%d %d %d\n", g2.a, g2.b, g2.c);
+  return 0;
+}

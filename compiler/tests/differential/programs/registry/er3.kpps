@@ -1,0 +1,12 @@
+extern "C" int printf(const char* format, ...);
+int main()
+{
+  std::ErrorCode none;
+  std::ErrorCode zeroGeneric(0, std::genericCategory());
+  std::ErrorCode made = std::make_error_code(std::Errc::no_such_file_or_directory);
+  printf("%d %d %d %d\n", (int)(none == (std::Errc)0), (int)(zeroGeneric == (std::Errc)0), (int)(made == (std::Errc)0), (int)(none != (std::Errc)0));
+  printf("%d %d\n", (int)((std::Errc)0 == none), (int)(none == std::Errc::no_such_file_or_directory));
+  made.clear();
+  printf("%d %d\n", (int)(made == (std::Errc)0), (int)(bool)made);
+  return 0;
+}

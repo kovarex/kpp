@@ -1,0 +1,14 @@
+#include <stdio.h>
+#include <bit>
+using std::rotr;
+int main(int argc, char**)
+{
+  volatile int zero = 0;
+  unsigned v = 0x12345678u + (unsigned)(argc - 1);
+  unsigned long long w = 0x0123456789ABCDEFull + (unsigned)(argc - 1);
+  int counts[] = {0, 1, 4, 31, 32, 33, -1, -4, 64};
+  for (int c : counts)
+    printf("%d: %08x %016llx\n", c, rotr(v, c + zero), (unsigned long long)rotr(w, c + zero));
+  printf("const %08x %08x\n", rotr(0x12345678u, 0), rotr(0x12345678u, 32));
+  return 0;
+}

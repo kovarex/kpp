@@ -1,0 +1,60 @@
+extern "C" int printf(const char* format, ...);
+// battery i19: copies and moves the standard fixes: push_back of an lvalue copies once, of an rvalue
+// moves once, emplace_back builds in place, with room reserved; a Vector copied copies each element,
+// moved moves none; swap moves none of the elements; Optional's copy and move; a returned local
+// moved or elided; an aliasing push_back of the vector's own element; erase's assignments counted
+// only by the values left.
+struct Counted
+{
+  int v;
+  static int copies, moves, made, gone;
+  Counted(int v) : v(v) { ++made; }
+  Counted(const Counted& o) : v(o.v) { ++copies; }
+  Counted(Counted&& o) noexcept : v(o.v) { o.v = -1; ++moves; }
+  Counted& operator=(const Counted& o) { v = o.v; ++copies; return *this; }
+  Counted& operator=(Counted&& o) noexcept { v = o.v; o.v = -1; ++moves; return *this; }
+  ~Counted() { ++gone; }
+};
+int Counted::copies = 0, Counted::moves = 0, Counted::made = 0, Counted::gone = 0;
+void reset() { Counted::copies = Counted::moves = Counted::made = Counted::gone = 0; }
+void report(const char* what) { printf("%s made %d copies %d moves %d gone %d\n", what, Counted::made, Counted::copies, Counted::moves, Counted::gone); reset(); }
+Counted makeOne(int v) { Counted c(v); c.v += 1; return c; }
+int main()
+{
+  {
+    Vector<Counted> v;
+    v.reserve(10);
+    Counted a(1);
+    v.push_back(a);
+    v.push_back(Counted(2));
+    v.emplace_back(3);
+    report("push");
+    v.push_back(v[0]);
+    printf("alias %d %d\n", v[3].v, v[0].v);
+    report("alias");
+    Vector<Counted> w = v;
+    report("copy");
+    Vector<Counted> x = move(w);
+    printf("moved %d %d\n", (int)w.size(), (int)x.size());
+    report("move");
+    x.swap(v);
+    report("swap");
+    v.erase(v.begin() + 1);
+    printf("erase %d %d %d\n", v[0].v, v[1].v, (int)v.size());
+    report("erase");
+  }
+  report("scope");
+  {
+    Optional<Counted> o(Counted(5));
+    report("optional make");
+    Optional<Counted> p = o;
+    Optional<Counted> q = move(o);
+    printf("optional %d %d %d\n", (int)o.has_value(), p->v, q->v);
+    report("optional copy move");
+    Counted r = makeOne(8);
+    printf("returned %d\n", r.v);
+    report("return");
+  }
+  report("end");
+  return 0;
+}

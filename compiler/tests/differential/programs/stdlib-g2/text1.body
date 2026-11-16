@@ -1,0 +1,69 @@
+// Text: a number's own text (format "{}", as std::format and to_chars give the shortest round trip)
+// and the formatting pieces against the C runtime's printf.
+
+void line(const char* what, const String& s)
+{
+  printf("%s: [%s]\n", what, s.c_str());
+}
+
+int main()
+{
+  double doubles[] = {0.0, -0.0, 1.0, -1.5, 0.1, 0.1 + 0.2, 1.0 / 3.0, 2.0 / 3.0, 100.0, 1e15, 1e16, 1e17, 123456789012345678.0, 1e21, 1e22, 1e-5, 1e-6, 1e-7,
+                      5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 9007199254740993.0, 0.000123456, 123.456, 1e100, 4.35, 0.3, 2.5e-10, 1234567.0};
+  for (double d : doubles)
+  {
+    printf("%.17g -> ", d);
+    line("double", format("{}", d));
+  }
+  float floats[] = {0.1f, 1.0f / 3.0f, 16777216.0f, 16777217.0f, 3.4028235e38f, 1e-45f, 1.17549435e-38f, 0.3f, 100.0f, 1e10f, 123456.7f};
+  for (float f : floats)
+  {
+    printf("%.9g -> ", f);
+    line("float", format("{}", f));
+  }
+  line("ints", format("{} {} {} {}", 0, -1, 2147483647, (int)-2147483647 - 1));
+  line("long long", format("{} {}", 9223372036854775807LL, (long long)-9223372036854775807LL - 1));
+  line("unsigned", format("{} {}", 4294967295u, 18446744073709551615ULL));
+  line("char bool", format("{}{} {} {}", 'a', 'b', true, false));
+  line("short", format("{} {}", (short)-5, (unsigned short)65535));
+  line("signed char", format("{} {}", (signed char)-5, (unsigned char)200));
+
+  for (double d : {0.0, 2.5, 3.5, -2.5, 0.125, 1.005, 3.14159, 1e20, 0.1, 123.456, -0.0})
+  {
+    char buffer[200];
+    for (int decimals : {0, 1, 2, 6, 20})
+    {
+      snprintf(buffer, sizeof(buffer), "%.*f", decimals, d);
+      String ours = format("{}", fixed(d, decimals));
+      printf("fixed(%.17g, %d): %s %s\n", d, decimals, ours.c_str(), strcmp(ours.c_str(), buffer) == 0 ? "ok" : buffer);
+    }
+    for (int digits : {1, 3, 6, 17})
+    {
+      snprintf(buffer, sizeof(buffer), "%.*g", digits, d);
+      String ours = format("{}", significant(d, digits));
+      printf("significant(%.17g, %d): %s %s\n", d, digits, ours.c_str(), strcmp(ours.c_str(), buffer) == 0 ? "ok" : buffer);
+      snprintf(buffer, sizeof(buffer), "%.*e", digits, d);
+      ours = format("{}", scientific(d, digits));
+      printf("scientific(%.17g, %d): %s %s\n", d, digits, ours.c_str(), strcmp(ours.c_str(), buffer) == 0 ? "ok" : buffer);
+    }
+  }
+  for (double d : {1e300 * 10.0, -1e300 * 10.0})
+    line("inf", format("{} {} {}", fixed(d, 2), significant(d, 6), scientific(d, 3)));
+  char buffer[200];
+  for (int x : {0, 1, -1, 255, 4096, -2147483647 - 1})
+  {
+    snprintf(buffer, sizeof(buffer), "%x %X %o %08x %5d|%-5d|%05d %+d", x, x, x, x, x, x, x, x);
+    String ours = format("{} {} {} {} {}|{}|{} {}", hex(x), hexUpper(x), octal(x), hex(x, 8), alignRight(x, 5), alignLeft(x, 5), zeroPadded(x, 5), withSign(x));
+    printf("int %d: %s %s\n", x, ours.c_str(), strcmp(ours.c_str(), buffer) == 0 ? "ok" : buffer);
+  }
+  for (long long x : {0LL, -1LL, 1234567890123LL})
+  {
+    snprintf(buffer, sizeof(buffer), "%llx %llo", x, x);
+    String ours = format("{} {}", hex(x), octal(x));
+    printf("long long %lld: %s %s\n", x, ours.c_str(), strcmp(ours.c_str(), buffer) == 0 ? "ok" : buffer);
+  }
+  snprintf(buffer, sizeof(buffer), "%+.1f %08.3f %-8.2f| %+05d", 1.25, -3.14159, 2.5, 3);
+  String ours = format("{} {} {}| {}", withSign(fixed(1.25, 1)), zeroPadded(fixed(-3.14159, 3), 8), alignLeft(fixed(2.5, 2), 8), zeroPadded(withSign(3), 5));
+  printf("mixed: %s %s\n", ours.c_str(), strcmp(ours.c_str(), buffer) == 0 ? "ok" : buffer);
+  return 0;
+}

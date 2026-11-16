@@ -1,0 +1,12 @@
+struct Pod { int a; float b; };
+struct Two { Pod p; int c; };
+int main()
+{
+  Pod p(1, 2.5f); printf("%d %.1f\n", p.a, p.b);
+  Pod q(7); printf("%d %.1f\n", q.a, q.b);
+  Pod* n = new Pod(3, 4.5f); printf("%d\n", n->a); delete n;
+  Pod r = Pod(5, 1.5f); printf("%d\n", r.a);
+  Two t(Pod(1, 2.0f), 3); printf("%d\n", t.c);
+  int arr[3](1, 2); printf("%d %d\n", arr[1], arr[2]);
+  return 0;
+}

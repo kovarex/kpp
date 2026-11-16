@@ -1,0 +1,274 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <deque>
+#include <list>
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+using std::move;
+template <typename T> using Deque = std::deque<T>;
+template <typename T> using List = std::list<T>;
+template <typename K, typename V> using Map = std::map<K, V>;
+template <typename K> using Set = std::set<K>;
+template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+template <typename K> using HashSet = std::unordered_set<K>;
+template <typename L, typename P> void listRemoveIf(L& l, P p) { l.remove_if(p); }
+// List, Map, Set, HashMap and HashSet against std::list, map, set, unordered_map and unordered_set:
+// insert, emplace, try_emplace and erase's results and what they construct (nothing for a key
+// already there; try_emplace leaves its arguments alone then), operator[], erase by key, splice,
+// sort and merge; which pointers stay valid (every entry keeps its address until it is erased);
+// destructor counts.
+int made = 0, copied = 0, moved = 0, copyAssigned = 0, moveAssigned = 0, destroyed = 0;
+struct Item
+{
+  int v;
+  Item() : v(0) { ++made; }
+  Item(int x) : v(x) { ++made; }
+  Item(int x, int y) : v(x * 100 + y) { ++made; }
+  Item(const Item& o) : v(o.v) { ++copied; }
+  Item(Item&& o) noexcept : v(o.v) { o.v = -1; ++moved; }
+  Item& operator=(const Item& o) { v = o.v; ++copyAssigned; return *this; }
+  Item& operator=(Item&& o) noexcept { v = o.v; o.v = -1; ++moveAssigned; return *this; }
+  ~Item() { ++destroyed; }
+  bool operator<(const Item& o) const { return v < o.v; }
+  bool operator==(const Item& o) const { return v == o.v; }
+};
+void counts(const char* step)
+{
+  printf("%-40s made %d copied %d moved %d copy= %d move= %d destroyed %d\n", step, made, copied, moved, copyAssigned, moveAssigned, destroyed);
+  made = copied = moved = copyAssigned = moveAssigned = destroyed = 0;
+}
+template <typename C> void values(const char* label, const C& c)
+{
+  printf("  %s:", label);
+  for (const auto& x : c)
+    printf(" %d", x.v);
+  printf("\n");
+}
+template <typename M> void entries(const char* label, const M& m)
+{
+  printf("  %s:", label);
+  for (const auto& e : m)
+    printf(" %d=%d", e.first, e.second.v);
+  printf("\n");
+}
+template <typename M> void sortedEntries(const char* label, const M& m)
+{
+  Vector<int> keys;
+  for (const auto& e : m)
+    keys.push_back(e.first * 100000 + e.second.v);
+  sort(keys.begin(), keys.end());
+  printf("  %s:", label);
+  for (int k : keys)
+    printf(" %d=%d", k / 100000, k % 100000);
+  printf("\n");
+}
+
+int main()
+{
+  {
+    List<Item> l;
+    for (int i = 0; i < 6; ++i)
+      l.emplace_back(i);
+    counts("List: 6 emplace_back");
+    Item* second = &*next(l.begin());
+    auto it = l.insert(next(l.begin(), 3), Item(30));
+    printf("List insert returns the new element %d\n", it->v);
+    counts("List: insert temporary");
+    it = l.emplace(l.begin(), 7, 7);
+    printf("List emplace returns %d\n", it->v);
+    Item& f = l.emplace_front(8);
+    Item& b = l.emplace_back(9);
+    printf("List emplace_front/back return %d %d\n", (int)(&f == &l.front()), (int)(&b == &l.back()));
+    counts("List: emplace, emplace_front, emplace_back");
+    it = l.erase(next(l.begin(), 2));
+    printf("List erase returns the next %d, second kept %d\n", it->v, (int)(second->v == 1));
+    it = l.erase(next(l.begin(), 3), next(l.begin(), 5));
+    printf("List erase range returns %d\n", it->v);
+    counts("List: erase one, erase two");
+    values("l", l);
+    l.sort();
+    printf("List sort keeps the element's address %d\n", (int)(second->v == 1));
+    counts("List: sort");
+    values("l", l);
+    List<Item> other;
+    other.emplace_back(4);
+    other.emplace_back(100);
+    Item* hundred = &other.back();
+    l.merge(other);
+    printf("List merge: other empty %d, merged element kept %d\n", (int)other.empty(), (int)(hundred->v == 100));
+    counts("List: merge");
+    values("l", l);
+    other.emplace_back(-5);
+    Item* minusFive = &other.front();
+    l.splice(l.begin(), other);
+    printf("List splice: element kept %d, first %d\n", (int)(minusFive == &l.front()), l.front().v);
+    counts("List: splice");
+    l.reverse();
+    l.unique();
+    counts("List: reverse, unique");
+    values("l", l);
+    l.remove(Item(4));
+    listRemoveIf(l, [](const Item& x) { return x.v > 50; });
+    counts("List: remove 4, remove_if > 50");
+    values("l", l);
+  }
+  counts("List scope end");
+
+  {
+    Map<int, Item> m;
+    auto r = m.insert({1, Item(10)});
+    printf("Map insert new: inserted %d key %d\n", (int)r.second, r.first->first);
+    counts("Map: insert a new pair");
+    Item* one = &m[1];
+    r = m.insert({1, Item(11)});
+    printf("Map insert existing: inserted %d value %d\n", (int)r.second, r.first->second.v);
+    counts("Map: insert an existing key's pair");
+    r = m.emplace(2, 20);
+    printf("Map emplace new: inserted %d value %d\n", (int)r.second, r.first->second.v);
+    counts("Map: emplace new");
+    r = m.emplace(2, 21);
+    printf("Map emplace existing: inserted %d value %d\n", (int)r.second, r.first->second.v);
+    counts("Map: emplace existing");
+    Item keep(33);
+    counts("an Item");
+    r = m.try_emplace(3, move(keep));
+    printf("Map try_emplace new: inserted %d, argument moved %d\n", (int)r.second, (int)(keep.v == -1));
+    counts("Map: try_emplace new from a moved Item");
+    Item stay(34);
+    counts("an Item");
+    r = m.try_emplace(3, move(stay));
+    printf("Map try_emplace existing: inserted %d, argument left alone %d\n", (int)r.second, (int)(stay.v == 34));
+    counts("Map: try_emplace existing from a moved Item");
+    Item& fresh = m[4];
+    printf("Map [] of a new key %d\n", fresh.v);
+    counts("Map: [] new key");
+    m[4] = Item(40);
+    counts("Map: [] = temporary");
+    for (int k = 5; k < 200; ++k)
+      m.emplace(k, k);
+    printf("Map: entries kept their address over 195 inserts %d\n", (int)(one == &m[1] && one->v == 10));
+    counts("Map: 195 emplace");
+    printf("Map erase by key: %d %d\n", (int)m.erase(100), (int)m.erase(100));
+    auto it = m.erase(m.find(50));
+    printf("Map erase returns the next key %d\n", it->first);
+    it = m.erase(m.find(10), m.find(20));
+    printf("Map erase range returns key %d, size %d\n", it->first, (int)m.size());
+    printf("Map: entry kept over erases %d\n", (int)(one == &m[1]));
+    counts("Map: erase 1, 1, 10");
+    auto node = m.extract(1);
+    printf("Map extract: key %d value %d, size %d\n", node.key(), node.mapped().v, (int)m.size());
+    Map<int, Item> n;
+    auto inserted = n.insert(move(node));
+    printf("Map node inserted %d, same entry %d\n", (int)inserted.inserted, (int)(&inserted.position->second == one));
+    counts("Map: extract, insert node");
+    Map<int, Item> copy = m;
+    counts("Map: copy");
+    copy.clear();
+    counts("Map: clear the copy");
+  }
+  counts("Map scope end");
+
+  {
+    Set<int> s;
+    for (int x : {5, 1, 4})
+      s.insert(x);
+    const int* four = &*s.find(4);
+    auto r = s.insert(4);
+    printf("Set insert existing: inserted %d same %d\n", (int)r.second, (int)(&*r.first == four));
+    r = s.emplace(3);
+    printf("Set emplace: inserted %d value %d\n", (int)r.second, *r.first);
+    auto it = s.erase(s.find(3));
+    printf("Set erase returns %d, erase key %d %d\n", *it, (int)s.erase(5), (int)s.erase(5));
+    for (int x = 10; x < 300; ++x)
+      s.insert(x);
+    printf("Set entry kept its address %d, size %d\n", (int)(four == &*s.find(4)), (int)s.size());
+  }
+
+  {
+    HashMap<int, Item> h;
+    auto r = h.emplace(1, 10);
+    Item* one = &r.first->second;
+    printf("HashMap emplace new: inserted %d value %d\n", (int)r.second, r.first->second.v);
+    counts("HashMap: emplace new");
+    r = h.emplace(1, 11);
+    printf("HashMap emplace existing: inserted %d value %d\n", (int)r.second, r.first->second.v);
+    counts("HashMap: emplace existing");
+    r = h.insert({2, Item(20)});
+    counts("HashMap: insert a new pair");
+    r = h.insert({2, Item(21)});
+    printf("HashMap insert existing: inserted %d value %d\n", (int)r.second, r.first->second.v);
+    counts("HashMap: insert an existing key's pair");
+    Item stay(34);
+    h.try_emplace(3, 30);
+    counts("HashMap: try_emplace new");
+    r = h.try_emplace(3, move(stay));
+    printf("HashMap try_emplace existing: inserted %d, argument left alone %d\n", (int)r.second, (int)(stay.v == 34));
+    counts("HashMap: try_emplace existing from a moved Item");
+    h[4];
+    counts("HashMap: [] new key");
+    for (int k = 5; k < 5000; ++k)
+      h.emplace(k, k);
+    printf("HashMap: entry kept its address over 4995 inserts %d %d\n", (int)(one == &h[1]), one->v);
+    counts("HashMap: 4995 emplace");
+    printf("HashMap erase by key: %d %d, size %d\n", (int)h.erase(100), (int)h.erase(100), (int)h.size());
+    auto it = h.find(200);
+    auto after = next(it);
+    int afterKey = after == h.end() ? -1 : after->first;
+    it = h.erase(it);
+    printf("HashMap erase returns the next in iteration order %d\n", (int)((it == h.end() ? -1 : it->first) == afterKey));
+    counts("HashMap: erase two");
+    h.reserve(20000);
+    printf("HashMap: entry kept its address over reserve %d\n", (int)(one == &h[1]));
+    counts("HashMap: reserve");
+    int erased = 0;
+    for (auto e = h.begin(); e != h.end();)
+      if (e->first % 3 == 0)
+      {
+        e = h.erase(e);
+        ++erased;
+      }
+      else
+        ++e;
+    printf("HashMap: erased %d while iterating, size %d\n", erased, (int)h.size());
+    counts("HashMap: erase while iterating");
+    HashMap<int, Item> small;
+    for (int k = 0; k < 6; ++k)
+      small.emplace(k, k * 11);
+    sortedEntries("small", small);
+    HashMap<int, Item> moved2 = move(small);
+    printf("HashMap move: source empty %d\n", (int)small.empty());
+    counts("HashMap: 6 emplace, move");
+  }
+  counts("HashMap scope end");
+  {
+    HashSet<int> hs;
+    for (int x = 0; x < 1000; ++x)
+      hs.insert(x * 7);
+    const int* seven = &*hs.find(7);
+    auto r = hs.insert(7);
+    printf("HashSet insert existing: inserted %d same %d\n", (int)r.second, (int)(&*r.first == seven));
+    for (int x = 1000; x < 5000; ++x)
+      hs.insert(x * 7);
+    printf("HashSet entry kept its address %d, erase %d %d, size %d\n", (int)(seven == &*hs.find(7)), (int)hs.erase(14), (int)hs.erase(14), (int)hs.size());
+  }
+  return 0;
+}

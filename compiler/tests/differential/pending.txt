@@ -1,0 +1,69 @@
+# Programs and generated seeds that do not match C++ today, each with why. run.py fails when one of
+# them starts matching (FIXED): its line goes with the fix. `NAME CONFIG: why` limits a line to debug or
+# release. First run 2026-11-16 (kpp 25ed750f3): the batteries matched on 2026-11-05 to 11-10, so most
+# of these are the language moving on since (std scope, explicit by default) or gaps found again.
+
+# Silent wrong answers of kpp's (a pending spec snippet each)
+codegen/p12 debug: an unscoped enum of unsigned char given to printf's ... is not promoted to int (spec interop/c_variadic_argument_of_a_small_enum_is_promoted; release happens to pass the bits right)
+registry/en3: (B)0.5 for enum class B : bool gives true, C++ truncates to false (spec language/cast_of_a_floating_value_to_an_enumeration_of_bool_truncates)
+registry/en3b: as registry/en3
+gen/pack/5: a pack expansion of calls takes their double results as int at compile time (spec templates/pack_expansion_of_calls_keeps_their_type_at_compile_time)
+gen/pack/7: as gen/pack/5, here an error ("a floating value out of the range of int32")
+
+# The standard library against MSVC's STL and libc++ (both agree; kpp differs)
+stdlib-e/ct1: resize(n, value) copies the value once more and destroys it once more
+stdlib-e/ct2: HashMap's emplace of a new key moves the element once more
+stdlib-e/fm1: format's zero padding of inf and nan pads with spaces (C++ pads with zeros after the sign)
+stdlib-e/io1: tellg after a read in text mode is one more than MSVC's and libc++'s
+stdlib-g/deq2: Deque's insert copies, moves and destroys other counts than both
+stdlib-g/vec1: Vector's insert copies, moves and destroys other counts than both
+stdlib-g2/text1: a double's text: 1e+15 written 1000000000000000, 1.2345678901234568e+17 kept where both write 123456789012345680
+
+# Not triaged yet: differs from both C++ builds
+codegen/p3: also prints an indeterminate value (S3's last number), which no build can match
+language/n6: also prints an indeterminate value (line 20)
+language/n17: a type trait's column for polymorphic and abstract classes (the 5th group's 2nd bit)
+lifetimes/t1: one line's order differs from both
+registry/cm2: last digits of libm results (the UCRT's against kpp's)
+registry/ex1: the order of static initialization
+registry/si1: the order of static initialization
+registry/si5: the order of static initialization
+registry/et4: sizeof of an unscoped enum (no fixed type) of an enumerator 0x100000000 in a class template: not 8 (its static_assert fails)
+
+# kpp refuses the program by its own rules: to be rewritten in kpp's terms (docs/differences-from-cpp.md)
+codegen/p15: virtual base classes
+language/n12: sizeof of an array parameter, a constant index outside the array
+language/n8: a local read in its own initializer
+lifetimes/h10: declares `super`
+stdlib-e/ov2: declares operator!= returning bool
+templates/ovlist: brace lists as arguments without their type (what the program is about)
+templates/elide3: brace lists as arguments without their type
+stdlib-e/ac1: brace lists as arguments without their type
+registry/i5: C's remove(path) beside the library's remove
+stdlib-e/al1: C's remove(path) beside the library's remove
+stdlib-e/cm1: C's abs beside the library's abs (ambiguous)
+codegen/jumpsok: printf not declared where the program uses it
+codegen/bfprom: to look at (no error line)
+language/n7: 'sa' is not declared
+language/n5: no overload of kind takes (W)
+lifetimes/o1: no overload of fromNum takes (Number)
+lifetimes/r1: a constrained overload set of num
+registry/fs3: filesystem's path not declared bare
+
+# kpp gaps, loud ("codegen does not support ... yet" and the like)
+registry/ch2: a variable template whose value is not a constant
+stdlib-e/tm1: a variable template whose value is not a constant
+stdlib-e/tm24: a variable template whose value is not a constant
+stdlib-e/tm25: a variable template whose value is not a constant
+stdlib-e/tm26: a variable template whose value is not a constant
+stdlib-e/ax1: a call that did not resolve
+stdlib-e/bf1: a call that did not resolve
+stdlib-e/cc1: a call that did not resolve
+stdlib-e/th1: a call that did not resolve
+stdlib-e/ch1: durationCast's template arguments not deduced
+stdlib-e/fs1: the type of filesystem's path
+stdlib-e/fs2: the type of filesystem's path
+stdlib-g2/fs1: the type of filesystem's path
+stdlib-g/pa1: a local of unknown type
+stdlib-g2/time1: a local of unknown type
+templates/ct2: a constexpr variable that is no constant

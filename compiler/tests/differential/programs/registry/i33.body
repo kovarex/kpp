@@ -1,0 +1,24 @@
+// battery i33: string and character literals: raw strings with delimiters, quotes, backslashes
+// and newlines inside; adjacent literals concatenated (across lines, with an escape split between
+// them); octal and hex escapes ending where the next character is no digit; sizeof of each; a
+// literal indexed; wide and UTF-16/32 literals' sizes and units; u8 literals; character literals
+// of escapes.
+int main()
+{
+  const char* raw = R"(a\nb"c)";
+  const char* delim = R"xy(one )" two)xy";
+  const char* lines = R"(first
+second)";
+  printf("raw [%s] [%s] [%s] %d %d\n", raw, delim, lines, (int)sizeof(R"(a\nb"c)"), (int)sizeof(R"xy(one )" two)xy"));
+  const char* joined = "ab" "cd"
+                       "ef";
+  const char* split = "\x41" "B";
+  printf("concat [%s] [%s] %d %d\n", joined, split, (int)sizeof("ab" "cd" "ef"), (int)sizeof("\x41" "B"));
+  const char* oct = "\1012\0773";
+  printf("escapes %d %d %d %d %d\n", oct[0], oct[1], oct[2], oct[3], (int)sizeof("\1012\0773"));
+  printf("index %c %d %d\n", "kpp"[1], "abc"[3], (int)sizeof("tab\there"));
+  printf("wide %d %d %d %d\n", (int)sizeof(L"ab"), (int)sizeof(u"ab"), (int)sizeof(U"ab"), (int)sizeof(u8"ab"));
+  printf("units %d %d %d\n", (int)u"é"[0], (int)U"\U0001F600"[0], (int)sizeof(u"\U0001F600"));
+  printf("chars %d %d %d %d %d\n", '\a', '\v', '\\', '\x7f', '\077');
+  return 0;
+}

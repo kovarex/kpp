@@ -1,0 +1,77 @@
+// name lookup: argument-dependent lookup, using, hiding, nested classes, friends, dependent names, order
+namespace lib
+{
+  struct Item { int v; };
+  int score(const Item& i) { return i.v + 1; }
+  int score(int x) { return x + 100; }
+  Item operator+(const Item& a, const Item& b) { return Item{ a.v + b.v + 1000 }; }
+  template<class T> int tscore(const T& t) { return score(t); }
+  namespace inner { struct Deep { int d; }; int reach(const Deep& x) { return x.d * 2; } }
+  enum Mode { fast, slow };
+  const char* show(Mode m) { return m == fast ? "fast" : "slow"; }
+  struct Holder { struct Nested { int n; }; friend int peek(const Holder& h) { return h.secret; } friend int peekNested(const Nested& n) { return n.n; } int secret = 42; };
+  int peek2(const Holder::Nested& n) { return n.n + 1; }
+  template<class T> struct Box { T t; };
+  int unbox(const Box<int>& b) { return b.t; }
+  void swap2(Item& a, Item& b) { int t = a.v; a.v = b.v; b.v = t; printf("lib swap "); }
+}
+namespace other { struct Thing { int t; }; int score(const Thing& x) { return x.t * 3; } int unbox(const lib::Box<Thing>& b) { return b.t.t + 5; } }
+template<class T> void swap2(T& a, T& b) { T t = a; a = b; b = t; printf("generic swap "); }
+template<class T> void doSwap(T& a, T& b) { swap2(a, b); }
+int score(double d) { return (int)d + 10000; }
+int useScore() { return score(2); }
+namespace n1 { int f() { return 1; } int v = 10; namespace n2 { int f() { return 2; } int g() { return f() + n1::f() * 10; } int v = 20; int h() { return v + n1::v + ::n1::n2::v; } } }
+namespace alias = n1::n2;
+inline namespace in1 { int inl() { return 7; } }
+namespace { int hidden = 8; int hf() { return hidden + 1; } }
+int shadowed = 1;
+int useShadow() { int shadowed = 2; { int shadowed = 3; { extern int shadowed; return shadowed; } } }
+struct Base { int x = 1; int f() { return 1; } int f(int) { return 2; } static int s() { return 3; } using Type = int; enum { en = 4 }; struct In { int i = 5; }; int shared = 9; };
+struct Hide : public Base { int x = 10; int f(double) { return 20; } int base() { return Base::x + x; } };
+struct Uses : public Base { using Base::f; int f(double) { return 30; } };
+template<class T> struct TB { int v = 1; int get() { return 1; } using Inner = T; };
+template<class T> struct TD : public TB<T> { int a() { return this->v; } int b() { return TB<T>::get(); } typename TB<T>::Inner c() { return T(3); } using TB<T>::v; int d() { return v + 1; } };
+int get() { return 99; }
+template<class T> struct TE : public TB<T> { int a() { return get(); } int b() { return this->get(); } };
+struct Outer { static int sv; int m = 1; struct In { int use(Outer& o) { return o.m + sv; } static int st() { return sv; } }; enum Kind { k1 = 5 }; static Kind kind() { return k1; } };
+int Outer::sv = 2;
+struct Fwd;
+struct UsesFwd { Fwd* p; int get(); };
+struct Fwd { int v = 6; };
+int UsesFwd::get() { return p->v; }
+struct Cls { int v = 1; int get() { return Cls::v + this->v + v; } int Cls2() { return 1; } };
+int ClsV = 5;
+struct Stat { int Stat2; } Stat3;
+int f1(int) { return 1; }
+int f1(long long) { return 2; }
+int test1() { return f1(1); }
+int test2() { using n1::f; return f(); }
+int test3() { using namespace n1; return f() + v; }
+int test4() { struct L { int m() { return shadowed; } }; return L().m(); }
+enum Unsc { ua, ub };
+struct InCls { enum E { ua2 = 3 }; int x = ua2; };
+int main()
+{
+  lib::Item a{ 1 }, b{ 2 }; printf("%d %d %d\n", score(a), (a + b).v, lib::tscore(a));
+  other::Thing t{ 4 }; printf("%d %d\n", score(t), lib::tscore(t));
+  printf("%d %d\n", score(1.5), lib::score(5));
+  lib::inner::Deep d{ 3 }; printf("%d %s\n", reach(d), show(lib::slow));
+  lib::Holder h; lib::Holder::Nested nn{ 8 }; printf("%d %d %d\n", peek(h), peekNested(nn), peek2(nn));
+  lib::Box<int> bi{ 3 }; lib::Box<other::Thing> bt{ { 4 } }; printf("%d %d\n", unbox(bi), unbox(bt));
+  doSwap(a, b); printf("%d\n", a.v); int i1 = 1, i2 = 2; doSwap(i1, i2); printf("%d\n", i1);
+  printf("%d %d %d %d %d\n", useScore(), n1::n2::g(), n1::n2::h(), alias::f(), inl() + in1::inl());
+  printf("%d %d %d\n", hidden, hf(), useShadow());
+  Hide hd; printf("%d %d %d %d %d\n", hd.x, hd.Base::x, hd.base(), hd.f(1), hd.Base::f(1));
+  printf("%d %d %d %d\n", (int)sizeof(Hide::Type), Hide::s(), Hide::en, Hide::In().i);
+  Uses u; printf("%d %d %d\n", u.f(), u.f(1), u.f(1.5));
+  TD<int> td; printf("%d %d %d %d\n", td.a(), td.b(), td.c(), td.d());
+  TE<int> te; printf("%d %d\n", te.a(), te.b());
+  Outer o; Outer::In in; printf("%d %d %d\n", in.use(o), Outer::In::st(), (int)Outer::kind());
+  Fwd fw; UsesFwd uf{ &fw }; printf("%d\n", uf.get());
+  Cls c; printf("%d %d\n", c.get(), ClsV);
+  printf("%d %d %d %d\n", test1(), test2(), test3(), test4());
+  printf("%d %d\n", ub, InCls().x);
+  int main2 = 1; { int main2 = main2 * 0 + 2; printf("%d\n", main2); }
+  int x = 1; { int y = x; int x = y + 1; printf("%d\n", x); }
+  return 0;
+}

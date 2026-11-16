@@ -1,0 +1,69 @@
+extern "C" int printf(const char* format, ...);
+// battery i10: Optional, Tuple, PriorityQueue, StringView, clamp against the standard library's:
+// value semantics on copy and move (an empty Optional after assignment, reset, emplace over a value),
+// comparisons of Optionals with values and with empties, tuple comparison and tie assignment,
+// a priority queue's order with a greater-than comparator and duplicates, string views' finds,
+// substrings, comparisons and prefixes, clamp at both ends.
+struct Noisy
+{
+  int v;
+  static int live;
+  Noisy(int v) : v(v) { ++live; }
+  Noisy(const Noisy& o) : v(o.v) { ++live; }
+  ~Noisy() { --live; }
+};
+int Noisy::live = 0;
+int main()
+{
+  Optional<int> a, b = 5;
+  Optional<int> c = b;
+  a = b;
+  b.reset();
+  printf("optional %d %d %d %d %d\n", (int)a.has_value(), (int)b.has_value(), *c, a.value_or(9), b.value_or(9));
+  printf("compare %d %d %d %d %d %d\n", (int)(a == c), (int)(a < b), (int)(b < a), (int)(a == 5), (int)(b == 5), (int)(b < 1));
+  {
+    Optional<Noisy> n(3);
+    Optional<Noisy> m = n;
+    n.emplace(7);
+    m.reset();
+    printf("noisy %d %d %d\n", Noisy::live, n->v, (int)m.has_value());
+    m = n;
+    printf("noisy %d %d\n", Noisy::live, m->v);
+  }
+  printf("noisy after %d\n", Noisy::live);
+  Tuple<int, double, char> t1 = makeTuple(1, 2.5, 'a'), t2 = makeTuple(1, 2.5, 'b');
+  printf("tuple %d %d %d %g %c\n", (int)(t1 < t2), (int)(t1 == t2), (int)(t2 > t1), get<1>(t1), get<2>(t2));
+  int x = 0;
+  double y = 0;
+  char z = 0;
+  tie(x, y, z) = t2;
+  get<0>(t1) = 40;
+  printf("tie %d %g %c %d\n", x, y, z, get<0>(t1));
+  PriorityQueue<int> pq;
+  PriorityQueue<int, Vector<int>, Greater<int>> minq;
+  int values[] = {5, 1, 9, 3, 9, 0, 7, 3};
+  for (int v : values)
+  {
+    pq.push(v);
+    minq.push(v);
+  }
+  printf("pq");
+  while (!pq.empty())
+  {
+    printf(" %d", pq.top());
+    pq.pop();
+  }
+  printf(" | min");
+  while (!minq.empty())
+  {
+    printf(" %d", minq.top());
+    minq.pop();
+  }
+  printf("\n");
+  StringView sv = "hello, world";
+  StringView w = sv.substr(7);
+  printf("view %d %d %d %d %d %d\n", (int)sv.find('o'), (int)sv.rfind('o'), (int)sv.find("wor"), (int)w.size(), (int)(w == "world"), (int)(sv.compare(w) < 0));
+  printf("view %d %d %d\n", (int)sv.starts_with("hell"), (int)sv.ends_with("ld"), (int)(sv.find('z') == StringView::npos));
+  printf("clamp %d %d %d %g\n", clamp(5, 1, 3), clamp(-5, 1, 3), clamp(2, 1, 3), clamp(2.5, 0.0, 1.0));
+  return 0;
+}

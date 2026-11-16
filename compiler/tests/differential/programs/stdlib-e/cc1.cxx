@@ -1,0 +1,292 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <atomic>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <future>
+template <typename T> using Atomic = std::atomic<T>;
+using Thread = std::thread;
+using Mutex = std::mutex;
+using RecursiveMutex = std::recursive_mutex;
+using ConditionVariable = std::condition_variable;
+template <typename M> using LockGuard = std::lock_guard<M>;
+template <typename M> using UniqueLock = std::unique_lock<M>;
+template <typename T> using Future = std::future<T>;
+template <typename T> using SharedFuture = std::shared_future<T>;
+template <typename T> using Promise = std::promise<T>;
+constexpr auto deferLock = std::defer_lock;
+template <typename F> auto async(F f) { return std::async(std::launch::async, f); }
+#include <chrono>
+namespace thisThread = std::this_thread;
+using Milliseconds = std::chrono::milliseconds;
+#define makeExceptionPtr std::make_exception_ptr
+// Concurrency against std: Atomic's operations and results on every width (wrapping, compare and
+// exchange setting expected, exchange, floating point and struct values), threads adding at once,
+// Mutex and the lock guards, ConditionVariable handing values over in order, thread_local per thread,
+// a store-buffering litmus test that sequential consistency forbids, futures, promises and async.
+struct Two
+{
+  short a;
+  short b;
+};
+template <typename T> void widths(const char* name, T start)
+{
+  Atomic<T> x(start);
+  long long r[12];
+  r[0] = (long long)x.fetch_add((T)1);
+  r[1] = (long long)x.load();
+  r[2] = (long long)x.fetch_sub((T)3);
+  r[3] = (long long)(T)(++x);
+  r[4] = (long long)(T)(x++);
+  r[5] = (long long)(T)(--x);
+  r[6] = (long long)(T)(x--);
+  r[7] = (long long)(T)(x += (T)10);
+  r[8] = (long long)(T)(x -= (T)20);
+  r[9] = (long long)x.exchange((T)5);
+  T expected = (T)4;
+  bool first = x.compare_exchange_strong(expected, (T)9);
+  r[10] = (long long)expected;
+  bool second = x.compare_exchange_strong(expected, (T)9);
+  r[11] = (long long)x.load();
+  printf("%-4s", name);
+  for (long long v : r)
+    printf(" %lld", v);
+  printf(" cas %d %d\n", (int)first, (int)second);
+}
+thread_local int perThread = 7;
+int counterWithLock = 0;
+Mutex counterLock;
+
+int main()
+{
+  widths<signed char>("i8", 126);
+  widths<unsigned char>("u8", 254);
+  widths<short>("i16", 32766);
+  widths<unsigned short>("u16", 65534);
+  widths<int>("i32", 2147483646);
+  widths<unsigned>("u32", 4294967294u);
+  widths<long long>("i64", 9223372036854775806ll);
+  widths<unsigned long long>("u64", 18446744073709551614ull);
+  Atomic<double> d(0.5);
+  double d1 = d.fetch_add(0.25);
+  double d2 = d.load();
+  double d3 = d += 1.0;
+  printf("double: fetch_add %g now %g, += %g\n", d1, d2, d3);
+  Atomic<float> f(1.5f);
+  double f1 = f.fetch_sub(0.5f);
+  double f2 = f.load();
+  printf("float: fetch_sub %g now %g\n", f1, f2);
+  Atomic<Two> two(Two{1, 2});
+  Two want{1, 2};
+  bool swapped = two.compare_exchange_strong(want, Two{3, 4});
+  Two now = two.load();
+  printf("struct: swapped %d now %d %d\n", (int)swapped, now.a, now.b);
+  Atomic<bool> flag(false);
+  int b1 = flag.exchange(true);
+  int b2 = flag.load();
+  printf("bool: exchange %d now %d\n", b1, b2);
+  Atomic<int> zero;
+  printf("default value %d\n", zero.load());
+
+  Atomic<long long> total(0);
+  Vector<Thread> threads;
+  for (int t = 0; t < 8; ++t)
+    threads.push_back(Thread([&total]() {
+      for (int i = 0; i < 100000; ++i)
+        total.fetch_add(1);
+    }));
+  for (Thread& t : threads)
+    t.join();
+  printf("8 threads adding: %lld\n", total.load());
+  threads.clear();
+  for (int t = 0; t < 8; ++t)
+    threads.push_back(Thread([]() {
+      for (int i = 0; i < 20000; ++i)
+      {
+        LockGuard<Mutex> guard(counterLock);
+        ++counterWithLock;
+      }
+    }));
+  for (Thread& t : threads)
+    t.join();
+  printf("8 threads under a mutex: %d\n", counterWithLock);
+  threads.clear();
+
+  Mutex queueLock;
+  ConditionVariable ready;
+  Vector<int> queue;
+  bool done = false;
+  Vector<int> received;
+  Thread consumer([&]() {
+    UniqueLock<Mutex> lock(queueLock);
+    while (true)
+    {
+      ready.wait(lock, [&]() { return !queue.empty() || done; });
+      while (!queue.empty())
+      {
+        received.push_back(queue.front());
+        queue.erase(queue.begin());
+      }
+      if (done)
+        break;
+    }
+  });
+  for (int i = 0; i < 1000; ++i)
+  {
+    {
+      LockGuard<Mutex> guard(queueLock);
+      queue.push_back(i);
+    }
+    ready.notify_one();
+  }
+  {
+    LockGuard<Mutex> guard(queueLock);
+    done = true;
+  }
+  ready.notify_all();
+  consumer.join();
+  bool inOrder = received.size() == 1000;
+  for (int i = 0; inOrder && i < 1000; ++i)
+    inOrder = received[i] == i;
+  printf("condition variable hand-over: %d values in order %d\n", (int)received.size(), (int)inOrder);
+
+  perThread = 100;
+  int seen[4] = {0};
+  for (int t = 0; t < 4; ++t)
+    threads.push_back(Thread([t, &seen]() {
+      int start = perThread;
+      perThread += t;
+      seen[t] = start * 10 + perThread;
+    }));
+  for (Thread& t : threads)
+    t.join();
+  threads.clear();
+  printf("thread_local: main %d, threads %d %d %d %d\n", perThread, seen[0], seen[1], seen[2], seen[3]);
+
+  RecursiveMutex recursive;
+  recursive.lock();
+  bool again = recursive.try_lock();
+  recursive.unlock();
+  recursive.unlock();
+  printf("recursive mutex relocks %d\n", (int)again);
+  Mutex plain;
+  UniqueLock<Mutex> deferred(plain, deferLock);
+  int o1 = deferred.owns_lock();
+  int o2 = deferred.try_lock();
+  int o3 = deferred.owns_lock();
+  printf("deferred owns %d, try_lock %d owns %d\n", o1, o2, o3);
+  bool otherGot = true;
+  Thread tryer([&]() { otherGot = plain.try_lock(); });
+  tryer.join();
+  deferred.unlock();
+  printf("another thread's try_lock while held %d\n", (int)otherGot);
+
+  // Store buffering: with sequentially consistent operations, both threads reading 0 is impossible.
+  Atomic<int> x(0), y(0), go(0);
+  int r1 = 0, r2 = 0, forbidden = 0;
+  for (int round = 1; round <= 20000; ++round)
+  {
+    x.store(0);
+    y.store(0);
+    Thread a([&]() {
+      while (go.load() != round)
+      {
+      }
+      x.store(1);
+      r1 = y.load();
+    });
+    Thread b([&]() {
+      while (go.load() != round)
+      {
+      }
+      y.store(1);
+      r2 = x.load();
+    });
+    go.store(round);
+    a.join();
+    b.join();
+    forbidden += r1 == 0 && r2 == 0;
+    if (round == 2000)
+      break;
+  }
+  printf("store buffering: forbidden outcome %d times\n", forbidden);
+
+  Future<int> answer = async([]() { return 42; });
+  int v1 = answer.valid();
+  int v2 = answer.get();
+  int v3 = answer.valid();
+  printf("async: valid %d get %d valid after %d\n", v1, v2, v3);
+  Promise<String> promise;
+  Future<String> later = promise.get_future();
+  Thread setter([&]() { promise.set_value(String("from a thread")); });
+  printf("promise: [%s]\n", later.get().c_str());
+  setter.join();
+  Promise<int> shared;
+  SharedFuture<int> one(shared.get_future());
+  SharedFuture<int> copy = one;
+  shared.set_value(9);
+  printf("shared future: %d %d\n", one.get(), copy.get());
+  Future<void> nothing = async([]() {});
+  nothing.get();
+  printf("async void done\n");
+  Atomic<int> finished(0);
+  {
+    Future<void> waited = async([&]() {
+      thisThread::sleep_for(Milliseconds(100));
+      finished.store(1);
+    });
+  }
+  printf("an async future's destructor waits: %d\n", finished.load());
+  Future<int> orphan;
+  {
+    Promise<int> broken;
+    orphan = broken.get_future();
+  }
+  try
+  {
+    orphan.get();
+    printf("broken promise: no exception\n");
+  }
+  catch (...)
+  {
+    printf("broken promise: get throws\n");
+  }
+  Promise<int> failed;
+  Future<int> failedFuture = failed.get_future();
+  failed.set_exception(makeExceptionPtr(17));
+  try
+  {
+    failedFuture.get();
+  }
+  catch (int code)
+  {
+    printf("set_exception: get throws %d\n", code);
+  }
+  Future<int> failing = async([]() -> int { throw 5; });
+  try
+  {
+    failing.get();
+  }
+  catch (int code)
+  {
+    printf("async exception reaches get: %d\n", code);
+  }
+  return 0;
+}

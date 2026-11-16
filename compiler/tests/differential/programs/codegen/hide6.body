@@ -1,0 +1,13 @@
+// local lambdas named like standard library functions
+int main()
+{
+  auto sort = [](int v) { return v * 10; };
+  printf("H1 %d\n", sort(5));
+  auto reverse = [](int v) { return v * 20; };
+  printf("H2 %d\n", reverse(5));
+  auto clamp = [](int v) { return v * 30; };
+  printf("H3 %d\n", clamp(5));
+  auto abs = [](int v) { return v * 40; };
+  printf("H4 %d\n", abs(5));
+  return 0;
+}

@@ -1,0 +1,75 @@
+// battery 35: continue in a do-while goes to its condition, a switch's default in the middle with
+// fallthrough, short-circuit side effects, the comma operator's value, ?: as an lvalue, unsigned
+// count-down loops, pointer increments and differences, multidimensional arrays, string literals
+// (indexing, sizeof, concatenation, hex and octal escapes).
+int calls = 0;
+bool yes()
+{
+  ++calls;
+  return true;
+}
+bool no()
+{
+  ++calls;
+  return false;
+}
+int classify(int v)
+{
+  int r = 0;
+  switch (v)
+  {
+    case 1:
+      r += 1;
+    [[fallthrough]]; default:
+      r += 10;
+    [[fallthrough]]; case 2:
+      r += 100;
+      break;
+    case 3:
+      r += 1000;
+  }
+  return r;
+}
+int main()
+{
+  int i = 0, sum = 0;
+  do
+  {
+    ++i;
+    if (i % 2)
+      continue;
+    sum += i;
+  } while (i < 7);
+  printf("dowhile %d %d\n", i, sum);
+  printf("switch %d %d %d %d\n", classify(1), classify(2), classify(3), classify(9));
+  calls = 0;
+  bool a = no() && yes();
+  bool b = yes() || no();
+  bool c = no() || (yes() && no());
+  printf("short %d %d %d %d\n", a, b, c, calls);
+  int x = (1, 2, 3);
+  int y = 0;
+  int z = (y = 4, y * 2);
+  printf("comma %d %d %d\n", x, y, z);
+  int p = 1, q = 2;
+  (p > q ? p : q) = 50;
+  (p < q ? p : q) += 7;
+  printf("lvalue %d %d\n", p, q);
+  unsigned n = 3, steps = 0;
+  while (n--)
+    ++steps;
+  printf("countdown %u %u\n", steps, n);
+  int arr[6] = {1, 2, 3, 4, 5, 6};
+  int* ptr = arr;
+  ptr += 2;
+  int* end = arr + 6;
+  printf("pointer %d %d %d %d\n", *ptr++, *ptr, (int)(end - ptr), (int)(ptr - end));
+  int grid[3][4];
+  for (int r = 0; r < 3; ++r)
+    for (int col = 0; col < 4; ++col)
+      grid[r][col] = r * 10 + col;
+  printf("grid %d %d %d %d\n", grid[2][3], *(*(grid + 1) + 2), (int)(sizeof(grid) / sizeof(grid[0])), (int)sizeof(grid[0]));
+  const char* s = "ab" "cd";
+  printf("strings %c %d %d %s %d %d\n", "xyz"[1], (int)sizeof("abc"), (int)sizeof(s), s, "\x41\101"[1], (int)sizeof("a\0b"));
+  return 0;
+}

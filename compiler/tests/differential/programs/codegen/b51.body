@@ -1,0 +1,62 @@
+// Copy elision C++17 guarantees (a prvalue initializes its object: no copy or move), and the move a
+// return of a local or a parameter makes where no elision applies (implicit move, C++20).
+int copies = 0, moves = 0;
+struct M
+{
+  int v;
+  M(int x) : v(x) {}
+  M(const M& o) : v(o.v) { ++copies; }
+  M(M&& o) noexcept : v(o.v) { o.v = -1; ++moves; }
+  M& operator=(const M& o) { v = o.v; ++copies; return *this; }
+  M& operator=(M&& o) noexcept { v = o.v; o.v = -1; ++moves; return *this; }
+};
+
+M make(int x) { return M(x); }
+M makeNested(int x) { return make(x + 1); }
+M fromParam(M p) { return p; }
+M pick(bool which)
+{
+  M a(1), b(2);
+  if (which)
+    return a;
+  return b;
+}
+struct Holder
+{
+  M m;
+};
+M fromMember() { Holder h{M(5)}; return h.m; }
+M fromMoveMember() { Holder h{M(6)}; return static_cast<M&&>(h.m); }
+
+void report(const char* what, int v)
+{
+  printf("%s %d c%d m%d\n", what, v, copies, moves);
+  copies = 0;
+  moves = 0;
+}
+
+int main()
+{
+  M a = M(M(M(3)));
+  report("prvalue", a.v);
+  M b = make(4);
+  report("make", b.v);
+  M c = makeNested(4);
+  report("nested", c.v);
+  M d = fromParam(M(7));
+  report("param", d.v);
+  M e = pick(true);
+  report("pick", e.v);
+  M f = fromMember();
+  report("member", f.v);
+  M g = fromMoveMember();
+  report("movemember", g.v);
+  M h(0);
+  h = make(8);
+  report("assign", h.v);
+  Holder hold{make(9)};
+  report("aggregate", hold.m.v);
+  M arr[2] = {make(10), M(11)};
+  report("array", arr[0].v + arr[1].v);
+  return 0;
+}

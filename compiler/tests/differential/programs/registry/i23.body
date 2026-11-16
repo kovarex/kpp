@@ -1,0 +1,55 @@
+// battery i23: types the rules give: decltype of a name and of a parenthesized name, of a member
+// access, of a call returning a reference; auto and auto& and auto&& deduction from lvalues,
+// rvalues and const objects; auto from a braced initializer (one value); structured bindings by
+// value and by reference writing the original; references to arrays; const_cast and mutable;
+// a reference to a temporary extending its life in a range-for; the ternary's value category.
+template <typename T> struct Kind { static constexpr int value = 0; };
+template <typename T> struct Kind<T&> { static constexpr int value = 1; };
+template <typename T> struct Kind<T&&> { static constexpr int value = 2; };
+template <typename T> struct Kind<const T> { static constexpr int value = 3; };
+template <typename T> struct Kind<const T&> { static constexpr int value = 4; };
+template <typename T> constexpr int kindOf = Kind<T>::value;
+struct S { int m; mutable int counter; int get() const { return ++counter; } };
+int& pick(int& a, int&) { return a; }
+int value() { return 5; }
+struct Pt { int x; int y; };
+int main()
+{
+  int i = 1;
+  const int ci = 2;
+  int& ri = i;
+  S s{3, 0};
+  const S cs{4, 0};
+  printf("decltype %d %d %d %d %d %d %d\n", kindOf<decltype(i)>, kindOf<decltype((i))>, kindOf<decltype(ci)>, kindOf<decltype((ci))>, kindOf<decltype(ri)>,
+         kindOf<decltype(s.m)>, kindOf<decltype((cs.m))>);
+  printf("calls %d %d %d\n", kindOf<decltype(pick(i, i))>, kindOf<decltype(value())>, kindOf<decltype(static_cast<int&&>(i))>);
+  auto a1 = ci;
+  auto& a2 = ci;
+  auto&& a3 = i;
+  auto&& a4 = value();
+  auto a5{7};
+  printf("auto %d %d %d %d %d\n", kindOf<decltype(a1)>, kindOf<decltype(a2)>, kindOf<decltype(a3)>, kindOf<decltype(a4)>, kindOf<decltype(a5)>);
+  Pt p{1, 2};
+  auto [x, y] = p;
+  auto& [rx, ry] = p;
+  x = 10;
+  rx = 20;
+  ry += 5;
+  printf("bindings %d %d %d %d\n", p.x, p.y, x, y);
+  int arr[3] = {1, 2, 3};
+  int (&ra)[3] = arr;
+  ra[1] = 9;
+  printf("arrays %d %d %d\n", arr[1], (int)sizeof(ra), (int)(sizeof(ra) / sizeof(ra[0])));
+  cs.get();
+  cs.get();
+  const int* cp = &ci;
+  int local = 3;
+  const int* lp = &local;
+  *const_cast<int*>(lp) = 8;
+  printf("mutable %d %d %d\n", cs.counter, local, *cp);
+  int t = 0;
+  int u = 1;
+  (i > 0 ? t : u) = 42;
+  printf("ternary %d %d %d\n", t, u, kindOf<decltype(i > 0 ? t : u)>);
+  return 0;
+}

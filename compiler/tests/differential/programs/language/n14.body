@@ -1,0 +1,91 @@
+// statics: function-local, class, template; constant and dynamic initialization; thread_local; constexpr and const
+struct L { int id; L(int i) : id(i) { printf("L%d ", id); } };
+int ctr() { static int n = 0; return ++n; }
+int once(int x) { static int first = x * 2; return first; }
+int& ref() { static int v = 1; return v; }
+L* lazy() { static L l(1); return &l; }
+int rec(int d) { static int calls = 0; calls++; if (d > 0) rec(d - 1); return calls; }
+template<class T> int tcount() { static int n = 0; return ++n; }
+template<class T> struct TS { static int v; static const int c = sizeof(T); static inline int in = sizeof(T) * 2; static int get() { static int g = 100; return g++; } };
+template<class T> int TS<T>::v = sizeof(T) + 1;
+struct CS { static int a; static const int b = 5; static constexpr int c = b + 1; static inline int d = 7; static const char* const s; static constexpr double e = 1.5; static constexpr int arr[3] = { 1, 2, 3 }; };
+int CS::a = 4;
+const char* const CS::s = "text";
+struct Inline { int f() { static int s = 0; return ++s; } };
+auto lam = [] { static int s = 0; return ++s; };
+constexpr int sq(int x) { return x * x; }
+constexpr int c1 = sq(4);
+const int c2 = c1 + 1;
+const int c3 = 3;
+int g1 = sq(3);
+int g2 = g1 + 1;
+int g3 = ctr() + 10;
+static int g4 = g3 * 2;
+int g5;
+int* gp = &g1;
+int& gr = g2;
+const char* gs = "global";
+float gf = 1.0f / 3;
+double gd = 1.0 / 3;
+bool gb = 3 > 2;
+char gc = 'a' + 1;
+int garr[3] = { sq(1), sq(2), sq(3) };
+struct GS { int a; float b; const char* c; int d[2]; };
+GS gst = { 1, 2.5f, "s", { 3, 4 } };
+GS gst2 = { sq(2) };
+enum E { e1 = sq(2), e2 };
+int garr2[e2];
+int arrc[c1];
+template<int N> struct Sz { static const int v = N; };
+Sz<c1> szc;
+Sz<sizeof(GS)> szs;
+const int neg = -5;
+const unsigned big = 0xffffffffu;
+const long long llc = 1ll << 40;
+constexpr float cf = 0.1f + 0.2f;
+constexpr double cd = 0.1 + 0.2;
+constexpr int cdiv = -7 / 2;
+constexpr int cmod = -7 % 2;
+constexpr unsigned cwrap = 0u - 1;
+constexpr int cshift = -8 >> 1;
+constexpr char cchar = (char)200;
+constexpr bool cbool = 0.5;
+thread_local int tl = 7;
+thread_local L* tlp = nullptr;
+int nextTl() { return ++tl; }
+int order = 0;
+int first() { return ++order * 10; }
+int gA = first();
+int gB = first();
+class VC { public: virtual int f() { return 1; } };
+VC gvc;
+struct WithDefault { int a = 1; int b = a + 1; float c = b * 1.5f; };
+WithDefault gwd;
+WithDefault gwd2 = { 5 };
+int main()
+{
+  int a = ctr(); int b = ctr(); printf("%d %d %d %d\n", a, b, once(1), once(2));
+  ref() = 5; printf("%d\n", ref());
+  printf("%d ", lazy()->id); printf("%d\n", lazy() == lazy());
+  printf("%d\n", rec(3));
+  tcount<int>(); tcount<int>(); tcount<char>(); printf("%d %d\n", tcount<int>(), tcount<char>());
+  printf("%d %d %d %d %d %d\n", TS<int>::v, TS<char>::v, TS<int>::c, TS<double>::in, TS<int>::get(), TS<int>::get());
+  printf("%d %d %d\n", TS<char>::get(), CS::a + CS::b, CS::c + CS::d);
+  printf("%s %.1f %d\n", CS::s, CS::e, CS::arr[2]);
+  const int* pb = &CS::b; const int& rc = CS::c; printf("%d %d\n", *pb, rc);
+  Inline i1, i2; i1.f(); printf("%d\n", i2.f());
+  lam(); auto l2 = lam; printf("%d\n", l2());
+  printf("%d %d %d %d %d %d %d %d\n", c1, c2, c3, g1, g2, g3, g4, g5);
+  printf("%d %d %s %.9g %.17g %d %d\n", *gp, gr, gs, gf, gd, gb, gc);
+  printf("%d %d %d %.1f %s %d %d %.1f %d\n", garr[2], gst.a, gst.d[1], gst.b, gst.c, gst2.a, gst2.d[1], gst2.b, gst2.c == nullptr);
+  printf("%d %d %d %d %d\n", e2, (int)(sizeof(garr2) / sizeof(int)), (int)(sizeof(arrc) / sizeof(int)), szc.v, szs.v);
+  printf("%d %u %lld %.9g %.17g %d %d %u %d %d %d\n", neg, big, llc, cf, cd, cdiv, cmod, cwrap, cshift, cchar, cbool);
+  printf("%d %d\n", tl, nextTl());
+  printf("%d %d %d\n", gA, gB, gvc.f());
+  printf("%d %d %.1f %d %d %.1f\n", gwd.a, gwd.b, gwd.c, gwd2.a, gwd2.b, gwd2.c);
+  static int loc = 3; static const int lc = 4; static constexpr int lx = 5; const int ln = 6; constexpr int ly = 7;
+  int (*fp)() = ctr; static int (*sfp)() = ctr; printf("%d %d %d %d %d %d\n", loc, lc, lx, ln, ly, fp() + sfp() * 0);
+  for (int i = 0; i < 3; i++) { static int s = i + 5; s++; printf("%d ", s); } printf("\n");
+  for (int i = 0; i < 2; i++) { static L l(i + 7); printf("%d ", l.id); } printf("\n");
+  return 0;
+}

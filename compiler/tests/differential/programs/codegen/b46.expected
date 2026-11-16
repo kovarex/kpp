@@ -1,0 +1,8 @@
+# kpp's output: a polymorphic or over-aligned base's tail padding stays unused and every empty base takes no storage, on every target (docs/design.md, the layout rule; neither MSVC's nor Itanium's layout).
+withbase 48 16 16 32
+plain 24 8 16
+over 48 16 32
+derived 96 16 32 48 64
+second 64 32 33
+both 128 64 65 96
+exit 0

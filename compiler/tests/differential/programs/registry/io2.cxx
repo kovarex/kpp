@@ -1,0 +1,399 @@
+#include <compare>
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <initializer_list>
+#include <new>
+// kpp's names for battery io2 over the C++ standard library: file streams in binary mode, as kpp's are.
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include <iterator>
+#include <algorithm>
+using String = std::string;
+using std::getline;
+using std::copy;
+template <class C> using IstreambufIterator = std::istreambuf_iterator<C>;
+#define backInserter std::back_inserter
+class InFileStream : public std::ifstream
+{
+public:
+  InFileStream() {}
+  InFileStream(const char* p) : std::ifstream(p, std::ios::binary) {}
+  void open(const char* p) { std::ifstream::open(p, std::ios::binary); }
+};
+class OutFileStream : public std::ofstream
+{
+public:
+  OutFileStream() {}
+  OutFileStream(const char* p) : std::ofstream(p, std::ios::binary) {}
+  void open(const char* p) { std::ofstream::open(p, std::ios::binary); }
+};
+// io2 (thread I, 2026-11-09): InFileStream's and OutFileStream's state against std::ifstream's and
+// std::ofstream's (binary mode): what `if (in)`, `!in`, good() and eof() say after each operation, what
+// getline does to the string when the stream cannot read (the string stays), and what get, ignore, read,
+// seekg and tellg do at the end of a file and after a failure. E's io1 compared good() and eof() after
+// the main operations, not the stream's own truth value (std's is !fail(), not good()).
+void writeFile(const char* path, const char* data, int count)
+{
+  FILE* f = fopen(path, "wb");
+  fwrite(data, 1, count, f);
+  fclose(f);
+}
+
+void state(const char* label, InFileStream& in)
+{
+  bool asBool = false;
+  if (in)
+    asBool = true;
+  printf("%-36s bool %d not %d good %d eof %d\n", label, (int)asBool, (int)!in, (int)in.good(), (int)in.eof());
+}
+
+void outState(const char* label, OutFileStream& out)
+{
+  bool asBool = false;
+  if (out)
+    asBool = true;
+  printf("%-36s bool %d good %d open %d\n", label, (int)asBool, (int)out.good(), (int)out.is_open());
+}
+
+void showLine(const char* label, bool ok, const String& line)
+{
+  printf("%-36s result %d line [%s]\n", label, (int)ok, line.c_str());
+}
+
+const char* path = "io2-test.bin";
+
+void missing()
+{
+  InFileStream in("io2-no-such-file.bin");
+  state("missing: after open", in);
+  String line = "kept";
+  bool ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("missing: getline", ok, line);
+  int c = in.get();
+  printf("missing: get %d\n", c);
+  state("missing: after get", in);
+  printf("missing: open %d\n", (int)in.is_open());
+}
+
+void lines()
+{
+  writeFile(path, "ab\ncd", 5);
+  InFileStream in(path);
+  String line = "start";
+  bool ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("no last newline: getline 1", ok, line);
+  state("no last newline: after 1", in);
+  ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("no last newline: getline 2", ok, line);
+  state("no last newline: after 2", in);
+  ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("no last newline: getline 3 (at end)", ok, line);
+  state("no last newline: after 3", in);
+  ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("no last newline: getline 4", ok, line);
+}
+
+void linesNewline()
+{
+  writeFile(path, "ab\n", 3);
+  InFileStream in(path);
+  String line = "start";
+  bool ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("last newline: getline 1", ok, line);
+  state("last newline: after 1", in);
+  ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("last newline: getline 2 (at end)", ok, line);
+  state("last newline: after 2", in);
+  ok = false;
+  if (getline(in, line))
+    ok = true;
+  showLine("last newline: getline 3", ok, line);
+  state("last newline: after 3", in);
+}
+
+void getsToEnd()
+{
+  writeFile(path, "xy", 2);
+  InFileStream in(path);
+  int a = in.get();
+  state("get: after 1", in);
+  int b = in.get();
+  state("get: after 2 (last)", in);
+  int c = in.get();
+  state("get: after 3 (past the end)", in);
+  int d = in.get();
+  state("get: after 4", in);
+  printf("get: %d %d %d %d\n", a, b, c, d);
+}
+
+void ignores()
+{
+  writeFile(path, "abcde", 5);
+  {
+    InFileStream in(path);
+    in.ignore(100);
+    state("ignore past the end", in);
+    int c = in.get();
+    printf("ignore past the end: next %d\n", c);
+    state("ignore past the end: after get", in);
+  }
+  {
+    InFileStream in(path);
+    in.ignore(5);
+    state("ignore to the last byte", in);
+    int c = in.get();
+    printf("ignore to the last byte: next %d\n", c);
+    state("ignore to the last byte: after get", in);
+  }
+  {
+    InFileStream in(path);
+    in.ignore(100, 'c');
+    state("ignore through a delimiter", in);
+    int c = in.get();
+    printf("ignore through a delimiter: next %c\n", (char)c);
+    in.ignore(100, 'z');
+    state("ignore, no such delimiter", in);
+  }
+  {
+    InFileStream in(path);
+    in.ignore();
+    int c = in.get();
+    printf("ignore one: next %c\n", (char)c);
+  }
+}
+
+void reads()
+{
+  writeFile(path, "abcde", 5);
+  char buffer[16];
+  {
+    InFileStream in(path);
+    in.read(buffer, 5);
+    state("read all exactly", in);
+    in.read(buffer, 1);
+    state("read past the end", in);
+  }
+  {
+    InFileStream in(path);
+    for (int i = 0; i < 16; ++i)
+      buffer[i] = '.';
+    in.read(buffer, 10);
+    state("read short", in);
+    buffer[10] = 0;
+    printf("read short: [%s]\n", buffer);
+    in.read(buffer, 1);
+    state("read after a short read", in);
+  }
+  {
+    InFileStream in(path);
+    in.read(buffer, 0);
+    state("read nothing", in);
+  }
+}
+
+void seeks()
+{
+  writeFile(path, "abcde", 5);
+  {
+    InFileStream in(path);
+    in.seekg(3);
+    state("seekg 3", in);
+    int at = (int)in.tellg();
+    char following = (char)in.get();
+    printf("seekg 3: tellg %d, next %c\n", at, following);
+  }
+  {
+    InFileStream in(path);
+    in.ignore(100);
+    state("seekg after eof alone: before", in);
+    in.seekg(1);
+    state("seekg after eof alone: after", in);
+    int c = in.get();
+    printf("seekg after eof alone: next %d\n", c);
+  }
+  {
+    InFileStream in(path);
+    while (in.get() != -1)
+    {
+    }
+    state("seekg after a failed get: before", in);
+    in.seekg(1);
+    state("seekg after a failed get: after", in);
+    int c = in.get();
+    printf("seekg after a failed get: next %d\n", c);
+    state("seekg after a failed get: end", in);
+  }
+  {
+    InFileStream in(path);
+    in.ignore(100);
+    int t = (int)in.tellg();
+    printf("tellg at eof alone: %d\n", t);
+    state("tellg at eof alone: after", in);
+  }
+  {
+    InFileStream in(path);
+    while (in.get() != -1)
+    {
+    }
+    int t = (int)in.tellg();
+    printf("tellg after a failed get: %d\n", t);
+  }
+}
+
+void closes()
+{
+  writeFile(path, "ab", 2);
+  {
+    InFileStream in(path);
+    state("input: open", in);
+    in.close();
+    state("input: closed", in);
+    printf("input: open %d\n", (int)in.is_open());
+    int c = in.get();
+    printf("input: get after close %d\n", c);
+    state("input: after that get", in);
+    in.open(path);
+    state("input: opened again", in);
+    printf("input: next %c\n", (char)in.get());
+  }
+  {
+    OutFileStream out("io2-out.bin");
+    outState("output: open", out);
+    out.close();
+    outState("output: closed", out);
+    out.open("io2-out.bin");
+    outState("output: opened again", out);
+    out.close();
+    outState("output: closed again", out);
+  }
+  {
+    OutFileStream out("io2-no-such-directory/x.bin");
+    outState("output: cannot open", out);
+  }
+}
+
+void defaults()
+{
+  InFileStream in;
+  state("default input", in);
+  printf("default input: open %d\n", (int)in.is_open());
+  int c = in.get();
+  printf("default input: get %d\n", c);
+  state("default input: after get", in);
+  InFileStream closing;
+  closing.close();
+  state("default input: closed", closing);
+  OutFileStream out;
+  outState("default output", out);
+  out << "x";
+  outState("default output: after a write", out);
+  OutFileStream writing;
+  writing.write("ab", 2);
+  outState("default output: after write()", writing);
+  OutFileStream shutting;
+  shutting.close();
+  outState("default output: closed", shutting);
+}
+
+void iterators()
+{
+  writeFile(path, "abc", 3);
+  InFileStream in(path);
+  String all;
+  copy(IstreambufIterator<char>(in), IstreambufIterator<char>(), backInserter(all));
+  printf("iterator: read [%s]\n", all.c_str());
+  state("iterator: after reading all", in);
+  int c = in.get();
+  printf("iterator: get after it %d\n", c);
+  state("iterator: after that get", in);
+}
+
+void reopened()
+{
+  writeFile(path, "ab", 2);
+  writeFile("io2-other.bin", "xy", 2);
+  InFileStream in(path);
+  in.open("io2-other.bin");
+  state("open while open", in);
+  printf("open while open: file open %d\n", (int)in.is_open());
+  int c = in.get();
+  printf("open while open: get %d\n", c);
+  in.close();
+  state("open while open: closed", in);
+  in.open("io2-other.bin");
+  state("open while open: opened again", in);
+  c = in.get();
+  printf("open while open: next %c\n", (char)c);
+  in.close();
+  in.close();
+  state("closed twice", in);
+  remove("io2-other.bin");
+}
+
+void outputs()
+{
+  {
+    OutFileStream out("io2-out.bin");
+    out << "text";
+    out.close();
+    outState("write then close", out);
+    if (!out)
+      printf("write then close: the write looks failed\n");
+    else
+      printf("write then close: the write looks fine\n");
+    out << "more";
+    outState("write after close", out);
+    out.open("io2-out.bin");
+    outState("opened after that", out);
+    out.close();
+    out.close();
+    outState("closed twice", out);
+  }
+  {
+    OutFileStream out("io2-out.bin");
+    out.open("io2-out2.bin");
+    outState("output: open while open", out);
+    out << "lost";
+    out.close();
+    outState("output: closed after that", out);
+    InFileStream written("io2-out.bin");
+    int c = written.get();
+    printf("output: first byte %d\n", c);
+  }
+  remove("io2-out2.bin");
+}
+
+int main()
+{
+  defaults();
+  iterators();
+  reopened();
+  outputs();
+  missing();
+  lines();
+  linesNewline();
+  getsToEnd();
+  ignores();
+  reads();
+  seeks();
+  closes();
+  remove(path);
+  remove("io2-out.bin");
+  return 0;
+}

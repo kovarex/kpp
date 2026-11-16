@@ -1,0 +1,1 @@
+sqrt_ss cmpeq_ss cmplt_ss cmpord_ps cmpunord_ps move_ss movehl_ps movelh_ps cmpord_pd cmpunord_pd move_sd avg_epu8 avg_epu16 sll_epi16 sll_epi64 sra_epi16 srl_epi16 srl_epi64

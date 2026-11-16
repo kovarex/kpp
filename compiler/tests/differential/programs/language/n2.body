@@ -1,0 +1,73 @@
+// default arguments, delegating and inherited constructors, implicit special members, deleted and defaulted
+struct L { int id; int moved = 0; L(int i = 0) : id(i) { printf("L%d ", id); } L(const L& o) : id(o.id) { printf("Lc%d ", id); } L(L&& o) : id(o.id) { o.moved = 1; printf("Lm%d ", id); } L& operator=(const L& o) { id = o.id; printf("L=c%d ", id); return *this; } L& operator=(L&& o) { id = o.id; o.moved = 1; printf("L=m%d ", id); return *this; } ~L() { printf("~L%d ", id); } };
+int counter = 0;
+int nextOne() { return ++counter; }
+int dflt(int a = nextOne(), int b = nextOne() * 10) { return a + b; }
+struct D { int v; D(int x = 7) : v(x) {} int get(int k = 2, int j = 3) const { return v * k + j; } static int sget(int k = sizeof(int)) { return k; } };
+class VB { public: virtual ~VB() {} virtual int f(int x = 1) { return x; } virtual int g(int x = 10) = 0; };
+class VD : public VB { public: int f(int x = 2) override { return x * 100; } int g(int x = 20) override { return x * 100; } };
+template<class T> T tdef(T a = T(5), int b = sizeof(T)) { return a + (T)b; }
+int later(int a, int b = 5);
+
+int later(int a, int b) { return a * 100 + b; }
+int shadow(int x = counter) { return x; }
+const char* nameIt(const char* s = "dflt") { return s; }
+L byval(L x = L(9)) { return x; }
+int refdef(const L& x = L(8)) { return x.id; }
+struct Del { int a, b, c; Del() : Del(1) { printf("D0 "); } Del(int x) : Del(x, x + 1) { printf("D1 "); } Del(int x, int y) : a(x), b(y), c(x + y) { printf("D2 "); } };
+struct Thrower { L l; Thrower(int) : Thrower() { printf("body "); throw 1; } Thrower() : l(3) { printf("t0 "); } ~Thrower() { printf("~T "); } };
+struct B1 { int x; L l; B1(int a) : x(a), l(a) { printf("B1 "); } B1(int a, int b) : x(a + b), l(b) { printf("B1b "); } B1(const char* s, int a = 4) : x(a), l(a * 2) { printf("B1s "); } };
+struct I1 : public B1 { using B1::B1; int y = 77; L m{ 55 }; };
+struct Members { L a{ 1 }; L b; L c = L(3); int n = 4; Members() : b(2) { printf("M "); } Members(int) : a(10), n(40) { printf("Mi "); } };
+struct Impl { L a; L b[2]; int n; };
+struct ConstM { const int c = 1; int& r; L l; };
+struct OnlyCopy { L l; OnlyCopy(int i) : l(i) {} OnlyCopy(const OnlyCopy& o) : l(o.l) { printf("OC "); } };
+struct HoldsOnlyCopy { OnlyCopy o; HoldsOnlyCopy(int i) : o(i) {} };
+struct UserDtor { L l; UserDtor(int i) : l(i) {} ~UserDtor() { printf("UD "); } };
+struct Base2 { L l; Base2(int i) : l(i) {} };
+struct Der2 : public Base2 { L m; Der2(int i) : Base2(i), m(i + 1) {} };
+struct SelfA { L l; int* p; SelfA(int i) : l(i), p(new int(i)) {} SelfA(const SelfA& o) : l(o.l), p(new int(*o.p)) {} SelfA& operator=(const SelfA& o) { if (this != &o) { l = o.l; *p = *o.p; } return *this; } ~SelfA() { delete p; } };
+struct Def { L l; Def() = default; Def(const Def&) = default; Def(Def&&) = default; Def& operator=(const Def&) = default; Def& operator=(Def&&) = default; ~Def() = default; };
+struct OutDef { L l; OutDef(); OutDef(const OutDef&); OutDef& operator=(OutDef&&); };
+OutDef::OutDef() = default;
+OutDef::OutDef(const OutDef&) = default;
+OutDef& OutDef::operator=(OutDef&&) = default;
+struct Agg { int a; L l; int b = 3; };
+struct Order { L a; L b; Order() : b(1), a(2) {} };
+struct E2 { L x[3] = { L(1), L(2) }; };
+struct Vol { int a; float b; char c[3]; };
+int main()
+{
+  printf("%d ", dflt()); printf("%d ", dflt(100)); printf("%d ", dflt(100, 200)); printf("%d\n", counter);
+  D d; printf("%d %d %d %d %d\n", d.v, d.get(), d.get(5), d.get(5, 6), D::sget());
+  VD vd; VB* vb = &vd; printf("%d %d %d %d\n", vb->f(), vd.f(), vb->g(), vd.g());
+  printf("%d %f %d\n", tdef<int>(), tdef<double>(), (int)tdef<char>());
+  counter = 50; { int counter = 3; printf("%d ", shadow()); } printf("%s %s\n", nameIt(), nameIt("x"));
+  { L r = byval(); printf("| %d\n", r.id); }
+  { int r = refdef(); printf("| %d\n", r); }
+  { Del a; printf("%d %d %d\n", a.a, a.b, a.c); Del b(5); printf("%d %d %d\n", b.a, b.b, b.c); }
+  try { Thrower t(1); } catch (int) { printf("caught\n"); }
+  { I1 a(1); I1 b(1, 2); I1 c("s"); I1 d("s", 2); printf("| %d %d %d %d %d %d\n", a.x, b.x, c.x, d.x, a.y, a.m.id); }
+  { Members a; printf("| "); Members b(0); printf("| %d %d %d\n", a.n, b.a.id, b.n); }
+  { Impl a{ L(1), { L(2), L(3) }, 4 }; printf("| copy "); Impl b = a; printf("| assign "); b = a; printf("| move "); Impl c = static_cast<Impl&&>(a); printf("| massign "); b = static_cast<Impl&&>(c); printf("| %d %d %d\n", a.a.moved, b.a.id, c.a.moved); }
+  { int v = 3; ConstM a{ 5, v, L(1) }; ConstM b = a; b.r = 9; printf("| %d %d %d\n", b.c, v, a.r); }
+  { HoldsOnlyCopy a(1); printf("| "); HoldsOnlyCopy b = static_cast<HoldsOnlyCopy&&>(a); printf("| "); }
+  printf("\n");
+  { UserDtor a(1); printf("| "); UserDtor b = static_cast<UserDtor&&>(a); printf("| "); b = static_cast<UserDtor&&>(a); printf("| "); }
+  printf("\n");
+  { Der2 a(1); printf("| "); Der2 b = a; printf("| "); Der2 c = static_cast<Der2&&>(a); printf("| "); b = c; printf("| "); b = static_cast<Der2&&>(c); printf("| "); }
+  printf("\n");
+  { SelfA a(1); SelfA b(2); a = a; a = b; *b.p = 7; printf("| %d %d\n", *a.p, *b.p); }
+  { Def a; printf("| "); Def b(a); printf("| "); Def c(static_cast<Def&&>(a)); printf("| "); b = a; printf("| "); b = static_cast<Def&&>(c); printf("| "); }
+  printf("\n");
+  { OutDef a; printf("| "); OutDef b(a); printf("| "); b = static_cast<OutDef&&>(a); printf("| "); }
+  printf("\n");
+  { Agg a{ 1, L(2) }; printf("| %d %d %d ", a.a, a.l.id, a.b); Agg b{ 5 }; printf("| %d %d ", b.l.id, b.b); Agg c{}; printf("| "); Agg d = { .a = 1, .b = 9 }; printf("| %d ", d.b); }
+  printf("\n");
+  { Order o; printf("| %d %d ", o.a.id, o.b.id); }
+  printf("\n");
+  { E2 e; printf("| %d %d %d ", e.x[0].id, e.x[1].id, e.x[2].id); }
+  printf("\n");
+  { Vol a = { 1, 2.5f, { 'a', 'b' } }; Vol b; b = a; Vol c(a); c.c[2] = 'x'; printf("%d %.1f %c%c%d %c\n", b.a, b.b, b.c[0], b.c[1], b.c[2], c.c[2]); }
+  return 0;
+}

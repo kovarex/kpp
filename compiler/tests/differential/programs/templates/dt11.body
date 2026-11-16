@@ -1,0 +1,12 @@
+// A polymorphic class's defaulted noexcept destructor, through the base.
+struct T { ~T() noexcept(false) { printf("T\n"); fflush(stdout); throw 1; } };
+class B { public: virtual ~B() noexcept = default; };
+class S : public B { public: T t; ~S() noexcept override = default; };
+void f() { B* p = new S; delete p; }
+int main()
+{
+  try { f(); }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

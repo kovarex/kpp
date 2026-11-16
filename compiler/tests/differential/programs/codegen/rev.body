@@ -1,0 +1,20 @@
+// C++20 reversed equality candidates: `a == b` and `a != b` through operator==(const B&, const A&)
+struct A { int v; };
+struct B { int w; };
+bool operator==(const B& b, const A& a) { printf("[B==A %d %d] ", b.w, a.v); return b.w == a.v; }
+struct C
+{
+  int v;
+  bool operator==(const B& b) const { printf("[C==B] "); return v == b.w; }
+};
+int main()
+{
+  A a{3};
+  B b{3}, other{4};
+  printf("R1 %d\n", a == b);
+  printf("R2 %d\n", a != other);
+  printf("R3 %d\n", b == a);
+  C c{4};
+  printf("R4 %d %d\n", other == c, b != c);
+  return 0;
+}

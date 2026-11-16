@@ -1,0 +1,110 @@
+// battery i27: control flow: a switch whose default is in the middle and falls through, cases
+// sharing code, a switch on a 64-bit value with sparse and negative cases, continue in a do-while
+// (it tests the condition), break and continue in a switch inside a loop, goto backwards and out of
+// nested loops, the comma operator in a for, short-circuit evaluation with side effects, a loop over
+// an unsigned counter going down past 0 by its wrap, a switch with an init statement, an if with an
+// init statement, nested ternaries.
+int trace = 0;
+bool step(int d, bool r) { trace = trace * 10 + d; return r; }
+int middleDefault(int v)
+{
+  int r = 0;
+  switch (v)
+  {
+    case 1: r += 1;
+    [[fallthrough]]; default: r += 10;
+    [[fallthrough]]; case 2: r += 100; break;
+    case 3: r += 1000;
+  }
+  return r;
+}
+int sparse(long long v)
+{
+  switch (v)
+  {
+    case -5000000000LL: return 1;
+    case -1: return 2;
+    case 0: return 3;
+    case 7: case 8: case 9: return 4;
+    case 1LL << 40: return 5;
+    default: return 6;
+  }
+}
+int doWhile()
+{
+  int i = 0, s = 0;
+  do
+  {
+    ++i;
+    if (i % 2)
+      continue;
+    s += i;
+  } while (i < 10);
+  return s * 100 + i;
+}
+int switchInLoop()
+{
+  int s = 0;
+  for (int i = 0; i < 10; ++i)
+  {
+    switch (i % 4)
+    {
+      case 0: continue;
+      case 1: s += 1; break;
+      case 2: s += 10;
+      [[fallthrough]]; case 3: s += 100; break;
+    }
+    s += 1000;
+  }
+  return s;
+}
+int gotos()
+{
+  int found = -1;
+  for (int i = 0; i < 10; ++i)
+    for (int j = 0; j < 10; ++j)
+      if (i * j == 42)
+      {
+        found = i * 10 + j;
+        goto done;
+      }
+done:
+  int n = 0, k = 0;
+again:
+  k += n;
+  if (++n < 5)
+    goto again;
+  return found * 100 + k;
+}
+int main()
+{
+  printf("switch %d %d %d %d %d\n", middleDefault(1), middleDefault(2), middleDefault(3), middleDefault(4), middleDefault(-1));
+  printf("sparse %d %d %d %d %d %d %d\n", sparse(-5000000000LL), sparse(-1), sparse(0), sparse(8), sparse(1LL << 40), sparse(1LL << 41), sparse(10));
+  printf("loops %d %d %d\n", doWhile(), switchInLoop(), gotos());
+  int a = 0, b = 0;
+  for (int i = 0, j = 10; i < j; ++i, j -= 2)
+    a += i, b += j;
+  printf("comma %d %d\n", a, b);
+  trace = 0;
+  bool r1 = step(1, false) && step(2, true);
+  bool r2 = step(3, true) || step(4, true);
+  bool r3 = (step(5, false) || step(6, true)) && (step(7, false) || step(8, false));
+  printf("shortcircuit %d %d %d %d\n", (int)r1, (int)r2, (int)r3, trace);
+  unsigned count = 0;
+  for (unsigned u = 5; u <= 5; --u)
+    ++count;
+  printf("wrap %u\n", count);
+  int initSwitch = 0;
+  switch (int v = 3 * 3; v % 4)
+  {
+    case 1: initSwitch = v; break;
+    default: initSwitch = -v;
+  }
+  if (int w = initSwitch * 2; w > 10)
+    printf("ifinit %d %d\n", initSwitch, w);
+  else
+    printf("ifinit else %d\n", w);
+  int x = 7;
+  printf("ternary %d %d\n", x > 5 ? x > 6 ? 1 : 2 : 3, x < 5 ? 1 : x < 7 ? 2 : 3);
+  return 0;
+}

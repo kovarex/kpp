@@ -1,0 +1,57 @@
+// battery n3: bit-fields: a value too wide for a signed field (it keeps the low bits, read back
+// sign-extended), an unsigned one wrapping, compound assignment and ++/-- at the edges, a bool
+// field, an enum field of a signed and of an unsigned underlying type, the value of an assignment
+// expression to a field, a field of width equal to its type, sizes of structs mixing field types
+// (the target's rules), a zero-width field starting a new unit, fields read through a reference
+// and copied with the struct, a field's promotion in arithmetic.
+enum class Color : signed char { red = -2, green = 1, blue = 3 };
+enum Mode : unsigned { off, on, auto_ = 2 };
+struct F
+{
+  int s : 4;
+  unsigned u : 3;
+  bool b : 1;
+  Color c : 3;
+  Mode m : 2;
+  long long big : 40;
+  unsigned full : 32;
+};
+struct Mixed { char a : 3; int b : 5; char c : 2; };
+struct ZeroWidth { int a : 3; int : 0; int b : 3; };
+struct Wide { unsigned long long x : 33; unsigned long long y : 33; };
+int main()
+{
+  volatile int nine = 9;
+  F f{};
+  f.s = nine;
+  f.u = nine;
+  printf("store %d %u\n", f.s, f.u);
+  f.s = 7;
+  f.s += 1;
+  int sAfterAdd = f.s;
+  f.u = 7;
+  f.u++;
+  printf("wrap %d %u", sAfterAdd, f.u);
+  f.s = -8;
+  f.s--;
+  printf(" %d\n", f.s);
+  int assigned = (f.s = 13);
+  unsigned uAssigned = (f.u = 12);
+  printf("assign value %d %u %d %u\n", assigned, uAssigned, f.s, f.u);
+  f.b = nine;
+  f.c = Color::red;
+  f.m = auto_;
+  printf("bool enum %d %d %d\n", (int)f.b, (int)f.c, (int)f.m);
+  f.big = -1;
+  f.full = 0xFFFFFFFFu;
+  f.full += 2;
+  printf("wide %lld %u\n", (long long)f.big, f.full);
+  F copy = f;
+  F& ref = f;
+  ref.u = 5;
+  printf("copy %d %u %u\n", copy.s, copy.u, f.u);
+  f.u = 7;
+  printf("promote %d %d\n", (int)(f.u + 1), (int)(f.s * 2));
+  printf("sizes %d %d %d %d\n", (int)sizeof(F), (int)sizeof(Mixed), (int)sizeof(ZeroWidth), (int)sizeof(Wide));
+  return 0;
+}

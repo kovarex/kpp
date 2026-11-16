@@ -1,0 +1,54 @@
+// lambdas: captures by value and reference, copies, mutable, init capture, this, nested, generic, as function pointers
+struct T { int id; T(int i) : id(i) { printf("+%d ", id); } T(const T& o) : id(o.id) { printf("c%d ", id); } T(T&& o) : id(o.id) { o.id = -o.id; printf("m%d ", id); } ~T() { printf("-%d ", id); } };
+struct Obj { int v = 5; T t{ 1 }; auto byThis() { return [this] { return v * 2; }; } auto eq() { return [=] { return v * 4; }; } auto ref() { return [&] { v++; return v; }; } int nested() { return [this] { return [this] { return v; }(); }(); } };
+template<class F> int twice(F f) { return f() + f(); }
+template<class F> int byRef(F& f) { return f() + f(); }
+int (*asPtr())(int) { return [](int x) { return x + 1; }; }
+auto counter() { int n = 0; return [n]() mutable { return ++n; }; }
+auto adder(int a) { return [a](int b) { return [a, b](int c) { return a + b + c; }; }; }
+int global = 3;
+static int sstat = 4;
+int main()
+{
+  int a = 1, b = 2;
+  auto l1 = [a, &b] { b += a; return a + b; }; a = 10; printf("%d %d %d\n", l1(), a, b);
+  auto l2 = [=]() mutable { a += 1; return a; }; printf("%d %d %d\n", l2(), l2(), a);
+  auto l3 = l2; printf("%d %d\n", l3(), l2());
+  auto l4 = [&] { a = 100; b = 200; }; l4(); printf("%d %d\n", a, b);
+  auto l5 = [x = a + 1, &y = b, z = 3]() mutable { y = x + z; x++; return x; }; printf("%d %d %d\n", l5(), l5(), b);
+  printf("%d %d\n", (int)sizeof([] {}), (int)sizeof([a] { return a; }));
+  printf("%d\n", twice(counter()));
+  auto cn = counter(); printf("%d ", byRef(cn)); printf("%d\n", byRef(cn));
+  printf("%d %d\n", asPtr()(1), adder(1)(2)(3));
+  { T t(1); printf("| "); auto c = [t] { return t.id; }; printf("| "); auto c2 = c; printf("| "); auto c3 = static_cast<decltype(c)&&>(c); printf("| %d %d %d %d | ", t.id, c(), c2(), c3()); }
+  printf("\n");
+  { T t(2); auto c = [u = static_cast<T&&>(t)] { return u.id; }; printf("| %d %d | ", t.id, c()); }
+  printf("\n");
+  { T t(3); auto c = [&t] { return t.id; }; auto d = [&] { return t.id + 1; }; t.id = 30; printf("| %d %d %d | ", c(), d(), (int)sizeof(c)); }
+  printf("\n");
+  { Obj o; auto l = o.byThis(); auto e = o.eq(); auto c = [] { return 0; }; auto r = o.ref(); o.v = 7; printf("| %d %d %d %d %d %d | ", l(), e(), c(), r(), o.v, o.nested()); }
+  printf("\n");
+  int arr[3] = { 1, 2, 3 }; auto lr = [&arr] { arr[1] = 8; return (int)sizeof(arr); }; printf("%d %d\n", lr(), arr[1]);
+  printf("%d %d\n", [] { return global + sstat; }(), [](int x, int y = 2) { return x * y; }(3));
+  const int k = 5; auto lk = [] { return k * 2; }; printf("%d\n", lk());
+  auto g1 = [](auto x, auto y) { return x + y; }; printf("%d %.1f\n", g1(1, 2), g1(1, 2.5));
+  auto g2 = [](auto&... xs) { return (xs + ...); }; int p = 1, q = 2; printf("%d\n", g2(p, q));
+  auto g3 = []<class X>(X x) { return (int)sizeof(X) + (int)x; }; printf("%d %d\n", g3('a'), g3(1.5));
+  auto rec = [](auto self, int n) -> int { return n <= 1 ? 1 : n * self(self, n - 1); }; printf("%d\n", rec(rec, 5));
+  auto rt = [](int x) -> double { return x / 2; }; printf("%.1f\n", rt(5));
+  auto rr = [](int& x) -> int& { return x; }; int w = 1; rr(w) = 2; printf("%d\n", w);
+  auto ab = [](bool c) { if (c) return 1; else return 2; }; printf("%d\n", ab(false));
+  int (*fp)(int, int) = [](int x, int y) { return x - y; }; printf("%d\n", fp(5, 3));
+  auto plus = +[](int x) { return x + 1; }; printf("%d\n", plus(1));
+  for (int i = 0; i < 2; i++) { auto c = [i, j = i * 2]() { return i + j; }; printf("%d ", c()); } printf("\n");
+  int total = 0; auto acc = [&total](int x) { total += x; }; for (int i : { 1, 2, 3 }) acc(i); printf("%d\n", total);
+  auto outer = [a]() { auto inner = [a]() { return a + 1; }; return inner(); }; printf("%d\n", outer());
+  auto dflt = [&, a] { b = a; }; dflt(); printf("%d\n", b);
+  auto cp = [=, &b] { b = a + 1; }; cp(); printf("%d\n", b);
+  struct Local { int x; int get() { return [this] { return x; }(); } }; printf("%d\n", Local{ 4 }.get());
+  auto [s1, s2] = [] { struct R { int a; double b; }; return R{ 1, 2.5 }; }(); printf("%d %.1f\n", s1, s2);
+  auto cb = [s1 = s1] { return s1; }; printf("%d\n", cb());
+  const auto cl = [n = 0]() mutable { return 1; }; (void)cl;
+  auto noexc = [](int x) noexcept { return x; }; printf("%d\n", noexc(3));
+  return 0;
+}

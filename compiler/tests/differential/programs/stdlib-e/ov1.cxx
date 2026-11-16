@@ -1,0 +1,149 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <optional>
+#include <compare>
+using std::move; using std::nullopt;
+template <typename T> using Optional = std::optional<T>;
+using BadOptionalAccess = std::bad_optional_access;
+constexpr auto inPlace = std::in_place;
+#define makeOptional std::make_optional
+// Optional against std::optional: the value's constructions, copies, moves, assignments and
+// destructions at each step (default, from a value, copy, move, = value over empty and full, =
+// nullopt, = {}, emplace, reset, swap in each state, scope end), value() on empty, value_or, and
+// the comparisons (with Optional, a value, nullopt; empty ordering first; a NaN held).
+int made = 0, copied = 0, moved = 0, copyAssigned = 0, moveAssigned = 0, destroyed = 0;
+struct Tracked
+{
+  int v;
+  Tracked() : v(0) { ++made; }
+  Tracked(int x) : v(x) { ++made; }
+  Tracked(int x, int y) : v(x * 100 + y) { ++made; }
+  Tracked(const Tracked& o) : v(o.v) { ++copied; }
+  Tracked(Tracked&& o) : v(o.v) { o.v = -1; ++moved; }
+  Tracked& operator=(const Tracked& o) { v = o.v; ++copyAssigned; return *this; }
+  Tracked& operator=(Tracked&& o) { v = o.v; o.v = -1; ++moveAssigned; return *this; }
+  ~Tracked() { ++destroyed; }
+  bool operator==(const Tracked& o) const { return v == o.v; }
+  bool operator<(const Tracked& o) const { return v < o.v; }
+};
+void counts(const char* step)
+{
+  printf("%-28s made %d copied %d moved %d copy= %d move= %d destroyed %d\n", step, made, copied, moved, copyAssigned, moveAssigned, destroyed);
+  made = copied = moved = copyAssigned = moveAssigned = destroyed = 0;
+}
+void state(const char* name, const Optional<Tracked>& o) { printf("  %s: %s %d\n", name, o.has_value() ? "has" : "empty", o.has_value() ? o->v : 0); }
+const char* order(int c) { return c < 0 ? "less" : c > 0 ? "greater" : "equal"; }
+
+int main()
+{
+  {
+    Optional<Tracked> a;
+    counts("default");
+    state("a", a);
+    Optional<Tracked> b = Tracked(5);
+    counts("from a temporary");
+    Tracked t(6);
+    counts("a Tracked");
+    Optional<Tracked> c = t;
+    counts("from an lvalue");
+    Optional<Tracked> d = b;
+    counts("copy");
+    Optional<Tracked> e = move(b);
+    counts("move");
+    state("moved-from b", b);
+    state("e", e);
+    a = t;
+    counts("= lvalue over empty");
+    a = Tracked(7);
+    counts("= temporary over full");
+    a = c;
+    counts("= Optional over full");
+    a = Optional<Tracked>();
+    counts("= empty Optional over full");
+    state("a", a);
+    a = move(e);
+    counts("= moved Optional over empty");
+    state("e", e);
+    a = nullopt;
+    counts("= nullopt");
+    a = d;
+    a = {};
+    counts("= {} over full");
+    state("a after = {}", a);
+    a.emplace(3, 4);
+    counts("emplace over empty");
+    a.emplace(8);
+    counts("emplace over full");
+    state("a", a);
+    a.reset();
+    counts("reset");
+    a.reset();
+    counts("reset empty");
+    Optional<Tracked> f(inPlace, 1, 2);
+    counts("in place");
+    state("f", f);
+    c.swap(d);
+    counts("swap full full");
+    state("c", c);
+    state("d", d);
+    c.swap(a);
+    counts("swap full empty");
+    state("c", c);
+    state("a", a);
+    c.swap(a);
+    counts("swap empty full");
+    Optional<Tracked> g, h;
+    g.swap(h);
+    counts("swap empty empty");
+    printf("value_or %d %d\n", g.value_or(Tracked(9)).v, f.value_or(Tracked(9)).v);
+    counts("value_or");
+    try
+    {
+      printf("value %d\n", g.value().v);
+    }
+    catch (const BadOptionalAccess&)
+    {
+      printf("value of empty threw\n");
+    }
+    printf("value of full %d\n", f.value().v);
+    counts("value");
+  }
+  counts("scope end");
+
+  Optional<int> none, one = 1, two = 2, alsoOne = 1;
+  printf("== %d %d %d %d, != %d\n", (int)(one == alsoOne), (int)(one == two), (int)(none == none), (int)(none == one), (int)(none != one));
+  printf("value == %d %d %d, != %d %d\n", (int)(one == 1), (int)(none == 0), (int)(1 == one), (int)(none != 0), (int)(one != 1));
+  printf("nullopt == %d %d %d %d\n", (int)(none == nullopt), (int)(one == nullopt), (int)(nullopt == none), (int)(one != nullopt));
+  printf("< %d %d %d %d, > %d, <= %d %d, >= %d\n", (int)(none < one), (int)(one < none), (int)(none < none), (int)(one < two), (int)(two > one), (int)(none <= none),
+         (int)(one <= none), (int)(none >= one));
+  printf("value < %d %d %d %d\n", (int)(none < 0), (int)(one < 2), (int)(one > 0), (int)(0 < one));
+  printf("<=> %s %s %s %s\n", order((int)((none <=> one) < 0) * -1 + (int)((none <=> one) > 0)), order((int)((one <=> none) > 0) - (int)((one <=> none) < 0)),
+         order((int)((one <=> two) > 0) - (int)((one <=> two) < 0)), order((int)((none <=> 5) > 0) - (int)((none <=> 5) < 0)));
+  double nan = 0.0 / 0.0 * 1.0;
+  Optional<double> n = nan, x = 1.0, empty;
+  printf("NaN == %d, != %d, < %d %d, > %d %d, <= %d, >= %d\n", (int)(n == n), (int)(n != n), (int)(n < x), (int)(x < n), (int)(n > x), (int)(x > n), (int)(n <= x), (int)(n >= x));
+  printf("NaN with a value: == %d < %d > %d <= %d >= %d\n", (int)(n == nan), (int)(n < 1.0), (int)(n > 1.0), (int)(n <= 1.0), (int)(n >= 1.0));
+  printf("NaN with empty: < %d > %d\n", (int)(empty < n), (int)(n > empty));
+  Optional<String> s = String("text");
+  printf("Optional<String> == literal %d, value_or [%s]\n", (int)(s == String("text")), Optional<String>().value_or("fallback").c_str());
+  auto m = makeOptional<Tracked>(4, 5);
+  printf("makeOptional %d\n", m->v);
+  counts("makeOptional");
+  return 0;
+}

@@ -1,0 +1,13 @@
+constexpr int f14() { struct L { int a; int b = 9; }; L l{4}; L m = l; m.a += l.b; return m.a * 100 + m.b; }
+constexpr int f16() { enum Color { Red = 2, Green = 5 }; enum class Mode : char { A = 3, B }; return Red * 100 + Green * 10 + int(Mode::B); }
+constexpr int f17() { struct Counter { int n = 0; constexpr int next() { return ++n; } }; Counter c; c.next(); c.next(); return c.next(); }
+constexpr int g14 = f14();
+constexpr int g16 = f16();
+constexpr int g17 = f17();
+
+int main()
+{
+  printf("%d %d %d\n", g14, g16, g17);
+  printf("%d %d %d\n", f14(), f16(), f17());
+  return 0;
+}

@@ -1,0 +1,96 @@
+int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }
+constexpr int cf(int x) { return x * 2 + 1; }
+struct CC { int a; int b; constexpr CC(int x) : a(x), b(x + 1) {} int sum() const { return a + b; } };
+struct DC { int a; int b = 7; DC() : a(say("DC", 3)) {} };
+struct Peek { int x; int y; int z = 9; Peek() { printf("Peek x=%d y=%d z=%d\n", x, y, z); x = 1; } };
+extern int laterDynamic;
+extern int laterConstant;
+extern int laterConstexprCall;
+extern CC laterCC;
+extern DC laterDC;
+extern const int laterConstCall;
+extern int* laterPointer;
+extern int laterArray[3];
+extern const char* laterText;
+int e1 = say("e1 reads laterDynamic", laterDynamic);
+int e2 = say("e2 reads laterConstant", laterConstant);
+int e3 = say("e3 reads laterConstexprCall", laterConstexprCall);
+int e4 = say("e4 reads laterCC", laterCC.sum());
+int e5 = say("e5 reads laterDC.a", laterDC.a);
+int e5b = say("e5b reads laterDC.b", laterDC.b);
+int e6 = say("e6 reads laterConstCall", laterConstCall);
+int e7 = say("e7 reads laterPointer null", laterPointer == nullptr ? 1 : *laterPointer);
+int e8 = say("e8 reads laterArray", laterArray[0] + laterArray[1] * 10 + laterArray[2] * 100);
+int e9 = say("e9 reads laterText", laterText == nullptr ? -1 : laterText[1]);
+int laterDynamic = say("laterDynamic", 11);
+int laterConstant = 12;
+int laterConstexprCall = cf(6);
+CC laterCC{20};
+DC laterDC;
+const int laterConstCall = cf(10);
+int target = 5;
+int* laterPointer = &target;
+int laterArray[3] = {1, cf(1), 3};
+const char* laterText = "xyz";
+Peek peek;
+int m1 = say("m1", 1);
+int plain = 4;
+int m2 = say("m2", plain + 1);
+const int cc1 = 5;
+int m3 = cc1 + 1;
+int m4 = say("m4", m3);
+namespace n
+{
+  int a = say("n::a", 1);
+}
+int m5 = say("m5", 1);
+namespace n
+{
+  int b = say("n::b", a + 1);
+}
+struct A
+{
+  static int v;
+  static int w;
+  inline static int i = say("A::i", 1);
+  static const int c = 5;
+  static constexpr int d = cf(2);
+  struct Inner
+  {
+    static int q;
+    inline static int r = say("A::Inner::r", 1);
+  };
+};
+int g1 = say("g1", 1);
+int A::w = say("A::w", 2);
+int g2 = say("g2", 3);
+int A::v = say("A::v", A::w + 1);
+int A::Inner::q = say("A::Inner::q", 4);
+int g3 = say("g3", 3);
+inline int iv = say("iv", 1);
+int g4 = say("g4", iv + 1);
+int ar[4] = {say("ar0", 1), say("ar1", 2)};
+struct E { int v; E() : v(say("E()", 0)) {} E(int x) : v(say("E(int)", x)) {} };
+E es[3] = {E(1)};
+struct Agg { int a; E e; int b; };
+Agg agg = {say("agg.a", 1), E(2), say("agg.b", 3)};
+Agg agg2 = {.a = 1};
+auto lam = [](int x) { return say("lam", x); };
+int viaLam = lam(3);
+Agg sbAgg = Agg{1, E(5), 2};
+int& sb1 = sbAgg.a;
+E& sb2 = sbAgg.e;
+int& rf = laterDynamic;
+const int& crf = say("cref", 8);
+const E& eref = E(9);
+int g5 = say("g5", rf + crf + eref.v);
+int main()
+{
+  printf("main\n");
+  printf("%d %d %d %d %d %d %d %d %d %d\n", e1, e2, e3, e4, e5, e5b, e6, e7, e8, e9);
+  printf("%d %d %d %d %d\n", ar[0], ar[1], ar[2], ar[3], es[2].v);
+  printf("%d %d %d %d %d\n", agg.a, agg.e.v, agg.b, agg2.b, agg2.e.v);
+  printf("%d %d %d %d\n", sb1, sb2.v, g5, viaLam);
+  printf("%d %d %d %d %d\n", peek.x, peek.y, peek.z, m3, A::v);
+  return 0;
+}

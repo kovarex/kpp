@@ -1,0 +1,228 @@
+// Random operations (one LCG for both sides) on String, Vector, Deque, List, Map, MultiSet and
+// HashMap, each container's contents hashed and printed every 500 steps. Every random number is
+// drawn in a statement of its own (argument order is unspecified).
+
+unsigned long long state = 12345;
+unsigned int rnd(unsigned int bound)
+{
+  state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+  return (unsigned int)(state >> 33) % bound;
+}
+
+unsigned long long mix(unsigned long long h, long long v) { return (h ^ (unsigned long long)v) * 1099511628211ULL; }
+
+String randomText()
+{
+  String t;
+  unsigned int n = rnd(6);
+  for (unsigned int i = 0; i < n; ++i)
+    t.push_back((char)('a' + rnd(4)));
+  return t;
+}
+
+int main()
+{
+  String s;
+  unsigned long long searches = 14695981039346656037ULL;
+  for (int step = 1; step <= 4000; ++step)
+  {
+    unsigned int size = (unsigned int)s.size();
+    unsigned int op = rnd(12);
+    unsigned int at = rnd(size + 1);
+    unsigned int count = rnd(size - at + 1);
+    unsigned int from = rnd(size + 2);
+    String text = randomText();
+    if (op == 0)
+      s.insert(at, text);
+    else if (op == 1)
+      s.erase(at, count);
+    else if (op == 2)
+      s.replace(at, count, text);
+    else if (op == 3)
+      s.append(text);
+    else if (op == 4)
+      searches = mix(searches, (long long)s.find(text, from));
+    else if (op == 5)
+      searches = mix(searches, (long long)s.rfind(text, from));
+    else if (op == 6)
+      searches = mix(searches, (long long)s.find_first_of(text, from));
+    else if (op == 7)
+      searches = mix(searches, (long long)s.find_last_not_of(text));
+    else if (op == 8)
+    {
+      String sub = s.substr(at, count % 8);
+      searches = mix(searches, (long long)sub.size());
+      s.append(sub);
+    }
+    else if (op == 9)
+    {
+      if (size > 200)
+        s.resize(count % 100);
+      else
+        s.resize(size + count % 3, 'z');
+    }
+    else if (op == 10)
+      s.insert(at, s.substr(rnd(size + 1), 3));
+    else if (size > 0)
+    {
+      s.replace(at < size ? at : 0, 1, s);
+      if (s.size() > 400)
+        s.resize(50);
+    }
+    if (step % 500 == 0)
+    {
+      unsigned long long h = 14695981039346656037ULL;
+      for (char c : s)
+        h = mix(h, c);
+      printf("string step %d size %d hash %llx searches %llx\n", step, (int)s.size(), h, searches);
+    }
+  }
+
+  Vector<int> v;
+  Deque<int> d;
+  List<int> l;
+  for (int step = 1; step <= 4000; ++step)
+  {
+    int value = (int)rnd(1000);
+    unsigned int op = rnd(8);
+    unsigned int at = rnd((unsigned int)v.size() + 1);
+    unsigned int n = rnd(4);
+    if (op == 0)
+    {
+      v.push_back(value);
+      d.push_back(value);
+      l.push_back(value);
+    }
+    else if (op == 1)
+    {
+      d.push_front(value);
+      l.push_front(value);
+      v.insert(v.begin(), value);
+    }
+    else if (op == 2 && at < v.size())
+    {
+      v.erase(v.begin() + at);
+      d.erase(d.begin() + at);
+      auto it = l.begin();
+      for (unsigned int k = 0; k < at; ++k)
+        ++it;
+      l.erase(it);
+    }
+    else if (op == 3)
+    {
+      v.insert(v.begin() + at, n, value);
+      auto it = l.begin();
+      for (unsigned int k = 0; k < at; ++k)
+        ++it;
+      for (unsigned int k = 0; k < n; ++k)
+      {
+        d.insert(d.begin() + at, value);
+        it = l.insert(it, value);
+      }
+    }
+    else if (op == 4 && !v.empty())
+    {
+      v.pop_back();
+      d.pop_back();
+      l.pop_back();
+    }
+    else if (op == 5 && !v.empty())
+    {
+      v.erase(v.begin());
+      d.pop_front();
+      l.pop_front();
+    }
+    else if (op == 6 && v.size() > 300)
+    {
+      v.resize(at % 50);
+      while (d.size() > v.size())
+      {
+        d.pop_back();
+        l.pop_back();
+      }
+    }
+    else if (op == 7)
+    {
+      v.resize(v.size() + n, value);
+      for (unsigned int k = 0; k < n; ++k)
+      {
+        d.push_back(value);
+        l.push_back(value);
+      }
+    }
+    if (step % 500 == 0)
+    {
+      unsigned long long hv = 14695981039346656037ULL, hd = hv, hl = hv;
+      for (int x : v)
+        hv = mix(hv, x);
+      for (int x : d)
+        hd = mix(hd, x);
+      for (int x : l)
+        hl = mix(hl, x);
+      printf("sequences step %d size %d %d %d hash %llx %d %d\n", step, (int)v.size(), (int)d.size(), (int)l.size(), hv, (int)(hv == hd), (int)(hv == hl));
+    }
+  }
+
+  Map<int, int> m;
+  MultiSet<int> ms;
+  HashMap<int, int> h;
+  unsigned long long queries = 14695981039346656037ULL;
+  for (int step = 1; step <= 6000; ++step)
+  {
+    int key = (int)rnd(300);
+    unsigned int op = rnd(7);
+    if (op == 0)
+    {
+      m[key] += 1;
+      h[key] += 1;
+      ms.insert(key);
+    }
+    else if (op == 1)
+    {
+      int a = (int)m.erase(key);
+      int b = (int)h.erase(key);
+      queries = mix(queries, a * 2 + b);
+    }
+    else if (op == 2)
+    {
+      auto it = ms.find(key);
+      if (it != ms.end())
+        ms.erase(it);
+    }
+    else if (op == 3)
+    {
+      auto it = m.lower_bound(key);
+      queries = mix(queries, it == m.end() ? -1 : it->first);
+    }
+    else if (op == 4)
+    {
+      auto it = ms.upper_bound(key);
+      queries = mix(queries, it == ms.end() ? -1 : *it);
+      queries = mix(queries, (long long)ms.count(key));
+    }
+    else if (op == 5)
+    {
+      auto it = h.find(key);
+      queries = mix(queries, it == h.end() ? -1 : it->second);
+    }
+    else
+    {
+      auto r = m.equal_range(key);
+      if (r.first != r.second)
+        m.erase(r.first, r.second);
+    }
+    if (step % 1000 == 0)
+    {
+      unsigned long long hm = 14695981039346656037ULL, hs = hm;
+      for (const auto& kv : m)
+        hm = mix(mix(hm, kv.first), kv.second);
+      for (int x : ms)
+        hs = mix(hs, x);
+      long long hashSum = 0;
+      for (const auto& kv : h)
+        hashSum += (long long)kv.first * 7 + kv.second;
+      printf("maps step %d sizes %d %d %d hash %llx %llx sum %lld queries %llx\n", step, (int)m.size(), (int)ms.size(), (int)h.size(), hm, hs, hashSum, queries);
+    }
+  }
+  return 0;
+}

@@ -1,0 +1,130 @@
+// Templates: class template argument deduction and guides, folds, template template parameters,
+// alias templates, default arguments, decltype(auto), variadic forwarding, dependent members.
+template<typename T, typename U = int>
+struct Duo2
+{
+  T first;
+  U second;
+  Duo2(T a, U b) : first(a), second(b) {}
+};
+template<typename T>
+struct Holder2
+{
+  T value;
+};
+template<typename T>
+Holder2(T) -> Holder2<T>;
+Holder2(const char*) -> Holder2<const void*>;
+template<typename T>
+struct Sizer
+{
+  static constexpr int size = (int)sizeof(T);
+};
+template<typename... Ts>
+constexpr int totalSize() { return (Sizer<Ts>::size + ... + 0); }
+template<typename... Ts>
+int sumAll(Ts... xs) { return (xs + ...); }
+template<typename... Ts>
+int subtractLeft(Ts... xs) { return (... - xs); }
+template<typename... Ts>
+int subtractRight(Ts... xs) { return (xs - ...); }
+template<typename... Ts>
+bool allPositive(Ts... xs) { return ((xs > 0) && ...); }
+template<typename... Ts>
+int countArgs(Ts...) { return (int)sizeof...(Ts); }
+template<typename T>
+struct Wrap1
+{
+  T v;
+  int kind() const { return 1; }
+};
+template<typename T>
+struct Wrap2
+{
+  T v;
+  int kind() const { return 2; }
+};
+template<template<typename> class W, typename T>
+int wrapKind(T value)
+{
+  W<T> w{value};
+  return w.kind() * 100 + (int)w.v;
+}
+template<typename T>
+using Pointer = T*;
+template<typename T>
+using Pair2 = Duo2<T, T>;
+template<typename T, int N = 3>
+int defaulted() { return N * (int)sizeof(T); }
+int global = 5;
+int& globalRef() { return global; }
+decltype(auto) passThrough() { return globalRef(); }
+auto byValue() { return globalRef(); }
+template<typename F, typename... Args>
+auto invoke2(F f, Args... args) { return f(args...); }
+struct WithType
+{
+  using Inner = long long;
+  static constexpr int code = 9;
+};
+template<typename T>
+typename T::Inner widen(int v) { return (typename T::Inner)v * T::code; }
+template<typename T>
+struct Outer
+{
+  template<typename U>
+  static int combine(U u) { return (int)sizeof(T) * 10 + (int)u; }
+};
+template<typename T>
+int callNested() { return Outer<T>::template combine<int>(3); }
+template<typename T>
+struct Node2
+{
+  T value;
+  Node2<T>* next = nullptr;
+  int length() const { return 1 + (next ? next->length() : 0); }
+};
+template<int N>
+struct Fact
+{
+  static constexpr long long value = N * Fact<N - 1>::value;
+};
+template<>
+struct Fact<0>
+{
+  static constexpr long long value = 1;
+};
+template<typename T>
+int which(T) { return 1; }
+template<>
+int which<int>(int) { return 2; }
+template<typename T>
+int which(T*) { return 3; }
+int main()
+{
+  Duo2 d(1.5, 'c');
+  Duo2<int> e(1, 2);
+  printf("ctad %d %d %d\n", (int)sizeof(d.first), (int)sizeof(d.second), e.second);
+  Holder2 h{7};
+  Holder2 s{"text"};
+  printf("guides %d %d\n", (int)sizeof(h.value), (int)sizeof(s.value));
+  printf("folds %d %d %d %d %d %d\n", totalSize<char, int, double>(), sumAll(1, 2, 3, 4), subtractLeft(10, 2, 3), subtractRight(10, 2, 3), allPositive(1, 2, -3), countArgs(1, 'a', 2.0));
+  printf("ttp %d %d\n", wrapKind<Wrap1>(5), wrapKind<Wrap2>(6.0));
+  int i = 3;
+  Pointer<int> pi = &i;
+  Pair2<short> ps(1, 2);
+  printf("alias %d %d\n", *pi, (int)sizeof(ps));
+  printf("defaults %d %d\n", defaulted<int>(), defaulted<char, 7>());
+  passThrough() = 9;
+  int copy = byValue();
+  copy = 1;
+  printf("decltype %d %d\n", global, copy);
+  printf("invoke %d\n", invoke2([](int a, int b) { return a * b; }, 6, 7));
+  printf("dependent %lld %d\n", widen<WithType>(3), callNested<double>());
+  Node2<int> n3{3}, n2{2, &n3}, n1{1, &n2};
+  printf("list %d\n", n1.length());
+  printf("fact %lld\n", Fact<15>::value);
+  int k = 0;
+  printf("which %d %d %d\n", which(1.0), which(1), which(&k));
+  return 0;
+}

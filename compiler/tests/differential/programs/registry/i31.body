@@ -1,0 +1,53 @@
+// battery i31: class template argument deduction: from constructors (one taking T, one taking a
+// pointer and a count), a deduction guide that changes the deduced type, the copy deduction candidate
+// (`Box b2 = b1` keeps Box<int>, not Box<Box<int>>), aggregates (C++20), a constructor template,
+// defaults for parameters the constructor does not mention, braces and parentheses.
+template <typename T> struct Box
+{
+  T value;
+  Box(T v) : value(v) {}
+};
+template <typename T> struct Span2
+{
+  const T* data;
+  int count;
+  Span2(const T* d, int n) : data(d), count(n) {}
+};
+template <typename T> struct Holder
+{
+  T held;
+  template <typename U> Holder(U u, int scale) : held(T(u) * scale) {}
+};
+Holder(const char*, int) -> Holder<long long>;
+template <typename U> Holder(U, int) -> Holder<U>;
+template <typename A, typename B> struct Agg
+{
+  A a;
+  B b;
+};
+template <typename T, typename Tag = char> struct Tagged
+{
+  T value;
+  Tagged(T v) : value(v) {}
+  int tagSize() const { return (int)sizeof(Tag); }
+};
+int main()
+{
+  Box b1(5);
+  Box b2 = b1;
+  Box b3{2.5};
+  Box b4(b1);
+  printf("box %d %d %d %d\n", (int)sizeof(b1.value), (int)sizeof(b2.value), (int)sizeof(b3.value), (int)sizeof(b4.value));
+  int values[3] = {4, 5, 6};
+  Span2 s(values, 3);
+  printf("span %d %d\n", s.data[2], (int)sizeof(*s.data));
+  Holder h1(3.5, 2);
+  Holder h2((short)4, 3);
+  printf("guides %d %g %d %d\n", (int)sizeof(h1.held), (double)h1.held, (int)sizeof(h2.held), (int)h2.held);
+  Agg ag{1, 'x'};
+  Agg ag2{2.5, 7LL};
+  printf("aggregate %d %d %d %d\n", (int)sizeof(ag.a), (int)sizeof(ag.b), (int)sizeof(ag2.a), (int)sizeof(ag2.b));
+  Tagged t(1.5f);
+  printf("defaults %d %d\n", (int)sizeof(t.value), t.tagSize());
+  return 0;
+}

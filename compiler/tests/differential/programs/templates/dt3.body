@@ -1,0 +1,16 @@
+// A destructor with no specifier takes a member's noexcept(false): a throw passes.
+struct Throwing { ~Throwing() noexcept(false) {} };
+struct S { Throwing t; ~S() { printf("in\n"); throw 1; } };
+class V { public: virtual ~V() noexcept(false) { printf("V\n"); throw 2; } };
+class W : public V { };
+int main()
+{
+  try { S s; }
+  catch (int e) { printf("caught %d\n", e); }
+  try { W w; }
+  catch (int e) { printf("caught %d\n", e); }
+  try { V* p = new W; delete p; }
+  catch (int e) { printf("caught %d\n", e); }
+  printf("end\n");
+  return 0;
+}

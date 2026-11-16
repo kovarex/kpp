@@ -1,0 +1,47 @@
+// temporaries of default arguments, of a structured binding by reference, of a reference member
+// of an aggregate, of a range-for over a temporary's member
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~Noisy() { printf("-%d ", id); id = -999; }
+};
+int withDefault(const Noisy& n = Noisy(1)) { printf("in%d ", n.id); return n.id; }
+const Noisy* keep(const Noisy& n) { return &n; }
+int readBack(const Noisy* p) { printf("back%d ", p->id); return p->id; }
+struct Two { Noisy a; Noisy b; };
+Two makeTwo() { return Two{Noisy(2), Noisy(3)}; }
+struct Ref { const Noisy& r; };
+struct Holder
+{
+  int items[3] = {7, 8, 9};
+  Noisy tag{60};
+};
+Holder makeHolder() { return Holder(); }
+int main()
+{
+  int v = withDefault() + withDefault(Noisy(4));
+  printf("| %d\n", v);
+  int w = readBack(keep(withDefault() > 0 ? Noisy(5) : Noisy(6)));
+  printf("| %d\n", w);
+  {
+    const auto& [x, y] = makeTwo();
+    printf("| %d %d ", x.id, y.id);
+  }
+  printf("\n");
+  {
+    Ref r{Noisy(50)};
+    printf("| %d ", r.r.id);
+  }
+  printf("\n");
+  {
+    int sum = 0;
+    for (int item : makeHolder().items)
+      sum += item;
+    printf("| %d ", sum);
+  }
+  printf("\n");
+  return 0;
+}

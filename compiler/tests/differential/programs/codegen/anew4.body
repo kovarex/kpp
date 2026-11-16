@@ -1,0 +1,18 @@
+// array new of a class without a default constructor, from a full list
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+int main()
+{
+  T* many = new T[3]{21, 22, 23};
+  printf("| %d %d %d | ", many[0].id, many[1].id, many[2].id);
+  delete[] many;
+  printf("\n");
+  int* z = new int{};
+  int* s = new int{9};
+  printf("%d %d\n", *z, *s);
+  return 0;
+}

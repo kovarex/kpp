@@ -1,0 +1,95 @@
+// battery i7: templates, second part: forwarding and reference collapsing (which overload a forwarded
+// lvalue, const lvalue, rvalue reaches), decltype(auto), constraint subsumption, template template
+// parameters, CTAD, recursive variadic inheritance, index packs, non-template beside template under
+// conversions, explicit specialization of a function template, default template arguments that
+// depend on earlier ones, static members per instantiation.
+int kind(int&) { return 1; }
+int kind(const int&) { return 2; }
+int kind(int&&) { return 3; }
+template <typename T> int fwd(T&& v) { return kind(static_cast<T&&>(v)) * 10 + kind(v); }
+
+int g = 5;
+decltype(auto) refOrValue(bool) { return (g); }
+auto valueOnly() { return (g); }
+
+template <typename T> concept Small = sizeof(T) <= 2;
+template <typename T> concept Tiny = Small<T> && sizeof(T) == 1;
+template <typename T> int pick(T) { return 1; }
+template <typename T> requires Small<T> int pick(T) { return 2; }
+template <typename T> requires Tiny<T> int pick(T) { return 3; }
+
+template <typename T> struct Holder { T value; int tag() const { return (int)sizeof(T); } };
+template <template <typename> class C, typename T> int wrapTag(T v) { C<T> c{v}; return c.tag() * 100 + (int)c.value; }
+
+template <typename T> struct Wrap
+{
+  T v;
+  Wrap(T v) : v(v) {}
+};
+template <typename A, typename B> struct Two
+{
+  A a;
+  B b;
+};
+template <typename A, typename B> Two(A, B) -> Two<A, B>;
+
+template <int I, typename... T> struct Leaf;
+template <int I> struct Leaf<I> { int sum() const { return 0; } };
+template <int I, typename H, typename... R> struct Leaf<I, H, R...> : Leaf<I + 1, R...>
+{
+  H value;
+  int sum() const { return (int)value * (I + 1) + Leaf<I + 1, R...>::sum(); }
+};
+
+template <int... I> struct Seq {};
+template <int N, int... I> struct MakeSeq : MakeSeq<N - 1, N - 1, I...> {};
+template <int... I> struct MakeSeq<0, I...> { using type = Seq<I...>; };
+template <int... I> int weigh(Seq<I...>, const int* values) { return ((values[I] * (I + 1)) + ... + 0); }
+
+int conv(long) { return 1; }
+template <typename T> int conv(T) { return 2; }
+int conv2(double) { return 1; }
+template <typename T> int conv2(T*) { return 2; }
+
+template <typename T> int special(T) { return 1; }
+template <> int special<char>(char) { return 2; }
+template <> int special(double) { return 3; }
+
+template <typename T, typename U = T*, int N = sizeof(U)> int defaults() { return (int)sizeof(T) * 100 + N; }
+
+template <typename T> struct Counter { static int made; Counter() { ++made; } };
+template <typename T> int Counter<T>::made = 0;
+
+template <typename T> T maxOf(T a, T b) { return a < b ? b : a; }
+template <typename T, typename... R> T maxOf(T a, T b, R... r) { return maxOf(maxOf(a, b), r...); }
+
+int main()
+{
+  int i = 1;
+  const int ci = 2;
+  printf("forward %d %d %d\n", fwd(i), fwd(ci), fwd(3));
+  refOrValue(true) = 9;
+  int copy = valueOnly();
+  copy = 1;
+  printf("decltype %d %d\n", g, copy);
+  printf("subsumption %d %d %d\n", pick(1), pick((short)1), pick('c'));
+  printf("templateTemplate %d %d\n", wrapTag<Holder>(7), wrapTag<Holder>((char)3));
+  Wrap w(2.5);
+  Two t{1, 'x'};
+  printf("ctad %d %d %d\n", (int)sizeof(w.v), (int)sizeof(t.a), (int)sizeof(t.b));
+  Leaf<0, int, char, short> leaf;
+  static_cast<Leaf<0, int, char, short>&>(leaf).value = 5;
+  static_cast<Leaf<1, char, short>&>(leaf).value = 7;
+  static_cast<Leaf<2, short>&>(leaf).value = 11;
+  printf("leaf %d\n", leaf.sum());
+  int vals[5] = {1, 2, 3, 4, 5};
+  printf("seq %d\n", weigh(MakeSeq<5>::type(), vals));
+  printf("conv %d %d %d %d\n", conv(1), conv(1L), conv2(1), conv2(&i));
+  printf("special %d %d %d\n", special(1), special('a'), special(1.0));
+  printf("defaults %d %d %d\n", defaults<char>(), defaults<int, short>(), defaults<double, char, 5>());
+  Counter<int> c1, c2;
+  Counter<char> c3;
+  printf("statics %d %d\n", Counter<int>::made, Counter<char>::made);
+  printf("max %d %g\n", maxOf(3, 9, 2, 8), maxOf(1.5, -2.0, 0.5));
+  return 0;
+}

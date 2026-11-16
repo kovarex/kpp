@@ -1,0 +1,239 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <deque>
+#include <list>
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+using std::move;
+template <typename T> using Deque = std::deque<T>;
+template <typename T> using List = std::list<T>;
+template <typename K, typename V> using Map = std::map<K, V>;
+template <typename K> using Set = std::set<K>;
+template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+template <typename K> using HashSet = std::unordered_set<K>;
+// Vector and Deque against std::vector and std::deque: what each operation constructs, copies, moves,
+// assigns and destroys; insert, emplace and erase's results; capacity under reserve, clear,
+// shrink_to_fit and growth (a reallocation copies elements whose move may throw); which pointers stay
+// valid. Exact counts of an insert in the middle or a reallocation are the implementation's; the
+// checks (`ok`) are the guarantees.
+int made = 0, copied = 0, moved = 0, copyAssigned = 0, moveAssigned = 0, destroyed = 0;
+struct Item
+{
+  int v;
+  Item() : v(0) { ++made; }
+  Item(int x) : v(x) { ++made; }
+  Item(int x, int y) : v(x * 100 + y) { ++made; }
+  Item(const Item& o) : v(o.v) { ++copied; }
+  Item(Item&& o) noexcept : v(o.v) { o.v = -1; ++moved; }
+  Item& operator=(const Item& o) { v = o.v; ++copyAssigned; return *this; }
+  Item& operator=(Item&& o) noexcept { v = o.v; o.v = -1; ++moveAssigned; return *this; }
+  ~Item() { ++destroyed; }
+};
+// A move that may throw: a reallocation copies these instead (move_if_noexcept).
+struct Fragile
+{
+  int v;
+  Fragile(int x) : v(x) { ++made; }
+  Fragile(const Fragile& o) : v(o.v) { ++copied; }
+  Fragile(Fragile&& o) : v(o.v) { o.v = -1; ++moved; }
+  Fragile& operator=(const Fragile& o) { v = o.v; ++copyAssigned; return *this; }
+  Fragile& operator=(Fragile&& o) { v = o.v; o.v = -1; ++moveAssigned; return *this; }
+  ~Fragile() { ++destroyed; }
+};
+void counts(const char* step)
+{
+  printf("%-36s made %d copied %d moved %d copy= %d move= %d destroyed %d\n", step, made, copied, moved, copyAssigned, moveAssigned, destroyed);
+  made = copied = moved = copyAssigned = moveAssigned = destroyed = 0;
+}
+// Only the counts that the standard fixes: what was built from the arguments, and the balance.
+void balance(const char* step, int live)
+{
+  printf("%-36s made %d, live change %d\n", step, made, made + copied + moved - destroyed - live);
+  made = copied = moved = copyAssigned = moveAssigned = destroyed = 0;
+}
+template <typename C> void values(const char* label, const C& c)
+{
+  printf("  %s:", label);
+  for (const auto& x : c)
+    printf(" %d", x.v);
+  printf("\n");
+}
+
+int main()
+{
+  {
+    Vector<Item> v;
+    printf("empty capacity %d\n", (int)v.capacity());
+    v.reserve(10);
+    printf("reserve 10: capacity >= 10 %d, exactly %d\n", (int)(v.capacity() >= 10), (int)(v.capacity() == 10));
+    counts("reserve on empty");
+    Item* block = v.data();
+    for (int i = 0; i < 10; ++i)
+      v.emplace_back(i);
+    counts("10 emplace_back within capacity");
+    printf("same block %d\n", (int)(v.data() == block));
+    Item& third = v[2];
+    Item lvalue(50);
+    counts("an Item");
+    v.push_back(lvalue);
+    printf("push_back lvalue past capacity: grew %d, at least doubled %d\n", (int)(v.capacity() > 10), (int)(v.capacity() >= 20));
+    counts("push_back lvalue, reallocating");
+    v.push_back(Item(51));
+    counts("push_back temporary");
+    Item& r = v.emplace_back(5, 2);
+    printf("emplace_back returns the new element %d\n", (int)(&r == &v.back()));
+    counts("emplace_back two arguments");
+    block = v.data();
+    auto it = v.insert(v.begin() + 3, Item(77));
+    printf("insert returns position %d value %d, same block %d\n", (int)(it - v.begin()), it->v, (int)(v.data() == block));
+    balance("insert temporary in the middle", 1);
+    it = v.emplace(v.begin() + 1, 66);
+    printf("emplace returns position %d value %d\n", (int)(it - v.begin()), it->v);
+    balance("emplace in the middle", 1);
+    it = v.insert(v.end(), 3, Item(9));
+    printf("insert 3 copies returns position %d (size %d)\n", (int)(it - v.begin()), (int)v.size());
+    balance("insert count copies at the end", 3);
+    values("v", v);
+    Item* before = &v[1];
+    it = v.erase(v.begin() + 4);
+    printf("erase returns position %d value %d, earlier element kept %d\n", (int)(it - v.begin()), it->v, (int)(&v[1] == before && v[1].v == 66));
+    counts("erase one in the middle");
+    it = v.erase(v.begin() + 2, v.begin() + 6);
+    printf("erase range returns position %d value %d\n", (int)(it - v.begin()), it->v);
+    counts("erase four in the middle");
+    it = v.erase(v.begin() + 3, v.begin() + 3);
+    printf("erase empty range returns position %d\n", (int)(it - v.begin()));
+    counts("erase an empty range");
+    it = v.erase(v.end() - 2, v.end());
+    printf("erase the tail returns end %d\n", (int)(it == v.end()));
+    counts("erase the last two");
+    values("v", v);
+    size_t capacity = v.capacity();
+    v.reserve(2);
+    printf("reserve smaller keeps capacity %d\n", (int)(v.capacity() == capacity));
+    counts("reserve smaller");
+    v.resize(12);
+    counts("resize up to 12 (default)");
+    v.resize(14, Item(4));
+    counts("resize up to 14 with a value");
+    v.resize(5);
+    counts("resize down to 5");
+    v.shrink_to_fit();
+    printf("shrink_to_fit capacity %d\n", (int)v.capacity());
+    counts("shrink_to_fit");
+    v.pop_back();
+    counts("pop_back");
+    capacity = v.capacity();
+    v.clear();
+    printf("clear keeps capacity %d, size %d\n", (int)(v.capacity() == capacity), (int)v.size());
+    counts("clear");
+    for (int i = 0; i < 4; ++i)
+      v.emplace_back(i);
+    Vector<Item> w = v;
+    counts("copy of 4");
+    Vector<Item> m = move(w);
+    printf("moved-from size %d\n", (int)w.size());
+    counts("move of 4");
+    w = v;
+    counts("copy= 4 over empty");
+    w.assign(2, Item(3));
+    counts("assign 2 over 4");
+    w = move(m);
+    counts("move= 4 over 2");
+    v.swap(w);
+    counts("swap");
+    (void)third;
+  }
+  counts("scope end");
+  {
+    Vector<Fragile> f;
+    f.reserve(2);
+    f.emplace_back(1);
+    f.emplace_back(2);
+    counts("Fragile: two emplace_back");
+    f.emplace_back(3);
+    counts("Fragile: reallocating emplace_back");
+    f.reserve(100);
+    counts("Fragile: reserve 100");
+    f.shrink_to_fit();
+    counts("Fragile: shrink_to_fit");
+    values("f", f);
+  }
+  counts("Fragile scope end");
+
+  {
+    Deque<Item> d;
+    for (int i = 0; i < 10; ++i)
+      d.emplace_back(i);
+    Item* first = &d.front();
+    Item* last = &d.back();
+    Item* middle = &d[5];
+    counts("Deque: 10 emplace_back");
+    for (int i = 0; i < 1000; ++i)
+    {
+      d.emplace_back(1000 + i);
+      d.emplace_front(-1000 - i);
+    }
+    printf("Deque references after 2000 pushes at the ends: %d %d %d\n", (int)(first->v == 0), (int)(middle->v == 5), (int)(last->v == 9));
+    counts("Deque: 2000 emplace at the ends");
+    d.push_back(Item(7));
+    d.push_front(Item(8));
+    counts("Deque: push_back, push_front temporaries");
+    Item& rf = d.emplace_front(3, 4);
+    Item& rb = d.emplace_back(4, 3);
+    printf("Deque emplace_front/back return the new element %d %d\n", (int)(&rf == &d.front()), (int)(&rb == &d.back()));
+    counts("Deque: emplace_front, emplace_back");
+    for (int i = 0; i < 1000; ++i)
+    {
+      d.pop_back();
+      d.pop_front();
+    }
+    printf("Deque references after 2000 pops at the ends: %d %d %d, size %d\n", (int)(first->v == 0), (int)(middle->v == 5), (int)(last->v == 9), (int)d.size());
+    counts("Deque: 2000 pops at the ends");
+    auto it = d.insert(d.begin() + 4, Item(55));
+    printf("Deque insert returns position %d value %d\n", (int)(it - d.begin()), it->v);
+    balance("Deque: insert in the middle", 1);
+    it = d.emplace(d.begin() + 9, 56);
+    printf("Deque emplace returns position %d value %d\n", (int)(it - d.begin()), it->v);
+    balance("Deque: emplace in the middle", 1);
+    it = d.erase(d.begin() + 2);
+    printf("Deque erase returns position %d value %d\n", (int)(it - d.begin()), it->v);
+    balance("Deque: erase one", -1);
+    it = d.erase(d.begin() + 1, d.begin() + 4);
+    printf("Deque erase range returns position %d value %d\n", (int)(it - d.begin()), it->v);
+    balance("Deque: erase three", -3);
+    values("d", d);
+    d.resize(20);
+    counts("Deque: resize up to 20");
+    d.resize(3);
+    counts("Deque: resize down to 3");
+    Deque<Item> e = d;
+    counts("Deque: copy of 3");
+    Deque<Item> g = move(e);
+    counts("Deque: move of 3");
+    d.clear();
+    printf("Deque clear size %d\n", (int)d.size());
+    counts("Deque: clear");
+  }
+  counts("Deque scope end");
+  return 0;
+}

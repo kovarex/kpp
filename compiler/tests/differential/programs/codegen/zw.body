@@ -1,0 +1,35 @@
+// zero-width bit fields: where the next field starts, the class's size and alignment, values kept
+struct Z1 { char a : 3; char : 0; char b : 4; };
+struct Z2 { int a : 3; int : 0; int b : 4; };
+struct Z3 { char a; int : 0; char b; };
+struct Z4 { int a : 3; char : 0; int b : 4; };
+struct Z5 { char a : 3; int : 0; char b : 4; };
+struct Z6 { int : 0; int a : 3; };
+struct Z7 { char a : 3; long long : 0; char b; };
+struct Z8 { char a : 3; int : 0; };
+struct Z9 { unsigned a : 4; unsigned : 0; unsigned : 0; unsigned b : 4; short c; };
+struct Z10 { char a : 3; short : 0; char b : 2; char c : 2; };
+Z5 global5 = {5, 9};
+int main()
+{
+  printf("S %d %d %d %d %d %d %d %d %d %d\n", (int)sizeof(Z1), (int)sizeof(Z2), (int)sizeof(Z3), (int)sizeof(Z4), (int)sizeof(Z5), (int)sizeof(Z6),
+         (int)sizeof(Z7), (int)sizeof(Z8), (int)sizeof(Z9), (int)sizeof(Z10));
+  printf("A %d %d %d %d %d %d %d %d %d %d\n", (int)alignof(Z1), (int)alignof(Z2), (int)alignof(Z3), (int)alignof(Z4), (int)alignof(Z5), (int)alignof(Z6),
+         (int)alignof(Z7), (int)alignof(Z8), (int)alignof(Z9), (int)alignof(Z10));
+  Z5 z{3, 11};
+  z.b = 13;
+  Z5 copy = z;
+  unsigned char bytes[8];
+  memcpy(bytes, &copy, sizeof copy);
+  printf("V %d %d %d %d %d %d\n", copy.a, copy.b, bytes[0] & 7, bytes[4] & 15, global5.a, global5.b);
+  Z7 seven{};
+  seven.a = 2;
+  seven.b = 'x';
+  printf("O %d\n", (int)((char*)&seven.b - (char*)&seven));
+  Z9 nine{};
+  nine.a = 9;
+  nine.b = 7;
+  nine.c = 300;
+  printf("N %d %d %d %d\n", nine.a, nine.b, nine.c, (int)((char*)&nine.c - (char*)&nine));
+  return 0;
+}

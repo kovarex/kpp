@@ -1,0 +1,17 @@
+template<class T> struct Name { static const char* n() { return "other"; } };
+template<> struct Name<int> { static const char* n() { return "int"; } };
+template<> struct Name<int&> { static const char* n() { return "int&"; } };
+struct S { int m = 1; int f() { return (int)sizeof(decltype((m))) + (Name<decltype((m))>::n()[3] == '&'); } };
+int main()
+{
+  int i = 1;
+  decltype((i)) x = i; x = 5; printf("%d\n", i);
+  printf("%s\n", Name<decltype((i))>::n());
+  printf("%s\n", Name<decltype(i)>::n());
+  using A = decltype((i)); printf("%s\n", Name<A>::n());
+  S s; printf("%d\n", s.f());
+  decltype((s.m)) y = s.m; y = 7; printf("%d\n", s.m);
+  printf("%s\n", Name<decltype((s.m))>::n());
+  printf("%s\n", Name<decltype(s.m)>::n());
+  return 0;
+}

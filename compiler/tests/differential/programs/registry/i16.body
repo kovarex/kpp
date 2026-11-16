@@ -1,0 +1,82 @@
+// battery i16: virtual functions in class templates: overriding a signature that uses the template's
+// parameter, destruction order through a template hierarchy, covariant returns between instances,
+// a virtual call from a member template, two template bases with a virtual of one name each,
+// pure virtuals implemented by a derived template's member template instance, a template's
+// virtual called through a base pointer of another instance.
+int order = 0;
+template <typename T> class Node
+{
+public:
+  int id;
+  explicit Node(int id) : id(id) {}
+  virtual ~Node() { order = order * 10 + id; }
+  virtual T value(T scale) const { return scale; }
+  virtual Node* self() { return this; }
+  template <typename U> T through(U u) const { return value(T(u)) + T(1); }
+};
+template <typename T> class Leaf : public Node<T>
+{
+public:
+  T held;
+  Leaf(int id, T held) : Node<T>(id), held(held) {}
+  ~Leaf() override { order = order * 10 + this->id + 5; }
+  T value(T scale) const override { return held * scale; }
+  Leaf* self() override { return this; }
+};
+template <typename T> class Named
+{
+public:
+  virtual ~Named() {}
+  virtual int name() const { return 1; }
+};
+template <typename T> class Sized
+{
+public:
+  virtual ~Sized() {}
+  virtual int name() const { return 2; }
+  virtual int size() const { return (int)sizeof(T); }
+};
+template <typename T> class Both : public Named<T>, public Sized<T>
+{
+public:
+  int name() const override { return 30 + Named<T>::name() + Sized<T>::name(); }
+};
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual int area() const = 0;
+};
+template <int W, int H> class Rect : public Shape
+{
+public:
+  int area() const override { return W * H; }
+};
+int main()
+{
+  {
+    Leaf<int> leaf(2, 7);
+    Node<int>* n = &leaf;
+    printf("virtual %d %d %d %d\n", n->value(3), n->through(2.9), n->self() == &leaf, leaf.self()->held);
+  }
+  printf("order %d\n", order);
+  order = 0;
+  {
+    Node<double>* p = new Leaf<double>(3, 1.5);
+    printf("double %g %g\n", p->value(2.0), p->through('\x02'));
+    delete p;
+  }
+  printf("order %d\n", order);
+  Both<double> b;
+  Named<double>* nb = &b;
+  Sized<double>* sb = &b;
+  printf("bases %d %d %d %d\n", nb->name(), sb->name(), sb->size(), b.name());
+  Rect<2, 3> r1;
+  Rect<4, 5> r2;
+  Shape* shapes[] = {&r1, &r2};
+  int total = 0;
+  for (Shape* s : shapes)
+    total = total * 100 + s->area();
+  printf("shapes %d\n", total);
+  return 0;
+}

@@ -1,0 +1,26 @@
+struct In { int a; int b; };
+struct Out { In in; int c; };
+struct Holder { Out o = Out{1, 2}; In arr[2] = {3, 4, 5}; Out viaInit; Holder() : viaInit{6, 7} {} };
+Out globalOut = {8, 9};
+In globalArr[] = {10, 11, 12};
+static Out staticOut{13, 14};
+Out ret() { return {15, 16}; }
+int take(Out o) { return o.in.a * 100 + o.in.b * 10 + o.c; }
+int takeArr(const In (&a)[2]) { return a[0].a * 1000 + a[0].b * 100 + a[1].a * 10 + a[1].b; }
+
+int main()
+{
+  Holder h;
+  printf("%d %d %d %d %d %d %d %d %d %d\n", h.o.in.a, h.o.in.b, h.o.c, h.arr[0].a, h.arr[0].b, h.arr[1].a, h.arr[1].b, h.viaInit.in.a, h.viaInit.in.b, h.viaInit.c);
+  printf("%d %d %d %d %d %d %d\n", globalOut.in.a, globalOut.in.b, globalOut.c, (int)(sizeof(globalArr) / sizeof(In)), globalArr[1].a, staticOut.in.b, staticOut.c);
+  Out r = ret();
+  printf("%d %d %d %d %d\n", r.in.a, r.in.b, r.c, take({1, 2}), takeArr({{1, 2}, {3}}));
+  In* p = new In[2]{1, 2, 3};
+  Out* q = new Out{4, 5};
+  printf("%d %d %d %d %d %d %d\n", p[0].a, p[0].b, p[1].a, p[1].b, q->in.a, q->in.b, q->c);
+  delete[] p;
+  delete q;
+  static const In localStatic[] = {20, 21, 22, 23};
+  printf("%d %d\n", (int)(sizeof(localStatic) / sizeof(In)), localStatic[1].b);
+  return 0;
+}

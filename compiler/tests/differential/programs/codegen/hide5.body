@@ -1,0 +1,16 @@
+// a local lambda named like an overloaded function template of the same file
+template<typename It, typename T> T gather(It first, It last, T init) { return init; }
+template<typename It, typename T, typename F> T gather(It first, It last, T init, F op) { return init; }
+int single(int a, int b) { return a; }
+int overloaded(int a, int b) { return a; }
+int overloaded(int a, int b, int c) { return a; }
+int main()
+{
+  auto gather = [](int v) { return v * 10; };
+  printf("H1 %d\n", gather(5));
+  auto single = [](int v) { return v * 20; };
+  printf("H2 %d\n", single(5));
+  auto overloaded = [](int v) { return v * 30; };
+  printf("H3 %d\n", overloaded(5));
+  return 0;
+}

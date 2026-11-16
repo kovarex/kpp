@@ -1,0 +1,114 @@
+// initialization: value-initialization zeroes, aggregates, default member initializers, designated
+// initializers, arrays, new-expressions; the stack is dirtied first so a missed zero shows
+struct R { int x = 5; int y; int z; };
+struct P { int x; int y; P() = default; };
+struct Inner { int a; double b; };
+struct Outer { Inner in; int tail; int arr[3]; };
+struct WithCtor { int v; WithCtor() : v(7) {} };
+struct Holder { WithCtor w; int n; };
+struct Pt { int x = 1; int y = 2; int z = 3; };
+struct Nested { Pt p; int q[2]; char name[6]; };
+class Implicit
+{
+public:
+  int a;
+  int b = 9;
+  int c;
+};
+union U { int i; float f; char bytes[8]; };
+
+void dirty()
+{
+  volatile int junk[256];
+  for (int i = 0; i < 256; ++i)
+    junk[i] = 0x5A5A5A5A + i;
+}
+void check()
+{
+  R r{};
+  P p{};
+  P p2 = P();
+  Outer o{};
+  Outer o2 = {{1}};
+  Holder h{};
+  Holder h2 = Holder();
+  Implicit im{};
+  Implicit im2 = Implicit();
+  int arr[5] = {1};
+  int arr2[5] = {};
+  int arr3[2][3] = {{1}, {2, 3}};
+  Nested n{};
+  Nested n2 = {{4}, {5}};
+  Pt pt = {.y = 20};
+  Pt pt2{.x = 10, .z = 30};
+  U uz{};
+  U u1 = {0x41424344};
+  char text[8] = "ab";
+  char text2[] = "xyz";
+  int scalar{};
+  int scalar2 = int();
+  double dz{};
+  int* ptr{};
+  printf("V1 %d %d %d\n", r.x, r.y, r.z);
+  printf("V2 %d %d %d %d\n", p.x, p.y, p2.x, p2.y);
+  printf("V3 %d %.17g %d %d %d %d\n", o.in.a, o.in.b, o.tail, o.arr[0], o.arr[1], o.arr[2]);
+  printf("V4 %d %.17g %d %d\n", o2.in.a, o2.in.b, o2.tail, o2.arr[2]);
+  printf("V5 %d %d %d %d\n", h.w.v, h.n, h2.w.v, h2.n);
+  printf("V6 %d %d %d %d %d %d\n", im.a, im.b, im.c, im2.a, im2.b, im2.c);
+  printf("V7 %d %d %d %d %d\n", arr[0], arr[1], arr[4], arr2[0], arr2[4]);
+  printf("V8 %d %d %d %d %d %d\n", arr3[0][0], arr3[0][1], arr3[0][2], arr3[1][0], arr3[1][1], arr3[1][2]);
+  printf("V9 %d %d %d %d %d %d %d\n", n.p.x, n.p.y, n.p.z, n.q[0], n.q[1], n.name[0], n.name[5]);
+  printf("V10 %d %d %d %d %d\n", n2.p.x, n2.p.y, n2.p.z, n2.q[0], n2.q[1]);
+  printf("V11 %d %d %d %d %d %d\n", pt.x, pt.y, pt.z, pt2.x, pt2.y, pt2.z);
+  printf("V12 %d %d %d\n", uz.i, uz.bytes[7], u1.bytes[0]);
+  printf("V13 %d %d %d %d %d %d\n", text[0], text[2], text[7], text2[3], (int)sizeof(text2), (int)sizeof(text));
+  printf("V14 %d %d %.17g %d\n", scalar, scalar2, dz, ptr == nullptr);
+}
+void heap()
+{
+  for (int round = 0; round < 3; ++round)
+  {
+    int* garbage = new int[64];
+    for (int i = 0; i < 64; ++i)
+      garbage[i] = 0x77777777;
+    delete[] garbage;
+    int* zeroed = new int[64]();
+    int* braced = new int[64]{};
+    int* partial = new int[4]{1, 2};
+    R* rr = new R();
+    R* rb = new R{};
+    P* pp = new P();
+    int* one = new int();
+    int* oneBraced = new int(0);
+    int sum = 0;
+    for (int i = 0; i < 64; ++i)
+      sum += zeroed[i] + braced[i];
+    printf("N%d %d %d %d %d %d %d %d %d %d %d %d %d\n", round, sum, partial[0], partial[1], partial[2], partial[3], rr->x, rr->y, rb->y, pp->x, pp->y, *one, *oneBraced);
+    delete[] zeroed;
+    delete[] braced;
+    delete[] partial;
+    delete rr;
+    delete rb;
+    delete pp;
+    delete one;
+    delete oneBraced;
+  }
+}
+int counter = 0;
+int next() { return ++counter; }
+struct Three { int a, b, c; };
+int main()
+{
+  dirty();
+  check();
+  dirty();
+  heap();
+  Three t{next(), next(), next()};
+  printf("O1 %d %d %d\n", t.a, t.b, t.c);
+  int ordered[3] = {next(), next(), next()};
+  printf("O2 %d %d %d\n", ordered[0], ordered[1], ordered[2]);
+  static int zeroStatic[4];
+  static Pt staticPt;
+  printf("O3 %d %d %d\n", zeroStatic[3], staticPt.x, staticPt.z);
+  return 0;
+}

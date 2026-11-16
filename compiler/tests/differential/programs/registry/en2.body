@@ -1,0 +1,115 @@
+enum class Sc : unsigned char { x = 200, y };
+enum Plain { p1 = 1, p2, p3 };
+enum class Si : short { n = -300 };
+enum class Lg : long long { big = 0x1234567890LL };
+struct Mem { Sc s = Sc::y; Plain p = p2; Si i{Si::n}; Lg l{}; };
+template<class T> T identity(T x) { return x; }
+template<class E> constexpr int asInt(E e) { return (int)e; }
+template<auto V> struct Val { static constexpr auto value = V; static constexpr int asI = (int)V; };
+template<Sc V> int fromParam() { return (int)V + 1; }
+template<Plain P> struct Sw { static int f() { return P == p2 ? 1 : 0; } };
+template<> struct Sw<p3> { static int f() { return 3; } };
+template<class T> struct Traits { static const char* name() { return "other"; } };
+template<> struct Traits<Sc> { static const char* name() { return "Sc"; } };
+template<> struct Traits<int> { static const char* name() { return "int"; } };
+template<> struct Traits<Plain> { static const char* name() { return "Plain"; } };
+template<class T> const char* nameOf(T) { return Traits<T>::name(); }
+struct Cv { IMPLICIT operator Plain() const { return p3; } IMPLICIT operator Sc() const { return Sc::y; } };
+constexpr Sc pick(bool b) { return b ? Sc::x : Sc::y; }
+constexpr Plain nextP(Plain p) { return (Plain)(p + 1); }
+constexpr int sw(Sc s) { switch (s) { case Sc::x: return 1; case Sc::y: return 2; } return 3; }
+constexpr unsigned char asByte = (unsigned char)Sc::y;
+constexpr int castBack = (int)(Sc)asByte;
+constexpr Sc constCast = (Sc)201;
+constexpr bool eq = constCast == Sc::y;
+constexpr Si neg = (Si)-1;
+constexpr int negAsInt = (int)neg;
+constexpr long long wide = (long long)Lg::big + 1;
+constexpr Plain cp = nextP(p1);
+constexpr int fromSw = sw(pick(false));
+constexpr int shiftP = p3 << 3;
+static_assert(sizeof(Sc) == 1);
+static_assert((int)Sc::y == 201);
+Sc gs = Sc::y;
+Plain gp = p3;
+Si gi = Si::n;
+Sc garr[3] = {Sc::y, Sc::x};
+Plain gdef = {};
+Sc gsz{};
+const char* names[] = {"zero", "one", "two", "three"};
+struct Bf { Sc s : 8; Plain p : 3; Si i : 10; };
+union Un { Sc s; unsigned char b; };
+void take(const Sc& r) { printf("%d\n", (int)r); }
+void takeInt(const int& r) { printf("%d\n", r); }
+void takeLong(const long long& r) { printf("%lld\n", r); }
+void varargs(int n, ...) {}
+int main()
+{
+  Mem m;
+  printf("%d %d %d %lld\n", (int)m.s, (int)m.p, (int)m.i, (long long)m.l);
+  Mem m2{Sc::x, p1};
+  printf("%d %d %d\n", (int)m2.s, m2.p, (int)m2.i);
+  printf("%d %d %d\n", (int)identity(Sc::y), identity(p2), (int)identity(Si::n));
+  printf("%d %d %d\n", asInt(Sc::y), asInt(p3), asInt(Si::n));
+  printf("%d %d %d\n", (int)Val<Sc::y>::value, Val<Si::n>::asI, Val<p2>::asI);
+  printf("%d %d %d %d\n", fromParam<Sc::x>(), fromParam<(Sc)5>(), Sw<p2>::f(), Sw<p3>::f());
+  printf("%s %s %s %s\n", nameOf(Sc::x), nameOf(p1), nameOf(+p1), nameOf(1.0));
+  Cv c;
+  Plain fromCv = c;
+  Sc fromCv2 = c;
+  printf("%d %d\n", fromCv, (int)fromCv2);
+  printf("%d %d %d %d %d\n", (int)asByte, castBack, (int)eq, negAsInt, (int)cp);
+  printf("%lld %d %d\n", wide, fromSw, shiftP);
+  printf("%d %d %d %d %d %d\n", (int)gs, gp, (int)gi, (int)garr[0], (int)garr[2], gdef);
+  printf("%d %s\n", (int)gsz, names[p2]);
+  Bf bf{Sc::y, p3, Si(-5)};
+  printf("%d %d %d\n", (int)bf.s, bf.p, (int)bf.i);
+  bf.s = Sc::x;
+  bf.p = p1;
+  printf("%d %d %d\n", (int)bf.s, bf.p, (int)bf.i);
+  Un u;
+  u.b = 201;
+  printf("%d\n", u.s == Sc::y);
+  take(Sc::y);
+  take(gs);
+  takeInt(p3);
+  takeInt(gp);
+  takeLong(gp);
+  takeInt((int)Sc::y);
+  const int& ri = gp;
+  const long long& rl = p2;
+  const unsigned& ru = gp;
+  gp = p1;
+  printf("%d %lld %u\n", ri, rl, ru);
+  Sc* sp = &gs;
+  *sp = Sc::x;
+  printf("%d\n", (int)gs);
+  unsigned char* bp = (unsigned char*)&gs;
+  *bp = 7;
+  printf("%d\n", (int)gs);
+  Plain inc = p1;
+  inc = (Plain)(inc + 1);
+  int ii = inc;
+  ii += p2;
+  ii <<= p1;
+  printf("%d %d\n", ii, (int)inc);
+  auto au = p1;
+  auto as = Sc::y;
+  decltype(p1) dp = p2;
+  printf("%d %d %d\n", (int)sizeof(au), (int)sizeof(as), dp);
+  auto sum = p1 + p2;
+  auto sh = Sc::y == Sc::y;
+  printf("%d %d\n", (int)sizeof(sum), (int)sizeof(sh));
+  using enum Sc;
+  printf("%d\n", (int)y);
+  char cc = (char)Sc::y;
+  signed char sc = (signed char)Sc::y;
+  short ss = (short)Si::n;
+  unsigned short us = (unsigned short)Si::n;
+  float ff = (float)Si::n;
+  double dd = (double)Lg::big;
+  printf("%d %d %d %d %g %g\n", (int)cc, (int)sc, (int)ss, (int)us, (double)ff, dd);
+  printf("%d %d\n", (int)(Sc)(int)Si::n, (int)(Si)Sc::y);
+  printf("%d %d %d\n", (int)(Plain)Sc::y, (int)(Sc)p3, (int)(Si)(long long)(Lg)65537);
+  return 0;
+}

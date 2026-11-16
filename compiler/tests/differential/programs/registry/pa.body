@@ -1,0 +1,15 @@
+template <typename... T> struct Count { static constexpr int value = sizeof...(T); };
+template <typename... T> using PlusOne = Count<int, T...>;
+template <typename... T> using Same = Count<T...>;
+template <typename... T> using PlusEnd = Count<T..., int>;
+template <typename T> struct Is { static constexpr int value = 0; };
+template <> struct Is<Count<int, char, short>> { static constexpr int value = 1; };
+template <typename... T> int countOf(Count<T...>) { return sizeof...(T); }
+int main()
+{
+  printf("%d %d %d\n", PlusOne<>::value, PlusOne<char>::value, PlusOne<char, short>::value);
+  printf("%d %d\n", Same<>::value, Same<char, short>::value);
+  printf("%d %d\n", PlusEnd<>::value, PlusEnd<char, short>::value);
+  printf("%d %d\n", Is<PlusOne<char, short>>::value, countOf(PlusOne<char, short>()));
+  return 0;
+}

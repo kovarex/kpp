@@ -1,0 +1,87 @@
+// Unions holding objects with constructors and destructors (built by placement new, destroyed by an
+// explicit call), a tagged union class, a union's active member switched, and storage arrays.
+int live = 0;
+struct S
+{
+  int v;
+  S(int x) : v(x) { ++live; }
+  S(const S& o) : v(o.v + 100) { ++live; }
+  ~S() { --live; }
+};
+
+struct Tagged
+{
+  int tag;
+  union
+  {
+    S s;
+    double d;
+  };
+  Tagged(int x) : tag(0), s(x) {}
+  Tagged(double x) : tag(1), d(x) {}
+  Tagged(const Tagged& o) : tag(o.tag)
+  {
+    if (tag == 0)
+      new (&s) S(o.s);
+    else
+      d = o.d;
+  }
+  ~Tagged()
+  {
+    if (tag == 0)
+      s.~S();
+  }
+  void set(double x)
+  {
+    if (tag == 0)
+      s.~S();
+    tag = 1;
+    d = x;
+  }
+  void set(int x)
+  {
+    if (tag == 0)
+      s.v = x;
+    else
+    {
+      tag = 0;
+      new (&s) S(x);
+    }
+  }
+  int value() const { return tag == 0 ? s.v : (int)(d * 10); }
+};
+
+union Raw
+{
+  int i;
+  float f;
+  unsigned char bytes[4];
+};
+
+int main()
+{
+  {
+    Tagged a(5);
+    Tagged b(2.5);
+    Tagged c = a;
+    printf("%d %d %d live %d\n", a.value(), b.value(), c.value(), live);
+    a.set(1.5);
+    printf("%d live %d\n", a.value(), live);
+    a.set(7);
+    b.set(8);
+    printf("%d %d live %d\n", a.value(), b.value(), live);
+  }
+  printf("live %d\n", live);
+  alignas(S) unsigned char storage[3 * sizeof(S)];
+  S* items = reinterpret_cast<S*>(storage);
+  for (int i = 0; i < 3; ++i)
+    new (items + i) S(i * 3);
+  printf("%d %d %d live %d\n", items[0].v, items[1].v, items[2].v, live);
+  for (int i = 2; i >= 0; --i)
+    items[i].~S();
+  printf("live %d\n", live);
+  Raw r;
+  r.f = 1.0f;
+  printf("%d %d %d\n", r.i, (int)r.bytes[3], (int)sizeof(Raw));
+  return 0;
+}

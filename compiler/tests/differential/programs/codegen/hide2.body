@@ -1,0 +1,12 @@
+// a local lambda named like a library function template
+template<typename T> T sumOf(T a, T b) { return a + b; }
+int main()
+{
+  int total = 0;
+  auto accumulate = [&](int v) { total += v; return total; };
+  accumulate(5);
+  accumulate(6);
+  auto sumOf = [](int v) { return v * 100; };
+  printf("H1 %d %d\n", total, sumOf(3));
+  return 0;
+}

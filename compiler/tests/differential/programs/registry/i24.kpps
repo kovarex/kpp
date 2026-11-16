@@ -1,0 +1,49 @@
+extern "C" int printf(const char* format, ...);
+// battery i24: ordered containers further: a comparator (greater) ordering a Map and a Set,
+// MultiMap's equal_range and count, insert with a hint, merge of two maps (equal keys stay in the
+// source), extract and reinsert of a node with a new key, erase of a range, Set's lower and upper
+// bounds at both ends, emplace returning the existing element, operator[] default-constructing.
+int main()
+{
+  Map<int, int, Greater<int>> desc;
+  for (int i = 0; i < 6; ++i)
+    desc[i * 3 % 7] = i;
+  printf("desc");
+  for (auto& e : desc)
+    printf(" %d:%d", e.first, e.second);
+  printf(" | first %d lb %d\n", desc.begin()->first, desc.lower_bound(4)->first);
+  MultiMap<int, char> mm;
+  const char* letters = "abcdefg";
+  for (int i = 0; i < 7; ++i)
+    mm.insert(Pair<int, char>(i % 3, letters[i]));
+  auto range = mm.equal_range(1);
+  printf("equal");
+  for (auto it = range.first; it != range.second; ++it)
+    printf(" %c", it->second);
+  printf(" | count %d %d\n", (int)mm.count(0), (int)mm.count(5));
+  Map<int, int> a = {{1, 10}, {3, 30}, {5, 50}}, b = {{3, 300}, {4, 400}};
+  auto hint = a.insert(a.end(), Pair<int, int>(7, 70));
+  printf("hint %d %d\n", hint->first, (int)a.size());
+  a.merge(b);
+  printf("merge");
+  for (auto& e : a)
+    printf(" %d:%d", e.first, e.second);
+  printf(" | left");
+  for (auto& e : b)
+    printf(" %d:%d", e.first, e.second);
+  printf("\n");
+  auto node = a.extract(5);
+  node.key() = 6;
+  a.insert(move(node));
+  a.erase(a.find(3), a.find(6));
+  printf("extract");
+  for (auto& e : a)
+    printf(" %d:%d", e.first, e.second);
+  printf("\n");
+  Set<int> s = {10, 20, 30};
+  printf("bounds %d %d %d %d\n", *s.lower_bound(5), *s.upper_bound(10), (int)(s.lower_bound(31) == s.end()), *s.lower_bound(30));
+  auto em = a.emplace(1, 999);
+  int& fresh = a[100];
+  printf("emplace %d %d %d %d\n", (int)em.second, em.first->second, fresh, (int)a.size());
+  return 0;
+}

@@ -1,0 +1,168 @@
+// multiple inheritance: pointer adjustment, virtual calls through a second base, member pointers,
+// default arguments of virtual functions, covariant returns, explicit base calls, deletes through bases
+class A
+{
+public:
+  int a = 1;
+  virtual ~A() { printf("~A%d ", a); }
+  virtual int fa() { return a; }
+  virtual int both() { return 100 + a; }
+};
+class B
+{
+public:
+  int b = 2;
+  virtual ~B() { printf("~B%d ", b); }
+  virtual int fb() { return b; }
+  virtual int both() { return 200 + b; }
+  virtual int arg(int x = 5) { return x * 1000 + b; }
+  int readB() { return b; }
+};
+class C : public A, public B
+{
+public:
+  int c = 3;
+  ~C() override { printf("~C%d ", c); }
+  int fa() override { return 10 + c; }
+  int fb() override { return 20 + c + b; }
+  int both() override { return 300 + c; }
+  int arg(int x = 7) override { return x * 1000 + c; }
+  virtual C* self() { return this; }
+};
+class D : public C
+{
+public:
+  int d = 4;
+  ~D() override { printf("~D%d ", d); }
+  int fb() override { return 40 + d; }
+};
+
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual Shape* clone() const = 0;
+  virtual int id() const { return 0; }
+};
+class Square : public Shape
+{
+public:
+  int side;
+  Square(int s) : side(s) {}
+  Square* clone() const override { return new Square(side + 1); }
+  int id() const override { return side; }
+};
+class Base1
+{
+public:
+  int x = 10;
+  int get() { return x; }
+  virtual int v() { return 1; }
+};
+class Base2
+{
+public:
+  int y = 20;
+  int get2() { return y; }
+  virtual int w() { return 2; }
+};
+class Both : public Base1, public Base2
+{
+public:
+  int z = 30;
+  int v() override { return 100 + z; }
+  int w() override { return 200 + z; }
+};
+class Hider
+{
+public:
+  int f(int) { return 1; }
+  int f(double) { return 2; }
+};
+class Hides : public Hider
+{
+public:
+  int f(int) { return 3; }
+};
+class Uses : public Hider
+{
+public:
+  using Hider::f;
+  int f(int) { return 4; }
+};
+class Counter
+{
+public:
+  static int made;
+  int id;
+  Counter() : id(++made) {}
+};
+int Counter::made = 0;
+
+int callB(B* p) { return p->fb() * 1000 + p->both(); }
+int main()
+{
+  C c;
+  A* pa = &c;
+  B* pb = &c;
+  printf("I1 %d %d %d\n", pa->fa(), pb->fb(), (int)((char*)pb - (char*)pa));
+  printf("I2 %d %d\n", pa->both(), pb->both());
+  printf("I3 %d %d\n", pb->arg(), c.arg());
+  printf("I4 %d\n", callB(&c));
+  printf("I5 %d %d\n", pb->readB(), c.readB());
+  C* back = static_cast<C*>(pb);
+  printf("I6 %d %d\n", back == &c, back->c);
+  B* nullB = nullptr;
+  C* nullC = static_cast<C*>(nullB);
+  printf("I7 %d\n", nullC == nullptr);
+  C* nullC2 = nullptr;
+  B* nullB2 = nullC2;
+  printf("I8 %d\n", nullB2 == nullptr);
+  printf("I9 %d %d\n", pb == &c, (void*)pb == (void*)&c);
+  printf("I10 %d %d\n", c.A::both(), c.B::both());
+  printf("I11 %d\n", c.self()->c);
+  {
+    B* heap = new D;
+    printf("I12 %d %d %d\n", heap->fb(), heap->both(), heap->arg());
+    delete heap;
+    printf("\n");
+  }
+  {
+    A* heap = new D;
+    delete heap;
+    printf("\n");
+  }
+  Square sq(5);
+  Shape* sh = &sq;
+  Shape* copy = sh->clone();
+  printf("I13 %d %d\n", copy->id(), sq.clone()->side);
+  delete copy;
+
+  int (Both::*pv)() = &Both::v;
+  int (Both::*pw)() = &Both::w;
+  int (Base2::*pg)() = &Base2::get2;
+  int (Both::*pg2)() = &Base2::get2;
+  int Both::*pz = &Both::z;
+  int Both::*py = &Both::y;
+  Both both;
+  printf("I14 %d %d %d %d %d %d\n", (both.*pv)(), (both.*pw)(), (both.*pg2)(), both.*pz, both.*py, (both.*pg)());
+  Both* pboth = &both;
+  printf("I15 %d %d\n", (pboth->*pw)(), pboth->*py);
+  Base2* p2 = &both;
+  int (Base2::*pw2)() = &Base2::w;
+  printf("I16 %d %d\n", (p2->*pw2)(), (p2->*pg)());
+  int Base2::*by = &Base2::y;
+  printf("I17 %d\n", both.*by);
+
+  Hides h;
+  Uses u;
+  printf("I18 %d %d %d\n", h.f(1), h.f(2.5), h.Hider::f(2.5));
+  printf("I19 %d %d\n", u.f(1), u.f(2.5));
+  Counter cs[3];
+  printf("I20 %d %d %d %d\n", cs[0].id, cs[1].id, cs[2].id, Counter::made);
+  Counter* dyn = new Counter[2];
+  printf("I21 %d %d\n", dyn[0].id, dyn[1].id);
+  delete[] dyn;
+  printf("I22\n");
+  return 0;
+}

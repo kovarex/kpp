@@ -1,0 +1,121 @@
+// temporaries: in conditions, built on one side of && || ?: only, in returns; exceptions caught
+// through a second base or by pointer; covariant returns through a second base; cross casts
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~Noisy() { printf("-%d ", id); }
+  bool ok() const { return id % 2 == 1; }
+  int get() const { return id; }
+};
+int take(const Noisy& n) { return n.id; }
+int returns(int v)
+{
+  Noisy local(50);
+  return Noisy(v).get() + take(Noisy(v + 1));
+}
+class First
+{
+public:
+  int a = 1;
+  virtual ~First() {}
+  virtual First* me() { return this; }
+};
+class Second
+{
+public:
+  int b = 2;
+  virtual ~Second() {}
+  virtual Second* self() { return this; }
+  virtual int which() const { return 2; }
+};
+class Both : public First, public Second
+{
+public:
+  int c = 3;
+  Both* self() override { return this; }
+  int which() const override { return 3; }
+};
+int main()
+{
+  if (Noisy(1).ok())
+    printf("body ");
+  printf("\n");
+  int i = 0;
+  while (Noisy(i).get() < 2)
+  {
+    printf("loop%d ", i);
+    ++i;
+  }
+  printf("\n");
+  switch (Noisy(7).get())
+  {
+    case 7: printf("seven "); break;
+    default: break;
+  }
+  printf("\n");
+  for (int k = 0; Noisy(k + 10).get() < 12; ++k)
+    printf("for%d ", k);
+  printf("\n");
+  bool both = Noisy(2).ok() && Noisy(3).ok();
+  printf("| %d\n", both);
+  bool either = Noisy(5).ok() || Noisy(6).ok();
+  printf("| %d\n", either);
+  bool neither = Noisy(4).ok() || Noisy(8).ok() || Noisy(9).ok();
+  printf("| %d\n", neither);
+  bool flag = true;
+  int picked = flag ? take(Noisy(11)) : take(Noisy(12));
+  printf("| %d\n", picked);
+  int picked2 = !flag ? take(Noisy(13)) : take(Noisy(14));
+  printf("| %d\n", picked2);
+  int nested = (flag && Noisy(15).ok()) ? take(Noisy(16)) : (Noisy(17).ok() ? 1 : 0);
+  printf("| %d\n", nested);
+  printf("R %d\n", returns(20));
+  printf("\n");
+  int value = (Noisy(30), Noisy(31)).get();
+  printf("| %d\n", value);
+  const Noisy& bound = flag ? Noisy(40) : Noisy(41);
+  printf("| %d\n", bound.id);
+
+  Both obj;
+  Second* s = &obj;
+  Second* again = s->self();
+  printf("V1 %d %d %d\n", again == s, again->b, again->which());
+  First* f = &obj;
+  Second* cross = dynamic_cast<Second*>(f);
+  printf("V2 %d %d\n", cross == s, cross ? cross->b : -1);
+  First* back = dynamic_cast<First*>(s);
+  printf("V3 %d\n", back == f);
+  try
+  {
+    throw Both();
+  }
+  catch (const Second& e)
+  {
+    printf("V4 %d %d\n", e.b, e.which());
+  }
+  try
+  {
+    throw new Both();
+  }
+  catch (Second* p)
+  {
+    printf("V5 %d %d\n", p->b, p->which());
+    delete p;
+  }
+  catch (...)
+  {
+    printf("V5 other\n");
+  }
+  try
+  {
+    throw "text";
+  }
+  catch (const char* t)
+  {
+    printf("V6 %s\n", t);
+  }
+  return 0;
+}

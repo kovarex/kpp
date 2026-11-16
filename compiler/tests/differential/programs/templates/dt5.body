@@ -1,0 +1,22 @@
+// The same through delete, a member and a base, each in its own program by the argument's value.
+struct S { ~S() { printf("in S\n"); fflush(stdout); throw 1; } };
+struct H { S s; };
+struct D : S { };
+void viaDelete() { S* p = new S; delete p; }
+void viaMember() { H h; }
+void viaBase() { D d; }
+void viaCall() { S* p = (S*)malloc(sizeof(S)); p->~S(); }
+int main(int argc, char** argv)
+{
+  try
+  {
+    int which = argc > 1 ? argv[1][0] - '0' : 0;
+    if (which == 0) viaDelete();
+    if (which == 1) viaMember();
+    if (which == 2) viaBase();
+    if (which == 3) viaCall();
+  }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

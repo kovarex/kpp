@@ -1,0 +1,122 @@
+// multiple inheritance: adjustment, thunks, member pointers, slices, exceptions
+class A { public: int a = 1; virtual ~A() { printf("~A %d\n", a); } virtual int f() { return 10 + a; } virtual int g() { return 11; } int plain() { return a; } };
+class B { public: int b = 2; virtual ~B() { printf("~B %d\n", b); } virtual int f() { return 20 + b; } virtual int h() { return 21; } int plain() { return b * 2; } };
+class C { public: double c = 3.5; virtual ~C() { printf("~C\n"); } virtual double k(double x, int y) { return c + x + y; } virtual int f() { return 30; } };
+class D : public A, public B, public C { public: int d = 4;
+  ~D() override { printf("~D %d\n", d); }
+  int f() override { return 40 + a + b + d; }
+  int h() override { return 41 + d; }
+  double k(double x, int y) override { return c * x - y + d; } };
+class Big { public: long long v[5]; };
+class R1 { public: int pad = 7; virtual ~R1() {} virtual Big make(int x) { Big r; for (int i = 0; i < 5; ++i) r.v[i] = x + i; return r; } };
+class R2 { public: int pad = 8; virtual ~R2() {} virtual Big make2(int x, double y) { Big r; for (int i = 0; i < 5; ++i) r.v[i] = x - i; return r; } virtual float fl(float a, float b) { return a - b; } };
+class R3 : public R1, public R2 { public: int q = 100;
+  Big make(int x) override { Big r; for (int i = 0; i < 5; ++i) r.v[i] = x * i + q; return r; }
+  Big make2(int x, double y) override { Big r; for (int i = 0; i < 5; ++i) r.v[i] = x * i + q + (long long)y + pad_of(); return r; }
+  int pad_of() { return R2::pad; }
+  float fl(float a, float b) override { return a * b + q; } };
+int callB(B& b) { return b.f() + b.h(); }
+int callBv(B b) { return b.f() + b.h(); }
+B sliceB(D& d) { return d; }
+void nullcasts() {
+  D* d = nullptr; B* b = d; C* c = d; A* a = d;
+  printf("null %d %d %d\n", b == nullptr, c == nullptr, a == nullptr);
+  D* back = static_cast<D*>(b); printf("null back %d\n", back == nullptr);
+  D real; D* r = &real; B* rb = r; C* rc = r; printf("cmp %d %d\n", rb == r, static_cast<D*>(rc) == r);
+  printf("diff %d %d\n", (int)((char*)rb - (char*)r), (int)((char*)rc - (char*)r));
+  bool cond = d == nullptr; B* sel = cond ? d : rb; printf("sel %d\n", sel == nullptr);
+  const B* cb = r; printf("const %d\n", cb->b);
+}
+void members() {
+  D d; d.a = 5; d.b = 6; d.c = 7.5; d.d = 8;
+  int (B::*pb)() = &B::plain; int (D::*pd)() = pb; printf("mp %d\n", (d.*pd)());
+  int (B::*pv)() = &B::h; int (D::*pdv)() = pv; printf("mpv %d %d\n", (d.*pdv)(), ((B&)d.*pv)());
+  int (D::*pf)() = &D::f; printf("mpf %d\n", (d.*pf)());
+  int B::*db = &B::b; int D::*dd = db; printf("dm %d\n", d.*dd);
+  double C::*dc = &C::c; double D::*ddc = dc; printf("dmc %.2f\n", d.*ddc);
+  int (B::*back)() = static_cast<int (B::*)()>(pd); printf("mpback %d\n", ((B&)d.*back)());
+  int D::*nul = nullptr; int B::*nb = nullptr; int D::*nd = nb; printf("nulldm %d %d\n", nul == nullptr, nd == nullptr);
+  double (C::*pk)(double, int) = &C::k; double (D::*pdk)(double, int) = pk; printf("mpk %.2f\n", (d.*pdk)(2.0, 3));
+  printf("qual %d %d %d\n", d.A::f(), d.B::f(), d.C::f());
+  printf("plain %d %d\n", d.A::plain(), d.B::plain());
+}
+void thunks() {
+  D d; B& b = d; C& c = d; A& a = d;
+  printf("%d %d %d %d %.2f %d\n", a.f(), b.f(), c.f(), b.h(), c.k(2.0, 1), a.g());
+  printf("callB %d\n", callB(d)); printf("callBv %d\n", callBv(d));
+  B s = sliceB(d); printf("slice %d %d\n", s.f(), s.b);
+  R3 r; R1& r1 = r; R2& r2 = r;
+  Big x = r1.make(3); Big y = r2.make2(3, 2.5);
+  printf("big %lld %lld %lld %lld\n", x.v[1], x.v[4], y.v[1], y.v[4]);
+  printf("fl %.2f\n", (double)r2.fl(1.5f, 2.0f));
+}
+void deletes() {
+  B* b = new D; b->b = 77; printf("del %d\n", b->h()); delete b;
+  C* c = new D; printf("delc %d\n", c->f()); delete c;
+  A* arr[2] = { new D, new D }; for (A* p : arr) delete p;
+}
+void exceptions() {
+  try { D d; d.b = 99; throw d; } catch (C& c) { printf("catch C %.2f %d\n", c.c, c.f()); }
+  try { D d; d.b = 98; throw d; } catch (B b) { printf("catch B %d %d\n", b.b, b.f()); }
+  try { D d; d.b = 97; throw d; } catch (const B& b) { printf("catch cB %d\n", b.b); }
+  D st; st.b = 96;
+  try { throw &st; } catch (B* b) { printf("catch B* %d %d\n", b->b, b->f()); }
+}
+// a duplicated base: two copies
+class P { public: int p; P(int x) : p(x) { printf("P %d\n", x); } virtual ~P() { printf("~P %d\n", p); } virtual int who() { return p; } };
+class L : public P { public: L() : P(1) {} int who() override { return p + 100; } };
+class Rr : public P { public: Rr() : P(2) {} };
+class Dia : public L, public Rr { public: int who() override { return L::who() * 1000 + static_cast<Rr*>(this)->Rr::who(); } };
+void diamond() {
+  Dia d; L* l = &d; Rr* r = &d; P* pl = l; P* pr = r;
+  printf("dia %d %d %d %d\n", d.who(), pl->who(), pr->who(), pl == pr);
+  printf("copy %d %d\n", d.L::p, d.Rr::p);
+  d.Rr::p = 5; printf("%d\n", pr->who());
+  Dia e = d; printf("%d\n", e.Rr::p); e.L::p = 9; d = e; printf("%d %d\n", d.L::p, d.Rr::p);
+}
+// construction order, partial failure
+class T1 { public: T1() { printf("T1\n"); } ~T1() { printf("~T1\n"); } };
+class T2 { public: T2(bool t) { printf("T2\n"); if (t) throw 5; } ~T2() { printf("~T2\n"); } };
+class T3 { public: T3() { printf("T3\n"); } ~T3() { printf("~T3\n"); } };
+class TM { public: TM() { printf("TM\n"); } ~TM() { printf("~TM\n"); } };
+class TT : public T1, public T2, public T3 { public: TM m; TT(bool t) : T3(), T2(t), T1() { printf("TT\n"); } ~TT() { printf("~TT\n"); } };
+void order() { { TT t(false); } try { TT t(true); } catch (int e) { printf("caught %d\n", e); } }
+// using and inherited constructors, hidden overloads
+class U1 { public: int v; U1(int x) : v(x) {} int m(int) { return 1; } };
+class U2 { public: double w; U2() : w(1.5) {} U2(double x) : w(x) {} int m(double) { return 2; } };
+class U3 : public U1, public U2 { public: using U1::U1; using U1::m; using U2::m; int m(char) { return 3; } };
+void usings() { U3 u(4); printf("%d %.1f %d %d %d\n", u.v, u.w, u.m(1), u.m(1.0), u.m('c')); }
+// default arguments are the static type's
+class E1 { public: virtual ~E1() {} virtual int f(int x = 1) { return x; } };
+class E0 { public: int z = 0; virtual ~E0() {} };
+class E2 : public E0, public E1 { public: int f(int x = 2) override { return x + 10; } };
+void defaults() { E2 e; E1& r = e; printf("%d %d\n", r.f(), e.f()); }
+// operators and conversions in a second base
+class O1 { public: int pad = 1; virtual ~O1() {} };
+class O2 { public: int v = 5; virtual ~O2() {} virtual int operator()(int x) { return x + v; } virtual O2& operator+=(int x) { v += x; return *this; } virtual IMPLICIT operator int() { return v; } int operator[](int i) { return v * i; } };
+class O3 : public O1, public O2 { public: int operator()(int x) override { return x * v; } O2& operator+=(int x) override { v -= x; return *this; } operator int() override { return -v; } };
+void ops() { O3 o; O2& r = o; printf("%d %d\n", r(3), o(4)); r += 2; int i = r; printf("%d %d %d\n", r.v, i, o[3]); }
+// templates, CRTP over two bases
+template<class T> class Holder { public: T value; Holder(T v) : value(v) {} virtual ~Holder() {} virtual T get() { return value; } };
+class Both : public Holder<int>, public Holder<double> { public: Both() : Holder<int>(1), Holder<double>(2.5) {} int get_i() { return Holder<int>::get(); } double get2() { return Holder<double>::get(); } };
+template<class D2> class Cr { public: int twice() { return static_cast<D2*>(this)->one() * 2; } };
+class CrBase { public: int pad = 3; virtual ~CrBase() {} };
+class CrD : public CrBase, public Cr<CrD> { public: int one() { return 21; } };
+void tmpl() { Both b; Holder<double>& h = b; Holder<int>& g = b; printf("%d %.2f %d %.2f\n", b.get_i(), h.get(), g.get(), b.get2()); CrD c; Cr<CrD>& r = c; printf("%d\n", r.twice()); }
+// alignment: an over-aligned second base
+class Al1 { public: char c = 1; virtual ~Al1() {} };
+class alignas(32) Al2 { public: char c = 2; virtual ~Al2() {} virtual int m() { return (int)((unsigned long long)this % 32); } };
+class Al3 : public Al1, public Al2 { public: char d = 3; int m() override { return (int)((unsigned long long)static_cast<Al2*>(this) % 32) + 50; } };
+void aligned() { Al3 a; Al2& r = a; printf("%d %d %d\n", r.m(), (int)sizeof(Al3) % 32, (int)alignof(Al3)); }
+// lambdas capturing this in a second base, pure with a definition
+class Pu { public: int n = 4; virtual ~Pu() {} virtual int pure() = 0; };
+int Pu::pure() { return n * 2; }
+class Pv { public: int n = 9; virtual ~Pv() {} int run() { auto l = [this] { return n + virt(); }; return l(); } virtual int virt() { return 1; } };
+class Pw : public Pu, public Pv { public: int pure() override { return Pu::pure() + 1; } int virt() override { return Pu::n; } };
+void pures() { Pw p; Pu& u = p; Pv& v = p; printf("%d %d\n", u.pure(), v.run()); }
+// private base
+class Q1 { public: int q = 11; virtual ~Q1() {} virtual int f() { return q; } };
+class Q0 { public: int z = 1; virtual ~Q0() {} };
+class Q2 : public Q0, private Q1 { public: int f() override { return 500; } Q1* up() { return this; } using Q1::q; };
+void privates() { Q2 x; printf("%d %d %d\n", x.up()->f(), x.q, x.up()->q); }
+int main() { nullcasts(); members(); thunks(); deletes(); exceptions(); diamond(); order(); usings(); defaults(); ops(); tmpl(); aligned(); pures(); privates(); return 0; }

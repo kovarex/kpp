@@ -1,0 +1,183 @@
+// C++20 constant evaluation: virtual calls, transient new/delete, class-type template arguments,
+// constexpr destructors, unions, member pointers, references into arrays, deep recursion.
+class Shape
+{
+public:
+  constexpr virtual ~Shape() {}
+  constexpr virtual int area() const { return 0; }
+};
+class Rect : public Shape
+{
+public:
+  int w, h;
+  constexpr Rect(int w, int h) : w(w), h(h) {}
+  constexpr int area() const override { return w * h; }
+};
+class Square : public Rect
+{
+public:
+  constexpr Square(int s) : Rect(s, s) {}
+  constexpr int area() const override { return Rect::area() + 1; }
+};
+constexpr int areas()
+{
+  Rect r(3, 4);
+  Square s(5);
+  const Shape* shapes[2] = {&r, &s};
+  int total = 0;
+  for (const Shape* p : shapes)
+    total += p->area();
+  return total;
+}
+constexpr int heapSum(int n)
+{
+  int* data = new int[n];
+  for (int i = 0; i < n; ++i)
+    data[i] = i * i;
+  int total = 0;
+  for (int i = 0; i < n; ++i)
+    total += data[i];
+  delete[] data;
+  return total;
+}
+constexpr int heapObjects()
+{
+  Shape* s = new Square(6);
+  int a = s->area();
+  delete s;
+  return a;
+}
+struct Node
+{
+  int value;
+  Node* next;
+};
+constexpr int listSum(int n)
+{
+  Node* head = nullptr;
+  for (int i = 1; i <= n; ++i)
+    head = new Node{i, head};
+  int total = 0;
+  while (head)
+  {
+    Node* next = head->next;
+    total += head->value;
+    delete head;
+    head = next;
+  }
+  return total;
+}
+struct Fixed
+{
+  int whole;
+  int fraction;
+};
+template<Fixed F>
+constexpr int scaled() { return F.whole * 100 + F.fraction; }
+struct Counter
+{
+  int count = 0;
+  constexpr ~Counter() {}
+  constexpr void add(int v) { count += v; }
+};
+constexpr int counted()
+{
+  Counter c;
+  for (int i = 0; i < 10; ++i)
+    c.add(i);
+  return c.count;
+}
+union Value
+{
+  int i;
+  float f;
+};
+constexpr int unionSwitch()
+{
+  Value v{};
+  v.i = 41;
+  int a = v.i;
+  v.f = 2.0f;
+  v.i = a + 1;
+  return v.i;
+}
+struct Duo
+{
+  int first, second;
+};
+constexpr int viaMemberPointer(int Duo::*m)
+{
+  Duo p{7, 9};
+  return p.*m;
+}
+constexpr int refIntoArray()
+{
+  int a[4] = {1, 2, 3, 4};
+  int& r = a[2];
+  r *= 10;
+  int* p = &a[0];
+  p += 3;
+  *p = 100;
+  return a[0] + a[1] + a[2] + a[3];
+}
+constexpr int depth(int n) { return n == 0 ? 0 : 1 + depth(n - 1); }
+constexpr int ackermann(int m, int n)
+{
+  return m == 0 ? n + 1 : n == 0 ? ackermann(m - 1, 1) : ackermann(m - 1, ackermann(m, n - 1));
+}
+template<typename T, int N>
+struct Arr
+{
+  T items[N];
+  constexpr int size() const { return N; }
+  constexpr T& operator[](int i) { return items[i]; }
+  constexpr const T& operator[](int i) const { return items[i]; }
+};
+constexpr Arr<int, 8> reversed()
+{
+  Arr<int, 8> a{};
+  for (int i = 0; i < a.size(); ++i)
+    a[i] = a.size() - i;
+  return a;
+}
+constexpr int stringCompare(const char* a, const char* b)
+{
+  while (*a && *a == *b)
+  {
+    ++a;
+    ++b;
+  }
+  return (unsigned char)*a - (unsigned char)*b;
+}
+constexpr int ternaryRef(bool which)
+{
+  int a = 1, b = 2;
+  (which ? a : b) = 50;
+  return a * 10 + b;
+}
+
+constexpr int v1 = areas();
+constexpr int v2 = heapSum(100);
+constexpr int v3 = heapObjects();
+constexpr int v4 = listSum(50);
+constexpr Fixed piFixed{3, 14};
+constexpr int v5 = piFixed.whole * 100 + piFixed.fraction;
+constexpr int v6 = counted();
+constexpr int v7 = unionSwitch();
+constexpr int v8 = viaMemberPointer(&Duo::second);
+constexpr int v9 = refIntoArray();
+constexpr int v10 = depth(400);
+constexpr int v11 = ackermann(2, 3);
+constexpr Arr<int, 8> v12 = reversed();
+constexpr int v13 = stringCompare("apple", "apricot");
+constexpr int v14 = ternaryRef(true) + ternaryRef(false);
+
+int main()
+{
+  printf("%d %d %d %d %d %d %d %d %d %d %d\n", v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11);
+  for (int i = 0; i < v12.size(); ++i)
+    printf("%d ", v12[i]);
+  printf("\n%d %d\n", v13, v14);
+  printf("runtime %d %d %d\n", areas(), heapSum(10), listSum(5));
+  return 0;
+}

@@ -1,0 +1,38 @@
+// battery i14: literals and conversions at their edges: the type of an unsuffixed integer literal
+// by its value (2147483648 is a long long, 0x80000000 an unsigned int), suffixes, octal and binary,
+// hex floating literals, literals that round (0.1f, 1e-400 to zero, 1e39f), digit separators,
+// u64 to double rounding (2^64 - 1), i64 to float, double to float ties, float to u32 and u64
+// above i64's range, char literals and escapes, negative zero literals.
+template <typename T> int kind(T) { return 0; }
+template <> int kind(int) { return 1; }
+template <> int kind(unsigned) { return 2; }
+template <> int kind(long) { return 3; }
+template <> int kind(unsigned long) { return 4; }
+template <> int kind(long long) { return 5; }
+template <> int kind(unsigned long long) { return 6; }
+volatile int vz = 0;
+int main()
+{
+  printf("types %d %d %d %d %d %d %d %d\n", kind(2147483647), kind(2147483648), kind(0x7FFFFFFF), kind(0x80000000), kind(0xFFFFFFFF),
+         kind(0x100000000), kind(4294967296), kind(9223372036854775807));
+  printf("types %d %d %d %d %d %d\n", kind(0xFFFFFFFFFFFFFFFF), kind(1u), kind(1ul), kind(1ll), kind(1ull), kind(1LLU));
+  printf("bases %d %d %d %d %lld\n", 0777, 0b1011, 0x1F, 1'000'000, 0x7fff'ffff'ffffLL);
+  printf("hexfloat %a %g %g %a\n", 0x1.8p1, 0x1p-2, 0x.8p0, 0x1.fffffffffffffp1023);
+  int z = vz;
+  printf("round %.9g %.17g %g %g %d\n", 0.1f, (double)0.1f, 1e-400 + z, (double)(1e39f + z), 1e-400 == 0.0);
+  unsigned long long big = 0xFFFFFFFFFFFFFFFFull + z;
+  long long i64 = 0x7FFFFFFFFFFFFFFFLL + z;
+  printf("toDouble %.17g %.17g %.9g %.9g\n", (double)big, (double)i64, (double)(float)big, (double)(float)(16777217LL + z));
+  double tie1 = 1.0 + 0x1p-24 + z, tie2 = 1.0 + 0x3p-24 + z;
+  printf("ties %.9g %.9g %a %a\n", (double)(float)tie1, (double)(float)tie2, (double)(float)tie1, (double)(float)tie2);
+  double huge = 1.5e19 + z;
+  float hugeF = 4e9f + z;
+  printf("toUnsigned %llu %u %llu\n", (unsigned long long)huge, (unsigned)hugeF, (unsigned long long)(9.3e18 + z));
+  printf("chars %d %d %d %d %d %d\n", 'A', '\n', '\x7f', '\0', '\'', (int)sizeof('a'));
+  printf("escapes %d %d %d %d\n", (int)sizeof("a\0b"), "a\0b"[2], (int)"\x41\102"[1], (int)"\t"[0]);
+  double nz = -0.0;
+  float nzf = -0.0f;
+  printf("negzero %g %g %d %d\n", 1 / nz, 1 / (double)nzf, nz == 0, -0 == 0);
+  printf("limits %d %u %lld %llu\n", -2147483647 - 1, 4294967295u, -9223372036854775807LL - 1, 18446744073709551615ull);
+  return 0;
+}

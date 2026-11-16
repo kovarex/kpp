@@ -1,0 +1,139 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <tuple>
+#include <optional>
+#include <map>
+#include <utility>
+#include <compare>
+using std::move; using std::swap; using std::get; using std::tie; using std::nullopt;
+template <typename A, typename B> using Pair = std::pair<A, B>;
+template <typename... T> using Tuple = std::tuple<T...>;
+template <typename T> using Optional = std::optional<T>;
+template <typename K, typename V> using Map = std::map<K, V>;
+#define makeTuple std::make_tuple
+// Pair, Tuple and Optional against std::pair, tuple and optional: what copies and moves of each
+// construct, assign and destroy (a counting element), comparisons element by element and of mixed
+// element types, Optional against nullopt and against values and Optionals of other types, tie
+// and its assignment from a Pair and a Tuple, structured bindings by value and by reference, get
+// moving out of an rvalue, makeTuple, swap.
+int made = 0, copied = 0, moved = 0, copyAssigned = 0, moveAssigned = 0, destroyed = 0;
+struct Item
+{
+  int v;
+  Item() : v(0) { ++made; }
+  Item(int x) : v(x) { ++made; }
+  Item(const Item& o) : v(o.v) { ++copied; }
+  Item(Item&& o) noexcept : v(o.v) { o.v = -1; ++moved; }
+  Item& operator=(const Item& o) { v = o.v; ++copyAssigned; return *this; }
+  Item& operator=(Item&& o) noexcept { v = o.v; o.v = -1; ++moveAssigned; return *this; }
+  ~Item() { ++destroyed; }
+  bool operator==(const Item& o) const { return v == o.v; }
+  bool operator<(const Item& o) const { return v < o.v; }
+};
+void counts(const char* step)
+{
+  printf("%-34s made %d copied %d moved %d copy= %d move= %d destroyed %d\n", step, made, copied, moved, copyAssigned, moveAssigned, destroyed);
+  made = copied = moved = copyAssigned = moveAssigned = destroyed = 0;
+}
+int order(bool lt, bool gt) { return lt ? -1 : gt ? 1 : 0; }
+
+int main()
+{
+  {
+    Pair<Item, int> p(Item(1), 2);
+    counts("Pair from a temporary");
+    Pair<Item, int> q = p;
+    counts("Pair copy");
+    Pair<Item, int> r = move(q);
+    counts("Pair move");
+    printf("  moved-from first %d\n", q.first.v);
+    q = p;
+    counts("Pair copy=");
+    q = move(r);
+    counts("Pair move=");
+    swap(p, q);
+    counts("swap Pairs");
+    Tuple<Item, String, int> t(Item(3), String("x"), 4);
+    counts("Tuple from a temporary");
+    Tuple<Item, String, int> u = t;
+    counts("Tuple copy");
+    Tuple<Item, String, int> w = move(u);
+    counts("Tuple move");
+    u = t;
+    counts("Tuple copy=");
+    Item out = get<0>(move(w));
+    printf("  moved out %d, left %d\n", out.v, get<0>(w).v);
+    counts("get<0>(move(t)) into an Item");
+    auto made3 = makeTuple(Item(5), 6, String("y"));
+    counts("makeTuple with a temporary");
+    Tuple<Item, int> fromPair = Pair<Item, int>(Item(7), 8);
+    counts("Tuple from a Pair temporary");
+    printf("  %d %d\n", get<0>(fromPair).v, get<1>(fromPair));
+    (void)made3;
+  }
+  counts("scope end");
+
+  int a = 0;
+  String b;
+  tie(a, b) = Pair<int, String>(9, String("nine"));
+  printf("tie = Pair: %d %s\n", a, b.c_str());
+  tie(a, b) = makeTuple(10, String("ten"));
+  printf("tie = Tuple: %d %s\n", a, b.c_str());
+  Pair<int, String> pr(11, String("eleven"));
+  auto [x, y] = pr;
+  x = 0;
+  auto& [rx, ry] = pr;
+  rx = 12;
+  printf("bindings: copy %d %s, by reference changed pr.first to %d\n", x, y.c_str(), pr.first);
+  Tuple<int, double, String> tt(1, 2.5, String("z"));
+  auto& [t0, t1, t2] = tt;
+  t1 = 3.5;
+  printf("tuple bindings: %d %g %s, get<1> now %g\n", t0, t1, t2.c_str(), get<1>(tt));
+  Map<String, int> m;
+  m[String("k")] = 1;
+  for (auto& [key, value] : m)
+    value += 41;
+  printf("map binding by reference: %d\n", m[String("k")]);
+
+  Pair<int, int> p1(1, 2), p2(1, 3), p3(2, 0);
+  printf("Pair <: %d %d %d, ==: %d %d\n", (int)(p1 < p2), (int)(p2 < p3), (int)(p3 < p1), (int)(p1 == p1), (int)(p1 == p2));
+  printf("Pair <=>: %d %d\n", order((p1 <=> p2) < 0, (p1 <=> p2) > 0), order((p3 <=> p1) < 0, (p3 <=> p1) > 0));
+  Tuple<int, String, double> ta(1, String("b"), 2.0), tb(1, String("a"), 9.0), tc(1, String("b"), 2.0);
+  printf("Tuple: < %d %d, == %d %d, >= %d, <= %d\n", (int)(ta < tb), (int)(tb < ta), (int)(ta == tc), (int)(ta == tb), (int)(ta >= tc), (int)(tb <= ta));
+  Pair<int, double> mixedA(1, 2.0);
+  Pair<long long, float> mixedB(1, 2.0f);
+  printf("Pair of other types ==: %d\n", (int)(Pair<long long, double>(mixedA) == Pair<long long, double>(mixedB)));
+
+  Optional<int> none, one = 1;
+  Optional<long long> bigOne = 1ll;
+  printf("Optional with nullopt: %d %d %d %d\n", (int)(none == nullopt), (int)(one != nullopt), (int)(nullopt == none), (int)(nullopt != one));
+  printf("Optional with a value of another type: %d %d %d %d\n", (int)(one == 1.0), (int)(one < 1.5), (int)(one == 1ll), (int)(none < 0.5));
+  printf("Optional<int> with Optional<long long> through a value: %d\n", (int)(one == *bigOne));
+  Optional<String> os;
+  printf("value_or: [%s] [%s]\n", os.value_or("fallback").c_str(), Optional<String>(String("set")).value_or("fallback").c_str());
+  os.emplace(3, 'q');
+  printf("emplace(3, 'q'): [%s]\n", os->c_str());
+  Optional<String> other = String("other");
+  os.swap(other);
+  printf("swap: [%s] [%s]\n", os->c_str(), other->c_str());
+  os.reset();
+  other.swap(os);
+  printf("swap with empty: %d %d [%s]\n", (int)os.has_value(), (int)other.has_value(), os->c_str());
+  return 0;
+}

@@ -1,0 +1,101 @@
+// battery i8: templates, third part: CRTP with static dispatch, nested class templates of class
+// templates, member templates specialised by the enclosing arguments, `template<auto V>`, alias
+// templates applying some arguments, if constexpr over types, requires-clauses on members,
+// dependent bases named through this->, partial specialisations of nested templates, static data
+// members of each instance initialised from the arguments, recursive templates through constexpr.
+template <typename D> struct Base
+{
+  int run() const { return static_cast<const D*>(this)->step() * 10 + D::weight; }
+  static int twice(int v) { return D::scale(v) * 2; }
+};
+struct A : Base<A> { static constexpr int weight = 3; int step() const { return 4; } static int scale(int v) { return v + 1; } };
+struct B : Base<B> { static constexpr int weight = 7; int step() const { return 2; } static int scale(int v) { return v * 5; } };
+
+template <typename T> struct Outer
+{
+  template <typename U> struct Inner
+  {
+    T t;
+    U u;
+    int sum() const { return (int)sizeof(T) * 100 + (int)sizeof(U) * 10 + (int)t + (int)u; }
+  };
+  template <typename U> static int make(U u) { return Inner<U>{T(2), u}.sum(); }
+};
+
+template <auto V> struct Value { static constexpr auto value = V; using type = decltype(V); };
+
+template <typename T, int N> struct Arr { T items[N]; static constexpr int size = N; };
+template <typename T> using Arr4 = Arr<T, 4>;
+template <int N> using Ints = Arr<int, N>;
+
+template <typename T> int classify()
+{
+  if constexpr (sizeof(T) == 1)
+    return 1;
+  else if constexpr (sizeof(T) == 2)
+    return 2;
+  else if constexpr (T(1) / 2 > 0)
+    return 3;
+  else
+    return 4;
+}
+
+template <typename T> struct Opt
+{
+  T v;
+  int describe() const requires (sizeof(T) > 4) { return 8; }
+  int describe() const requires (sizeof(T) <= 4) { return 4; }
+};
+
+template <typename T> struct Store
+{
+  T stored = T(5);
+  int scale = 2;
+};
+template <typename T> struct User : Store<T>
+{
+  int get() const { return (int)this->stored * this->scale; }
+  void set(T v) { this->stored = v; }
+};
+
+template <typename T> struct Wrapper
+{
+  template <typename U, typename = void> struct Pick { static constexpr int id = 1; };
+  template <typename V> struct Pick<V*, void> { static constexpr int id = 2; };
+};
+
+template <typename T> struct Counted { static int instances; static const int seed; };
+template <typename T> int Counted<T>::instances = (int)sizeof(T) * 3;
+template <typename T> const int Counted<T>::seed = (int)sizeof(T) + 1;
+
+template <int N> constexpr int fibT() { if constexpr (N < 2) return N; else return fibT<N - 1>() + fibT<N - 2>(); }
+
+template <typename... T> struct Count { static constexpr int value = sizeof...(T); };
+template <typename... T> using CountPlusOne = Count<int, T...>;
+
+int main()
+{
+  A a;
+  B b;
+  printf("crtp %d %d %d %d\n", a.run(), b.run(), A::twice(3), B::twice(3));
+  Outer<short>::Inner<char> in{3, 4};
+  printf("nested %d %d %d\n", in.sum(), Outer<int>::make(1.0), Outer<char>::make((short)7));
+  printf("auto %d %d %d %d\n", (int)Value<5>::value, (int)sizeof(Value<5>::type), (int)sizeof(Value<'c'>::type), (int)Value<10000000000LL>::value % 1000);
+  Arr4<short> a4{};
+  Ints<3> i3{{1, 2, 3}};
+  printf("alias %d %d %d %d\n", Arr4<char>::size, (int)sizeof(a4), Ints<7>::size, i3.items[2]);
+  printf("constexprIf %d %d %d %d\n", classify<char>(), classify<short>(), classify<int>(), classify<double>());
+  Opt<double> od{1};
+  Opt<int> oi{1};
+  printf("requires %d %d\n", od.describe(), oi.describe());
+  User<long long> u;
+  int before = u.get();
+  u.set(9);
+  printf("dependentBase %d %d\n", before, u.get());
+  printf("nestedPartial %d %d\n", Wrapper<int>::Pick<int>::id, Wrapper<int>::Pick<char*>::id);
+  Counted<double>::instances += 1;
+  printf("statics %d %d %d %d\n", Counted<char>::instances, Counted<double>::instances, Counted<short>::seed, Counted<long long>::seed);
+  printf("fib %d %d\n", fibT<15>(), fibT<1>());
+  printf("packAlias %d %d\n", CountPlusOne<>::value, CountPlusOne<char, short>::value);
+  return 0;
+}

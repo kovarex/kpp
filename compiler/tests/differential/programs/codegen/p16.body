@@ -1,0 +1,46 @@
+// an exception leaving a destructor: destructors are noexcept unless declared otherwise, so C++
+// ends the program; one declared noexcept(false) lets it out
+class Loud
+{
+public:
+  bool fail;
+  Loud(bool f) : fail(f) {}
+  ~Loud() noexcept(false)
+  {
+    if (fail)
+      throw 7;
+  }
+};
+class Quiet
+{
+public:
+  ~Quiet()
+  {
+    throw 8;
+  }
+};
+int main(int argc, char** argv)
+{
+
+  try
+  {
+    Loud l(true);
+  }
+  catch (int v)
+  {
+    printf("caught %d\n", v);
+  }
+  if (argc > 1)
+  {
+    try
+    {
+      Quiet q;
+    }
+    catch (int v)
+    {
+      printf("caught quiet %d\n", v);
+    }
+    printf("after quiet\n");
+  }
+  return 0;
+}

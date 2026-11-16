@@ -1,0 +1,24 @@
+// static locals whose initializers are no constant expressions: initialized when the declaration
+// first runs, from the values then
+int base = 10;
+int counter = 0;
+int next() { return ++counter; }
+int constFromGlobal()
+{
+  static const int x = base + 1;
+  return x;
+}
+int fromCall()
+{
+  static int id = next();
+  return id;
+}
+int main()
+{
+  base = 20;
+  counter = 100;
+  printf("S1 %d\n", constFromGlobal());
+  printf("S2 %d %d\n", fromCall(), counter);
+  printf("S3 %d %d\n", fromCall(), counter);
+  return 0;
+}

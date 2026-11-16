@@ -1,0 +1,91 @@
+// battery 32: members initialized in declaration order whatever the mem-initializer list says,
+// bases before members and destroyed in reverse, delegating constructors, designated initializers
+// (the rest value-initialized or from their default initializers), postfix and prefix operator++,
+// operator() and operator[] overloads, compound assignment chains, explicit operator bool.
+int step(const char* name, int v)
+{
+  printf("%s ", name);
+  return v;
+}
+struct Part
+{
+  int v;
+  Part(int x) : v(x) { printf("P%d ", v); }
+  ~Part() { printf("~P%d ", v); }
+};
+struct First
+{
+  First() { printf("First "); }
+  ~First() { printf("~First "); }
+};
+struct Second
+{
+  Second() { printf("Second "); }
+  ~Second() { printf("~Second "); }
+};
+class Ordered : public First, public Second
+{
+public:
+  Part a;
+  Part b;
+  Ordered() : b(step("b", 2)), a(step("a", 1)) { printf("body "); }
+  ~Ordered() { printf("~body "); }
+};
+class Delegating
+{
+public:
+  int x, y;
+  Delegating(int v) : Delegating(v, v * 2) { printf("outer %d %d\n", x, y); }
+  Delegating(int a, int b) : x(a), y(b) { printf("inner "); }
+};
+struct Config
+{
+  int width = 640;
+  int height = 480;
+  int depth;
+  int flags = 7;
+};
+class Counter
+{
+public:
+  int n = 0;
+  Counter& operator++()
+  {
+    ++n;
+    return *this;
+  }
+  Counter operator++(int)
+  {
+    Counter old = *this;
+    n += 10;
+    return old;
+  }
+  int operator()(int k) const { return n * k; }
+  int operator[](int i) const { return n + i; }
+  Counter& operator+=(int k)
+  {
+    n += k;
+    return *this;
+  }
+  explicit operator bool() const { return n > 20; }
+};
+int main()
+{
+  {
+    Ordered o;
+    printf("| %d %d\n", o.a.v, o.b.v);
+  }
+  printf("\n");
+  Delegating d(3);
+  Config c{.height = 100, .flags = 1};
+  Config z{};
+  printf("config %d %d %d %d | %d %d %d %d\n", c.width, c.height, c.depth, c.flags, z.width, z.height, z.depth, z.flags);
+  Counter k;
+  ++k;
+  Counter old = k++;
+  (k += 2) += 3;
+  printf("counter %d %d %d %d %d\n", old.n, k.n, k(2), k[5], k ? 1 : 0);
+  Counter small;
+  printf("small %d %d\n", small ? 1 : 0, !small ? 1 : 0);
+  return 0;
+}

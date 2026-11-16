@@ -1,0 +1,36 @@
+// Conversions of a class derived from closures to a closure base that is not the first base: the
+// base subobject's address and captures, as for any base class.
+template<class... Ts>
+struct Holder : Ts...
+{
+  int tag = 9;
+};
+
+template<class L>
+int byRef(const L& l, int x) { return l(x); }
+
+template<class L>
+int byValue(L l, int x) { return l(x); }
+
+int main()
+{
+  int a = 1, b = 20, c = 300;
+  auto first = [a](int x) { return x + a; };
+  auto second = [b, c](int x) { return x + b + c; };
+  using First = decltype(first);
+  using Second = decltype(second);
+  Holder<First, Second> h{first, second};
+  Second& s = h;
+  First& f = h;
+  const Second& cs = h;
+  printf("%d %d %d %d\n", s(1000), f(1000), cs(2000), h.tag);
+  const Second* p = &h;
+  printf("%d\n", (*p)(5));
+  Second copy = h;
+  printf("%d\n", copy(7));
+  printf("%d\n", static_cast<Second&>(h)(6));
+  Holder<First, Second>* hp = &h;
+  Second* sp = hp;
+  printf("%d\n", (*sp)(8));
+  return 0;
+}

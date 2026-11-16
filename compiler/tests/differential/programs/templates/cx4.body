@@ -1,0 +1,27 @@
+struct P { int x; int y; };
+struct Q { P p[2]; int n; };
+constexpr int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+constexpr int ack(int m, int n) { return m == 0 ? n + 1 : n == 0 ? ack(m - 1, 1) : ack(m - 1, ack(m, n - 1)); }
+template<class... T> constexpr long long sum(T... v) { return (0LL + ... + v); }
+template<class T> constexpr int kind(T) { if constexpr (sizeof(T) == 1) return 1; else if constexpr (sizeof(T) == 4) return 4; else return 8; }
+constexpr int f1() { int P::*pm = &P::y; P p{3, 4}; p.*pm += 10; return p.x * 100 + p.*pm; }
+constexpr int f2() { int* a = new int[3]{1, 2, 3}; int s = a[0] * 100 + a[1] * 10 + a[2]; delete[] a; return s; }
+constexpr int f3() { Q q{1, 2, 3, 4, 5}; Q r = q; r.p[1].y += q.n; return r.p[0].x * 10000 + r.p[0].y * 1000 + r.p[1].x * 100 + r.p[1].y * 10 + r.n; }
+constexpr int f4() { auto make = [](int k) { return [k](int v) { return v * k; }; }; auto three = make(3); return three(7); }
+constexpr int f5() { int a[4] = {1, 2, 3, 4}; for (int& v : a) v *= v; return a[0] + a[1] + a[2] + a[3]; }
+constexpr int f6() { return (-7 / 2) * 1000 + (-7 % 2) * 100 + (7 % -2) * 10 + (-8 >> 1); }
+constexpr int f7() { unsigned char c = 250; c += 10; signed char s = 100; s = static_cast<signed char>(s + 100); return c * 1000 + s; }
+constexpr int f8() { P a{1, 2}; P b{3, 4}; P c = (a.x > b.x) ? a : b; return c.x * 10 + c.y; }
+constexpr int f9() { int x = 5; int& r = x; int* p = &r; *p = 9; const int& cr = x; return cr + r; }
+constexpr int f10() { char s[] = "hello"; int n = 0; for (char* p = s; *p; ++p) { *p = char(*p - 32); ++n; } return s[0] * 100 + s[4] + n * 100000; }
+constexpr int g1 = fib(15); constexpr int g2 = ack(2, 3); constexpr long long g3 = sum(1, 2LL, 3, 4u);
+constexpr int g4 = kind('a') * 100 + kind(1) * 10 + kind(1.0); constexpr int g5 = f1(); constexpr int g6 = f2(); constexpr int g7 = f3();
+constexpr int g8 = f4(); constexpr int g9 = f5(); constexpr int g10 = f6(); constexpr int g11 = f7(); constexpr int g12 = f8();
+constexpr int g13 = f9(); constexpr int g14 = f10();
+
+int main()
+{
+  printf("%d %d %lld %d %d %d %d %d %d %d %d %d %d %d\n", g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14);
+  printf("%d %d %lld %d %d %d %d %d %d %d %d %d %d %d\n", fib(15), ack(2, 3), sum(1, 2LL, 3, 4u), kind('a') * 100 + kind(1) * 10 + kind(1.0), f1(), f2(), f3(), f4(), f5(), f6(), f7(), f8(), f9(), f10());
+  return 0;
+}

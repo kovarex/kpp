@@ -1,0 +1,10 @@
+extern "C" int printf(const char* format, ...);
+struct Agg { int a; double b; };
+struct NoDefault { IMPLICIT NoDefault(int) {} };
+int main()
+{
+  printf("%d%d%d%d %d%d%d%d %d%d%d\n", isConstructible<int[3], int>, isConstructible<int[3], int, int, int>, isConstructible<int[3], int, int, int, int>, isConstructible<int[3]>,
+         isConstructible<int[], int>, isConstructible<int[2], const char*>, isConstructible<Agg[2], Agg>, isConstructible<int[3], double>,
+         isConstructible<NoDefault[2], int>, isConstructible<NoDefault[2], int, int>, isConstructible<int[2][2], int>);
+  return 0;
+}

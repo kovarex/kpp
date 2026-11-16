@@ -1,0 +1,28 @@
+// Three-way comparison with NaN: unordered through the built-in <=>, a defaulted <=> over doubles,
+// a user <=> with a double, its reversed forms (`1.0 >= p`, `1.0 <=> p`), and every relation.
+struct P
+{
+  double x;
+  auto operator<=>(const P&) const = default;
+  bool operator==(const P&) const = default;
+  auto operator<=>(double d) const { return x <=> d; }
+  bool operator==(double d) const { return x == d; }
+};
+
+int r(bool b) { return b ? 1 : 0; }
+
+int main()
+{
+  volatile double zero = 0.0;
+  double nan = zero / zero;
+  P p{nan}, q{1.0}, s{1.0};
+  printf("%d %d %d %d %d %d\n", r(p < q), r(p > q), r(p <= q), r(p >= q), r(p == q), r(p != q));
+  printf("%d %d %d %d\n", r(q < s), r(q <= s), r(q >= s), r(q == s));
+  printf("%d %d %d %d %d\n", r(p < 1.0), r(p >= 1.0), r(1.0 >= p), r(1.0 < p), r(1.0 == p));
+  auto c1 = 1.0 <=> p;
+  auto c2 = p <=> 1.0;
+  auto c3 = 2.0 <=> q;
+  printf("%d %d %d %d | %d %d\n", r(c1 < 0), r(c1 > 0), r(c1 == 0), r(c2 >= 0), r(c3 > 0), r(c3 < 0));
+  printf("%d %d %d\n", r(nan < 1.0), r(nan >= 1.0), r((nan <=> nan) == 0));
+  return 0;
+}

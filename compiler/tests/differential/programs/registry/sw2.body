@@ -1,0 +1,42 @@
+// sw2: members of a base that is an explicit or partial specialisation, through every way of naming
+// them: an object's member access, decltype, an alias of the instance, inside the derived
+// template's members (unqualified with this->, qualified by the derived class, by the base), a
+// template parameter bound to the derived class, a partial specialisation as the base.
+template <int N> struct E
+{
+  using type = short;
+  static constexpr int k = 1;
+  int kk = 100;
+};
+template <> struct E<0>
+{
+  using type = long long;
+  static constexpr int k = 2;
+  int kk = 200;
+};
+template <typename T, typename U> struct P { using type = char; static constexpr int k = 10; };
+template <typename T> struct P<T, T*> { using type = double; static constexpr int k = 20; };
+template <int N> struct G : E<N>
+{
+  int viaThis() const { return this->k * 1000 + this->kk; }
+  int viaClass() const { return (int)sizeof(typename G::type) * 10 + G::k; }
+  int viaBase() const { return (int)sizeof(typename E<N>::type) * 10 + E<N>::k; }
+};
+template <typename T> struct H : P<T, T*>
+{
+  int viaClass() const { return (int)sizeof(typename H::type) * 100 + H::k; }
+};
+template <typename T> int through() { return (int)sizeof(typename T::type) * 10 + T::k; }
+using G0 = G<0>;
+int main()
+{
+  G<0> g;
+  G<1> g1;
+  H<int> h;
+  printf("object %d %d %d %d\n", g.k, (int)sizeof(decltype(g)::type), g1.k, (int)sizeof(decltype(g1)::type));
+  printf("alias %d %d\n", G0::k, (int)sizeof(G0::type));
+  printf("members %d %d %d | %d %d %d\n", g.viaThis(), g.viaClass(), g.viaBase(), g1.viaThis(), g1.viaClass(), g1.viaBase());
+  printf("partial %d %d %d %d\n", h.viaClass(), H<int>::k, (int)sizeof(H<char>::type), through<H<int>>());
+  printf("param %d %d\n", through<G<0>>(), through<G<5>>());
+  return 0;
+}

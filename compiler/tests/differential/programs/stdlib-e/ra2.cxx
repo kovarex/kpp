@@ -1,0 +1,137 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+// kpp's chrono names on std::chrono's, for the C++ side of the chrono batteries.
+#include <random>
+using DefaultRandomEngine = std::mt19937_64;
+template <typename T> using UniformIntDistribution = std::uniform_int_distribution<T>;
+// ra2: UniformIntDistribution's properties that hold whatever the engine's sequence (the values
+// themselves are the engine's, xoshiro256** against mt19937_64, so they are not compared): with
+// engines whose range is not 64 bits ([rand.req.urng]: any min() and max(), as std::minstd_rand's
+// 1 to 2^31 - 2 and a 16-bit one) every value of a wide range is reachable and the bounds are kept;
+// the full ranges of i64 and u64, negative ranges, short and unsigned char types; a() and b();
+// a 6-sided die's counts within a few standard deviations; discard(n) as n calls.
+struct Small
+{
+  using result_type = unsigned;
+  unsigned state = 12345;
+  static constexpr unsigned min() { return 0; }
+  static constexpr unsigned max() { return 0xFFFF; }
+  unsigned operator()()
+  {
+    state = state * 1103515245u + 12345u;
+    return (state >> 8) & 0xFFFF;
+  }
+};
+struct OneBased
+{
+  using result_type = unsigned;
+  unsigned long long state = 1;
+  static constexpr unsigned min() { return 1; }
+  static constexpr unsigned max() { return 2147483646; }
+  unsigned operator()()
+  {
+    state = state * 48271 % 2147483647;
+    return (unsigned)state;
+  }
+};
+template <typename Engine, typename T> void wide(const char* label, Engine& engine, T low, T high, int draws)
+{
+  UniformIntDistribution<T> d(low, high);
+  T least = high, most = low;
+  bool inRange = true;
+  int upperHalf = 0;
+  T middle = (T)(low + (high - low) / 2);
+  for (int i = 0; i < draws; ++i)
+  {
+    T v = d(engine);
+    if (v < low || v > high)
+      inRange = false;
+    if (v < least)
+      least = v;
+    if (v > most)
+      most = v;
+    if (v > middle)
+      ++upperHalf;
+  }
+  double spread = (double)(most - least) / (double)(high - low);
+  printf("%s: in range %d, spread above 0.99 %d, upper half %s\n", label, (int)inRange, (int)(spread > 0.99),
+         upperHalf > draws * 45 / 100 && upperHalf < draws * 55 / 100 ? "about half" : "LOPSIDED");
+}
+
+int main()
+{
+  Small small;
+  OneBased oneBased;
+  DefaultRandomEngine engine(42);
+  wide("16-bit engine, 0 to 1000000", small, 0, 1000000, 100000);
+  wide("16-bit engine, 0 to 2^40", small, 0ll, 1099511627776ll, 100000);
+  wide("16-bit engine, 0 to 100", small, 0, 100, 100000);
+  wide("minstd engine, 0 to 2^32 - 1", oneBased, 0u, 4294967295u, 100000);
+  wide("minstd engine, -5 to 5", oneBased, -5, 5, 100000);
+  wide("default engine, -10^18 to 10^18", engine, -1000000000000000000ll, 1000000000000000000ll, 100000);
+  wide("default engine, short -300 to 300", engine, (short)-300, (short)300, 100000);
+  {
+    UniformIntDistribution<long long> all(-9223372036854775807ll - 1, 9223372036854775807ll);
+    int negative = 0;
+    for (int i = 0; i < 100000; ++i)
+      if (all(engine) < 0)
+        ++negative;
+    printf("full i64: negative about half %d\n", (int)(negative > 45000 && negative < 55000));
+    UniformIntDistribution<unsigned long long> allU(0, 18446744073709551615ull);
+    int high = 0;
+    for (int i = 0; i < 100000; ++i)
+      if (allU(engine) >= 9223372036854775808ull)
+        ++high;
+    printf("full u64: top half about half %d\n", (int)(high > 45000 && high < 55000));
+    UniformIntDistribution<unsigned long long> allSmall(0, 18446744073709551615ull);
+    high = 0;
+    for (int i = 0; i < 100000; ++i)
+      if (allSmall(small) >= 9223372036854775808ull)
+        ++high;
+    printf("full u64 from the 16-bit engine: top half about half %d\n", (int)(high > 45000 && high < 55000));
+  }
+  {
+    UniformIntDistribution<int> die(1, 6);
+    int counts[7] = {0, 0, 0, 0, 0, 0, 0};
+    for (int i = 0; i < 600000; ++i)
+      ++counts[die(engine)];
+    bool fair = true;
+    for (int f = 1; f <= 6; ++f)
+      if (counts[f] < 100000 - 1500 || counts[f] > 100000 + 1500)
+        fair = false;
+    printf("die: every face within 5 sd %d, outside 0\n", (int)fair);
+    printf("a %d b %d\n", die.a(), die.b());
+    UniformIntDistribution<int> defaults;
+    printf("default: a %d b %d\n", defaults.a(), defaults.b());
+    UniformIntDistribution<int> one(7, 7);
+    bool seven = true;
+    for (int i = 0; i < 100; ++i)
+      seven = seven && one(engine) == 7 && one(small) == 7;
+    printf("range of one: always 7 %d\n", (int)seven);
+  }
+  {
+    DefaultRandomEngine a(7), b(7);
+    a.discard(1000);
+    for (int i = 0; i < 1000; ++i)
+      b();
+    printf("discard(1000) as 1000 calls %d\n", (int)(a() == b()));
+    printf("engine min %llu max %llu\n", (unsigned long long)DefaultRandomEngine::min(), (unsigned long long)DefaultRandomEngine::max());
+  }
+  return 0;
+}

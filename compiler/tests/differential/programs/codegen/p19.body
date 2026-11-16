@@ -1,0 +1,66 @@
+// multi-dimensional arrays, pointers to arrays, array references, decay; nested switch and loops
+int sumRows(int (*rows)[3], int n)
+{
+  int s = 0;
+  for (int i = 0; i < n; ++i)
+    for (int j = 0; j < 3; ++j)
+      s += rows[i][j] * (i + 1);
+  return s;
+}
+int sumRef(const int (&a)[4]) { int s = 0; for (int v : a) s += v; return s; }
+int first(const int* p) { return *p; }
+int control(int limit)
+{
+  int out = 0;
+  for (int i = 0; i < limit; ++i)
+  {
+    switch (i % 4)
+    {
+      case 0:
+        continue;
+      case 1:
+        out += 1;
+        break;
+      case 2:
+        for (int k = 0; k < 10; ++k)
+        {
+          if (k == 3)
+            break;
+          out += 10;
+        }
+        [[fallthrough]];
+      case 3:
+        out += 100;
+        if (i > 8)
+          goto done;
+        break;
+    }
+    out += 1000;
+  }
+done:
+  return out;
+}
+int main()
+{
+  int grid[2][3] = {{1, 2, 3}, {4, 5, 6}};
+  printf("A1 %d %d %d\n", (int)sizeof(grid), (int)sizeof(grid[0]), (int)sizeof(grid[0][0]));
+  printf("A2 %d\n", sumRows(grid, 2));
+  auto rowPtr = grid + 1;
+  printf("A3 %d %d\n", (*rowPtr)[2], rowPtr[0][1]);
+  int* flat = &grid[0][0];
+  printf("A4 %d %d\n", flat[4], *(flat + 5));
+  int four[4] = {1, 2, 3, 4};
+  printf("A5 %d %d\n", sumRef(four), first(four));
+  auto& alias = four;
+  alias[2] = 30;
+  printf("A6 %d\n", four[2]);
+  int cube[2][2][2] = {};
+  cube[1][0][1] = 7;
+  printf("A7 %d %d\n", ((int*)cube)[5], (int)(&cube[1][1][1] - &cube[0][0][0]));
+  const char* names[] = {"zero", "one", "two"};
+  printf("A8 %s %d\n", names[2], (int)(sizeof(names) / sizeof(names[0])));
+  char text[2][6] = {"ab", "cdefg"};
+  printf("A9 %s %s %d\n", text[0], text[1], text[0][3]);
+  printf("C1 %d %d %d\n", control(4), control(8), control(12));
+  return 0;
+}

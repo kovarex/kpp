@@ -1,0 +1,53 @@
+// covariant returns
+class X { public: int x = 1; virtual ~X() {} virtual int id() { return x; } };
+class Y : public X { public: int y = 2; int id() override { return x + y; } };
+class Z : public Y { public: int z = 3; int id() override { return x + y + z; } };
+class A { public: virtual ~A() {} virtual X* get() { static X s; return &s; } virtual X& ref() { static X s; return s; } virtual const X* cget() const { return nullptr; } };
+class B : public A { public: Y* get() override { static Y s; return &s; } Y& ref() override { static Y s; return s; } const Y* cget() const override { static Y s; return &s; } };
+class C : public B { public: Z* get() override { static Z s; return &s; } Z& ref() override { static Z s; return s; } };
+void simple() { C c; A& a = c; B& b = c; printf("%d %d %d %d %d\n", a.get()->id(), b.get()->y, a.ref().id(), b.ref().y, c.get()->z); printf("%d\n", c.cget()->y); }
+// the result at an offset: override from a class whose result has the base second
+class Pad { public: int pad = 9; virtual ~Pad() {} };
+class W : public Pad, public X { public: int w = 5; int id() override { return x + w + 100; } };
+class D1 : public A { public: W* get() override { static W s; return &s; } W& ref() override { static W s; return s; } };
+class D2 : public D1 { public: };
+void offset() { D1 d; A& a = d; printf("%d %d %d %d\n", a.get()->id(), a.ref().id(), d.get()->w, d.ref().pad); X* p = a.get(); W* direct = d.get(); printf("same %d\n", p == direct); D2 e; A& ae = e; printf("%d\n", ae.get()->x); }
+// null keeps null through the adjusting thunk
+class D3 : public A { public: W* get() override { return nullptr; } };
+void nulls() { D3 d; A& a = d; printf("null %d %d\n", a.get() == nullptr, d.get() == nullptr); }
+// the override reached through a second base of the overrider's class
+class S0 { public: int s = 1; virtual ~S0() {} virtual int t() { return 1; } };
+class S1 { public: int u = 2; virtual ~S1() {} virtual X* mk() { return nullptr; } virtual X& rf(int) { static X s; return s; } };
+class S2 : public S0, public S1 { public: int v = 3; Y* mk() override { static Y s; s.y = v + u; return &s; } Y& rf(int k) override { static Y s; s.y = k; return s; } };
+class S3 : public S2 { public: Z* mk() override { static Z s; s.z = v * 7; return &s; } };
+void second() { S2 s; S1& r = s; printf("%d %d %d\n", r.mk()->id(), s.mk()->y, r.rf(40).id()); S3 t; S1& q = t; S2& q2 = t; printf("%d %d %d\n", q.mk()->id(), q2.mk()->id(), t.mk()->z); }
+// clone
+class Shape { public: int n; Shape(int v) : n(v) {} virtual ~Shape() { printf("~Shape %d\n", n); } virtual Shape* clone() const = 0; virtual const char* name() const { return "shape"; } };
+class Circle : public Shape { public: double r; Circle(int v, double q) : Shape(v), r(q) {} Circle* clone() const override { return new Circle(n + 1, r * 2); } const char* name() const override { return "circle"; } };
+class Ring : public Circle { public: Ring(int v) : Circle(v, 1.5) {} Ring* clone() const override { return new Ring(n + 10); } const char* name() const override { return "ring"; } };
+void clones() { Ring r(1); Shape* s = &r; Shape* c = s->clone(); Shape* cc = c->clone(); printf("%s %d %s %d\n", c->name(), c->n, cc->name(), cc->n); Circle ci(5, 1.0); Circle* q = ci.clone(); printf("%.1f\n", q->r); delete q; delete c; delete cc; }
+// templates, CRTP
+class Ba { public: int v = 1; virtual ~Ba() {} virtual Ba* cloneBase() const = 0; virtual int who() const { return v; } };
+template<class Derived, class Base> class Cloner : public Base { public: Derived* cloneBase() const override { return new Derived(static_cast<const Derived&>(*this)); } };
+class De;
+template<class T> class Fac { public: virtual ~Fac() {} virtual T* make() { return new T; } };
+class YF : public Fac<X> { public: Y* make() override { return new Y; } };
+void templates() { YF f; Fac<X>& g = f; X* x = g.make(); printf("%d\n", x->id()); delete x; Y* y = f.make(); printf("%d\n", y->y); delete y; }
+// member pointers to covariant functions, qualified calls
+void memptr() { X* (A::*p)() = &A::get; C c; printf("%d\n", (c.*p)()->id()); Y* (B::*q)() = &B::get; printf("%d\n", (c.*q)()->id()); B b; printf("%d %d\n", b.A::get()->id(), c.B::get()->id()); }
+// a self-returning fluent chain through bases
+class Fl { public: int n = 0; virtual ~Fl() {} virtual Fl& add(int x) { n += x; return *this; } virtual Fl* self() { return this; } };
+class Pre { public: int k = 1; virtual ~Pre() {} };
+class Fl2 : public Pre, public Fl { public: int m = 0; Fl2& add(int x) override { n += x * 2; m++; return *this; } Fl2* self() override { return this; } Fl2& more() { m += 10; return *this; } };
+void fluent() { Fl2 f; f.add(1).more().add(2).self()->more(); Fl& r = f; r.add(3).add(4); printf("%d %d\n", f.n, f.m); printf("%d %d\n", r.self() == &r, f.self() == &f); }
+// multi-level, each adding an adjustment: result classes each with their own second base
+class Q0 { public: int a = 10; virtual ~Q0() {} };
+class Q1 { public: int b = 20; virtual ~Q1() {} virtual int v() { return b; } };
+class Q2 : public Q0, public Q1 { public: int c = 30; int v() override { return b + c; } };
+class Q9 { public: int d = 40; virtual ~Q9() {} };
+class Q3 : public Q9, public Q2 { public: int e = 50; int v() override { return b + c + e; } };
+class M1 { public: virtual ~M1() {} virtual Q1* q() { static Q1 s; return &s; } };
+class M2 : public M1 { public: Q2* q() override { static Q2 s; return &s; } };
+class M3 : public M2 { public: Q3* q() override { static Q3 s; return &s; } };
+void multi() { M3 m; M1& a = m; M2& b = m; printf("%d %d %d\n", a.q()->v(), b.q()->c, m.q()->e); M2 n; M1& c = n; printf("%d\n", c.q()->v()); }
+int main() { simple(); offset(); nulls(); second(); clones(); templates(); memptr(); fluent(); multi(); return 0; }

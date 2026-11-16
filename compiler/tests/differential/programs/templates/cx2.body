@@ -1,0 +1,33 @@
+struct P { int x; int y; };
+struct Acc { int sum = 0; int count = 0; constexpr void add(int v) { sum += v; ++count; } };
+union U { int i; unsigned u; };
+struct Bits { unsigned a : 3; unsigned b : 5; int c : 6; };
+class Base { public: int v; constexpr Base(int x) : v(x) {} constexpr virtual int get() const { return v; } };
+class Derived : public Base { public: int w; constexpr Derived(int a, int b) : Base(a), w(b) {} constexpr int get() const override { return v * 10 + w; } };
+
+constexpr int f1() { int a[5] = {5, 3, 1, 4, 2}; for (int i = 0; i < 5; ++i) for (int j = i + 1; j < 5; ++j) if (a[j] < a[i]) { int t = a[i]; a[i] = a[j]; a[j] = t; } return a[0] * 10000 + a[1] * 1000 + a[2] * 100 + a[3] * 10 + a[4]; }
+constexpr int f2() { P ps[3] = {{1, 2}, {3, 4}, {5, 6}}; int s = 0; for (const P& p : ps) s += p.x * p.y; return s; }
+constexpr int f3() { Acc acc; for (int i = 1; i <= 10; ++i) acc.add(i * i); return acc.sum * 100 + acc.count; }
+constexpr unsigned f4() { U u{}; u.i = -1; return u.i == -1 ? 7u : 9u; }
+constexpr int f5() { Bits b{5, 17, -3}; b.a += 4; b.b -= 20; b.c *= 3; return int(b.a) * 10000 + int(b.b) * 100 + b.c; }
+constexpr int f6() { Derived d(3, 4); const Base& r = d; return r.get(); }
+constexpr long long f7() { long long r = 1; for (int i = 0; i < 20; ++i) r = r * 3 % 1000000007; return r; }
+constexpr int f8() { int x = 0; int* p = &x; *p += 5; int** pp = &p; **pp *= 3; return x; }
+constexpr int f9() { int a[4] = {1, 2, 3, 4}; int* b = a + 1; int* e = a + 4; int s = 0; while (b != e) s = s * 10 + *b++; return s + int(e - a); }
+constexpr unsigned f10() { unsigned h = 2166136261u; const char* s = "kpp"; while (*s) { h ^= unsigned(*s++); h *= 16777619u; } return h; }
+constexpr int f11() { int n = 0; for (int i = 0; i < 100; ++i) { if (i % 3 == 0) continue; if (i > 50) break; n += i; } return n; }
+constexpr double f12() { double x = 1.0; for (int i = 0; i < 10; ++i) x = x * 1.5 - 0.25; return x; }
+constexpr int f13() { int v = 7; auto twice = [&v](int k) { v *= k; return v; }; twice(2); return twice(3); }
+constexpr int f14() { struct L { int a; int b = 9; }; L l{4}; L m = l; m.a += l.b; return m.a * 100 + m.b; }
+constexpr int f15() { int s = 0; switch (3) { case 1: s += 1; [[fallthrough]]; case 3: s += 3; [[fallthrough]]; case 4: s += 4; break; default: s += 100; } return s; }
+
+constexpr int g1 = f1(); constexpr int g2 = f2(); constexpr int g3 = f3(); constexpr unsigned g4 = f4(); constexpr int g5 = f5();
+constexpr int g6 = f6(); constexpr long long g7 = f7(); constexpr int g8 = f8(); constexpr int g9 = f9(); constexpr unsigned g10 = f10();
+constexpr int g11 = f11(); constexpr double g12 = f12(); constexpr int g13 = f13(); constexpr int g15 = f15();
+
+int main()
+{
+  printf("%d %d %d %u %d %d %lld %d %d %u %d %.6f %d %d %d\n", g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, 0, g15);
+  printf("%d %d %d %u %d %d %lld %d %d %u %d %.6f %d %d %d\n", f1(), f2(), f3(), f4(), f5(), f6(), f7(), f8(), f9(), f10(), f11(), f12(), f13(), f14(), f15());
+  return 0;
+}

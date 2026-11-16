@@ -1,0 +1,54 @@
+// if with an initializer, switch with an initializer, copies into lambdas, guaranteed elision of
+// prvalues (no copy, no move), copies of closures
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 100) { printf("c%d ", id); }
+  Noisy(Noisy&& o) : id(o.id + 1000) { printf("m%d ", id); o.id = -1; }
+  ~Noisy() { printf("-%d ", id); }
+  bool ok() const { return id > 0; }
+};
+Noisy make(int i) { return Noisy(i); }
+Noisy wrap(int i) { return make(i); }
+struct Holder { Noisy n; };
+Holder makeHolder() { return Holder{Noisy(30)}; }
+int main()
+{
+  if (Noisy n = make(1); n.ok())
+    printf("then%d ", n.id);
+  else
+    printf("else%d ", n.id);
+  printf("| if\n");
+  switch (Noisy s = make(2); s.id)
+  {
+    case 2: printf("two "); break;
+    default: break;
+  }
+  printf("| switch\n");
+  {
+    Noisy a = Noisy(Noisy(Noisy(3)));
+    Noisy b = wrap(4);
+    Holder h = makeHolder();
+    printf("| elide %d %d %d ", a.id, b.id, h.n.id);
+  }
+  printf("\n");
+  {
+    Noisy captured(5);
+    auto byValue = [captured]() { return captured.id; };
+    printf("| lambda %d ", byValue());
+    auto copy = byValue;
+    printf("%d ", copy());
+    auto moved = static_cast<decltype(byValue)&&>(byValue);
+    printf("%d ", moved());
+  }
+  printf("\n");
+  {
+    Noisy init(6);
+    auto withInit = [n = static_cast<Noisy&&>(init)]() { return n.id; };
+    printf("| init %d %d ", withInit(), init.id);
+  }
+  printf("\n");
+  return 0;
+}

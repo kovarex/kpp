@@ -1,0 +1,17 @@
+template <typename U, typename = void> struct Pick { static constexpr int id = 1; };
+template <typename V> struct Pick<V*, void> { static constexpr int id = 2; };
+template <typename T> struct Wrapper
+{
+  template <typename U, typename = void> struct Pick2 { static constexpr int id = 1; };
+  template <typename V> struct Pick2<V*, void> { static constexpr int id = 2; };
+  template <typename U> struct Pick3 { static constexpr int id = 1; };
+  template <typename V> struct Pick3<V*> { static constexpr int id = 2; };
+};
+int main()
+{
+  Pick<char*> p;
+  printf("%d %d %d\n", Pick<int>::id, Pick<char*>::id, (int)sizeof(p));
+  printf("%d %d\n", Wrapper<int>::Pick2<int>::id, Wrapper<int>::Pick2<char*>::id);
+  printf("%d %d\n", Wrapper<int>::Pick3<int>::id, Wrapper<int>::Pick3<char*>::id);
+  return 0;
+}

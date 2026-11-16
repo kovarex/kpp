@@ -1,0 +1,23 @@
+#include <stdio.h>
+#include <optional>
+#include <string>
+template <class T> using Optional = std::optional<T>;
+using String = std::string; using std::nullopt;
+volatile double z0 = 0; double zero() { return z0; }
+int main()
+{
+  Optional<int> a, b = 3, c = 5;
+  printf("cmp %d %d %d %d %d %d\n", (int)(a < b), (int)(b < a), (int)(b < c), (int)(a == a), (int)(a != b), (int)(b <= 3));
+  printf("vs value %d %d %d %d %d\n", (int)(b == 3), (int)(3 == b), (int)(a < 0), (int)(0 < a), (int)(c > 4));
+  printf("nullopt %d %d %d %d\n", (int)(a == nullopt), (int)(b == nullopt), (int)(nullopt < b), (int)(b > nullopt));
+  Optional<double> n = 0.0 / zero();
+  printf("nan %d %d %d\n", (int)(n == n), (int)(n < 1.0), (int)(n != n));
+  Optional<String> s;
+  String fallback = "x";
+  printf("valueOr [%s] ", s.value_or(fallback).c_str());
+  s.emplace(3, 'z');
+  printf("[%s] %d\n", s.value_or(fallback).c_str(), (int)s->size());
+  Optional<Optional<int>> nested = Optional<int>();
+  printf("nested %d %d\n", (int)nested.has_value(), (int)nested->has_value());
+  return 0;
+}

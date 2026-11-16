@@ -1,0 +1,11 @@
+// The same with the destructor defaulted noexcept.
+struct T { ~T() noexcept(false) { printf("T\n"); fflush(stdout); throw 1; } };
+struct S { T t; ~S() noexcept = default; };
+void f() { S s; }
+int main()
+{
+  try { f(); }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

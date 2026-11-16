@@ -1,0 +1,28 @@
+// Reference collapsing in a template: `T&` of T = int&& is int&.
+template <typename T, typename U> struct Same { static constexpr bool value = false; };
+template <typename T> struct Same<T, T> { static constexpr bool value = true; };
+template <typename T> struct Box { T value; T& get() { return value; } const T& read() const { return value; } T&& move() { return static_cast<T&&>(value); } };
+template <typename T> using LRef = T&;
+template <typename T> using RRef = T&&;
+template <typename T> T& lref(T&& v) { return v; }
+int main()
+{
+  int a = 1;
+  Box<int&&> b{static_cast<int&&>(a)};
+  b.get() = 2;
+  printf("%d\n", a);
+  Box<int&> c{a};
+  c.get() = 3;
+  printf("%d\n", a);
+  printf("%d\n", Same<LRef<int&&>, int&>::value);
+  printf("%d\n", Same<LRef<int&>, int&>::value);
+  printf("%d\n", Same<RRef<int&&>, int&&>::value);
+  printf("%d\n", Same<RRef<int&>, int&>::value);
+  printf("%d\n", Same<decltype(b.get()), int&>::value);
+  printf("%d\n", Same<decltype(c.get()), int&>::value);
+  printf("%d\n", Same<decltype(b.read()), int&>::value);
+  printf("%d\n", Same<decltype(c.read()), int&>::value);
+  printf("%d\n", Same<decltype(b.move()), int&&>::value);
+  printf("%d\n", Same<decltype(c.move()), int&>::value);
+  return 0;
+}

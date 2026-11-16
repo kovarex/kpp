@@ -1,0 +1,62 @@
+// C++20 language features: designated initializers (nested, skipped members), using enum, an
+// init-statement in a range-for, template lambdas, constexpr new and delete, consteval, constinit.
+struct Inner
+{
+  int a = 1;
+  int b = 2;
+};
+struct Outer
+{
+  int x = 10;
+  Inner in;
+  int y = 20;
+};
+
+enum class Color { Red, Green, Blue };
+int code(Color c)
+{
+  switch (c)
+  {
+    using enum Color;
+    [[fallthrough]]; case Red: return 1;
+    case Green: return 2;
+    case Blue: return 3;
+  }
+  return 0;
+}
+
+constexpr int sumSquares(int n)
+{
+  int* values = new int[n];
+  for (int i = 0; i < n; ++i)
+    values[i] = i * i;
+  int s = 0;
+  for (int i = 0; i < n; ++i)
+    s += values[i];
+  delete[] values;
+  return s;
+}
+
+consteval int twice(int v) { return v * 2; }
+constinit int initialized = twice(21);
+
+int main()
+{
+  Outer o1{.x = 1, .in = {.b = 5}, .y = 3};
+  Outer o2{.in{.a = 7}};
+  Outer o3{.y = 9};
+  printf("%d %d %d %d | %d %d %d %d | %d %d %d %d\n", o1.x, o1.in.a, o1.in.b, o1.y, o2.x, o2.in.a, o2.in.b, o2.y, o3.x, o3.in.a, o3.in.b, o3.y);
+  printf("%d %d %d\n", code(Color::Red), code(Color::Blue), code(Color::Green));
+  int items[] = {3, 1, 4, 1, 5};
+  int weighted = 0;
+  for (int i = 1; int v : items)
+    weighted += v * i++;
+  printf("%d\n", weighted);
+  auto maxOf = []<class T>(T a, T b) { return a < b ? b : a; };
+  auto sizeOfPack = []<class... Ts>(Ts... ts) { return (int)sizeof...(Ts) * 100 + (int)(0 + ... + sizeof(ts)); };
+  printf("%d %g %d\n", maxOf(3, 9), maxOf(2.5, 1.5), sizeOfPack(1, 2.0, 'c'));
+  static_assert(sumSquares(5) == 30);
+  constexpr int squares = sumSquares(10);
+  printf("%d %d %d\n", squares, initialized, twice(5));
+  return 0;
+}

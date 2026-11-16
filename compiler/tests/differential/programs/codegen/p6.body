@@ -1,0 +1,165 @@
+// exceptions, lambdas, structured bindings, range-for, evaluation order
+class Err { public: int code; Err(int c) : code(c) {} virtual ~Err() {} virtual int kind() const { return 1; } };
+class SubErr : public Err { public: SubErr(int c) : Err(c) {} int kind() const override { return 2; } };
+struct Noisy
+{
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 10) { printf("c%d ", id); }
+  ~Noisy() { printf("-%d ", id); }
+};
+int thrower(int how)
+{
+  Noisy local(how);
+  if (how == 1) throw Err(11);
+  if (how == 2) throw SubErr(22);
+  if (how == 3) throw 33;
+  if (how == 4) throw Noisy(44);
+  return how;
+}
+int catcher(int how)
+{
+  try
+  {
+    return thrower(how);
+  }
+  catch (const SubErr& e) { printf("[sub %d %d] ", e.code, e.kind()); return -2; }
+  catch (const Err& e) { printf("[err %d %d] ", e.code, e.kind()); return -1; }
+  catch (int v) { printf("[int %d] ", v); return -3; }
+  catch (...) { printf("[any] "); return -4; }
+}
+int sliced()
+{
+  try { throw SubErr(5); }
+  catch (Err e) { return e.kind() * 10 + e.code; }
+}
+int rethrown()
+{
+  try
+  {
+    try { throw SubErr(6); }
+    catch (Err& e) { e.code = 60; throw; }
+  }
+  catch (SubErr& e) { return e.code + e.kind(); }
+  return 0;
+}
+int nestedUnwind()
+{
+  int r = 0;
+  try
+  {
+    Noisy outer(1);
+    try
+    {
+      Noisy inner(2);
+      throw 7;
+    }
+    catch (int v) { r += v; Noisy handler(3); throw Err(v * 2); }
+  }
+  catch (Err& e) { r += e.code * 100; }
+  return r;
+}
+struct TwoParts { int first; double second; };
+struct Triple { int a; int b; int c; };
+TwoParts makeTwoParts() { return TwoParts{4, 2.5}; }
+int evalCounter = 0;
+int step(int v) { printf("s%d ", v); ++evalCounter; return v; }
+int sum3(int a, int b, int c) { return a * 100 + b * 10 + c; }
+
+int main()
+{
+  for (int how = 0; how <= 5; ++how)
+  {
+    int r = catcher(how);
+    printf("X%d %d\n", how, r);
+  }
+  printf("X6 %d\n", sliced());
+  printf("X7 %d\n", rethrown());
+  int nu = nestedUnwind();
+  printf("\nX8 %d\n", nu);
+
+  int base = 10;
+  auto byValue = [base]() { return base + 1; };
+  auto byRef = [&base]() { return base + 1; };
+  base = 20;
+  printf("L1 %d %d\n", byValue(), byRef());
+  auto counter = [n = 0]() mutable { return ++n; };
+  counter();
+  counter();
+  printf("L2 %d\n", counter());
+  auto copyOfCounter = counter;
+  printf("L3 %d %d\n", copyOfCounter(), counter());
+  auto adder = [](int a) { return [a](int b) { return a + b; }; };
+  printf("L4 %d\n", adder(3)(4));
+  int total = 0;
+  auto accumulate = [&](int v) { total += v; return total; };
+  accumulate(5);
+  accumulate(6);
+  printf("L5 %d\n", total);
+  auto generic = [](auto x, auto y) { return x * y; };
+  printf("L6 %d %.17g\n", generic(3, 4), generic(1.5, 3));
+  int captured = 1;
+  auto nested = [=]() { return [=]() { return captured * 2; }(); };
+  captured = 100;
+  printf("L7 %d\n", nested());
+  int (*fp)(int) = [](int x) { return x * 3; };
+  printf("L8 %d\n", fp(5));
+  auto selfCount = [](auto& self, int n) -> int { return n <= 1 ? 1 : n * self(self, n - 1); };
+  printf("L9 %d\n", selfCount(selfCount, 5));
+  {
+    Noisy kept(70);
+    auto holds = [kept]() { return kept.id; };
+    printf("L10 %d ", holds());
+  }
+  printf("\n");
+
+  auto [pf, ps] = makeTwoParts();
+  printf("B1 %d %.17g\n", pf, ps);
+  Triple tr{1, 2, 3};
+  auto& [ta, tb, tc] = tr;
+  ta = 10;
+  auto [ca, cb, cc] = tr;
+  ca = 99;
+  printf("B2 %d %d %d %d\n", tr.a, tr.b, tr.c, ca);
+  int arr[3] = {7, 8, 9};
+  auto& [r0, r1, r2] = arr;
+  r1 = 80;
+  printf("B3 %d %d %d %d\n", arr[0], arr[1], arr[2], r1);
+  Triple trs[2] = {{1, 2, 3}, {4, 5, 6}};
+  int bsum = 0;
+  for (auto& [a, b, c] : trs)
+  {
+    a *= 10;
+    bsum += a + b + c;
+  }
+  printf("B4 %d %d\n", bsum, trs[1].a);
+
+  int seq[4] = {1, 2, 3, 4};
+  int rs = 0;
+  for (int v : seq)
+    rs = rs * 10 + v;
+  printf("R1 %d\n", rs);
+  for (int& v : seq)
+    v *= 2;
+  printf("R2 %d %d\n", seq[0], seq[3]);
+  for (auto v : {5, 6, 7})
+    printf("R3 %d ", v);
+  printf("\n");
+
+  printf("E1 %d\n", sum3(step(1), step(2), step(3)) > 0);
+  int ev[3] = {step(4), step(5), step(6)};
+  printf("E2 %d\n", ev[0]);
+  Triple te{step(7), step(8), step(9)};
+  printf("E3 %d\n", te.c);
+  int idx = 0;
+  int target[3] = {0, 0, 0};
+  target[idx] = ++idx;
+  printf("E4 %d %d %d\n", target[0], target[1], idx);
+  int aa = 1;
+  aa = aa++ + 1;
+  printf("E5 %d\n", aa);
+  int bb = 5;
+  int cc2 = (bb = 2) + bb;
+  printf("E6 %d\n", cc2);
+  return 0;
+}

@@ -1,0 +1,10 @@
+// The throw leaves a destructor that is implicitly noexcept, a frame below the try.
+struct S { ~S() { printf("in\n"); fflush(stdout); throw 1; } };
+void f() { S s; }
+int main()
+{
+  try { f(); }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

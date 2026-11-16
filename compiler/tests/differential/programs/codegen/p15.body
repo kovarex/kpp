@@ -1,0 +1,27 @@
+// virtual inheritance: one shared base subobject in a diamond
+class Top
+{
+public:
+  int value = 1;
+  virtual ~Top() {}
+};
+class Left : public virtual Top
+{
+public:
+  void setLeft() { value = 10; }
+};
+class Right : public virtual Top
+{
+public:
+  int readRight() const { return value; }
+};
+class Bottom : public Left, public Right
+{
+};
+int main()
+{
+  Bottom b;
+  b.setLeft();
+  printf("D %d %d\n", b.readRight(), (int)(static_cast<Top*>(static_cast<Left*>(&b)) == static_cast<Top*>(static_cast<Right*>(&b))));
+  return 0;
+}

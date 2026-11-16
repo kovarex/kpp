@@ -1,0 +1,198 @@
+// The kpp stdlib names over the C++ standard library, so one battery body compiles as both.
+#include <stdio.h>
+#include <vector>
+#include <deque>
+#include <list>
+#include <map>
+#include <set>
+#include <unordered_map>
+#include <string>
+#include <algorithm>
+#include <numeric>
+#include <utility>
+template <class T> using Vector = std::vector<T>;
+template <class T> using Deque = std::deque<T>;
+template <class T> using List = std::list<T>;
+template <class K, class V> using Map = std::map<K, V>;
+template <class K, class V> using MultiMap = std::multimap<K, V>;
+template <class T> using Set = std::set<T>;
+template <class T> using MultiSet = std::multiset<T>;
+template <class K, class V> using HashMap = std::unordered_map<K, V>;
+template <class A, class B> using Pair = std::pair<A, B>;
+using String = std::string;
+#define WRAP(kpp, std_) template <class... A> auto kpp(A&&... a) { return std::std_(std::forward<A>(a)...); }
+WRAP(sort, sort) WRAP(stableSort, stable_sort) WRAP(nthElement, nth_element) WRAP(unique, unique) WRAP(remove, remove)
+WRAP(removeIf, remove_if) WRAP(rotate, rotate) WRAP(nextPermutation, next_permutation) WRAP(lowerBound, lower_bound)
+WRAP(upperBound, upper_bound) WRAP(equalRange, equal_range) WRAP(binarySearch, binary_search) WRAP(merge, merge)
+WRAP(setDifference, set_difference) WRAP(setIntersection, set_intersection) WRAP(lexicographicalCompare, lexicographical_compare)
+WRAP(accumulate, accumulate) WRAP(minElement, min_element) WRAP(maxElement, max_element) WRAP(copyBackward, copy_backward)
+WRAP(reverse, reverse) WRAP(find, find) WRAP(findIf, find_if) WRAP(count, count) WRAP(countIf, count_if) WRAP(equal, equal)
+WRAP(adjacentFind, adjacent_find) WRAP(fill, fill) WRAP(transform, transform) WRAP(replace, replace) WRAP(copy, copy)
+WRAP(isSorted, is_sorted) WRAP(isSortedUntil, is_sorted_until) WRAP(copyIf, copy_if) WRAP(distance, distance)
+template <class C, class P> auto eraseIf(C& c, P p) { return std::erase_if(c, p); }
+// battery i5: stdlib containers and algorithms against the C++ standard library: the results the
+// standard fixes (sort, stable orders, returned positions, bounds, set operations with repeated
+// elements, permutations with duplicates, accumulate's init type, aliasing insertions, node
+// containers' splices and merges, map insertion that does not overwrite, multimap order).
+void show(const char* label, const Vector<int>& v)
+{
+  printf("%s", label);
+  for (int x : v)
+    printf(" %d", x);
+  printf("\n");
+}
+int main()
+{
+  Vector<int> a = {5, 3, 9, 3, 1, 9, 9, 0, 4, 3};
+  Vector<int> s = a;
+  sort(s.begin(), s.end());
+  show("sort", s);
+  Vector<int> n = a;
+  nthElement(n.begin(), n.begin() + 4, n.end());
+  printf("nth %d\n", n[4]);
+  Vector<Pair<int, int>> p;
+  for (int i = 0; i < 12; ++i)
+    p.push_back(Pair<int, int>((i * 7) % 4, i));
+  stableSort(p.begin(), p.end(), [](const Pair<int, int>& x, const Pair<int, int>& y) { return x.first < y.first; });
+  printf("stable");
+  for (auto& e : p)
+    printf(" %d:%d", e.first, e.second);
+  printf("\n");
+  Vector<int> u = s;
+  auto ue = unique(u.begin(), u.end());
+  printf("unique %d:", (int)(ue - u.begin()));
+  for (auto i = u.begin(); i != ue; ++i)
+    printf(" %d", *i);
+  printf("\n");
+  Vector<int> r = a;
+  auto re = remove(r.begin(), r.end(), 3);
+  printf("remove %d %d %d\n", (int)(re - r.begin()), r[0], r[(int)(re - r.begin()) - 1]);
+  auto rie = removeIf(r.begin(), re, [](int x) { return x % 2 == 0; });
+  printf("removeIf %d\n", (int)(rie - r.begin()));
+  Vector<int> ro = {1, 2, 3, 4, 5, 6, 7};
+  auto rr = rotate(ro.begin(), ro.begin() + 5, ro.end());
+  printf("rotate %d ", (int)(rr - ro.begin()));
+  show("", ro);
+  auto rr2 = rotate(ro.begin(), ro.begin(), ro.end());
+  auto rr3 = rotate(ro.begin(), ro.end(), ro.end());
+  printf("rotate ends %d %d\n", (int)(rr2 - ro.begin()), (int)(rr3 - ro.begin()));
+  Vector<int> perm = {1, 2, 2, 3};
+  int perms = 0;
+  bool more = true;
+  while (more)
+  {
+    ++perms;
+    more = nextPermutation(perm.begin(), perm.end());
+  }
+  printf("perms %d ", perms);
+  show("", perm);
+  printf("bounds %d %d %d %d %d\n", (int)(lowerBound(s.begin(), s.end(), 3) - s.begin()), (int)(upperBound(s.begin(), s.end(), 3) - s.begin()),
+    (int)(lowerBound(s.begin(), s.end(), 10) - s.begin()), (int)(equalRange(s.begin(), s.end(), 9).first - s.begin()), (int)binarySearch(s.begin(), s.end(), 2));
+  Vector<Pair<int, int>> m1 = {{1, 0}, {2, 0}, {2, 1}, {5, 0}}, m2 = {{2, 9}, {3, 9}, {5, 9}}, mo(7);
+  merge(m1.begin(), m1.end(), m2.begin(), m2.end(), mo.begin(), [](const Pair<int, int>& x, const Pair<int, int>& y) { return x.first < y.first; });
+  printf("merge");
+  for (auto& e : mo)
+    printf(" %d:%d", e.first, e.second);
+  printf("\n");
+  Vector<int> x1 = {1, 2, 2, 2, 3, 5, 5}, x2 = {2, 2, 4, 5, 5, 5}, d(10, -1), in(10, -1);
+  auto de = setDifference(x1.begin(), x1.end(), x2.begin(), x2.end(), d.begin());
+  auto ie = setIntersection(x1.begin(), x1.end(), x2.begin(), x2.end(), in.begin());
+  d.resize(de - d.begin());
+  in.resize(ie - in.begin());
+  show("difference", d);
+  show("intersection", in);
+  Vector<int> pre = {1, 2}, full = {1, 2, 0};
+  printf("lex %d %d %d\n", (int)lexicographicalCompare(pre.begin(), pre.end(), full.begin(), full.end()), (int)lexicographicalCompare(full.begin(), full.end(), pre.begin(), pre.end()),
+    (int)lexicographicalCompare(pre.begin(), pre.end(), pre.begin(), pre.end()));
+  Vector<double> ds = {0.5, 0.75, 1.5, 2.9};
+  auto acc = accumulate(ds.begin(), ds.end(), 0);
+  printf("accumulate %d %g %d\n", acc, accumulate(ds.begin(), ds.end(), 0.0), (int)sizeof(acc));
+  printf("minmax %d %d\n", (int)(minElement(a.begin(), a.end()) - a.begin()), (int)(maxElement(a.begin(), a.end()) - a.begin()));
+  Vector<int> cb = {1, 2, 3, 4, 5, 6};
+  copyBackward(cb.begin(), cb.begin() + 4, cb.end());
+  show("copyBackward", cb);
+  printf("sorted %d %d\n", (int)isSorted(s.begin(), s.end()), (int)(isSortedUntil(a.begin(), a.end()) - a.begin()));
+  printf("adjacent %d count %d %d\n", (int)(adjacentFind(a.begin(), a.end()) - a.begin()), (int)count(a.begin(), a.end(), 9), (int)countIf(a.begin(), a.end(), [](int x) { return x > 3; }));
+  Vector<int> al = {10, 20, 30};
+  al.insert(al.begin(), al[2]);
+  al.insert(al.begin() + 1, 3, al.back());
+  al.push_back(al[0]);
+  al.insert(al.end(), al.begin(), al.begin() + 2);
+  show("alias", al);
+  al.erase(al.begin() + 1, al.begin() + 4);
+  al.resize(9, 7);
+  show("erase resize", al);
+  printf("eraseIf %d ", (int)eraseIf(al, [](int x) { return x == 30; }));
+  show("", al);
+  Deque<int> dq;
+  for (int i = 0; i < 40; ++i)
+  {
+    if (i % 3)
+      dq.push_back(i);
+    else
+      dq.push_front(i);
+  }
+  dq.insert(dq.begin() + 5, 100);
+  dq.erase(dq.begin() + 20, dq.begin() + 30);
+  dq.pop_front();
+  printf("deque %d %d %d %d %d\n", (int)dq.size(), dq.front(), dq.back(), dq[4], dq[20]);
+  List<int> l1 = {5, 1, 4, 1}, l2 = {9, 2, 2};
+  l1.sort();
+  l2.sort();
+  l1.merge(l2);
+  l1.unique();
+  l1.reverse();
+  l1.remove(4);
+  printf("list");
+  for (int x : l1)
+    printf(" %d", x);
+  printf(" | %d\n", (int)l2.size());
+  List<int> l3 = {1, 2, 3}, l4 = {7, 8};
+  auto it = l3.begin();
+  ++it;
+  l3.splice(it, l4);
+  l3.splice(l3.end(), l3, l3.begin());
+  printf("splice");
+  for (int x : l3)
+    printf(" %d", x);
+  printf(" | %d %d\n", (int)l4.size(), *it);
+  Map<int, int> mp;
+  mp[3] = 30;
+  auto ins = mp.insert(Pair<int, int>(3, 99));
+  mp.insert(Pair<int, int>(1, 10));
+  mp.emplace(2, 20);
+  mp.emplace(2, 21);
+  printf("map %d %d %d %d", (int)ins.second, ins.first->second, mp[7], (int)mp.size());
+  printf(" erase %d %d", (int)mp.erase(7), (int)mp.erase(7));
+  printf(" lb %d ub %d", mp.lower_bound(2)->first, mp.upper_bound(2)->first);
+  for (auto& e : mp)
+    printf(" %d=%d", e.first, e.second);
+  printf("\n");
+  MultiMap<int, int> mm;
+  for (int i = 0; i < 9; ++i)
+    mm.insert(Pair<int, int>(i % 3, i));
+  mm.erase(mm.find(1));
+  printf("multimap %d", (int)mm.count(2));
+  for (auto& e : mm)
+    printf(" %d:%d", e.first, e.second);
+  printf("\n");
+  Set<int> st(a.begin(), a.end());
+  MultiSet<int> ms(a.begin(), a.end());
+  printf("set %d %d %d", (int)st.size(), (int)ms.size(), (int)ms.count(9));
+  printf(" %d\n", (int)ms.erase(9));
+  HashMap<int, int> hm;
+  for (int i = 0; i < 1000; ++i)
+    hm[i * 7919 % 1009] += i;
+  long long sum = 0;
+  for (auto& e : hm)
+    sum += (long long)e.first * e.second;
+  printf("hash %d %lld %d", (int)hm.size(), sum, (int)hm.count(5));
+  printf(" %d\n", (int)hm.erase(5));
+  String t = "hello, world, hello";
+  printf("string %d %d %d %d %s %d\n", (int)t.find("hello", 1), (int)t.rfind("hello"), (int)t.find_first_of("ow"), (int)t.find_last_not_of("lo"), t.substr(7, 5).c_str(), (int)(t.find("xyz") == String::npos));
+  t.replace(0, 5, "bye");
+  t.insert(3, "!!");
+  t.erase(5, 2);
+  printf("string %s %d %d\n", t.c_str(), t.compare("bye!!world") > 0, (int)t.size());
+  return 0;
+}

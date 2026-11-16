@@ -1,0 +1,66 @@
+// battery i2: templates: variadic packs, fold expressions (all four forms, with operators that are not
+// associative), sizeof..., partial ordering of function templates, class partial specialization,
+// non-type parameters, recursion through packs, defaults, explicit arguments.
+template <typename... T> int leftSub(T... v) { return (... - v); }
+template <typename... T> int rightSub(T... v) { return (v - ...); }
+template <typename... T> int leftInit(T... v) { return (100 - ... - v); }
+template <typename... T> int rightInit(T... v) { return (v - ... - 100); }
+template <typename... T> bool allPositive(T... v) { return ((v > 0) && ...); }
+template <typename... T> bool anyNegative(T... v) { return ((v < 0) || ...); }
+template <typename... T> int commaLast(T... v) { int r = 0; ((r = r * 10 + v), ...); return r; }
+template <typename... T> int numberOf(T...) { return sizeof...(T); }
+int emptyAnd() { return allPositive() ? 1 : 0; }
+int emptyOr() { return anyNegative() ? 1 : 0; }
+
+int sumRec() { return 0; }
+template <typename H, typename... R> int sumRec(H h, R... r) { return h * 2 + sumRec(r...); }
+
+template <typename T> int which(T) { return 1; }
+template <typename T> int which(T*) { return 2; }
+template <typename T> int which(const T*) { return 3; }
+int which(int) { return 4; }
+
+template <typename T, typename U> struct Kind { static constexpr int value = 1; };
+template <typename T> struct Kind<T, T> { static constexpr int value = 2; };
+template <typename T> struct Kind<T*, int> { static constexpr int value = 3; };
+template <typename T> struct Kind<T*, T*> { static constexpr int value = 4; };
+
+template <int N> struct Fact { static constexpr long long value = N * Fact<N - 1>::value; };
+template <> struct Fact<0> { static constexpr long long value = 1; };
+
+template <typename T, int N = 3> int scaled(T v) { return (int)v * N; }
+
+template <typename T> struct Box
+{
+  T v;
+  template <typename U> int mix(U u) const { return (int)v * 10 + (int)u; }
+};
+
+template <int... N> int digits() { int r = 0; ((r = r * 10 + N), ...); return r; }
+template <typename T, T... V> T sumValues() { return (V + ... + T(0)); }
+
+template <typename... T> struct Tuple3;
+template <> struct Tuple3<> { static constexpr int size = 0; };
+template <typename H, typename... R> struct Tuple3<H, R...> { static constexpr int size = 1 + Tuple3<R...>::size; };
+
+template <typename F, typename... A> int apply2(F f, A... a) { return f(a..., 7); }
+
+int main()
+{
+  printf("folds %d %d %d %d\n", leftSub(10, 3, 2), rightSub(10, 3, 2), leftInit(1, 2, 3), rightInit(1, 2, 3));
+  printf("logic %d %d %d %d %d %d\n", allPositive(1, 2, 3), allPositive(1, -2), anyNegative(1, 2), anyNegative(1, -2), emptyAnd(), emptyOr());
+  printf("comma %d count %d %d\n", commaLast(1, 2, 3, 4), numberOf(), numberOf(1, 'a', 2.0));
+  printf("rec %d\n", sumRec(1, 2, 3, 4));
+  int i = 0;
+  const int ci = 0;
+  printf("ordering %d %d %d %d %d\n", which(5), which(5L), which(&i), which(&ci), which((const char*)"x"));
+  printf("partial %d %d %d %d %d\n", Kind<int, char>::value, Kind<char, char>::value, Kind<char*, int>::value, Kind<int*, int*>::value, Kind<int*, char*>::value);
+  printf("fact %lld %lld\n", Fact<10>::value, Fact<20>::value);
+  printf("defaults %d %d\n", scaled(5), scaled<double, 7>(2.5));
+  Box<short> b{4};
+  printf("member %d %d\n", b.mix(3), b.mix<char>(9));
+  printf("nontype %d %d %lld\n", digits<4, 0, 2>(), sumValues<int, 1, 2, 3, 4>(), sumValues<long long, 3000000000LL, 3000000000LL>());
+  printf("spec %d %d\n", Tuple3<>::size, Tuple3<int, char, double>::size);
+  printf("apply %d\n", apply2([](int a, int b, int c) { return a * 100 + b * 10 + c; }, 1, 2));
+  return 0;
+}

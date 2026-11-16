@@ -1,0 +1,211 @@
+// virtual calls in constructors and destructors, destruction order, layout, bit-fields, switch
+class Base
+{
+public:
+  Base() { printf("M1 %d %d\n", who(), helper()); }
+  virtual ~Base() { printf("M3 %d %d\n", who(), helper()); }
+  virtual int who() { return 1; }
+  int helper() { return who() * 10; }
+};
+class Middle : public Base
+{
+public:
+  Middle() { printf("M2 %d %d\n", who(), helper()); }
+  ~Middle() { printf("M4 %d %d\n", who(), helper()); }
+  int who() override { return 2; }
+};
+class Leaf : public Middle
+{
+public:
+  Leaf() { printf("M5 %d %d\n", who(), helper()); }
+  ~Leaf() { printf("M6 %d %d\n", who(), helper()); }
+  int who() override { return 3; }
+};
+struct Member
+{
+  Base* owner;
+  Member(Base* o) : owner(o) { printf("M7 %d\n", o->who()); }
+  ~Member() { printf("M8 %d\n", owner->who()); }
+};
+class WithMember : public Middle
+{
+public:
+  Member m;
+  WithMember() : m(this) { printf("M9 %d\n", who()); }
+  ~WithMember() { printf("M10 %d\n", who()); }
+  int who() override { return 4; }
+};
+
+struct T
+{
+  int id;
+  T(int i) : id(i) { printf("+%d ", id); }
+  T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~T() { printf("-%d ", id); }
+};
+struct H { T a{1}; T b{2}; };
+struct D2 : H { T c{3}; };
+struct Order
+{
+  T second;
+  T first;
+  Order() : first(20), second(10) {}
+};
+int use(const T& a, const T& b) { return a.id + b.id; }
+T make(int i) { return T(i); }
+
+struct P1 { char a; int b; char c; };
+struct P2 { char a; char c; int b; };
+struct P3 { double d; char c; };
+struct P4 { char c[3]; };
+struct P5 : P4 { char d; };
+struct P6 {};
+struct P7 : P6 { int x; };
+struct P8 { P6 e; int x; };
+struct alignas(16) P9 { int x; };
+struct P10 { long long a; int b; };
+struct P11 { int x : 3; int y : 5; };
+struct P12 { char a : 3; int b : 5; };
+struct P13 { short a; P9 b; };
+class P14 { public: virtual void f() {} char c; };
+class P15 : public P14 { public: char d; };
+struct P16 { P3 inner; char tail; };
+struct P17 { char a; long long b : 5; char c; };
+struct P19 { char a; double d[0 + 1]; };
+
+struct BF { unsigned a : 3; int b : 3; unsigned long long c : 40; bool d : 1; };
+struct BF2 { unsigned short a : 9; unsigned short b : 9; };
+struct BF3 { int a : 1; };
+
+const char* kind(int v)
+{
+  switch (v)
+  {
+    case 1: return "one";
+    default: return "other";
+    case 2:
+    case 3: return "two-three";
+    case -5: return "minus-five";
+  }
+}
+int fall(int v)
+{
+  int r = 0;
+  switch (v)
+  {
+    case 0: r += 1;
+    [[fallthrough]]; case 1: r += 10;
+      break;
+    case 2: r += 100;
+    [[fallthrough]]; default: r += 1000;
+    [[fallthrough]]; case 3: r += 10000;
+  }
+  return r;
+}
+int bigSwitch(long long v)
+{
+  switch (v)
+  {
+    case 0x100000000ll: return 1;
+    case -1: return 2;
+    case 0x7FFFFFFFFFFFFFFFll: return 3;
+  }
+  return 0;
+}
+int unsignedSwitch(unsigned v)
+{
+  switch (v)
+  {
+    case 0xFFFFFFFFu: return 1;
+    case 0x80000000: return 2;
+  }
+  return 0;
+}
+int charSwitch(char c)
+{
+  switch (c)
+  {
+    case '\xff': return 1;
+    case 'a': return 2;
+  }
+  return 0;
+}
+
+int main()
+{
+  {
+    Leaf leaf;
+  }
+  printf("\n");
+  {
+    WithMember w;
+  }
+  printf("\n");
+  Base* poly = new Leaf;
+  delete poly;
+  printf("\n");
+  { D2 d; printf("| "); }
+  printf("\n");
+  { Order o; printf("| "); }
+  printf("\n");
+  { T arr[3] = {4, 5, 6}; printf("| "); }
+  printf("\n");
+  { printf("N1 %d ", use(T(7), T(8))); printf("| "); }
+  printf("\n");
+  { const T& kept = make(9); printf("| %d ", kept.id); }
+  printf("\n");
+  { T a = make(11); T b = a; printf("| "); }
+  printf("\n");
+  printf("\n");
+  printf("S1 %d %d %d %d %d %d\n", (int)sizeof(P1), (int)sizeof(P2), (int)sizeof(P3), (int)sizeof(P4), (int)sizeof(P5), (int)sizeof(P6));
+  printf("S2 %d %d %d %d %d %d\n", (int)sizeof(P7), (int)sizeof(P8), (int)sizeof(P9), (int)sizeof(P10), (int)sizeof(P11), (int)sizeof(P12));
+  printf("S3 %d %d %d %d %d %d %d\n", (int)sizeof(P13), (int)sizeof(P14), (int)sizeof(P15), (int)sizeof(P16), (int)sizeof(P17), (int)sizeof(P19));
+  printf("S4 %d %d %d %d %d %d\n", (int)alignof(P1), (int)alignof(P3), (int)alignof(P9), (int)alignof(P13), (int)alignof(P14), (int)alignof(P17));
+  printf("S5 %d %d %d\n", (int)sizeof(BF), (int)sizeof(BF2), (int)sizeof(BF3));
+
+  BF bf{};
+  bf.a = 9;
+  bf.b = 3;
+  printf("BF1 %d %d\n", (int)bf.a, (int)bf.b);
+  bf.b = 4;
+  printf("BF2 %d\n", (int)bf.b);
+  bf.c = 0xFFFFFFFFFFFFull;
+  printf("BF3 %llu\n", (unsigned long long)bf.c);
+  bf.a = 1;
+  printf("BF4 %d %d\n", (int)sizeof(bf.a + 0), bf.a - 2 < 0);
+  bf.d = true;
+  printf("BF5 %d\n", (int)bf.d);
+  bf.a += 7;
+  printf("BF6 %d\n", (int)bf.a);
+  bf.a++;
+  printf("BF7 %d\n", (int)bf.a);
+  bf.b = -4;
+  bf.b--;
+  printf("BF8 %d\n", (int)bf.b);
+  int fromField = bf.b * 2;
+  printf("BF9 %d\n", fromField);
+  BF2 bf2{};
+  bf2.a = 511;
+  bf2.b = 300;
+  printf("BF10 %d %d\n", (int)bf2.a, (int)bf2.b);
+  BF3 bf3{};
+  bf3.a = 1;
+  printf("BF11 %d\n", (int)bf3.a);
+  unsigned long long cplus = bf.c + 1;
+  printf("BF12 %llu\n", cplus);
+  bf.c = 0;
+  bf.c -= 1;
+  printf("BF13 %llu\n", (unsigned long long)bf.c);
+  printf("BF14 %d\n", bf.a == 0 ? 1 : 2);
+  bf.a = 7;
+  unsigned shifted = bf.a << 29;
+  printf("BF15 %u\n", shifted);
+  printf("BF16 %d\n", (bf.a << 29) < 0);
+
+  printf("W1 %s %s %s %s %s\n", kind(1), kind(2), kind(3), kind(-5), kind(4));
+  printf("W2 %d %d %d %d %d\n", fall(0), fall(1), fall(2), fall(3), fall(4));
+  printf("W3 %d %d %d %d\n", bigSwitch(0x100000000ll), bigSwitch(-1), bigSwitch(0x7FFFFFFFFFFFFFFFll), bigSwitch(0));
+  printf("W4 %d %d %d\n", unsignedSwitch(0xFFFFFFFFu), unsignedSwitch(0x80000000u), unsignedSwitch(5));
+  printf("W5 %d %d %d\n", charSwitch((char)255), charSwitch('a'), charSwitch(0));
+  return 0;
+}

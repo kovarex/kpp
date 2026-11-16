@@ -1,0 +1,59 @@
+// battery i28: statics: a function-local static initialized once, on first pass, from a call with a
+// side effect; one per instantiation of a function template; one in a lambda (one per closure type);
+// in a member function of a class template; statics destroyed at exit in reverse order of their
+// construction (locals and globals interleaved by when each was built); a static data member of a
+// class template defined out of line, per instance.
+int built = 0;
+int next(int v) { built = built * 10 + v; return v; }
+struct Noisy
+{
+  int id;
+  Noisy(int id) : id(id) { built = built * 10 + id; }
+  ~Noisy() { printf("~%d ", id); }
+};
+Noisy globalA{1};
+int counter()
+{
+  static int n = next(7);
+  return ++n;
+}
+template <typename T> int perType()
+{
+  static int calls = 0;
+  return ++calls * 100 + (int)sizeof(T);
+}
+template <typename T> struct Box
+{
+  int bump() { static int shared = 0; return ++shared; }
+  static int instances;
+};
+template <typename T> int Box<T>::instances = (int)sizeof(T) * 10;
+Noisy& lazy(int id)
+{
+  static Noisy n(id);
+  return n;
+}
+int main()
+{
+  int a = counter(), b = counter(), c = counter();
+  printf("counter %d %d %d built %d\n", a, b, c, built);
+  int p1 = perType<int>(), p2 = perType<char>(), p3 = perType<int>();
+  printf("perType %d %d %d\n", p1, p2, p3);
+  auto f = [] { static int n = 0; return ++n; };
+  auto g = [] { static int n = 100; return ++n; };
+  f();
+  f();
+  printf("lambda %d %d\n", f(), g());
+  Box<int> x, y;
+  Box<double> z;
+  x.bump();
+  y.bump();
+  printf("member %d %d %d %d\n", x.bump(), z.bump(), Box<int>::instances, Box<double>::instances);
+  Box<int>::instances += 1;
+  printf("instances %d %d\n", Box<int>::instances, Box<short>::instances);
+  lazy(3);
+  lazy(4);
+  static Noisy local(5);
+  printf("lazy %d built %d\n", lazy(9).id, built);
+  return 0;
+}

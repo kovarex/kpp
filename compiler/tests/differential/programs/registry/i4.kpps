@@ -1,0 +1,21 @@
+// battery i4 (kpp side): toString's shortest round-trip texts and the formatting pieces.
+int main()
+{
+  volatile double zero = 0;
+  double ds[] = {0.1, 0.1 + 0.2, 1.0 / 3, 100, 1e15, 9999999999999998.0, 1e16, 1.5e16, 123456789012345680.0, 1e22,
+    1e-4, 1.5e-5, 0.00012345, 5e-324, 1.7976931348623157e308, -0.0, 2.5, -1234.5678, 9007199254740993.0, 1e21,
+    zero / zero, 1 / zero, -1 / zero, 4.35, 0.3, 1e-7, 123456.0, 1e100};
+  for (double d : ds) println("d ", d);
+  float fs[] = {0.1f, 1.0f / 3, 16777216.0f, 3.4028235e38f, 1e-45f, 123456.79f, 1e9f, 1e10f, 1.5e10f, 1e15f, 1e16f, 1e17f,
+    1.23456789e12f, 0.0001f, 1e-5f, -0.0f, 7.0f, 2.5e-3f};
+  for (float f : fs) println("f ", f);
+  println("i ", INT64_MIN, " ", UINT64_MAX, " ", (i8)-5, " ", (u8)200, " ", (i16)-300, " ", (u16)65000);
+  println("hex ", hex(-1), " ", hex((i16)-1), " ", hex((i8)-1), " ", hex(-1LL), " ", hexUpper(0xABCu), " ", hexUpper(0xAu, 4), " ", hex(0u), " ", octal(0644u), " ", octal(8u, 8));
+  println("fixed ", fixed(2.5, 0), " ", fixed(3.5, 0), " ", fixed(0.125, 2), " ", fixed(0.375, 2), " ", fixed(0.1, 20), " ", fixed(-0.0005, 3), " ", fixed(1e20, 0), " ", fixed(1e-300, 1));
+  println("sig ", significant(1234567.0, 6), " ", significant(100.0, 6), " ", significant(0.0001234567, 4), " ", significant(1e-5, 6), " ", significant(123456.0, 6), " ", significant(0.05, 1), " ", significant(0.0, 6), " ", significant(999.9, 3));
+  println("sci ", scientific(1234.5, 2), " ", scientific(0.0, 6), " ", scientific(5.5, 0), " ", scientific(-1e-300, 3));
+  println("sign ", withSign(fixed(1.25, 1)), " ", withSign(3), " ", withSign(-3), " ", withSign(significant(0.0, 6)), " ", withSign(fixed(-0.001, 2)));
+  println("align [", alignRight(42, 5), "] [", alignLeft(42, 5), "] [", alignRight("ab", 5), "] [", alignLeft("ab", 6), "] [", alignRight(12345, 2), "] [", alignRight(7, 6), "] [", alignRight(7, -4), "]");
+  println("zero ", zeroPadded(-5, 4), " ", zeroPadded(withSign(3), 4), " ", zeroPadded(fixed(-1.5, 2), 8), " ", zeroPadded(hex(0xABu), 5), " ", zeroPadded(12345, 3), " ", zeroPadded(fixed(2.25, 1), 6));
+  return 0;
+}

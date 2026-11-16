@@ -1,0 +1,40 @@
+// C++20 comparisons: rewritten and reversed candidates, defaulted == and <=>, mixed types.
+int eqCalls = 0, cmpCalls = 0;
+struct Money
+{
+  int cents;
+  bool operator==(int other) const { ++eqCalls; return cents == other * 100; }
+  auto operator<=>(int other) const { ++cmpCalls; return cents <=> other * 100; }
+  bool operator==(const Money&) const = default;
+  auto operator<=>(const Money&) const = default;
+};
+
+struct Version
+{
+  int major;
+  int minor;
+  auto operator<=>(const Version&) const = default;
+};
+
+struct OnlyLess
+{
+  int v;
+  bool operator<(const OnlyLess& o) const { return v < o.v; }
+  bool operator==(const OnlyLess& o) const { return v == o.v; }
+};
+
+int main()
+{
+  Money m{500};
+  printf("%d %d %d %d\n", m == 5, 5 == m, m != 4, 4 != m);
+  printf("%d %d %d %d %d %d\n", m < 6, 6 < m, m > 4, 4 > m, m <= 5, 5 >= m);
+  printf("calls %d %d\n", eqCalls, cmpCalls);
+  Money n{700};
+  printf("%d %d %d %d %d\n", m == n, m != n, m < n, n <= m, (m <=> n) < 0);
+  Version v1{1, 2}, v2{1, 10}, v3{2, 0};
+  printf("%d %d %d %d %d\n", v1 < v2, v2 < v3, v3 > v1, v1 == Version{1, 2}, v1 != v2);
+  printf("%d %d %d\n", (v1 <=> v2) < 0, (v3 <=> v1) > 0, (v1 <=> Version{1, 2}) == 0);
+  OnlyLess a{1}, b{2};
+  printf("%d %d %d %d\n", a < b, b < a, a == b, a != b);
+  return 0;
+}

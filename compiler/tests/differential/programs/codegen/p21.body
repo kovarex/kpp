@@ -1,0 +1,61 @@
+// compile time against run time: each value computed by a constexpr function in a constant and at
+// run time from a volatile input must be the same (and the same as clang's)
+constexpr double addD(double a, double b) { return a + b; }
+constexpr float mulF(float a, float b) { return a * b; }
+constexpr int toInt(double d) { return int(d); }
+constexpr unsigned toU(double d) { return unsigned(d); }
+constexpr long long shiftMix(long long a, int s) { return (a << s) ^ (a >> (s / 2)); }
+constexpr unsigned wrap(unsigned a, unsigned b) { return a * b + 7u; }
+constexpr int divs(int a, int b) { return a / b * 100 + a % b; }
+constexpr double divD(double a, double b) { return a / b; }
+constexpr float narrowF(double d) { return float(d); }
+constexpr unsigned char narrowU8(int v) { return (unsigned char)v; }
+constexpr signed char narrowS8(int v) { return (signed char)v; }
+constexpr long long sumTo(int n) { long long s = 0; for (int i = 1; i <= n; ++i) s += i * (long long)i; return s; }
+constexpr int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+struct V { int x, y; constexpr V operator+(V o) const { return {x + o.x, y + o.y}; } constexpr int dot(V o) const { return x * o.x + y * o.y; } };
+constexpr int vectors(int k) { V a{k, 2}; V b{3, k}; return (a + b).dot(b); }
+constexpr int arrays(int k) { int v[5] = {k, 2, 3, 4, 5}; int s = 0; for (int i = 0; i < 5; ++i) s = s * 3 + v[i]; return s; }
+constexpr double floats(double x) { double r = 1.0; for (int i = 0; i < 10; ++i) r = r * x + 0.1; return r; }
+constexpr unsigned long long bits(unsigned long long x) { return (x * 0x9E3779B97F4A7C15ull) >> 7 | (x << 57); }
+volatile double vd1 = 0.1, vd2 = 0.2, vd3 = 2.7, vd4 = -2.7, vd5 = 3.9e9, vd6 = 1.0e10;
+volatile float vf1 = 0.1f, vf2 = 3.0f;
+volatile long long vll = 0x123456789ll;
+volatile unsigned vu1 = 4000000000u, vu2 = 3u;
+volatile int vi1 = -7, vi2 = 2, vi3 = 300, vi4 = 20, vi5 = 7;
+int main()
+{
+  constexpr double c1 = addD(0.1, 0.2);
+  constexpr float c2 = mulF(0.1f, 3.0f);
+  constexpr int c3 = toInt(2.7), c4 = toInt(-2.7);
+  constexpr unsigned c5 = toU(3.9e9);
+  constexpr long long c6 = shiftMix(0x123456789ll, 7);
+  constexpr unsigned c7 = wrap(4000000000u, 3u);
+  constexpr int c8 = divs(-7, 2);
+  constexpr double c9 = divD(1.0, 3.0);
+  constexpr float c10 = narrowF(1.0e10);
+  constexpr unsigned char c11 = narrowU8(300);
+  constexpr signed char c12 = narrowS8(300);
+  constexpr long long c13 = sumTo(20);
+  constexpr int c14 = fib(20);
+  constexpr int c15 = vectors(7);
+  constexpr int c16 = arrays(7);
+  constexpr double c17 = floats(0.7);
+  constexpr unsigned long long c18 = bits(0x123456789ull);
+  printf("C1 %d %.17g\n", c1 == addD(vd1, vd2), c1);
+  printf("C2 %d %.9g\n", c2 == mulF(vf1, vf2), (double)c2);
+  printf("C3 %d %d %d %d\n", c3 == toInt(vd3), c4 == toInt(vd4), c3, c4);
+  printf("C5 %d %u\n", c5 == toU(vd5), c5);
+  printf("C6 %d %lld\n", c6 == shiftMix(vll, 7), c6);
+  printf("C7 %d %u\n", c7 == wrap(vu1, vu2), c7);
+  printf("C8 %d %d\n", c8 == divs(vi1, vi2), c8);
+  printf("C9 %d %.17g\n", c9 == divD(vd1 * 10, vd3 + 0.3), c9);
+  printf("C10 %d %.9g\n", c10 == narrowF(vd6), (double)c10);
+  printf("C11 %d %d %d %d\n", c11 == narrowU8(vi3), c12 == narrowS8(vi3), c11, c12);
+  printf("C13 %d %lld\n", c13 == sumTo(vi4), c13);
+  printf("C14 %d %d\n", c14 == fib(vi4), c14);
+  printf("C15 %d %d %d %d\n", c15 == vectors(vi5), c16 == arrays(vi5), c15, c16);
+  printf("C17 %d %.17g\n", c17 == floats(vd1 * 7), c17);
+  printf("C18 %d %llu\n", c18 == bits((unsigned long long)vll), c18);
+  return 0;
+}

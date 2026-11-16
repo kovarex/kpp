@@ -36,6 +36,8 @@ always Factorio's FastDebug preprocessing (`_DEBUG`, `DEBUG`, `LUA_USE_APICHECK`
 Release. [build.md](build.md) has the configuration names and the build description.
 
 The commands: `compiler\tests\run_tests.cmd`; `compiler\tests\spec.cmd [--release | --debug-info]`;
+`python -I compiler\tests\differential\run.py [--release]` (programs and generated programs against
+clang++, CI's `differential` jobs; [README](../compiler/tests/differential/README.md));
 `programs\factorio\convert.cmd DIR` (headline and smoke tests); `programs\factorio\run.cmd
 [--release] --version` (the game builds and starts); `python -I programs\factorio\menu-checksums.py
 GAME_DIR` (the 45 menu maps' checksums, with test_mod removed from the game's mods);

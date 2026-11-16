@@ -1,0 +1,14 @@
+template<class T, int N> int count(const T (&)[N]) { return N; }
+template<class T, int N> int sum(const T (&a)[N]) { int s = 0; for (int i = 0; i < N; ++i) s += a[i]; return s; }
+struct In { int a; int b; };
+template<class T> int first(const T& t) { return t.a; }
+template<class T = In> int viaDefault(T t) { return t.a + t.b; }
+template<class T, int N> int counted(T (&&)[N]) { return N * 10; }
+
+int main()
+{
+  printf("%d\n", first(In{7, 8}));
+  printf("%d\n", viaDefault({3, 4}));
+  printf("%d\n", counted({1, 2}));
+  return 0;
+}

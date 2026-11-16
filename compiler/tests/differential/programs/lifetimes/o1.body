@@ -1,0 +1,124 @@
+// Overload resolution at the edges: reference binding ranks, templates against non-templates,
+// partial ordering, ref-qualified members, conversion functions, qualification ranks.
+struct Box
+{
+  int v;
+};
+const char* bind(int&) { return "int&"; }
+const char* bind(const int&) { return "const int&"; }
+const char* bind(int&&) { return "int&&"; }
+const char* cref(const Box&) { return "const Box&"; }
+const char* cref(Box&&) { return "Box&&"; }
+template<typename T>
+const char* fwd(T&) { return "T&"; }
+template<typename T>
+const char* fwd(T&&) { return "T&&"; }
+template<typename T>
+const char* gen(T) { return "template"; }
+const char* gen(int) { return "int"; }
+const char* gen(long) { return "long"; }
+template<typename T>
+const char* ord(T) { return "T"; }
+template<typename T>
+const char* ord(T*) { return "T*"; }
+template<typename T>
+const char* ord(const T*) { return "const T*"; }
+template<typename T, typename U>
+const char* two(T, U) { return "T,U"; }
+template<typename T>
+const char* two(T, T) { return "T,T"; }
+template<typename T>
+const char* two(T, int) { return "T,int"; }
+template<typename... Ts>
+const char* var(Ts...) { return "pack"; }
+template<typename T>
+const char* var(T) { return "one"; }
+const char* var() { return "none"; }
+const char* qual(char*) { return "char*"; }
+const char* qual(const char*) { return "const char*"; }
+const char* qual(const void*) { return "const void*"; }
+const char* pp(int*) { return "int*"; }
+const char* pp(bool) { return "bool"; }
+const char* nul(int) { return "int"; }
+const char* nul(void*) { return "void*"; }
+struct Wrapper
+{
+  int value;
+  const char* get() & { return "lvalue"; }
+  const char* get() const& { return "const lvalue"; }
+  const char* get() && { return "rvalue"; }
+};
+struct Number
+{
+  int n;
+  operator int() const { return n; }
+  explicit operator bool() const { return n != 0; }
+};
+const char* conv(long) { return "long"; }
+const char* conv(double) { return "double"; }
+const char* fromNum(int) { return "int"; }
+const char* fromNum(Box) { return "Box"; }
+struct Base
+{
+};
+struct Derived : Base
+{
+};
+struct More : Derived
+{
+};
+const char* hier(Base*) { return "Base*"; }
+const char* hier(Derived*) { return "Derived*"; }
+const char* hierRef(const Base&) { return "Base&"; }
+const char* hierRef(const Derived&) { return "Derived&"; }
+const char* arr(int*) { return "int*"; }
+template<int N>
+const char* arr(int (&)[N]) { return "int(&)[N]"; }
+const char* chars(int) { return "int"; }
+const char* chars(char) { return "char"; }
+const char* chars(unsigned char) { return "unsigned char"; }
+const char* fl(float) { return "float"; }
+const char* fl(double) { return "double"; }
+const char* dflt(int, int = 0) { return "two"; }
+const char* dflt(long) { return "long"; }
+const char* fnptr(void (*)(int)) { return "fn(int)"; }
+const char* fnptr(void (*)(double)) { return "fn(double)"; }
+void takesInt(int) {}
+Wrapper makeWrapper() { return Wrapper{3}; }
+Box makeBox() { return Box{1}; }
+int main()
+{
+  int i = 0;
+  const int ci = 0;
+  printf("bind %s %s %s %s\n", bind(i), bind(ci), bind(5), bind(static_cast<int&&>(i)));
+  Box b{2};
+  const Box cb{3};
+  printf("cref %s %s %s\n", cref(b), cref(cb), cref(makeBox()));
+  printf("fwd %s %s %s\n", fwd(i), fwd(ci), fwd(5));
+  printf("gen %s %s %s %s %s\n", gen(1), gen(1L), gen('c'), gen(1.0), gen((short)1));
+  int* ip = &i;
+  const int* cip = &ci;
+  printf("ord %s %s %s\n", ord(1), ord(ip), ord(cip));
+  printf("two %s %s %s\n", two(1.0, 2.0), two(1.0, 2), two(1, 2.0));
+  printf("var %s %s %s\n", var(), var(1), var(1, 2));
+  char buf[4] = "ab";
+  printf("qual %s %s %s\n", qual(buf), qual("lit"), qual((const int*)nullptr));
+  printf("pp %s %s\n", pp(ip), pp(nullptr == ip));
+  printf("nul %s %s\n", nul(0), nul(nullptr));
+  Wrapper w{1};
+  const Wrapper cw{2};
+  printf("refq %s %s %s %s\n", w.get(), cw.get(), makeWrapper().get(), static_cast<Wrapper&&>(w).get());
+  Number num{4};
+  printf("conv %s\n", fromNum(num));
+  printf("explicit bool %d\n", num ? 1 : 0);
+  More m;
+  printf("hier %s %s\n", hier(&m), hierRef(m));
+  int a3[3] = {1, 2, 3};
+  printf("arr %s %s\n", arr(a3), arr(ip));
+  signed char sc = 1;
+  printf("chars %s %s %s %s\n", chars('a'), chars(sc), chars((unsigned char)1), chars(true));
+  printf("fl %s %s\n", fl(1.0f), fl(1.0));
+  printf("dflt %s %s\n", dflt(1), dflt(1L));
+  printf("fnptr %s\n", fnptr(takesInt));
+  return 0;
+}

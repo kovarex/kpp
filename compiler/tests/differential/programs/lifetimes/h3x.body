@@ -1,0 +1,120 @@
+// dynamic_cast across a hierarchy
+class A { public: int a = 1; virtual ~A() {} };
+class B : public A { public: int b = 2; };
+class C : public B { public: int c = 3; };
+class I { public: int i = 4; virtual ~I() {} };
+class J { public: int j = 5; virtual ~J() {} };
+class M : public B, public I { public: int m = 6; };
+class N : public M, public J { public: int n = 7; };
+class Other { public: virtual ~Other() {} };
+class Empty { public: virtual ~Empty() {} };
+template<class T, class F> int is(F* p) { return dynamic_cast<T*>(p) != nullptr; }
+void down() {
+  A a; B b; C c; A* pa = &a; A* pb = &b; A* pc = &c;
+  printf("%d %d %d %d %d %d\n", is<B>(pa), is<B>(pb), is<B>(pc), is<C>(pa), is<C>(pb), is<C>(pc));
+  printf("%d\n", dynamic_cast<C*>(pc)->c);
+  A* n = nullptr; printf("null %d\n", dynamic_cast<B*>(n) == nullptr);
+  printf("self %d\n", dynamic_cast<A*>(pc) == pc);
+}
+void cross() {
+  N n; n.m = 66; I* i = &n; J* j = &n; A* a = &n;
+  printf("%d %d %d %d\n", is<J>(i), is<I>(j), is<A>(j), is<M>(j));
+  printf("%d %d\n", dynamic_cast<J*>(i)->j, dynamic_cast<I*>(j)->i);
+  printf("%d\n", dynamic_cast<M*>(j)->m);
+  printf("eq %d %d\n", dynamic_cast<N*>(i) == &n, dynamic_cast<I*>(a) == i);
+  M m; I* mi = &m; printf("%d %d %d\n", is<J>(mi), is<N>(mi), is<B>(mi));
+  printf("unrelated %d %d\n", is<Other>(i), is<Empty>(a));
+}
+void voids() {
+  N n; I* i = &n; J* j = &n; A* a = &n;
+  void* v1 = dynamic_cast<void*>(i); void* v2 = dynamic_cast<void*>(j); void* v3 = dynamic_cast<void*>(a);
+  printf("%d %d %d\n", v1 == (void*)&n, v2 == (void*)&n, v3 == (void*)&n);
+  A* z = nullptr; printf("%d\n", dynamic_cast<void*>(z) == nullptr);
+  const J* cj = &n; const void* cv = dynamic_cast<const void*>(cj); printf("%d\n", cv == (const void*)&n);
+}
+void refs() {
+  N n; n.j = 55; I& i = n; J& j = dynamic_cast<J&>(i); printf("%d\n", j.j);
+  A a; A& r = a;
+  try { B& b = dynamic_cast<B&>(r); printf("no %d\n", b.b); } catch (...) { printf("threw\n"); }
+  try { N& q = dynamic_cast<N&>(i); printf("ok %d\n", q.n); } catch (...) { printf("threw\n"); }
+}
+void consts() {
+  C c; const A* p = &c; const C* q = dynamic_cast<const C*>(p); printf("%d\n", q->c);
+  volatile A* va = nullptr; printf("%d\n", dynamic_cast<volatile B*>(va) == nullptr);
+}
+// a duplicated base: ambiguous casts fail
+class P { public: int p = 1; virtual ~P() {} };
+class L : public P { public: int l = 2; };
+class R : public P { public: int r = 3; };
+class Dd : public L, public R { public: int d = 4; };
+class Top : public Dd { };
+void ambiguous() {
+  Dd d; L* l = &d; R* r = &d; P* pl = l; P* pr = r;
+  printf("%d %d\n", is<Dd>(pl), is<Dd>(pr));
+  printf("%d %d %d %d\n", is<R>(pl), is<L>(pr), is<R>(l), is<L>(r));
+  printf("%d\n", dynamic_cast<R*>(pl) == r);
+  printf("%d\n", dynamic_cast<Dd*>(pr) == &d);
+  Top t; R* tr = &t; printf("%d %d\n", is<L>(tr), is<Top>(tr));
+  void* v = dynamic_cast<void*>(pr); printf("%d\n", v == (void*)&d);
+}
+// non-public bases
+class H0 { public: int h = 1; virtual ~H0() {} };
+class H1 { public: int k = 2; virtual ~H1() {} };
+class Hd : public H0, private H1 { public: H1* priv() { return this; } H0* pub() { return this; } };
+class Hp : protected H0, public H1 { public: H0* prot() { return this; } };
+class Hc : private H0 { public: H0* base() { return this; } };
+void nonpublic() {
+  Hd d; H1* p1 = d.priv(); H0* p0 = d.pub();
+  printf("%d %d\n", is<H0>(p1), is<H1>(p0));
+  printf("%d\n", is<Hd>(p1));
+  printf("%d\n", is<Hd>(p0));
+  Hp p; H1* q1 = &p; H0* q0 = p.prot();
+  printf("%d %d %d %d\n", is<H0>(q1), is<H1>(q0), is<Hp>(q1), is<Hp>(q0));
+  Hc c; printf("%d\n", is<Hc>(c.base()));
+}
+// templates
+template<class T> class G { public: T v{}; virtual ~G() {} };
+class Gi : public G<int> { };
+class Gd : public G<double>, public G<int> { };
+template<class T> class Gt : public G<T> { public: int tag = 1; };
+void templates() {
+  Gi i; G<int>* p = &i; printf("%d %d %d\n", is<Gi>(p), is<Gd>(p), is<G<double>>(p));
+  Gd d; G<int>* q = &d; printf("%d %d\n", is<Gd>(q), is<G<double>>(q));
+  Gt<int> t; G<int>* r = &t; printf("%d %d\n", is<Gt<int>>(r), is<Gt<double>>(r));
+}
+// local classes and classes in namespaces with the same name
+namespace n1 { class S { public: virtual ~S() {} }; class T : public S { }; }
+namespace n2 { class S { public: virtual ~S() {} }; class T : public S { }; }
+void names() {
+  n1::T a; n1::S* p = &a; printf("%d %d\n", is<n1::T>(p), is<n2::T>(p));
+  class Loc : public n1::S { }; Loc l; n1::S* q = &l; printf("%d %d\n", is<Loc>(q), is<n1::T>(q));
+}
+// typeid
+void typeids() {
+  N n; I* i = &n; J& j = n; A a;
+  printf("%d %d %d\n", typeid(*i) == typeid(N), typeid(j) == typeid(N), typeid(j) == typeid(J));
+  printf("%d %d\n", typeid(a) == typeid(A), typeid(*(A*)&a) == typeid(B));
+  printf("%d %d\n", typeid(i) == typeid(I*), typeid(int) == typeid(int));
+  A* z = nullptr;
+  try { printf("%d\n", typeid(*z) == typeid(A)); } catch (...) { printf("bad_typeid\n"); }
+}
+// final, abstract, a deep chain, an array
+class Abs { public: virtual ~Abs() {} virtual int f() = 0; };
+class Con final : public Abs { public: int f() override { return 1; } };
+class Con2 : public Abs { public: int f() override { return 2; } };
+class K0 { public: virtual ~K0() {} virtual int d() { return 0; } };
+template<int V> class K : public K<V - 1> { public: int d() override { return V; } };
+template<> class K<0> : public K0 { };
+void misc() {
+  Con c; Con2 d; Abs* a[2] = { &c, &d }; for (Abs* p : a) printf("%d %d %d\n", is<Con>(p), is<Con2>(p), p->f());
+  K<20> k; K0* b = &k; printf("%d %d %d %d\n", is<K<20>>(b), is<K<5>>(b), is<K<21>>(b), dynamic_cast<K<7>*>(b)->d());
+}
+// the cast from a base's member function, in the second base
+class Vis { public: int z = 2; virtual ~Vis() {} template<class T> T* as() { return dynamic_cast<T*>(this); } };
+class Vs : public I, public Vis { public: int y = 12; };
+void members() { Vs v; Vis& r = v; printf("%d %d %d\n", r.as<Vs>()->y, r.as<I>()->i, r.as<J>() == nullptr); }
+// a cast through a thrown object
+void thrown() {
+  try { N n; n.n = 70; throw n; } catch (J& j) { N* p = dynamic_cast<N*>(&j); I* i = dynamic_cast<I*>(&j); printf("%d %d\n", p->n, i->i); }
+}
+int main() { thrown(); return 0; }

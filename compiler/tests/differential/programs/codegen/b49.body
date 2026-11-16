@@ -1,0 +1,127 @@
+// Exceptions: a throw from a constructor destroys what was built (members, bases, array elements),
+// rethrow, a handler of a base class, nested handlers, a throw from a member initializer.
+char trail[512];
+int pos = 0;
+void note(const char* s) { while (*s) trail[pos++] = *s++; trail[pos++] = ' '; trail[pos] = 0; }
+
+struct Part
+{
+  int id;
+  Part(int i) : id(i)
+  {
+    if (i == 99)
+      throw i;
+    char t[8] = {'+', char('0' + i), 0};
+    note(t);
+  }
+  ~Part()
+  {
+    char t[8] = {'-', char('0' + id), 0};
+    note(t);
+  }
+};
+
+struct Base
+{
+  Part p;
+  Base() : p(1) { note("Base"); }
+  ~Base() { note("~Base"); }
+};
+
+struct Whole : Base
+{
+  Part a;
+  Part b;
+  Part c;
+  Whole(int fail) : a(2), b(fail), c(3) { note("Whole"); }
+  ~Whole() { note("~Whole"); }
+};
+
+struct Error
+{
+  int code;
+};
+struct Specific : Error
+{
+  int extra;
+};
+
+int thrower(int k)
+{
+  if (k == 1)
+    throw Specific{{7}, 8};
+  if (k == 2)
+    throw Error{9};
+  return k;
+}
+
+int main()
+{
+  try
+  {
+    Whole w(99);
+  }
+  catch (int e)
+  {
+    note("caught");
+  }
+  printf("%s\n", trail);
+  pos = 0;
+  trail[0] = 0;
+  try
+  {
+    Part parts[4] = {Part(4), Part(5), Part(99), Part(6)};
+  }
+  catch (int)
+  {
+    note("array");
+  }
+  printf("%s\n", trail);
+  int sum = 0;
+  for (int k = 0; k < 3; ++k)
+  {
+    try
+    {
+      try
+      {
+        sum += thrower(k);
+      }
+      catch (Specific& s)
+      {
+        sum += s.extra * 10;
+        throw;
+      }
+    }
+    catch (const Error& e)
+    {
+      sum += e.code * 100;
+    }
+  }
+  printf("%d\n", sum);
+  int nested = 0;
+  try
+  {
+    try
+    {
+      throw 1;
+    }
+    catch (int a)
+    {
+      try
+      {
+        throw 2.5;
+      }
+      catch (double d)
+      {
+        nested = a * 10 + (int)(d * 2);
+      }
+      throw a + 1;
+    }
+  }
+  catch (int b)
+  {
+    nested = nested * 10 + b;
+  }
+  printf("%d\n", nested);
+  return 0;
+}

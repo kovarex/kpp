@@ -1,0 +1,198 @@
+// Containers: Vector, Deque, List, ForwardList, Map, Set, MultiMap, MultiSet, HashMap, PriorityQueue.
+
+template <typename C>
+void showAll(const char* what, const C& c)
+{
+  printf("%s:", what);
+  int count = 0;
+  for (const auto& x : c)
+  {
+    printf(" %d", (int)x);
+    ++count;
+  }
+  printf(" (%d)\n", count);
+}
+
+template <typename M>
+void showMap(const char* what, const M& m)
+{
+  printf("%s:", what);
+  for (const auto& kv : m)
+    printf(" %d=%d", (int)kv.first, (int)kv.second);
+  printf(" (%lld)\n", (long long)m.size());
+}
+
+int main()
+{
+  Vector<int> v = {1, 2, 3, 4, 5};
+  v.insert(v.begin() + 2, 9);
+  showAll("v insert", v);
+  v.insert(v.end(), 3, 7);
+  showAll("v insert count", v);
+  v.insert(v.begin(), v.begin() + 1, v.begin() + 3);
+  showAll("v insert own range", v);
+  v.insert(v.begin() + 1, {40, 41});
+  showAll("v insert list", v);
+  auto it = v.erase(v.begin() + 1, v.begin() + 4);
+  printf("v erase range returns %d\n", (int)(it - v.begin()));
+  showAll("v erase", v);
+  it = v.erase(v.end() - 1);
+  printf("v erase last returns end %d\n", it == v.end());
+  v.resize(3);
+  showAll("v resize 3", v);
+  v.resize(6, -1);
+  showAll("v resize 6", v);
+  v.assign(4, 2);
+  showAll("v assign", v);
+  v.assign({5, 6});
+  showAll("v assign list", v);
+  v.emplace(v.begin() + 1, 8);
+  showAll("v emplace", v);
+  Vector<int> w = {1, 2};
+  v.swap(w);
+  showAll("v swap", v);
+  printf("v compare %d %d %d\n", v < w, Vector<int>{1, 2} == Vector<int>{1, 2}, Vector<int>{1, 2, 3} < Vector<int>{1, 3});
+  v.insert(v.begin(), v.size(), v[1]);
+  showAll("v insert copies of own element", v);
+  v.push_back(v[0]);
+  showAll("v push_back own element", v);
+  Vector<int> big;
+  for (int i = 0; i < 20; ++i)
+    big.push_back(i);
+  big.insert(big.begin() + 3, big.begin() + 10, big.end());
+  showAll("big insert own tail", big);
+  try
+  {
+    printf("at %d\n", big.at(100));
+  }
+  catch (...)
+  {
+    printf("at past end threw\n");
+  }
+
+  Deque<int> d;
+  for (int i = 0; i < 10; ++i)
+  {
+    d.push_back(i);
+    d.push_front(-i);
+  }
+  showAll("deque", d);
+  d.erase(d.begin() + 3, d.begin() + 8);
+  showAll("deque erase", d);
+  d.insert(d.begin() + 2, 3, 100);
+  showAll("deque insert", d);
+  d.pop_front();
+  d.pop_back();
+  showAll("deque pops", d);
+  d.resize(4);
+  showAll("deque resize", d);
+  printf("deque index %d %d\n", d[0], d[3]);
+
+  List<int> l = {5, 3, 1, 3, 4, 3};
+  l.remove(3);
+  showAll("list remove", l);
+  l.push_front(9);
+  l.sort();
+  showAll("list sort", l);
+  List<int> l2 = {2, 6};
+  l.merge(l2);
+  showAll("list merge", l);
+  printf("l2 empty %d\n", (int)l2.empty());
+  l.reverse();
+  showAll("list reverse", l);
+  List<int> l3 = {1, 1, 2, 2, 2, 3, 1};
+  l3.unique();
+  showAll("list unique", l3);
+  List<int> l4 = {7, 8};
+  l.splice(l.begin(), l4);
+  showAll("list splice", l);
+  // (kpp: does not compile)
+  showAll("list remove_if", l);
+
+  ForwardList<int> f = {3, 1, 2};
+  f.push_front(0);
+  f.sort();
+  showAll("forward_list", f);
+  f.insert_after(f.begin(), 5);
+  showAll("forward_list insert_after", f);
+  f.erase_after(f.begin());
+  showAll("forward_list erase_after", f);
+  f.reverse();
+  showAll("forward_list reverse", f);
+
+  Map<int, int> m;
+  m[5] = 50;
+  m[1] = 10;
+  m[3] = 30;
+  auto ins = m.insert(Pair<const int, int>(3, 99));
+  printf("map insert existing %d %d\n", (int)ins.second, ins.first->second);
+  ins = m.insert(Pair<const int, int>(4, 40));
+  printf("map insert new %d %d\n", (int)ins.second, ins.first->second);
+  showMap("map", m);
+  printf("lower_bound 2 -> %d, upper_bound 3 -> %d, lower_bound 9 end %d\n", m.lower_bound(2)->first, m.upper_bound(3)->first, m.lower_bound(9) == m.end());
+  auto range = m.equal_range(4);
+  printf("equal_range 4: %d..%d\n", range.first->first, range.second->first);
+  int erased3 = (int)m.erase(3);
+  int erased7 = (int)m.erase(7);
+  printf("erase 3: %d, erase 7: %d\n", erased3, erased7);
+  showMap("map erased", m);
+  printf("count %d %d find end %d\n", (int)m.count(1), (int)m.count(2), m.find(2) == m.end());
+  auto next = m.erase(m.begin());
+  printf("erase begin returns %d\n", next->first);
+  auto em = m.emplace(10, 100);
+  printf("emplace %d %d\n", (int)em.second, em.first->first);
+  m.erase(m.find(4), m.end());
+  showMap("map erase range", m);
+
+  Set<int> s = {5, 1, 9, 3};
+  printf("set insert dup %d\n", (int)s.insert(5).second);
+  showAll("set", s);
+  printf("set lower_bound 4 -> %d upper_bound 9 end %d\n", *s.lower_bound(4), s.upper_bound(9) == s.end());
+  s.erase(s.find(3));
+  showAll("set erase", s);
+
+  MultiMap<int, int> mm;
+  mm.insert(Pair<const int, int>(2, 1));
+  mm.insert(Pair<const int, int>(1, 2));
+  mm.insert(Pair<const int, int>(2, 3));
+  mm.insert(Pair<const int, int>(2, 4));
+  showMap("multimap", mm);
+  printf("multimap count 2: %d\n", (int)mm.count(2));
+  auto mr = mm.equal_range(2);
+  int n = 0;
+  for (auto i = mr.first; i != mr.second; ++i)
+    ++n;
+  printf("multimap range %d\n", n);
+  printf("multimap erase 2: %d\n", (int)mm.erase(2));
+  showMap("multimap erased", mm);
+
+  MultiSet<int> ms = {3, 1, 3, 2, 3};
+  showAll("multiset", ms);
+  printf("multiset count 3 %d, erase one\n", (int)ms.count(3));
+  ms.erase(ms.find(3));
+  showAll("multiset", ms);
+
+  HashMap<int, int> h;
+  for (int i = 0; i < 100; ++i)
+    h[i * 7 % 101] = i;
+  printf("hashmap size %d count 7 %d find 200 end %d\n", (int)h.size(), (int)h.count(7), h.find(200) == h.end());
+  int first = (int)h.erase(7);
+  int second = (int)h.erase(7);
+  printf("hashmap erase %d %d size %d\n", first, second, (int)h.size());
+  long long sum = 0;
+  for (const auto& kv : h)
+    sum += kv.first * 1000 + kv.second;
+  printf("hashmap sum %lld\n", sum);
+
+  PriorityQueue<int> pq;
+  for (int x : {5, 1, 8, 3, 9, 2})
+    pq.push(x);
+  printf("pq:");
+  while (!pq.empty())
+  {
+    printf(" %d", pq.top());
+    pq.pop();
+  }
+  printf("\n");
+  return 0;
+}

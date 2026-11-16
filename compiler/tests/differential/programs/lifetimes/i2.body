@@ -1,0 +1,111 @@
+// Integer literals' types, overloads between integral types, and constant folding of wrapping arithmetic.
+const char* kind(int) { return "int"; }
+const char* kind(unsigned) { return "unsigned"; }
+const char* kind(long) { return "long"; }
+const char* kind(unsigned long) { return "unsigned long"; }
+const char* kind(long long) { return "long long"; }
+const char* kind(unsigned long long) { return "unsigned long long"; }
+const char* kind(double) { return "double"; }
+const char* kind(float) { return "float"; }
+const char* kind(char) { return "char"; }
+const char* kind(signed char) { return "signed char"; }
+const char* kind(unsigned char) { return "unsigned char"; }
+const char* kind(short) { return "short"; }
+const char* kind(unsigned short) { return "unsigned short"; }
+const char* kind(bool) { return "bool"; }
+
+const char* pick(long long) { return "long long"; }
+const char* pick(double) { return "double"; }
+const char* wider(long) { return "long"; }
+const char* wider(unsigned long) { return "unsigned long"; }
+const char* onlyLong(long long) { return "long long"; }
+const char* promoted(int) { return "int"; }
+const char* promoted(long) { return "long"; }
+const char* fromFloat(int) { return "int"; }
+const char* fromFloat(double) { return "double"; }
+
+constexpr unsigned wrapMul = 4000000000u * 3u;
+constexpr unsigned long long wrapSub = 0ull - 5ull;
+constexpr int shifted = 1 << 30;
+constexpr long long product = 3037000499LL * 3037000499LL;
+constexpr unsigned char narrowed = (unsigned char)(1000 + 7);
+constexpr int fromUnsigned = (int)4294967295u;
+constexpr short fromBig = (short)100000;
+constexpr int negDiv = -9 / 4;
+constexpr int negMod = -9 % 4;
+constexpr unsigned negToUnsigned = -1;
+constexpr long long minimum = -9223372036854775807LL - 1;
+constexpr unsigned long long minimumBits = (unsigned long long)minimum;
+static_assert(sizeof(long) == 4 || sizeof(long) == 8, "long");
+
+int main()
+{
+  printf("0 %s\n", kind(0));
+  printf("2147483647 %s\n", kind(2147483647));
+  printf("2147483648 %s\n", kind(2147483648));
+  printf("4294967295 %s\n", kind(4294967295));
+  printf("4294967296 %s\n", kind(4294967296));
+  printf("0x7fffffff %s\n", kind(0x7fffffff));
+  printf("0x80000000 %s\n", kind(0x80000000));
+  printf("0xffffffff %s\n", kind(0xffffffff));
+  printf("0x100000000 %s\n", kind(0x100000000));
+  printf("0x8000000000000000 %s\n", kind(0x8000000000000000));
+  printf("017 %s %d\n", kind(017), 017);
+  printf("0b1011 %s %d\n", kind(0b1011), 0b1011);
+  printf("1'000'000 %s %d\n", kind(1'000'000), 1'000'000);
+  printf("10u %s\n", kind(10u));
+  printf("10l %s\n", kind(10l));
+  printf("10ul %s\n", kind(10ul));
+  printf("10ll %s\n", kind(10ll));
+  printf("10ull %s\n", kind(10ull));
+  printf("5000000000u %s\n", kind(5000000000u));
+  printf("'a' %s\n", kind('a'));
+  printf("1.0f %s\n", kind(1.0f));
+  printf("true %s\n", kind(true));
+  short s = 1;
+  unsigned char uc = 1;
+  printf("s+s %s\n", kind(s + s));
+  printf("uc %s\n", kind(uc));
+  printf("+uc %s\n", kind(+uc));
+  printf("s %s\n", kind(s));
+  printf("1L+1u %s\n", kind(1L + 1u));
+  printf("1LL+1u %s\n", kind(1LL + 1u));
+  printf("1L+1LL %s\n", kind(1L + 1LL));
+  printf("1ul+1ll %s\n", kind(1ul + 1ll));
+  printf("1u+1ll %s\n", kind(1u + 1ll));
+  printf("1.0f+1 %s\n", kind(1.0f + 1));
+  printf("1.0f+1.0 %s\n", kind(1.0f + 1.0));
+  printf("uc?:s %s\n", kind(true ? uc : s));
+  printf("pick(1) %s\n", pick(1LL));
+  printf("pick(1.0f) %s\n", pick(1.0f));
+  printf("wider(1L) %s\n", wider(1L));
+  printf("wider(1ul) %s\n", wider(1ul));
+  printf("onlyLong(1) %s\n", onlyLong(1));
+  printf("onlyLong('c') %s\n", onlyLong('c'));
+  printf("promoted(s) %s\n", promoted(s));
+  printf("promoted(uc) %s\n", promoted(uc));
+  printf("promoted(true) %s\n", promoted(true));
+  printf("fromFloat(1.0f) %s\n", fromFloat(1.0f));
+  printf("wrapMul %u\n", wrapMul);
+  printf("wrapSub %llu\n", wrapSub);
+  printf("shifted %d\n", shifted);
+  printf("product %lld\n", product);
+  printf("narrowed %d\n", narrowed);
+  printf("fromUnsigned %d\n", fromUnsigned);
+  printf("fromBig %d\n", fromBig);
+  printf("negDiv %d negMod %d\n", negDiv, negMod);
+  printf("negToUnsigned %u\n", negToUnsigned);
+  printf("minimum %lld %llu\n", minimum, minimumBits);
+  int arr[(unsigned char)260];
+  printf("sizeof arr %d\n", (int)sizeof(arr));
+  switch ((unsigned char)300)
+  {
+    case 44: printf("switch 44\n"); break;
+    default: printf("switch default\n"); break;
+  }
+  long long viaTernary = true ? 4000000000u : -1;
+  printf("viaTernary %lld\n", viaTernary);
+  unsigned long long mixed = -1 + 0u;
+  printf("mixed %llu\n", mixed);
+  return 0;
+}

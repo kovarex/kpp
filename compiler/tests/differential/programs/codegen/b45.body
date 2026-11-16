@@ -1,0 +1,50 @@
+// Layout edge cases: anonymous unions and structs, nested classes, alignas members in polymorphic classes, enums of every width, arrays of classes.
+template<class T, class M> int off(const T& obj, const M& member) { return int((const char*)&member - (const char*)&obj); }
+enum class Small : unsigned char { A = 1, B = 200 };
+enum class Wide : long long { Big = 1ll << 40 };
+enum Plain { P0, P1 = 70000 };
+struct WithUnion
+{
+  int tag = 1;
+  union
+  {
+    int i;
+    double d;
+    char bytes[12];
+  };
+  struct
+  {
+    short a, b;
+  } inner;
+  Small s = Small::B;
+  Wide w = Wide::Big;
+  Plain p = P1;
+};
+class alignas(32) Over { public: virtual ~Over() = default; char c = 'o'; alignas(16) double d = 1; };
+class Outer
+{
+public:
+  class Nested { public: int n = 3; virtual int get() const { return this->n; } };
+  Nested first;
+  char gap = 0;
+  Nested second;
+};
+struct Packed1 { char a; int b; char c; };
+struct Arr { Packed1 items[3]; char tail; };
+int main()
+{
+  WithUnion u;
+  u.d = 2.5;
+  u.inner.a = 7;
+  printf("union %d %d %d %d %d %d %d\n", int(sizeof(WithUnion)), off(u, u.d), off(u, u.inner), off(u, u.s), off(u, u.w), off(u, u.p), int(alignof(WithUnion)));
+  printf("enums %d %d %d %d\n", int(sizeof(Small)), int(sizeof(Wide)), int(sizeof(Plain)), int(u.s));
+  Over o;
+  printf("over %d %d %d %d\n", int(sizeof(Over)), int(alignof(Over)), off(o, o.c), off(o, o.d));
+  Outer outer;
+  printf("nested %d %d %d %d\n", int(sizeof(Outer)), off(outer, outer.gap), off(outer, outer.second), outer.second.get());
+  Arr arr;
+  printf("arr %d %d %d\n", int(sizeof(Arr)), off(arr, arr.items[2].c), off(arr, arr.tail));
+  Over many[3];
+  printf("over array %d %d\n", int(sizeof(many)), int((const char*)&many[1] - (const char*)&many[0]));
+  return 0;
+}

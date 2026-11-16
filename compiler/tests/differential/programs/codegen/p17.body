@@ -1,0 +1,57 @@
+// templates: SFINAE with a hand-made enable_if, partial specialization, CRTP, if constexpr,
+// variadic recursion, template template parameters, overloads between templates
+template<bool B, typename T = void> struct OnlyIf {};
+template<typename T> struct OnlyIf<true, T> { using type = T; };
+template<typename T> struct PointerTest { static constexpr bool value = false; };
+template<typename T> struct PointerTest<T*> { static constexpr bool value = true; };
+template<typename A, typename B> struct SameTest { static constexpr bool value = false; };
+template<typename A> struct SameTest<A, A> { static constexpr bool value = true; };
+template<typename T> requires PointerTest<T>::value int pick(T) { return 1; }
+template<typename T> requires (!PointerTest<T>::value) int pick(T) { return 2; }
+template<typename T> struct Duo { T a, b; };
+template<typename T> int describe(T) { return 10; }
+template<typename T> int describe(T*) { return 20; }
+template<typename T> int describe(Duo<T>) { return 30; }
+template<typename T> int describe(const Duo<T*>&) { return 40; }
+template<typename Derived> struct Shape
+{
+  int area() const { return static_cast<const Derived*>(this)->compute() * 2; }
+};
+struct Square : Shape<Square> { int side = 3; int compute() const { return side * side; } };
+template<typename T> int kindOf(T value)
+{
+  if constexpr (PointerTest<T>::value)
+    return 100 + *value;
+  else if constexpr (SameTest<T, double>::value)
+    return 200;
+  else
+    return 300 + int(sizeof(T));
+}
+int total() { return 0; }
+template<typename T, typename... Rest> int total(T first, Rest... rest) { return int(first) + 10 * total(rest...); }
+template<typename T> struct Box { T value; };
+template<template<typename> class Holder, typename T> int unwrap(Holder<T> h) { return int(h.value) + 1; }
+template<int N> struct Fib { static constexpr int value = Fib<N - 1>::value + Fib<N - 2>::value; };
+template<> struct Fib<1> { static constexpr int value = 1; };
+template<> struct Fib<0> { static constexpr int value = 0; };
+template<typename T, int N> struct Grid { T cells[N]; int count() const { return N; } };
+template<typename T> struct Grid<T, 0> { int count() const { return -1; } };
+int main()
+{
+  int x = 4;
+  printf("S %d %d\n", pick(&x), pick(x));
+  Duo<int> p{1, 2};
+  Duo<int*> pp{&x, &x};
+  printf("O %d %d %d %d\n", describe(1.5), describe(&x), describe(p), describe(pp));
+  Square sq;
+  printf("C %d\n", sq.area());
+  printf("K %d %d %d %d\n", kindOf(&x), kindOf(2.0), kindOf('c'), kindOf(7ll));
+  printf("V %d %d\n", total(1, 2, 3), total());
+  Box<char> bc{'A'};
+  printf("T %d\n", unwrap(bc));
+  printf("F %d\n", Fib<15>::value);
+  Grid<int, 3> g3{};
+  Grid<int, 0> g0;
+  printf("G %d %d\n", g3.count(), g0.count());
+  return 0;
+}

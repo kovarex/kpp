@@ -1,0 +1,9 @@
+class R1 { public: int pad = 7; virtual ~R1() {} };
+class R2 { public: int pad = 8; virtual ~R2() {} int mine() { return pad; } };
+class R3 : public R1, public R2 { public: int a() { return R2::pad; } int b() { return this->R2::pad; } int c() { return R1::pad; } int d() { return R2::mine(); } };
+class S1 { public: int pad = 7; };
+class S2 { public: int pad = 8; };
+class S3 : public S1, public S2 { public: int a() { return S2::pad; } int c() { return S1::pad; } };
+template<class T> class H { public: T value; H(T v) : value(v) {} T get() { return value; } };
+class Hb : public H<int>, public H<double> { public: Hb() : H<int>(1), H<double>(2.5) {} double a() { return H<double>::get(); } double b() { return H<double>::value; } int c() { return H<int>::get(); } double d() { return this->H<double>::get(); } };
+int main() { R3 r; printf("%d %d %d %d\n", r.a(), r.b(), r.c(), r.d()); printf("%d %d %d\n", r.R2::pad, r.R1::pad, r.R2::mine()); S3 s; printf("%d %d\n", s.a(), s.c()); Hb h; printf("%.1f %.1f %d %.1f\n", h.a(), h.b(), h.c(), h.d()); printf("%.1f\n", h.H<double>::get()); return 0; }

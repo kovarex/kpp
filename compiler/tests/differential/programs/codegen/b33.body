@@ -1,0 +1,83 @@
+// battery 33: which function a call picks: a non-template over a template on a tie, the more
+// specialized template (T* over T), const& against && for an rvalue, promotion over conversion
+// (short to int, not long), char arithmetic to int; which partial specialization a class picks;
+// static members per instance; folds' associativity; array extents deduced; decltype(auto).
+template<class T>
+int pick(T) { return 1; }
+template<class T>
+int pick(T*) { return 2; }
+int pick(int) { return 3; }
+
+int refKind(const int&) { return 1; }
+int refKind(int&&) { return 2; }
+
+int wide(int) { return 1; }
+int wide(long) { return 2; }
+int wide(double) { return 3; }
+
+int letter(char) { return 1; }
+int letter(int) { return 2; }
+
+template<class T>
+struct Box
+{
+  static int made;
+  int kind() const { return 1; }
+};
+template<class T>
+struct Box<T*>
+{
+  static int made;
+  int kind() const { return 2; }
+};
+template<>
+struct Box<int>
+{
+  static int made;
+  int kind() const { return 3; }
+};
+template<class T>
+int Box<T>::made = 10;
+template<class T>
+int Box<T*>::made = 20;
+int Box<int>::made = 30;
+
+template<class... Ts>
+int leftFold(Ts... xs) { return (... - xs); }
+template<class... Ts>
+int rightFold(Ts... xs) { return (xs - ...); }
+template<class... Ts>
+int count(Ts...) { return sizeof...(Ts); }
+
+template<class T, int N>
+int extent(T (&)[N]) { return N; }
+
+int global = 5;
+decltype(auto) whole() { return (global); }
+decltype(auto) value() { return global; }
+
+int main()
+{
+  int i = 0;
+  double dd = 1.5;
+  short sh = 2;
+  printf("pick %d %d %d %d\n", pick(i), pick(&i), pick(dd), pick(&dd));
+  printf("refKind %d %d %d\n", refKind(i), refKind(5), refKind(i + 1));
+  printf("wide %d %d %d\n", wide(sh), wide(2.5f), wide('c'));
+  char c = 'a';
+  printf("letter %d %d %d\n", letter(c), letter(c + 1), letter('b'));
+  Box<double> bd;
+  Box<double*> bp;
+  Box<int> bi;
+  Box<double>::made++;
+  printf("box %d %d %d | %d %d %d %d\n", bd.kind(), bp.kind(), bi.kind(), Box<double>::made, Box<char>::made, Box<double*>::made, Box<int>::made);
+  printf("fold %d %d %d %d\n", leftFold(10, 3, 2), rightFold(10, 3, 2), count(), count(1, 'a', 2.0));
+  int arr[7];
+  double darr[3][4];
+  printf("extent %d %d\n", extent(arr), extent(darr));
+  whole() = 9;
+  int copy = value();
+  copy = 1;
+  printf("decltype %d %d\n", global, copy);
+  return 0;
+}

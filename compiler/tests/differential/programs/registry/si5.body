@@ -1,0 +1,67 @@
+int say(const char* what, int v) { printf("init %s = %d\n", what, v); return v; }
+constexpr int cf(int x) { return x * 2 + 1; }
+template<class T> struct Reg { static int v; static int unused; static const int c = 5; static constexpr int d = sizeof(T); inline static int i = say("Reg::i", (int)sizeof(T)); };
+template<class T> int Reg<T>::v = say("Reg::v", (int)sizeof(T));
+template<class T> int Reg<T>::unused = say("Reg::unused", 1);
+template<class T> constexpr int vt = (int)sizeof(T) * 2;
+
+
+
+template<class T> struct Con { static constexpr T zero = T(); static const T one; };
+template<class T> const T Con<T>::one = T(1);
+constinit int ci1 = cf(4);
+constinit int* ci2 = &ci1;
+int g1 = say("g1", Reg<int>::v);
+int g2 = say("g2", Reg<char>::v + Reg<char>::d);
+int g3 = say("g3", vt<int> + vt<char>);
+int g4 = 1;
+int g5 = 2;
+int g6 = say("g6", (int)Con<double>::one + Con<int>::zero);
+struct Own { int a; int b; constexpr Own(int x) : a(x), b(cf(x)) {} };
+extern const Own later;
+int g7 = say("g7", later.b);
+constexpr Own later2 = Own(2);
+const Own later{3};
+struct Dyn { int a; Dyn(int x) : a(say("Dyn", x)) {} };
+const Dyn cdyn{5};
+int g8 = say("g8", cdyn.a);
+const int fromDyn = say("fromDyn", 6);
+int arrFrom[2] = {fromDyn, cdyn.a};
+const int nonConstInit = g8;
+int g9 = nonConstInit;
+struct Cnt { static int n; int id; Cnt() : id(++n) {} };
+int Cnt::n = 10;
+Cnt c1, c2;
+Cnt cArr[2];
+struct Nest { Cnt x; Cnt y; int z = x.id + y.id; };
+Nest nest;
+Nest nests[2];
+extern int fwdArr[];
+int fwdRead = say("fwdRead", fwdArr[1]);
+int fwdArr[] = {1, 2, 3};
+extern const char fwdText[];
+int fwdLen = say("fwdLen", fwdText[2]);
+const char fwdText[] = "hey";
+struct St { int v; static St make(int x) { return St{say("make", x)}; } };
+St st1 = St::make(1);
+St st2 = st1;
+St st3{st1.v + 1};
+St* sp = &st3;
+int viaSp = sp->v;
+int cond = st1.v ? say("then", 1) : say("else", 2);
+int comma = (say("left", 1), say("right", 2));
+int andOr = (say("a", 0) && say("b", 1)) || say("c", 2);
+int lam1 = [] { return say("immediate", 3); }();
+int lam2 = [x = say("capture", 4)] { return x + 1; }();
+void noop() {}
+int main()
+{
+  printf("main\n");
+  printf("%d %d %d %d %d %d %d %d\n", g1, g2, g3, g4, g5, g6, g7, g8);
+  printf("%d %d %d %d %d\n", later.a, later2.b, c1.id, c2.id, cArr[1].id);
+  printf("%d %d %d %d\n", nest.z, nests[1].z, nests[1].y.id, Cnt::n);
+  printf("%d %d %d %d %d\n", arrFrom[0], arrFrom[1], nonConstInit, g9, ci1 + *ci2);
+  printf("%d %d %d %d %d\n", fwdRead, fwdLen, st2.v, st3.v, viaSp);
+  printf("%d %d %d %d %d\n", cond, comma, andOr, lam1, lam2);
+  return 0;
+}

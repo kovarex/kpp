@@ -1,0 +1,60 @@
+// unions and anonymous members, as the game writes them: punning, constructors, default initializers, copies
+union Pun { float f; unsigned u; unsigned char b[4]; };
+union Pun64 { double d; unsigned long long u; struct { unsigned lo, hi; } p; };
+struct Tagged { int kind; union { int i; float f; const char* s; }; Tagged(int x) : kind(0), i(x) {} Tagged(float x) : kind(1), f(x) {} Tagged(const char* x) : kind(2), s(x) {} };
+struct Anon { union { struct { short a, b; }; int both; }; int after = 7; };
+struct Nest { int x; union { struct { int y; union { int z; char c[4]; }; }; long long w; }; };
+struct DefInit { union { int a = 5; float b; }; int c = a + 1; };
+union UDef { int a; float b = 2.5f; };
+union Ctor { int i; float f; Ctor() : i(1) {} Ctor(float x) : f(x) {} int get() const { return i; } static int s; };
+int Ctor::s = 9;
+union Big { char c; double d; int a[3]; };
+struct Pad { char c; union { short s; double d; }; char e; };
+struct alignas(16) Al { union { float v[4]; struct { float x, y, z, w; }; }; };
+struct Lifetime { int id; Lifetime(int i) : id(i) { printf("+%d ", id); } ~Lifetime() { printf("-%d ", id); } };
+union Holder { Lifetime l; int n; Holder() : n(0) {} ~Holder() {} };
+struct Var { int which; union { Lifetime a; double d; }; Var(int i) : which(0), a(i) {} Var(double x) : which(1), d(x) {} ~Var() { if (which == 0) a.~Lifetime(); } };
+struct Color { union { unsigned rgba; struct { unsigned char r, g, b, a; }; }; Color(unsigned char x, unsigned char y, unsigned char z) : r(x), g(y), b(z), a(255) {} };
+struct Bits { union { unsigned all; struct { unsigned lo : 4; unsigned mid : 12; unsigned hi : 16; }; }; };
+template<class T> union TU { T v; char bytes[sizeof(T)]; TU() : v() {} };
+union Em { };
+constexpr int cx() { union { int a; float b; } u = { 3 }; return u.a; }
+Pun makePun(float f) { Pun p; p.f = f; return p; }
+Tagged pass(Tagged t) { t.kind += 10; return t; }
+int main()
+{
+  Pun p; p.f = 1.0f; printf("%x %d %d\n", p.u, p.b[3], (int)sizeof(p));
+  p.u = 0x40490fdb; printf("%.5f\n", p.f);
+  printf("%x\n", makePun(-2.0f).u);
+  Pun q = p; Pun r; r = q; printf("%x\n", r.u);
+  Pun br = { 1.5f }; printf("%x\n", br.u);
+  Pun64 w; w.d = 1.0; printf("%llx %x %x\n", w.u, w.p.lo, w.p.hi);
+  Tagged t1(5), t2(2.5f), t3("str"); printf("%d %d %d %.1f %d %s %d\n", t1.kind, t1.i, t2.kind, t2.f, t3.kind, t3.s, (int)sizeof(Tagged));
+  Tagged t4 = pass(t2); printf("%d %.1f\n", t4.kind, t4.f);
+  t1 = t3; printf("%d %s\n", t1.kind, t1.s);
+  Anon a; a.both = 0x00020001; printf("%d %d %d %d\n", a.a, a.b, a.after, (int)sizeof(a));
+  Anon a2 = a; a2.a = 9; printf("%x %x\n", a.both, a2.both);
+  Anon a3{}; printf("%d %d\n", a3.both, a3.after);
+  Nest n; n.x = 1; n.y = 2; n.z = 0x41424344; printf("%d %d %c %d\n", n.x, n.y, n.c[0], (int)sizeof(n));
+  n.w = -1; printf("%d %d\n", n.y, n.z);
+  DefInit di; printf("%d %d\n", di.a, di.c);
+  UDef ud; printf("%.1f\n", ud.b); UDef ud2 = { 3 }; printf("%d\n", ud2.a);
+  Ctor c1, c2(1.0f); printf("%d %x %d\n", c1.get(), c2.i, Ctor::s);
+  printf("%d %d %d\n", (int)sizeof(Big), (int)alignof(Big), (int)sizeof(Pad));
+  Big bg; bg.a[2] = 7; Big bh = bg; printf("%d\n", bh.a[2]);
+  Al al; al.x = 1; al.w = 4; printf("%.0f %.0f %d %d\n", al.v[0], al.v[3], (int)sizeof(al), (int)alignof(Al));
+  Al alc = al; printf("%.0f\n", alc.w);
+  { Holder h; new (&h.l) Lifetime(1); printf("%d ", h.l.id); h.l.~Lifetime(); h.n = 4; printf("%d\n", h.n); }
+  { Var v1(3); Var v2(2.5); printf("%d %.1f ", v1.a.id, v2.d); } printf("\n");
+  Color co(1, 2, 3); printf("%x %d\n", co.rgba, (int)sizeof(co));
+  Color c3 = co; c3.g = 200; printf("%x %x\n", co.rgba, c3.rgba);
+  Bits bi; bi.all = 0; bi.lo = 15; bi.mid = 0xabc; bi.hi = 0x1234; printf("%x\n", bi.all); bi.all = 0xdeadbeef; printf("%x %x %x\n", bi.lo, bi.mid, bi.hi);
+  TU<int> ti; ti.v = 0x01020304; printf("%d %d\n", ti.bytes[0], (int)sizeof(ti)); TU<double> td; printf("%f %d\n", td.v, (int)sizeof(td));
+  printf("%d %d\n", (int)sizeof(Em), cx());
+  union { int a; char b[4]; } local; local.a = 0x7f; printf("%d\n", local.b[0]);
+  static union { int sa; float sb; }; sa = 6; printf("%d\n", sa);
+  union Rec { Rec* next; int v; } r1, r2; r1.next = &r2; r2.v = 8; printf("%d\n", r1.next->v);
+  Pun arr[3] = { { 1.0f }, { 2.0f } }; printf("%x %x %x\n", arr[0].u, arr[1].u, arr[2].u);
+  Pun* hp = new Pun{ 3.0f }; printf("%x\n", hp->u); delete hp;
+  return 0;
+}

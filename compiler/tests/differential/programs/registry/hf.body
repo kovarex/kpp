@@ -1,0 +1,7 @@
+int main()
+{
+  printf("%a %a %a %a\n", 0x1.fffffffffffffp0, 0x1.fffffffffffffp1023, 0x1.123456789abcdp0, 0x1.fp1023);
+  printf("%a %a %a %a\n", 0x1.123456789abcdp-1022, 0x1p-1074, 0x0.0000000000001p-1022, 0xABCDEF.123p4);
+  printf("%a %a %a\n", (double)0x1.fffffep127f, (double)0x1.000002p0f, 0x123456789ABCDEF0p0);
+  return 0;
+}

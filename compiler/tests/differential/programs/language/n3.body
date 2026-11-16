@@ -1,0 +1,45 @@
+// pointers to members through multiple inheritance, virtual functions, conversions, arrays, null, templates
+class A { public: int a = 1; virtual ~A() {} int fa() { return a; } virtual int v() { return 100; } virtual int w(int x) { return x + 1; } };
+class B { public: int b = 2; int arr[3] = { 7, 8, 9 }; virtual ~B() {} int fb() { return b; } int fbc() const { return b * 2; } virtual int v() { return 200; } virtual int u() { return 201; } };
+class C : public A, public B { public: int c = 3; int fc() { return c; } int v() override { return 300; } int u() override { return 301; } };
+class P { public: int x = 10; int y = 20; int gx() { return x; } int gy() { return y; } int add(int k) const { return x + y + k; } static int st() { return 5; } int& rx() { return x; } };
+class Q : public P { public: int z = 30; int gz() { return z; } };
+struct S { char c; double d; short s; };
+template<class T, class M> M get(T& t, M T::* m) { return t.*m; }
+template<class R, class T, class... As> R call(T& t, R (T::*f)(As...), As... as) { return (t.*f)(as...); }
+template<int P::* M> int staticMember(P& p) { return p.*M; }
+template<int (P::*F)()> int staticCall(P& p) { return (p.*F)(); }
+struct Tbl { const char* name; int (P::*f)(); int P::* m; };
+Tbl table[] = { { "x", &P::gx, &P::x }, { "y", &P::gy, &P::y } };
+int main()
+{
+  C c; c.a = 11; c.b = 22; c.c = 33;
+  int (C::*p1)() = &C::fa; int (C::*p2)() = &C::fb; int (C::*p3)() = &C::fc; int (C::*p4)() = &C::v; int (C::*p5)() = &A::v; int (C::*p6)() = &B::v; int (C::*p7)() = &B::u;
+  printf("%d %d %d %d %d %d %d\n", (c.*p1)(), (c.*p2)(), (c.*p3)(), (c.*p4)(), (c.*p5)(), (c.*p6)(), (c.*p7)());
+  C* cp = &c; printf("%d %d\n", (cp->*p2)(), (cp->*p6)());
+  int (B::*pb)() = &B::v; B* bp = &c; printf("%d ", (bp->*pb)()); B b; printf("%d\n", (b.*pb)());
+  int (A::*pa)(int) = &A::w; printf("%d\n", (c.*pa)(5));
+  int (B::*pc)() const = &B::fbc; const C& cc = c; printf("%d\n", (cc.*pc)());
+  int C::* m1 = &C::a; int C::* m2 = &C::b; int C::* m3 = &C::c; int B::* m4 = &B::b; int C::* m5 = m4; printf("%d %d %d %d %d\n", c.*m1, c.*m2, c.*m3, c.*m4, c.*m5);
+  c.*m2 = 222; printf("%d\n", c.b);
+  int (B::* ma)[3] = &B::arr; printf("%d %d\n", (c.*ma)[1], (int)(sizeof(c.*ma) / sizeof(int)));
+  int C::* nullm = nullptr; printf("%d %d %d %d\n", nullm == nullptr, m1 == nullptr, m1 == m1, m1 != m2);
+  int (C::*nullf)() = nullptr; printf("%d %d %d %d %d\n", nullf == nullptr, !nullf, !!p1, p1 == p1, p1 != p2);
+  if (p1) printf("set\n"); if (!nullf) printf("unset\n"); if (nullm) printf("bad\n"); else printf("unset\n");
+  int C::* m0 = &C::a; int A::* am = &A::a; printf("%d\n", m0 == am);
+  int P::* first = &P::x; printf("%d\n", first != nullptr);
+  S s = { 'x', 2.5, 3 }; char S::* sc = &S::c; double S::* sd = &S::d; short S::* ss = &S::s; printf("%c %.1f %d\n", s.*sc, s.*sd, s.*ss);
+  P p; Q q; q.x = 1; q.y = 2; int Q::* qm = &P::y; printf("%d %d %d\n", q.*qm, get(q, &Q::z), get(p, &P::y));
+  int (P::*dn)() = static_cast<int (P::*)()>(&Q::gx); printf("%d\n", (p.*dn)());
+  printf("%d %d\n", call(p, &P::gx), call<int, P>(p, &P::gy));
+  printf("%d %d %d\n", staticMember<&P::y>(p), staticCall<&P::gy>(p), (p.*(&P::add))(1));
+  for (Tbl& t : table) printf("%s %d %d\n", t.name, (p.*t.f)(), p.*t.m);
+  (p.*(&P::rx))() = 99; printf("%d\n", p.x);
+  auto lam = [](P& o, int (P::*f)()) { return (o.*f)(); }; printf("%d\n", lam(p, &P::gy));
+  int (P::*arr[2])() = { &P::gx, &P::gy }; printf("%d %d\n", (p.*arr[0])(), (p.*arr[1])());
+  //GAP
+  using F = int (P::*)(); F al = true ? &P::gx : &P::gy; printf("%d\n", (p.*al)());
+  auto f2 = &C::v; printf("%d\n", (c.*f2)());
+  P* parr = new P[3]; for (int i = 0; i < 3; i++) parr[i].y = i; int tot = 0; for (int i = 0; i < 3; i++) tot += parr[i].*(&P::y); printf("%d\n", tot); delete[] parr;
+  return 0;
+}

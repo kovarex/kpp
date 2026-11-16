@@ -1,0 +1,22 @@
+// a block-scope using-declaration hides a global function of the same name
+namespace Geo
+{
+  namespace Detail
+  {
+    int helper() { return 7; }
+  }
+}
+int helper() { return 70; }
+int main()
+{
+  {
+    using Geo::Detail::helper;
+    printf("U1 %d\n", helper());
+  }
+  printf("U2 %d\n", helper());
+  {
+    using namespace Geo::Detail;
+    printf("U3 %d\n", ::helper());
+  }
+  return 0;
+}

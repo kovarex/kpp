@@ -1,0 +1,13 @@
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+void show(const char* label, const String& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, i64 n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { sort(v.begin(), v.end()); }
+void appendText(String& to, const String& s) { to << s; }
+template <typename R> void ratio(const char* label) { printf("%s: %lld/%lld\n", label, (long long)R::num, (long long)R::den); }
+int main()
+{
+  ratio<RatioAdd<Ratio<1, 1000000000000>, Ratio<1, 1000000000000>>>("pico + pico");
+  return 0;
+}

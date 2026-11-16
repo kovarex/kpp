@@ -1,0 +1,20 @@
+// A try in a destructor still catches what its body throws; the destructor is noexcept only outward.
+struct S
+{
+  int n = 0;
+  ~S()
+  {
+    try { n = 1; throw 5; }
+    catch (int e) { printf("caught inside %d\n", e); }
+    printf("left\n");
+  }
+};
+void thrower() { throw 7; }
+struct Q { ~Q() { try { thrower(); } catch (...) { printf("any\n"); } } };
+int main()
+{
+  { S s; }
+  { Q q; }
+  printf("end\n");
+  return 0;
+}

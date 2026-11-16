@@ -1,0 +1,63 @@
+// battery 34: a member function hides the base's of the same name (all its overloads), until a
+// using-declaration brings them in; a qualified call is not virtual; calls through a second base's
+// pointer reach the override, with `this` adjusted; static_cast between bases and back.
+class Base
+{
+public:
+  int id = 1;
+  int f(int) { return 10; }
+  int f(double) { return 20; }
+  virtual int g() { return 100; }
+  int callG() { return g(); }
+  int qualified() { return Base::g(); }
+};
+class Hider : public Base
+{
+public:
+  int f(int) { return 30; }
+  int g() override { return 200; }
+};
+class Revealer : public Base
+{
+public:
+  using Base::f;
+  int f(int) { return 40; }
+};
+class Left
+{
+public:
+  int l = 5;
+  virtual int left() { return l; }
+  virtual ~Left() {}
+};
+class Right
+{
+public:
+  int r = 7;
+  virtual int right() { return r; }
+  virtual ~Right() {}
+};
+class Both : public Left, public Right
+{
+public:
+  int both = 9;
+  int right() override { return r * 100 + both; }
+  int left() override { return l * 100 + both; }
+};
+int main()
+{
+  Hider h;
+  Revealer rv;
+  Base* asBase = &h;
+  printf("hide %d %d %d\n", h.f(1), h.f(2.5), asBase->f(2.5));
+  printf("reveal %d %d\n", rv.f(1), rv.f(2.5));
+  printf("virtual %d %d %d %d\n", h.g(), asBase->g(), h.callG(), h.qualified());
+  printf("qualified %d\n", h.Base::g());
+  Both b;
+  Right* r = &b;
+  Left* l = &b;
+  printf("bases %d %d\n", r->right(), l->left());
+  Both* back = static_cast<Both*>(r);
+  printf("back %d %d %d\n", back == &b ? 1 : 0, back->both, (int)((char*)r - (char*)l));
+  return 0;
+}

@@ -1,0 +1,55 @@
+// Time: durations, their casts and rounding, arithmetic across units, time points.
+
+int main()
+{
+  Milliseconds ms(-1500);
+  printf("cast -1500ms to s: %lld\n", (long long)durationCast<Seconds>(ms).count());
+  printf("floor -1500ms to s: %lld\n", (long long)floor<Seconds>(ms).count());
+  printf("ceil -1500ms to s: %lld\n", (long long)ceil<Seconds>(ms).count());
+  printf("floor 1500ms to s: %lld ceil %lld\n", (long long)floor<Seconds>(Milliseconds(1500)).count(), (long long)ceil<Seconds>(Milliseconds(1500)).count());
+  printf("floor -2000ms %lld ceil -2000ms %lld\n", (long long)floor<Seconds>(Milliseconds(-2000)).count(), (long long)ceil<Seconds>(Milliseconds(-2000)).count());
+  printf("cast 1999999us to ms: %lld\n", (long long)durationCast<Milliseconds>(Microseconds(1999999)).count());
+  printf("cast 90 min to h: %lld\n", (long long)durationCast<Hours>(Minutes(90)).count());
+  printf("cast 2h to ns: %lld\n", (long long)durationCast<Nanoseconds>(Hours(2)).count());
+  auto sum = Seconds(1) + Milliseconds(250);
+  printf("1s + 250ms = %lld (in ms)\n", (long long)sum.count());
+  auto diff = Minutes(1) - Seconds(61);
+  printf("1min - 61s = %lld\n", (long long)diff.count());
+  printf("compare %d %d %d\n", (int)(Seconds(1) == Milliseconds(1000)), (int)(Seconds(1) < Milliseconds(1001)), (int)(Minutes(2) > Seconds(119)));
+  printf("multiply %lld divide %lld modulo %lld ratio %lld\n", (long long)(Seconds(3) * 4).count(), (long long)(Seconds(10) / 3).count(),
+         (long long)(Seconds(10) % 3).count(), (long long)(Seconds(10) / Seconds(3)));
+  printf("modulo by duration %lld\n", (long long)(Milliseconds(2500) % Seconds(1)).count());
+  printf("negative modulo %lld divide %lld\n", (long long)(Seconds(-7) % 3).count(), (long long)(Seconds(-7) / 2).count());
+  Duration<double> half = Milliseconds(500);
+  printf("double seconds %.3f\n", half.count());
+  Duration<double, Milli> dms = Seconds(2);
+  printf("double ms %.3f\n", dms.count());
+  printf("double to ms cast %lld\n", (long long)durationCast<Milliseconds>(Duration<double>(1.2345)).count());
+  printf("double negative cast %lld\n", (long long)durationCast<Milliseconds>(Duration<double>(-1.2345)).count());
+  Seconds s(5);
+  s += Seconds(2);
+  s -= Seconds(1);
+  s *= 3;
+  s /= 2;
+  printf("compound %lld\n", (long long)s.count());
+  ++s;
+  // (kpp: does not compile)
+  printf("increments %lld neg %lld abs-ish %lld\n", (long long)s.count(), (long long)(-s).count(), (long long)(+s).count());
+  printf("zero %lld\n", (long long)Seconds::zero().count());
+
+  TimePoint<SystemClock, Seconds> epoch(Seconds(0));
+  auto later = epoch + Hours(25);
+  printf("time point %lld\n", (long long)later.time_since_epoch().count());
+  printf("time point diff %lld\n", (long long)(later - epoch).count());
+  auto inMs = timePointCast<Milliseconds>(later);
+  printf("time point cast %lld\n", (long long)inMs.time_since_epoch().count());
+  TimePoint<SystemClock, Milliseconds> before(Milliseconds(-1500));
+  printf("time point floor-ish cast %lld\n", (long long)timePointCast<Seconds>(before).time_since_epoch().count());
+  printf("time point compare %d %d\n", (int)(epoch < later), (int)(later - Hours(25) == epoch));
+  auto steadyA = SteadyClock::now();
+  auto steadyB = SteadyClock::now();
+  printf("steady monotonic %d\n", (int)(steadyB >= steadyA));
+  long long nowSeconds = (long long)durationCast<Seconds>(SystemClock::now().time_since_epoch()).count();
+  printf("system clock sane %d\n", (int)(nowSeconds > 1700000000LL && nowSeconds < 4000000000LL));
+  return 0;
+}

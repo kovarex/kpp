@@ -1,0 +1,99 @@
+template<class T> struct Und
+{
+  enum : T { big = (T)-1, low = 1 };
+  enum class E : T { a = 2, b = 3 };
+  E get() const;
+  static E make(int v) { return E(v); }
+  static E cast(int v) { return (E)v; }
+  static E stat(int v) { return static_cast<E>(v); }
+  static T raw(E e) { return (T)e; }
+  static int count(E e)
+  {
+    E local = e;
+    E* p = &local;
+    auto f = [&](E x) { return (int)sizeof(x) + (int)*p; };
+    return f(E::a);
+  }
+};
+template<class T> typename Und<T>::E Und<T>::get() const { return E::b; }
+
+template<class T> int localEnum()
+{
+  enum L : T { a = 1, b = (T)-1 };
+  L x = b;
+  return (int)sizeof(L) * 1000 + (int)x;
+}
+template<class T> struct InMember
+{
+  int f()
+  {
+    enum class L : T { a = 5 };
+    return (int)sizeof(L) * 10 + (int)L::a;
+  }
+};
+
+template<class T> using EE = typename Und<T>::E;
+using E2 = Und<short>::E;
+template<class E> E make() { return E(2); }
+template<class E> int sizeOfIt(E) { return (int)sizeof(E); }
+template<Und<short>::E v> struct K { static int value() { return (int)v + 1; } };
+template<class T> typename Und<T>::E through(typename Und<T>::E e) { return e; }
+int defaulted(Und<long long>::E e = (Und<long long>::E)7) { return (int)e; }
+template<class T> struct Spec { enum : T { v = 1 }; };
+template<> struct Spec<int> { enum : char { v = 2 }; };
+template<class T, T N> struct Const { enum class E : T { n = N }; };
+template<class... Ts> struct Packed { enum class E : long long { n = sizeof...(Ts) }; };
+template<class T> struct Derived : Und<T>
+{
+  using Base = Und<T>;
+  typename Base::E inherited = Base::E::a;
+  static int size() { return (int)sizeof(typename Base::E); }
+};
+struct Plain { enum class In : short { x = 4 }; };
+template<class T> struct UsesPlain { Plain::In p = Plain::In::x; enum class Own : long long { y = (long long)sizeof(T) }; };
+constexpr long long fold(Und<long long>::E e) { return (long long)e * 2; }
+static_assert(fold((Und<long long>::E)0x100000000ll) == 0x200000000ll, "fold");
+int arr[(int)Und<unsigned char>::E::b];
+Und<short>::E both[] = {Und<short>::E::a, Und<short>::E::b};
+struct Agg { Und<signed char>::E e; Und<long long>::E l; };
+Agg agg = {(Und<signed char>::E)-2, (Und<long long>::E)0x100000000ll};
+int main()
+{
+  Und<short> us;
+  printf("%d\n", (int)us.get());
+  printf("%d %d %d\n", (int)Und<signed char>::make(300), (int)Und<signed char>::cast(300), (int)Und<signed char>::stat(300));
+  printf("%d %lld\n", (int)Und<unsigned char>::raw(Und<unsigned char>::make(200)), (long long)Und<long long>::make(-5));
+  printf("%d %d\n", Und<short>::count(Und<short>::E::a), Und<long long>::count(Und<long long>::E::b));
+  printf("%d %d %d\n", localEnum<unsigned char>(), localEnum<short>(), localEnum<long long>());
+  InMember<short> m;
+  InMember<long long> m2;
+  printf("%d %d\n", m.f(), m2.f());
+  printf("%d %d %d\n", (int)sizeof(EE<short>), (int)sizeof(E2), (int)sizeof(EE<long long>));
+  printf("%d %d\n", (int)make<Und<unsigned char>::E>(), (int)sizeof(make<Und<long long>::E>()));
+  printf("%d %d\n", sizeOfIt(Und<unsigned char>::E::a), sizeOfIt(Und<long long>::E::a));
+  printf("%d\n", K<Und<short>::E::b>::value());
+  printf("%d\n", (int)through<long long>(Und<long long>::E::b));
+  printf("%d\n", defaulted());
+  printf("%d %d %d\n", (int)sizeof(Spec<int>::v), (int)sizeof(Spec<short>::v), (int)Spec<int>::v);
+  printf("%d %lld\n", (int)Const<short, 77>::E::n, (long long)Const<long long, 0x100000000ll>::E::n);
+  printf("%d\n", (int)Packed<int, char, long>::E::n);
+  Derived<short> d;
+  printf("%d %d %d\n", (int)d.inherited, Derived<long long>::size(), (int)sizeof(d));
+  UsesPlain<short> up;
+  printf("%d %d %d\n", (int)up.p, (int)UsesPlain<short>::Own::y, (int)sizeof(UsesPlain<short>::Own));
+  printf("%d %d\n", (int)sizeof(arr), (int)both[1]);
+  printf("%d %lld\n", (int)agg.e, (long long)agg.l);
+  Und<long long>::E e = (Und<long long>::E)0x100000005ll;
+  long long viaRef = 0;
+  Und<long long>::E& r = e;
+  viaRef = (long long)r;
+  printf("%lld\n", viaRef);
+  Und<unsigned char>::E c = (Und<unsigned char>::E)200;
+  int promoted = (int)c + 100;
+  printf("%d\n", promoted);
+  c = (Und<unsigned char>::E)((int)c + 100);
+  printf("%d\n", (int)c);
+  bool same = (Und<short>::E::a == (Und<short>::E)2);
+  printf("%d\n", same);
+  return 0;
+}

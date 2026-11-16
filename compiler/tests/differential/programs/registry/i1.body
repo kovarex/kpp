@@ -1,0 +1,86 @@
+// battery i1: constexpr evaluation against run time: integer arithmetic at the type limits (wrapping
+// unsigned, shifts, division and remainder of negatives), loops, recursion, arrays, structs, member
+// functions, a static_assert'd constant equal to the same function run at run time.
+constexpr int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+constexpr unsigned wrapMul(unsigned a, unsigned b) { return a * b; }
+constexpr int64_t divs(int64_t a, int64_t b) { return a / b * 1000 + a % b; }
+constexpr uint64_t shifts(uint64_t v, int s) { return (v << s) ^ (v >> (64 - s)); }
+constexpr int sumArray()
+{
+  int a[6] = {3, -1, 4, -1, 5, -9};
+  int s = 0;
+  for (int i = 0; i < 6; ++i)
+    s = s * 3 + a[i];
+  return s;
+}
+struct P
+{
+  int x, y;
+  constexpr P(int x, int y) : x(x), y(y) {}
+  constexpr int dot(const P& o) const { return x * o.x + y * o.y; }
+  constexpr P rot() const { return P(-y, x); }
+};
+constexpr int pointWork()
+{
+  P p(3, 4);
+  P q = p.rot().rot();
+  return p.dot(q) * 10 + q.x;
+}
+constexpr uint8_t narrow(int v) { return (uint8_t)v; }
+constexpr int8_t narrowSigned(int v) { return (int8_t)v; }
+constexpr unsigned short promoteMul(unsigned short a, unsigned short b) { return a * b; }
+constexpr int64_t mixed(int a, unsigned b) { return a + b; }
+constexpr double fp(int n)
+{
+  double r = 1;
+  for (int i = 0; i < n; ++i)
+    r = r / 3 + 0.1;
+  return r;
+}
+constexpr int countBits(uint64_t v)
+{
+  int c = 0;
+  while (v)
+  {
+    v &= v - 1;
+    ++c;
+  }
+  return c;
+}
+constexpr int switchy(int v)
+{
+  switch (v % 4)
+  {
+    case 0: return 10;
+    case 1: v += 5;
+    [[fallthrough]]; case 2: return v * 2;
+    default: return -v;
+  }
+}
+constexpr int f1 = fib(20);
+constexpr unsigned w1 = wrapMul(4000000000u, 3u);
+constexpr int64_t d1 = divs(-7, 2), d2 = divs(7, -2), d3 = divs(-7, -2);
+constexpr uint64_t s1 = shifts(0x8000000000000001ull, 3);
+constexpr int a1 = sumArray(), p1 = pointWork();
+constexpr int n1 = narrow(300), n2 = narrowSigned(200);
+constexpr unsigned short m1 = promoteMul(300, 300);
+constexpr int64_t x1 = mixed(-1, 1u);
+constexpr double fp1 = fp(7);
+constexpr int c1 = countBits(0xF0F0F0F0F0F0F0F1ull);
+constexpr int sw1 = switchy(4), sw2 = switchy(5), sw3 = switchy(6), sw4 = switchy(7);
+int main(int argc, char**)
+{
+  int z = argc - 1; // 0 at run time, unknown to the compiler
+  printf("fib %d %d\n", f1, fib(20 + z));
+  printf("wrap %u %u\n", w1, wrapMul(4000000000u + z, 3u));
+  printf("divs %lld %lld %lld | %lld %lld %lld\n", (long long)d1, (long long)d2, (long long)d3, (long long)divs(-7 + z, 2), (long long)divs(7, -2 + z), (long long)divs(-7, -2 - z));
+  printf("shifts %llu %llu\n", (unsigned long long)s1, (unsigned long long)shifts(0x8000000000000001ull + z, 3 + z));
+  printf("array %d %d point %d %d\n", a1, sumArray(), p1, pointWork());
+  printf("narrow %d %d %d %d\n", n1, n2, (int)narrow(300 + z), (int)narrowSigned(200 + z));
+  printf("ushort %u %u\n", (unsigned)m1, (unsigned)promoteMul(300 + z, 300));
+  printf("mixed %lld %lld\n", (long long)x1, (long long)mixed(-1 + z, 1u));
+  printf("fp %.17g %.17g\n", fp1, fp(7 + z));
+  printf("bits %d %d\n", c1, countBits(0xF0F0F0F0F0F0F0F1ull + z));
+  printf("switch %d %d %d %d | %d %d %d %d\n", sw1, sw2, sw3, sw4, switchy(4 + z), switchy(5 + z), switchy(6 + z), switchy(7 + z));
+  return 0;
+}

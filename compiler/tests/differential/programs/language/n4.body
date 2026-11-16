@@ -1,0 +1,12 @@
+// the same rules at compile time
+struct T { int id; int* log; constexpr T(int i, int* l) : id(i), log(l) { *log = *log * 10 + 1; } constexpr ~T() { *log = *log * 10 + 2; } constexpr operator bool() const { return id % 2 != 0; } };
+constexpr int w1() { int log = 0; int n = 1; while (T w = T(n, &log)) { n += 2; if (n > 3) break; } return log; }
+constexpr int w2() { int log = 0; int n = 1; while (T w = T(n, &log)) { n += 1; } return log; }
+constexpr int w3() { int log = 0; for (int i = 1; T w = T(i, &log); i++) { log = log * 10 + 3; } return log; }
+constexpr int w4() { int total = 0; for (int i = 0; int k = 3 - i; i++) total += k; return total; }
+struct L { int id; constexpr L(int i) : id(i) {} constexpr L(const L& o) : id(o.id) {} constexpr L(L&& o) : id(o.id) { o.id = -1; } constexpr L& operator=(const L& o) { id = o.id; return *this; } constexpr L& operator=(L&& o) { id = o.id; o.id = -1; return *this; } };
+struct D { L l; constexpr D(int i) : l(i) {} constexpr ~D() {} };
+struct P { L l; constexpr P(int i) : l(i) {} };
+template<class X> constexpr int mv() { X a(1); X b(static_cast<X&&>(a)); int r = a.l.id; X c(2); c = static_cast<X&&>(b); return r * 10 + b.l.id; }
+constexpr int a1 = w1(), a2 = w2(), a3 = w3(), a4 = w4(), a5 = mv<D>(), a6 = mv<P>();
+int main() { printf("%d %d %d %d %d %d\n", a1, a2, a3, a4, a5, a6); printf("%d %d %d %d %d %d\n", w1(), w2(), w3(), w4(), mv<D>(), mv<P>()); return 0; }

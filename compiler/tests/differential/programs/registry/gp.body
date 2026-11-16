@@ -1,0 +1,15 @@
+template <typename... T> int arr1(T... v) { int values[] = {v...}; return values[0] + (int)(sizeof(values) / sizeof(int)); }
+template <typename... T> int arr2(T... v) { int values[] = {0, v..., 100}; return values[1] + (int)(sizeof(values) / sizeof(int)); }
+template <int... N> int nt1() { int table[] = {N...}; return table[0]; }
+template <int... N> int nt2() { int table[] = {N * N...}; return table[1]; }
+template <typename... A> struct Outer { template <typename... B> static int pairs(A... a, B... b) { return ((a * 10 + b) + ...); } };
+template <typename... A> int zip(A... a) { return Outer<A...>::template pairs<A...>(a..., a...); }
+int main()
+{
+  printf("%d\n", arr1(5, 6));
+  printf("%d\n", arr2(5, 6));
+  printf("%d\n", nt1<4, 5>());
+  printf("%d\n", nt2<4, 5>());
+  printf("%d\n", zip(1, 2));
+  return 0;
+}

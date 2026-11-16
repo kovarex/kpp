@@ -1,0 +1,76 @@
+// Class-type template arguments (C++20 [temp.param] 6, [temp.arg.nontype]).
+enum class Mode { Off, On, Auto };
+struct Inner
+{
+  short a;
+  bool flag;
+};
+struct Base
+{
+  int id;
+};
+struct Config : Base
+{
+  Inner inner;
+  Mode mode;
+  char tag;
+};
+struct Fixed
+{
+  int whole;
+  int fraction;
+  constexpr int total() const { return whole * 100 + fraction; }
+};
+template<Fixed F>
+int scaled() { return F.whole * 100 + F.fraction; }
+template<Fixed F>
+constexpr int compileTime() { return F.total(); }
+template<Fixed F>
+const Fixed* addressOf() { return &F; }
+template<Config C>
+int describe() { return C.id * 1000 + C.inner.a * 10 + (C.inner.flag ? 1 : 0) + (int)C.mode * 100000 + C.tag; }
+template<Fixed F>
+struct Tagged
+{
+  static int count() { return F.whole + F.fraction; }
+  int buffer[F.whole + 1];
+};
+template<auto V>
+int viaAuto() { return V.total(); }
+template<Fixed F, int N>
+int mixed() { return F.total() * N; }
+template<Fixed F>
+int copyAndChange()
+{
+  Fixed copy = F;
+  copy.whole += 1;
+  return copy.total() + F.total();
+}
+template<Fixed F>
+int counted()
+{
+  static int mine = 0;
+  return ++mine * 1000 + F.whole;
+}
+constexpr Fixed twoTen{2, 10};
+constexpr Config settings{{7}, {3, true}, Mode::Auto, 'x'};
+static_assert(compileTime<Fixed{5, 6}>() == 506, "compile time");
+int main()
+{
+  printf("%d %d %d\n", scaled<Fixed{3, 14}>(), scaled<twoTen>(), Tagged<Fixed{2, 10}>::count());
+  printf("same object %d\n", addressOf<Fixed{2, 10}>() == addressOf<twoTen>() ? 1 : 0);
+  printf("other object %d\n", addressOf<Fixed{2, 11}>() == addressOf<twoTen>() ? 1 : 0);
+  printf("describe %d\n", describe<settings>());
+  printf("describe braces %d\n", describe<Config{{1}, {2, false}, Mode::On, 'a'}>());
+  printf("sizeof %d\n", (int)sizeof(Tagged<Fixed{4, 0}>));
+  printf("auto %d\n", viaAuto<Fixed{9, 9}>());
+  printf("mixed %d\n", mixed<Fixed{1, 2}, 3>());
+  printf("copy %d\n", copyAndChange<Fixed{1, 1}>());
+  int c1 = counted<Fixed{1, 0}>();
+  int c2 = counted<Fixed{1, 0}>();
+  int c3 = counted<Fixed{2, 0}>();
+  printf("counted %d %d %d\n", c1, c2, c3);
+  constexpr int folded = compileTime<twoTen>();
+  printf("folded %d\n", folded);
+  return 0;
+}

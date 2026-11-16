@@ -1,0 +1,102 @@
+enum Plain { a0, a1, a5 = 5, a6, aNeg = -1 };
+enum Unsig { u0, uBig = 0xFFFFFFFFu };
+enum Big { b0, bBig = 0x100000000LL };
+enum BigNeg { bn = -0x100000000LL };
+enum class Sc { x, y = 7, z };
+enum class Sc8 : unsigned char { lo = 1, hi = 255 };
+enum class Si8 : signed char { lo = -128, hi = 127 };
+enum class S16 : short { neg = -2 };
+enum class U64 : unsigned long long { top = 0xFFFFFFFFFFFFFFFFull };
+enum class B : bool { no, yes };
+enum Chained { c1 = 3, c2 = c1 * 2, c3 = c2 + c1, c4 = sizeof(int) };
+enum { anon1 = 10, anon2 };
+typedef enum { t1 = 2, t2 } Typed;
+struct In { enum E { p = 4, q }; enum class F : short { r = -1 }; static const int k = q + 1; int arr[q]; };
+template<int N> struct Tm { enum { value = N * 2, next = value + 1 }; enum class C { v = N }; };
+template<class T> struct Tt { enum : T { big = (T)-1 }; };
+void over(int) { printf("int\n"); }
+void over(unsigned) { printf("unsigned\n"); }
+void over(long long) { printf("long long\n"); }
+void over(unsigned long long) { printf("ull\n"); }
+void over(char) { printf("char\n"); }
+void over(short) { printf("short\n"); }
+void over(signed char) { printf("schar\n"); }
+void over(unsigned char) { printf("uchar\n"); }
+void over(bool) { printf("bool\n"); }
+void over(double) { printf("double\n"); }
+void plainOrInt(Plain) { printf("Plain\n"); }
+void plainOrInt(int) { printf("int\n"); }
+enum class Fl : unsigned { a = 1, b = 2, c = 4 };
+constexpr Fl operator|(Fl l, Fl r) { return Fl((unsigned)l | (unsigned)r); }
+constexpr Fl operator&(Fl l, Fl r) { return Fl((unsigned)l & (unsigned)r); }
+constexpr Fl operator~(Fl l) { return Fl(~(unsigned)l); }
+Fl& operator|=(Fl& l, Fl r) { l = l | r; return l; }
+Fl& operator++(Fl& l) { l = Fl((unsigned)l << 1); return l; }
+Fl operator++(Fl& l, int) { Fl o = l; ++l; return o; }
+enum Op { add, sub };
+Op operator+(Op l, Op r) { return sub; }
+int main()
+{
+  printf("%d %d %d %d %d\n", (int)sizeof(Plain), (int)sizeof(Sc), (int)sizeof(Sc8), (int)sizeof(S16), (int)sizeof(U64));
+  printf("%d %d\n", (int)sizeof(Big), (int)sizeof(BigNeg));
+  printf("%d %d %d %d\n", a5, a6, aNeg, (int)Sc::z);
+  printf("%d %d %d %d\n", c1, c2, c3, c4);
+  printf("%d %d %d %d\n", anon2, t2, In::q, In::k);
+  printf("%d %d %d\n", (int)sizeof(In), Tm<3>::value, Tm<3>::next);
+  printf("%d %d %d\n", (int)Tm<3>::C::v, (int)In::F::r, 255);
+  printf("%d %d %d\n", (int)Sc8::hi, (int)Si8::lo, (int)S16::neg);
+  printf("%llu %d %d\n", (unsigned long long)U64::top, (int)B::yes, (int)(B::yes == B::yes));
+  over(a5); over(+a5); over(-a5); over(u0); over(+uBig);
+  over(a5 + 1); over(a5 + 1u); over(a5 * 1.0);
+  over(Sc8::hi == Sc8::lo);
+  over(+(unsigned char)Sc8::hi);
+  over((short)S16::neg);
+  plainOrInt(a1); plainOrInt(1); plainOrInt(+a1); plainOrInt(a1 + a5);
+  Plain v = (Plain)3;
+  printf("%d\n", (int)v);
+  Sc8 w = (Sc8)300;
+  printf("%d\n", (int)w);
+  Si8 s8 = (Si8)200;
+  printf("%d\n", (int)s8);
+  B bb = (B)5;
+  printf("%d %d\n", (int)bb, bb == B::yes);
+  S16 s16 = (S16)70000;
+  printf("%d\n", (int)s16);
+  int fromDouble = (int)(Plain)2.7;
+  printf("%d\n", fromDouble);
+  printf("%d %d %d\n", a0 < a5, aNeg < a0, Sc::x < Sc::y);
+  printf("%d %d\n", uBig > 0, (unsigned)uBig == 0xFFFFFFFFu);
+  printf("%d %d\n", (int)(Sc8::hi > Sc8::lo), (int)(Si8::lo < Si8::hi));
+  printf("%d %d\n", (int)(U64::top > U64(1)), (int)(a5 == 5));
+  Fl f = Fl::a | Fl::c;
+  f |= Fl::b;
+  printf("%u %u %u\n", (unsigned)f, (unsigned)(f & Fl::b), (unsigned)(~f));
+  Fl g = Fl::a;
+  Fl h = g++;
+  ++g;
+  printf("%u %u\n", (unsigned)g, (unsigned)h);
+  printf("%d %d\n", (int)(add + add), (int)add + (int)add);
+  switch (w) { case Sc8::lo: printf("lo\n"); break; default: printf("other\n"); }
+  switch (Sc8::hi) { case Sc8::lo: printf("lo\n"); break; case Sc8::hi: printf("hi\n"); break; }
+  switch ((int)v) { case a1: printf("a1\n"); break; case 3: printf("3\n"); break; }
+  switch (s8) { case Si8::lo: printf("lo\n"); break; case Si8::hi: printf("hi\n"); break; default: printf("d %d\n", (int)s8); }
+  int arr[a6] = {};
+  arr[a5] = 3;
+  printf("%d %d\n", (int)(sizeof(arr) / sizeof(int)), arr[a5]);
+  unsigned char uc = Sc8(255) == Sc8::hi ? 1 : 0;
+  long long ll = (long long)bBig;
+  long long nn = bn;
+  printf("%d %lld %lld\n", uc, ll, nn);
+  double d = a5 / 2;
+  double e = a5 / 2.0;
+  printf("%g %g %d %d\n", d, e, a5 % 3, a5 << 2);
+  printf("%d %d %d\n", a5 & 4, a5 | 2, a5 ^ 1);
+  bool nb = a0;
+  bool nc = a1;
+  printf("%d %d %d\n", nb, nc, !a5);
+  printf("%d\n", a5 ? 1 : 2);
+  int tern = (a1 ? a5 : a6) + 0;
+  long long mix = (a1 ? a5 : 2LL);
+  printf("%d %lld %d\n", tern, mix, (int)sizeof(a1 ? a5 : 2LL));
+  return 0;
+}

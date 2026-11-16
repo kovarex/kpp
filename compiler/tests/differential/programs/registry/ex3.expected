@@ -1,0 +1,7 @@
+# kpp's output: a throw out of a noexcept destructor terminates; C++'s printf buffer is lost at the terminate (both C++ builds print nothing), kpp's is written.
+ctor first
+ctor last
+main
+dtor last
+throwing
+exit 3221226505

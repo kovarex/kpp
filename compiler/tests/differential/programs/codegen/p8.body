@@ -1,0 +1,28 @@
+// a temporary built in one operand of ?: && || is used later in the same full-expression
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~Noisy() { printf("-%d ", id); id = -999; }
+  const Noisy* self() const { return this; }
+  bool ok() const { return id > 0; }
+};
+int read(const Noisy* p) { printf("read%d ", p ? p->id : 0); return p ? p->id : 0; }
+int both(const Noisy* a, bool b) { printf("both%d ", a ? a->id : 0); return b; }
+int main()
+{
+  bool flag = true;
+  int r1 = read(flag ? Noisy(1).self() : nullptr);
+  printf("| %d\n", r1);
+  const Noisy* kept = nullptr;
+  bool r2 = flag && (kept = Noisy(2).self()) != nullptr && kept->id == 2;
+  printf("| %d\n", r2);
+  int r3 = both(flag ? Noisy(3).self() : nullptr, Noisy(4).ok());
+  printf("| %d\n", r3);
+  const Noisy* p = nullptr;
+  int r4 = (!flag || (p = Noisy(5).self()) == nullptr) ? 0 : read(p);
+  printf("| %d\n", r4);
+  return 0;
+}

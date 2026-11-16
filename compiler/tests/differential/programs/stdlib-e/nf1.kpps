@@ -1,0 +1,104 @@
+extern "C" import "stdio.h";
+extern "C" import "stdlib.h";
+void show(const char* label, const String& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, i64 n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { sort(v.begin(), v.end()); }
+void appendText(String& to, const String& s) { to << s; }
+// Numbers as text against C: a double or float appended to a String is the shortest text that reads
+// back to the same value, in %g's form at that many digits (text.md), checked against the smallest
+// %.Ng that strtod/strtof read back, and that it does read back; fixed, significant and scientific
+// against %.Nf, %.Ng and %.Ne, on chosen values (ties, subnormals, the extremes, powers of ten) and
+// on random bit patterns.
+unsigned long long state = 88172645463325252ull;
+unsigned long long nextBits()
+{
+  state ^= state << 13;
+  state ^= state >> 7;
+  state ^= state << 17;
+  return state;
+}
+unsigned long long hash = 1469598103934665603ull;
+void mixText(const String& s)
+{
+  for (size_t i = 0; i < s.size(); ++i)
+    hash = (hash ^ (unsigned char)s[i]) * 1099511628211ull;
+  hash = (hash ^ 0xff) * 1099511628211ull;
+}
+int roundTripFailures = 0;
+void checkDouble(double d, bool show)
+{
+  String text;
+  text << d;
+  if (d == d && strtod(text.c_str(), nullptr) != d)
+    ++roundTripFailures;
+  String f2, f17, g6, g17, e3, e0;
+  f2 << fixed(d, 2);
+  f17 << fixed(d, 17);
+  g6 << significant(d, 6);
+  g17 << significant(d, 17);
+  e3 << scientific(d, 3);
+  e0 << scientific(d, 0);
+  mixText(text);
+  mixText(f2);
+  mixText(g6);
+  mixText(g17);
+  mixText(e3);
+  mixText(e0);
+  if (d > -1e30 && d < 1e30)
+    mixText(f17);
+  if (show)
+    printf("%-26s %-12s %-12s %-24s %-12s\n", text.c_str(), f2.c_str(), g6.c_str(), g17.c_str(), e3.c_str());
+}
+void checkFloat(float x, bool show)
+{
+  String text;
+  text << x;
+  if (x == x && strtof(text.c_str(), nullptr) != x)
+    ++roundTripFailures;
+  mixText(text);
+  if (show)
+    printf("float %s\n", text.c_str());
+}
+
+int main()
+{
+  double chosen[] = {0.0, -0.0, 0.1, 0.1 + 0.2, 1.0 / 3, 2.5, 3.5, -2.5, 0.125, 0.375, 1e-5, 1e-4, 9.9999e-5, 123456.0, 1e15, 1e16, 9007199254740993.0,
+                     1.2345678901234568e17, 5e-324, 2.2250738585072014e-308, 1.7976931348623157e308, 0.005, 0.015, 0.025, 1.005, 2.675, 1e21, 1e22, 1e23,
+                     123.456, 100.0, 4.35, 0.3, 9.5, 99.995, 1.0 / 0.0 * 1.0, -1.0 / 0.0 * 1.0};
+  for (double d : chosen)
+    checkDouble(d, true);
+  float floats[] = {0.1f, 1.0f / 3, 16777216.0f, 16777217.0f, 1.5e10f, 3.4028235e38f, 1e-45f, 1.17549435e-38f, 0.3f, 2.5f, 100.0f, 1e-5f};
+  for (float x : floats)
+    checkFloat(x, true);
+  for (int i = 0; i < 200000; ++i)
+  {
+    unsigned long long bits = nextBits();
+    double d;
+    memcpy(&d, &bits, 8);
+    if (d != d)
+      continue;
+    checkDouble(d, false);
+    unsigned b32 = (unsigned)bits;
+    float x;
+    memcpy(&x, &b32, 4);
+    if (x == x)
+      checkFloat(x, false);
+  }
+  for (int e = -320; e <= 308; ++e)
+  {
+    char text[32];
+    snprintf(text, 32, "1e%d", e);
+    checkDouble(strtod(text, nullptr), false);
+    snprintf(text, 32, "5e%d", e);
+    checkDouble(strtod(text, nullptr), false);
+  }
+  for (int i = 0; i < 100000; ++i)
+  {
+    // Decimal-looking values: k / 1000 and k / 8, where ties are exact.
+    checkDouble(i / 1000.0, false);
+    checkDouble(i / 8.0 + 0.0625, false);
+  }
+  printf("hash %016llx, round-trip failures %d\n", hash, roundTripFailures);
+  return 0;
+}

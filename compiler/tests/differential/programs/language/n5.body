@@ -1,0 +1,78 @@
+// the conditional operator: lvalues, classes, conversions, pointers, throw arms, temporaries, arrays
+struct T { int id; T(int i) : id(i) { printf("+%d ", id); } T(const T& o) : id(o.id) { printf("c%d ", id); } T(T&& o) : id(o.id) { printf("m%d ", id); } ~T() { printf("-%d ", id); } };
+struct W { int v; explicit W(int x) : v(x) {} operator int() const { return v; } };
+struct Y { int v; Y(int x) : v(x) {} };
+struct Z { int v; Z(const Y& y) : v(y.v + 100) {} };
+class B { public: int b = 1; virtual ~B() {} virtual int f() { return 1; } };
+class D1 : public B { public: int f() override { return 2; } };
+class D2 : public B { public: int f() override { return 3; } };
+class M1 { public: int m = 5; };
+class M2 { public: int n = 6; };
+class MM : public M1, public M2 {};
+enum E { e0, e1 = 7 };
+enum class C : short { a = 3 };
+int fi(int x) { return x; }
+int gi(int x) { return x * 2; }
+void vf(int& r) { r++; }
+const char* kind(int) { return "int"; }
+const char* kind(unsigned) { return "unsigned"; }
+const char* kind(long long) { return "ll"; }
+const char* kind(double) { return "double"; }
+const char* kind(float) { return "float"; }
+const char* kind(char) { return "char"; }
+const char* kind(bool) { return "bool"; }
+const char* kind(short) { return "short"; }
+const char* kind(const char*) { return "const char*"; }
+const char* kind(void*) { return "void*"; }
+const char* kind(E) { return "E"; }
+const char* lv(int&) { return "lv"; }
+const char* lv(const int&) { return "clv"; }
+const char* lv(int&&) { return "rv"; }
+T make(int i) { return T(i); }
+int thrower(bool t) { return t ? throw 5 : 3; }
+int main()
+{
+  int a = 1, b = 2; bool t = true, f = false;
+  (t ? a : b) = 10; (f ? a : b) = 20; printf("%d %d\n", a, b);
+  int* p = &(t ? a : b); *p = 11; printf("%d\n", a);
+  (t ? a : b)++; printf("%d\n", a);
+  int& r = f ? a : b; r = 21; printf("%d\n", b);
+  printf("%s %s %s\n", lv(t ? a : b), lv(t ? a : 3), lv(t ? (const int&)a : b));
+  short s = 1; char c = 2; unsigned u = 3; long long ll = 4; float fl = 5; double d = 6;
+  printf("%s %s %s %s %s %s %s %s\n", kind(t ? s : c), kind(t ? s : s), kind(t ? c : c), kind(t ? u : a), kind(t ? a : ll), kind(t ? ll : fl), kind(t ? fl : d), kind(t ? a : fl));
+  printf("%s %s %s %s %s %s\n", kind(t ? e1 : e0), kind(t ? e1 : 1), kind(t ? true : false), kind(t ? true : 1), kind(t ? 'a' : 1), kind(t ? "x" : nullptr));
+  printf("%d %d %d\n", (int)sizeof(t ? c : c), (int)sizeof(t ? c : s), (int)sizeof(t ? c : ll));
+  printf("%u %d\n", t ? -1 : 0u, (t ? -1 : 0u) > 0);
+  printf("%d\n", (int)(t ? -1 : (unsigned char)200));
+  printf("%f\n", t ? 1 : 2.5);
+  W w(9); printf("%d %d\n", t ? w : 3, f ? w : 3);
+  printf("%s\n", kind(t ? w : 3));
+  { Y y(1); Z z(y); Z q = t ? z : y; printf("%d\n", q.v); Z q2 = f ? z : y; printf("%d\n", q2.v); }
+  { T x(1); T y(2); printf("| "); T z = t ? x : y; printf("| "); T v = f ? static_cast<T&&>(x) : make(3); printf("| "); (t ? x : y).id = 50; printf("%d | ", x.id); const T& ref = t ? make(4) : make(5); printf("%d | ", ref.id); int id = (t ? make(6) : y).id; printf("%d | ", id); }
+  printf("\n");
+  D1 d1; D2 d2; B* bp = t ? (B*)&d1 : &d2; printf("%d\n", bp->f());
+  B* bp2 = f ? &d1 : (B*)&d2; printf("%d\n", bp2->f());
+  B& br = t ? (B&)d1 : d2; printf("%d\n", br.f());
+  MM mm; M1* m1 = &mm; M2* m2 = &mm; M2* sel = t ? m2 : &mm; printf("%d\n", sel->n);
+  M2* nul = t ? nullptr : &mm; printf("%d\n", nul == nullptr);
+  MM* mnull = nullptr; M2* conv = t ? mnull : m2; printf("%d\n", conv == nullptr);
+  const char* cs = t ? "abc" : "de"; printf("%s\n", cs);
+  char ar1[3] = "ab"; char ar2[3] = "cd"; printf("%c\n", (t ? ar1 : ar2)[1]);
+  int arr1[2] = { 1, 2 }; const int arr2[2] = { 3, 4 }; printf("%d\n", (f ? arr1 : arr2)[0]);
+  printf("%d\n", (int)sizeof(t ? arr1 : arr1));
+  int (*fp)(int) = t ? fi : gi; printf("%d %d\n", fp(2), (f ? fi : gi)(3));
+  void* vp = t ? (void*)&a : &b; printf("%d\n", vp == &a);
+  t ? vf(a) : vf(b); printf("%d\n", a);
+  t ? (void)0 : vf(b);
+  try { printf("%d ", thrower(false)); printf("%d\n", thrower(true)); } catch (int e) { printf("caught %d\n", e); }
+  int v1 = t ? f ? 1 : 2 : 3, v2 = f ? 1 : t ? 2 : 3; printf("%d %d\n", v1, v2);
+  int aa = 0, bb = 0; t ? aa = 1 : bb = 2; printf("%d %d\n", aa, bb);
+  int x1 = 5; x1 = x1 > 3 ? x1 < 10 ? x1 * 2 : x1 : 0; printf("%d\n", x1);
+  auto g = t ? 1 : 2.0; printf("%s\n", kind(g));
+  auto& h = t ? a : b; h = 77; printf("%d\n", a);
+  decltype(t ? a : b) hh = a; hh = 78; printf("%d\n", a);
+  decltype(t ? a : 1) hv = a; hv = 79; printf("%d\n", a);
+  C sc = t ? C::a : C::a; printf("%d\n", (int)sc);
+  bool bq = t ? 0.5 : 0; printf("%d\n", bq);
+  return 0;
+}

@@ -1,0 +1,21 @@
+extern "C" int printf(const char* format, ...);
+struct Throwing
+{
+  ~Throwing() noexcept(false) {}
+};
+struct Holds
+{
+  Throwing t;
+};
+struct OwnMove
+{
+  OwnMove() {}
+  OwnMove(OwnMove&&) noexcept {}
+  ~OwnMove() noexcept(false) {}
+};
+int main()
+{
+  printf("%d%d%d %d%d%d\n", isNothrowMoveConstructible<Throwing>, isNothrowMoveConstructible<Holds>, isNothrowMoveConstructible<OwnMove>,
+         isMoveConstructible<Throwing>, isNothrowMoveAssignable<Throwing>, isNothrowMoveAssignable<Holds>);
+  return 0;
+}

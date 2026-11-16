@@ -1,0 +1,4 @@
+class I { public: int i = 4; virtual ~I() {} };
+class J { public: int j = 5; virtual ~J() {} };
+class N : public I, public J { public: int n = 7; };
+int main() { try { N n; n.n = 70; throw n; } catch (J& j) { printf("caught %d\n", j.j); fflush(stdout); N* p = dynamic_cast<N*>(&j); printf("%p\n", (void*)0); fflush(stdout); printf("%d\n", p->n); } return 0; }

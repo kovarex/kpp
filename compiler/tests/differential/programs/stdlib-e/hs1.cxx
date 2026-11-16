@@ -1,0 +1,102 @@
+#include <cstddef>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
+#include <system_error>
+namespace filesystem = std::filesystem;
+using ErrorCode = std::error_code;
+using String = std::string;
+template <typename T> using Vector = std::vector<T>;
+void show(const char* label, const std::string& s) { printf("%s: [%s]\n", label, s.c_str()); }
+void flag(const char* label, bool b) { printf("%s: %s\n", label, b ? "true" : "false"); }
+void number(const char* label, long long n) { printf("%s: %lld\n", label, n); }
+template <typename V> void sortStrings(V& v) { std::sort(v.begin(), v.end()); }
+void appendText(std::string& to, const std::string& s) { to += s; }
+#include <unordered_map>
+#include <unordered_set>
+#include <string_view>
+template <typename T> using Hash = std::hash<T>;
+using StringView = std::string_view;
+template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+template <typename K> using HashSet = std::unordered_set<K>;
+// Hashing and HashMap iteration against std::hash and std::unordered_map, where the standard fixes
+// the answer: keys that compare equal hash equal (0.0 and -0.0, a String and a StringView of the
+// same text), so they are one key; a NaN key is never found again; iteration visits every entry
+// once; erase(iterator) during iteration returns the next entry and visits each once; erase of
+// every other entry while iterating; erase by key while holding an iterator to another entry.
+int main()
+{
+  Hash<double> hd;
+  printf("hash(0.0) == hash(-0.0): %d\n", (int)(hd(0.0) == hd(-0.0)));
+  HashMap<double, int> zeros;
+  zeros[0.0] = 1;
+  zeros[-0.0] = 2;
+  printf("0.0 and -0.0 are one key: size %d, value %d, find -0.0 %d\n", (int)zeros.size(), zeros[0.0], (int)(zeros.find(-0.0) != zeros.end()));
+  HashSet<double> nans;
+  double nan = 0.0 / 0.0 * 1.0;
+  nans.insert(nan);
+  nans.insert(nan);
+  printf("NaN keys: size %d, found %d\n", (int)nans.size(), (int)nans.contains(nan));
+  String text("same text");
+  StringView view("same text");
+  printf("hash(String) == hash(StringView): %d\n", (int)(Hash<String>()(text) == Hash<StringView>()(view)));
+  printf("equal Strings hash equal: %d, int: %d\n", (int)(Hash<String>()(String("abc")) == Hash<String>()(String("abc"))), (int)(Hash<int>()(5) == Hash<int>()(5)));
+
+  HashMap<int, int> h;
+  for (int i = 0; i < 1000; ++i)
+    h[i * 7919] = i;
+  long long sum = 0;
+  int visits = 0;
+  for (const auto& e : h)
+  {
+    sum += e.second;
+    ++visits;
+  }
+  printf("iteration: visits %d, sum %lld\n", visits, sum);
+  int erased = 0, kept = 0;
+  long long keptSum = 0;
+  for (auto it = h.begin(); it != h.end();)
+  {
+    if (it->second % 2 == 0)
+    {
+      it = h.erase(it);
+      ++erased;
+    }
+    else
+    {
+      keptSum += it->second;
+      ++kept;
+      ++it;
+    }
+  }
+  long long after = 0;
+  for (const auto& e : h)
+    after += e.second;
+  printf("erase evens while iterating: erased %d kept %d, kept sum %lld, after %lld, size %d\n", erased, kept, keptSum, after, (int)h.size());
+  auto held = h.find(7919);
+  int heldValue = held->second;
+  for (int i = 3; i < 1000; i += 2)
+    h.erase(i * 7919);
+  printf("erase by key holding another entry's iterator: size %d, held still %d\n", (int)h.size(), (int)(held->second == heldValue));
+  for (auto it = h.begin(); it != h.end();)
+    it = h.erase(it);
+  printf("erase everything through iterators: size %d, empty %d, begin == end %d\n", (int)h.size(), (int)h.empty(), (int)(h.begin() == h.end()));
+  for (int i = 0; i < 100; ++i)
+    h[i] = i;
+  printf("reuse after emptying: size %d, [50] %d\n", (int)h.size(), h[50]);
+  HashSet<String> words;
+  for (const char* w : {"a", "b", "c", "d", "e"})
+    words.insert(String(w));
+  int wordVisits = 0;
+  for (auto it = words.begin(); it != words.end();)
+  {
+    ++wordVisits;
+    it = words.erase(it);
+  }
+  printf("set erase while iterating: visits %d, empty %d\n", wordVisits, (int)words.empty());
+  return 0;
+}

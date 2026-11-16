@@ -1,0 +1,61 @@
+// MSVC's layout of polymorphic classes with over-aligned parts: the parts after a class's own
+// vtable pointer start at their largest alignment.
+template<class T, class M> int off(const T& obj, const M& member) { return int((const char*)&member - (const char*)&obj); }
+struct alignas(16) B16
+{
+  char x = 'x';
+};
+class WithBase : public B16
+{
+public:
+  virtual ~WithBase() = default;
+  int y = 1;
+};
+class Plain
+{
+public:
+  virtual ~Plain() = default;
+  char c = 'c';
+  double d = 2;
+};
+class Over
+{
+public:
+  virtual ~Over() = default;
+  char c = 'o';
+  alignas(16) double d = 1;
+};
+class Derived : public Over
+{
+public:
+  char e = 'e';
+  alignas(32) int z = 3;
+};
+class Second
+{
+public:
+  virtual ~Second() = default;
+  alignas(32) char big = 'b';
+  char small = 's';
+};
+class Both : public Plain, public Second
+{
+public:
+  int tail = 4;
+};
+int main()
+{
+  WithBase w;
+  Plain p;
+  Over o;
+  Derived d;
+  Second s;
+  Both b;
+  printf("withbase %d %d %d %d\n", (int)sizeof(WithBase), (int)alignof(WithBase), off(w, w.x), off(w, w.y));
+  printf("plain %d %d %d\n", (int)sizeof(Plain), off(p, p.c), off(p, p.d));
+  printf("over %d %d %d\n", (int)sizeof(Over), off(o, o.c), off(o, o.d));
+  printf("derived %d %d %d %d %d\n", (int)sizeof(Derived), off(d, d.c), off(d, d.d), off(d, d.e), off(d, d.z));
+  printf("second %d %d %d\n", (int)sizeof(Second), off(s, s.big), off(s, s.small));
+  printf("both %d %d %d %d\n", (int)sizeof(Both), off(b, b.big), off(b, b.small), off(b, b.tail));
+  return 0;
+}

@@ -1,0 +1,17 @@
+template<long long N> long long wideLocal()
+{
+  enum L { a = N };
+  return (long long)sizeof(L) * 1000 + (long long)(a > 0);
+}
+template<long long N> struct Wide { enum { v = N }; enum E { w = N, x = 1 }; static long long get() { return (long long)v + 1; } };
+int main()
+{
+  printf("%lld\n", wideLocal<0x100000000ll>());
+  printf("%d %d\n", (int)sizeof(Wide<0x100000000ll>::v), (int)sizeof(Wide<0x100000000ll>::E));
+  printf("%lld\n", (long long)Wide<0x100000000ll>::v);
+  printf("%lld\n", Wide<0x100000000ll>::get());
+  printf("%d\n", Wide<0xFFFFFFFFll>::v > 0);
+  printf("%d\n", (int)sizeof(Wide<0xFFFFFFFFll>::v + 0));
+  static_assert(sizeof(Wide<0x100000000ll>::E) == 8, "size");
+  return 0;
+}

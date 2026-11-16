@@ -1,0 +1,38 @@
+// battery i13: template argument deduction: from arrays by reference (`T (&)[N]`), from function
+// pointers and member pointers, from a template's instance nested in another, `const T&` from a
+// const array, decay of arrays and functions by value, forwarding references to arrays, deduction
+// with a non-deduced context (`typename Id<T>::type`), from an initializer list, a defaulted
+// parameter after a deduced one, from the return type of a function pointer argument.
+template <typename T, int N> int arrayCount(T (&)[N]) { return N * 100 + (int)sizeof(T); }
+template <typename T, int N> int constArray(const T (&)[N]) { return N; }
+template <typename R, typename... A> int fnArity(R (*)(A...)) { return (int)sizeof...(A) * 10 + (int)sizeof(R); }
+template <typename C, typename M> int memberSize(M C::*) { return (int)sizeof(M) * 100 + (int)sizeof(C); }
+template <typename T> struct Box { T v; };
+template <typename T> struct Pair2 { T a, b; };
+template <typename T> int nested(const Box<Pair2<T>>& b) { return (int)sizeof(T) * 100 + (int)b.v.a + (int)b.v.b; }
+template <typename T> int byValue(T t) { return (int)sizeof(t); }
+template <typename T> int forwarded(T&& t) { return (int)sizeof(t); }
+template <typename T> struct Id { using type = T; };
+template <typename T> T nonDeduced(T a, typename Id<T>::type b) { return a + b; }
+template <typename T, typename U = long long> int withDefault(T t) { return (int)sizeof(T) * 10 + (int)sizeof(U) + (int)t; }
+template <typename R> int returns(R (*f)()) { return (int)sizeof(R) * 100 + (int)f(); }
+short two() { return 2; }
+double half() { return 0.5; }
+int add3(int a, short b, char c) { return a + b + c; }
+struct S { char c; double d; int arr[3]; };
+int main()
+{
+  int ints[5] = {};
+  double ds[2] = {};
+  const short cs[7] = {};
+  printf("arrays %d %d %d %d\n", arrayCount(ints), arrayCount(ds), constArray(cs), constArray(ints));
+  printf("functions %d %d %d\n", fnArity(add3), fnArity(two), fnArity(&half));
+  printf("members %d %d %d\n", memberSize(&S::c), memberSize(&S::d), memberSize(&S::arr));
+  Box<Pair2<short>> b{{3, 4}};
+  printf("nested %d\n", nested(b));
+  printf("decay %d %d %d %d\n", byValue(ints), forwarded(ints), byValue(cs), forwarded(cs));
+  printf("nonDeduced %g %d\n", nonDeduced(1.5, 2), nonDeduced(3, 4));
+  printf("default %d %d\n", withDefault(1), withDefault<char, short>('\x01'));
+  printf("returns %d %d\n", returns(two), returns(half));
+  return 0;
+}

@@ -1,0 +1,47 @@
+// Literals and arrays: escapes (octal, hex, \0 inside), adjacent literal concatenation, raw strings,
+// wide and UTF literals' sizes and units, a 2D array of objects built and destroyed in order,
+// references to arrays, a template taking an array by reference, arrays of arrays initialized.
+char trail[1024];
+int pos = 0;
+void note(const char* s) { while (*s) trail[pos++] = *s++; trail[pos++] = ' '; trail[pos] = 0; }
+
+struct Cell
+{
+  int v;
+  Cell() : v(0) { note("+"); }
+  ~Cell() { char t[4] = {'-', char('0' + v), 0}; note(t); }
+};
+
+template<class T, int N>
+int count(const T (&)[N]) { return N; }
+
+int sumRow(const int (&row)[3]) { return row[0] + row[1] + row[2]; }
+
+int main()
+{
+  const char esc[] = "a\101\x42\0z";
+  printf("%d %d %d %d %d\n", (int)sizeof(esc), esc[1], esc[2], esc[3], esc[4]);
+  const char joined[] = "ab" "cd" "e";
+  const char raw[] = R"x(a\nb"c)x";
+  printf("%d %s %d %s\n", (int)sizeof(joined), joined, (int)sizeof(raw), raw);
+  const wchar_t wide[] = L"widé";
+  const char16_t u16[] = u"é\U0001F600";
+  const char32_t u32[] = U"\U0001F600x";
+  printf("%d %d %d %d %d %d\n", (int)sizeof(wide), (int)wide[3], (int)sizeof(u16), (int)u16[1], (int)sizeof(u32), (int)u32[0]);
+  printf("%d %d %d\n", (int)'\n', (int)'\x7f', (int)sizeof(u8"é"));
+  {
+    Cell grid[2][3];
+    for (int i = 0; i < 2; ++i)
+      for (int j = 0; j < 3; ++j)
+        grid[i][j].v = i * 3 + j;
+    note("|");
+  }
+  printf("%s\n", trail);
+  int table[2][3] = {{1, 2, 3}, {4, 5}};
+  int (&row)[3] = table[1];
+  row[2] = 6;
+  printf("%d %d %d %d\n", sumRow(table[0]), sumRow(table[1]), count(table), count(table[0]));
+  const char* words[] = {"one", "three", "seven"};
+  printf("%d %s %d\n", count(words), words[2], (int)(sizeof(words) / sizeof(words[0])));
+  return 0;
+}

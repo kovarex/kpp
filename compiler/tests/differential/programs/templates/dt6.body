@@ -1,0 +1,11 @@
+// A noexcept destructor ends the program when a member's lets an exception out after its body.
+struct T { ~T() noexcept(false) { printf("T\n"); fflush(stdout); throw 1; } };
+struct S { T t; ~S() noexcept { printf("S\n"); } };
+void f() { S s; }
+int main()
+{
+  try { f(); }
+  catch (int) { printf("caught\n"); }
+  printf("end\n");
+  return 0;
+}

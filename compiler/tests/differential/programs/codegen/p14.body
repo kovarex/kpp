@@ -1,0 +1,58 @@
+// operator overloading: arrow chains, call operators, increments, conversions in conditions,
+// C++20 comparison rewrites (!= from ==, reversed ==, < from <=> is left out: no <compare>)
+struct Inner { int value = 5; };
+struct Arrow1 { Inner* p; Inner* operator->() const { printf("a1 "); return p; } };
+struct Arrow2 { Arrow1 a; Arrow1 operator->() const { printf("a2 "); return a; } };
+struct Adder
+{
+  int base;
+  int operator()(int x) const { return base + x; }
+  int operator()(int x, int y) const { return base + x * y; }
+};
+struct Num
+{
+  int v;
+  Num& operator++() { ++v; return *this; }
+  Num operator++(int) { Num old = *this; v += 10; return old; }
+  Num& operator+=(const Num& o) { v += o.v; return *this; }
+  friend Num operator+(Num a, const Num& b) { a += b; return a; }
+  bool operator==(const Num& o) const { printf("eq "); return v == o.v; }
+  bool operator==(int i) const { printf("eqi "); return v == i; }
+  explicit operator bool() const { return v != 0; }
+};
+struct Flag
+{
+  bool on;
+  IMPLICIT operator bool() const { return on; }
+};
+int main()
+{
+  Inner in;
+  Arrow2 chain{{&in}};
+  printf("R %d\n", chain->value);
+  Adder add{10};
+  printf("C %d %d\n", add(5), add(2, 3));
+  Num n{1};
+  Num pre = ++n;
+  Num post = n++;
+  printf("I %d %d %d\n", pre.v, post.v, n.v);
+  Num sum = n + Num{4};
+  printf("P %d\n", sum.v);
+  Num a{3}, b{3}, c{4};
+  printf("E %d ", a == b);
+  printf("%d ", a != c);
+  printf("%d ", 3 == a);
+  printf("%d\n", 4 != a);
+  if (a)
+    printf("B1 ");
+  Num zero{0};
+  if (!zero)
+    printf("B2 ");
+  bool both = a && !zero;
+  printf("%d ", both);
+  printf("%d\n", zero ? 1 : 2);
+  Flag f{true}, g{false};
+  int asInt = f + f;
+  printf("F %d %d %d\n", asInt, f && g, f || g);
+  return 0;
+}

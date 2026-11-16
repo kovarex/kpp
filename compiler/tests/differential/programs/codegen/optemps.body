@@ -1,0 +1,73 @@
+// the operand temporaries spec, with printf
+class Noisy
+{
+public:
+  int id;
+  Noisy(int i) : id(i) { printf("+%d ", id); }
+  Noisy(const Noisy& o) : id(o.id + 100) { printf("c%d ", id); }
+  ~Noisy()
+  {
+    printf("-%d ", id);
+    id = -999;
+  }
+  const Noisy* self() const { return this; }
+  bool odd() const { return id % 2 == 1; }
+};
+int read(const Noisy* p)
+{
+  printf("read%d ", p ? p->id : 0);
+  return p ? p->id : 0;
+}
+int both(const Noisy* a, bool b)
+{
+  printf("both%d ", a ? a->id : 0);
+  return b ? 1 : 0;
+}
+int take(const Noisy& n) { return n.id; }
+bool thrower()
+{
+  throw 1;
+}
+int main()
+{
+  bool flag = true;
+  int r1 = read(flag ? Noisy(1).self() : nullptr);
+  printf("| %d\n", r1);
+  const Noisy* kept = nullptr;
+  bool r2 = flag && (kept = Noisy(2).self()) != nullptr && kept->id == 2;
+  printf("| %d\n", r2 ? 1 : 0);
+  int r3 = both(flag ? Noisy(3).self() : nullptr, true);
+  printf("| %d\n", r3);
+  const Noisy* p = nullptr;
+  int r4 = (!flag || (p = Noisy(5).self()) == nullptr) ? 0 : read(p);
+  printf("| %d\n", r4);
+  bool neither = Noisy(4).odd() || Noisy(8).odd() || Noisy(9).odd();
+  printf("| %d\n", neither ? 1 : 0);
+  int nested = (flag && Noisy(15).odd()) ? take(Noisy(16)) : (Noisy(17).odd() ? 1 : 0);
+  printf("| %d\n", nested);
+  for (int i = 0; i < 3; ++i)
+  {
+    int v = i % 2 == 0 ? take(Noisy(10 + i)) : 0;
+    printf(v > 0 ? "" : "");
+  }
+  printf("| loop\n");
+  try
+  {
+    bool r = (flag ? Noisy(20).self() : nullptr) != nullptr && thrower();
+    printf("not reached %d\n", r ? 1 : 0);
+  }
+  catch (int)
+  {
+    printf("caught\n");
+  }
+  try
+  {
+    bool r = (!flag ? Noisy(21).self() : nullptr) == nullptr && thrower();
+    printf("not reached %d\n", r ? 1 : 0);
+  }
+  catch (int)
+  {
+    printf("caught\n");
+  }
+  return 0;
+}

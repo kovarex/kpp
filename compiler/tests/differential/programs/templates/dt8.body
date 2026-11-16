@@ -1,0 +1,13 @@
+// A virtual destructor defaulted noexcept(false): a derived one's exception reaches the delete's try,
+// and a cleanup of the function holding the delete runs.
+class V { public: virtual ~V() noexcept(false) = default; };
+class W : public V { public: ~W() noexcept(false) override { printf("W\n"); throw 2; } };
+struct Mark { ~Mark() { printf("mark\n"); } };
+void f(V* p) { Mark m; delete p; printf("not here\n"); }
+int main()
+{
+  try { f(new W); }
+  catch (int e) { printf("caught %d\n", e); }
+  printf("end\n");
+  return 0;
+}

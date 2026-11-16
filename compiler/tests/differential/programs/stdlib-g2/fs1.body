@@ -1,0 +1,130 @@
+// Filesystem: a path's parts and lexical operations, then files and directories in a scratch directory.
+
+void part(const char* what, const filesystem::path& p)
+{
+  printf(" %s=[%s]", what, p.string().c_str());
+}
+
+void parts(const char* text)
+{
+  filesystem::path p(text);
+  printf("[%s]", text);
+  part("filename", p.filename());
+  part("stem", p.stem());
+  part("extension", p.extension());
+  part("parent", p.parent_path());
+  part("root_name", p.root_name());
+  part("root_dir", p.root_directory());
+  part("root_path", p.root_path());
+  part("relative", p.relative_path());
+  part("normal", p.lexically_normal());
+  part("generic", filesystem::path(p.generic_string()));
+  printf(" abs=%d rel=%d has_filename=%d has_stem=%d has_ext=%d has_parent=%d has_root=%d", (int)p.is_absolute(), (int)p.is_relative(), (int)p.has_filename(),
+         (int)p.has_stem(), (int)p.has_extension(), (int)p.has_parent_path(), (int)p.has_root_path());
+  printf(" parts:");
+  for (const filesystem::path& component : p)
+    printf(" <%s>", component.string().c_str());
+  printf("\n");
+}
+
+int main()
+{
+  const char* paths[] = {"", ".", "..", "/", "a", "a/", "a/b", "a/b/", "a/b.txt", "a/.hidden", "a/b.tar.gz", "a/..", "/a/./b/../c", "C:", "C:a", "C:\\", "C:\\a\\b.c",
+                         "C:/x/y/", "\\\\server\\share\\dir\\f.txt", "//server/share", "a//b", "a/b/..", "./a", "a/./", "..b", "b..", "a/.", "a/../../c", "/..", "C:\\..\\a",
+                         "file.", ".a.b", "a\\b/c"};
+  for (const char* p : paths)
+    parts(p);
+
+  printf("join:");
+  part("a/b", filesystem::path("a") / "b");
+  part("a/ + b", filesystem::path("a/") / "b");
+  part("a / /b", filesystem::path("a") / "/b");
+  part("C:a / b", filesystem::path("C:a") / "b");
+  part("C:\\a / D:b", filesystem::path("C:\\a") / "D:b");
+  part("C:\\a / C:b", filesystem::path("C:\\a") / "C:b");
+  part("a / empty", filesystem::path("a") / "");
+  part("empty / a", filesystem::path("") / "a");
+  printf("\n");
+
+  printf("modify:");
+  filesystem::path m("dir/file.txt");
+  part("replace_extension .md", filesystem::path(m).replace_extension(".md"));
+  part("replace_extension md", filesystem::path(m).replace_extension("md"));
+  part("replace_extension none", filesystem::path(m).replace_extension());
+  part("replace_filename", filesystem::path(m).replace_filename("other"));
+  part("remove_filename", filesystem::path(m).remove_filename());
+  part("remove_filename of dir/", filesystem::path("dir/").remove_filename());
+  part("concat", filesystem::path(m) += ".bak");
+  printf("\n");
+
+  printf("relative:");
+  part("a/b/c from a", filesystem::path("a/b/c").lexically_relative("a"));
+  part("a from a/b/c", filesystem::path("a").lexically_relative("a/b/c"));
+  part("a/b from a/c", filesystem::path("a/b").lexically_relative("a/c"));
+  part("a from a", filesystem::path("a").lexically_relative("a"));
+  part("/a from b", filesystem::path("/a").lexically_relative("b"));
+  part("a/b proximate a/c", filesystem::path("a/b").lexically_proximate("a/c"));
+  printf("\n");
+  printf("compare %d %d %d %d\n", (int)(filesystem::path("a/b") == filesystem::path("a\\b")), (int)(filesystem::path("a/b") < filesystem::path("a/c")),
+         (int)(filesystem::path("a") < filesystem::path("a/b")), filesystem::path("a/b").compare("a//b") == 0);
+
+  filesystem::path root = filesystem::temp_directory_path() / "kpp-stdbat-fs1";
+  filesystem::remove_all(root);
+  int created = (int)filesystem::create_directories(root / "x" / "y");
+  int again = (int)filesystem::create_directories(root / "x" / "y");
+  printf("create_directories %d again %d\n", created, again);
+  printf("create_directory existing %d\n", (int)filesystem::create_directory(root / "x"));
+  FILE* f = fopen((root / "x" / "f.txt").string().c_str(), "wb");
+  fwrite("hello", 1, 5, f);
+  fclose(f);
+  printf("exists %d %d is_directory %d is_regular %d size %d\n", (int)filesystem::exists(root / "x" / "f.txt"), (int)filesystem::exists(root / "nope"),
+         (int)filesystem::is_directory(root / "x"), (int)filesystem::is_regular_file(root / "x" / "f.txt"), (int)filesystem::file_size(root / "x" / "f.txt"));
+  printf("copy_file %d\n", (int)filesystem::copy_file(root / "x" / "f.txt", root / "g.txt"));
+  try
+  {
+    filesystem::copy_file(root / "x" / "f.txt", root / "g.txt");
+    printf("copy over existing did not throw\n");
+  }
+  catch (const filesystem::filesystem_error&)
+  {
+    printf("copy over existing threw\n");
+  }
+  printf("copy_file overwrite %d\n", (int)filesystem::copy_file(root / "x" / "f.txt", root / "g.txt", filesystem::copy_options::overwrite_existing));
+  printf("copy_file skip %d\n", (int)filesystem::copy_file(root / "x" / "f.txt", root / "g.txt", filesystem::copy_options::skip_existing));
+  filesystem::rename(root / "g.txt", root / "h.txt");
+  printf("rename %d %d\n", (int)filesystem::exists(root / "g.txt"), (int)filesystem::exists(root / "h.txt"));
+  int entries = 0, files = 0;
+  // (kpp: does not compile)
+  {
+    ++entries;
+  // (kpp: does not compile)
+      ++files;
+  }
+  printf("recursive entries %d files %d\n", entries, files);
+  int top = 0;
+  for (const filesystem::directory_entry& e : filesystem::directory_iterator(root))
+    ++top;
+  printf("top entries %d\n", top);
+  printf("remove missing %d\n", (int)filesystem::remove(root / "nope"));
+  try
+  {
+    filesystem::file_size(root / "nope");
+    printf("file_size of missing did not throw\n");
+  }
+  catch (const filesystem::filesystem_error&)
+  {
+    printf("file_size of missing threw\n");
+  }
+  try
+  {
+    filesystem::remove(root / "x");
+    printf("remove non-empty directory did not throw\n");
+  }
+  catch (const filesystem::filesystem_error&)
+  {
+    printf("remove non-empty directory threw\n");
+  }
+  printf("remove_all %d\n", (int)filesystem::remove_all(root));
+  printf("gone %d remove_all again %d\n", (int)filesystem::exists(root), (int)filesystem::remove_all(root));
+  return 0;
+}

@@ -1,0 +1,37 @@
+#include <stdio.h>
+#include <atomic>
+template <class T> using Atomic = std::atomic<T>;
+using std::memory_order_relaxed; using std::memory_order_acq_rel; using std::memory_order_acquire; using std::memory_order_release; using std::memory_order_seq_cst;
+inline void atomicFence() { std::atomic_thread_fence(std::memory_order_seq_cst); }
+int main()
+{
+  Atomic<unsigned> bits(0xF0F0u);
+  unsigned a = bits.fetch_and(0xFF00u);
+  unsigned o = bits.fetch_or(0x000Fu, memory_order_relaxed);
+  unsigned x = bits.fetch_xor(0xFFFFu, memory_order_acq_rel);
+  unsigned now = bits.load(memory_order_acquire);
+  bits &= 0x0FF0u;
+  bits |= 0x1u;
+  unsigned after = (bits ^= 0x3u);
+  printf("bits %x %x %x %x %x %x\n", a, o, x, now, after, bits.load());
+  int arr[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  Atomic<int*> p(arr);
+  int* before = p.fetch_add(3);
+  int* mid = p.load();
+  ++p;
+  p += 2;
+  int* back = p.fetch_sub(4, memory_order_release);
+  p--;
+  printf("pointer %d %d %d %d %d\n", (int)(before - arr), (int)(mid - arr), (int)(back - arr), (int)(p.load() - arr), *p.load());
+  Atomic<long long> c(5);
+  c.store(9, memory_order_seq_cst);
+  long long expected = 9;
+  bool swapped = c.compare_exchange_strong(expected, 11, memory_order_acq_rel, memory_order_acquire);
+  long long old = c.exchange(3, memory_order_relaxed);
+  printf("orders %d %lld %lld %lld\n", (int)swapped, old, c.fetch_add(4, memory_order_relaxed), c.fetch_sub(1, memory_order_relaxed));
+  atomicFence();
+  Atomic<signed char> s(-1);
+  signed char r = s.fetch_and((signed char)0x0F);
+  printf("signed %d %d\n", (int)r, (int)s.load());
+  return 0;
+}

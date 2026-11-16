@@ -1,0 +1,60 @@
+// battery i3: integer and floating-point edge cases at run time: usual arithmetic conversions between
+// signed and unsigned of every width, compound assignment narrowing, char signedness, float to integer
+// truncation, integer to float rounding, NaN and signed zero comparisons, float/double mixing,
+// unsigned wrap in loops, shifts of promoted small types, ternary common types.
+volatile int vz = 0;
+int main()
+{
+  int z = vz;
+  unsigned u = 1 + z;
+  int m = -1 + z;
+  printf("cmp %d %d %d %d\n", m < u, (long long)m < u, (short)m < (unsigned short)u, m < (unsigned char)200);
+  unsigned long long ull = 0xFFFFFFFFFFFFFFFFull + z;
+  printf("mix %lld %llu %u %d\n", (long long)(m + u), ull + 2, (unsigned)(m * 3u), (int)(-7 + z) / 2);
+  short s = 30000 + z;
+  s += 30000;
+  unsigned char uc = 250 + z;
+  uc += 10;
+  signed char sc = 100 + z;
+  sc *= 3;
+  printf("compound %d %d %d\n", s, uc, sc);
+  char c = (char)(200 + z);
+  printf("char %d %d\n", c, (int)(unsigned char)c);
+  unsigned short us = 0xFFFF + z;
+  printf("promote %d %u %d\n", us * us > 0, (unsigned)(us << 16), (int)(us + 1));
+  uint8_t b8 = 0x81 + z;
+  printf("shift %d %d %d\n", b8 << 1, (uint8_t)(b8 << 1), ~b8);
+  double d = -2.7 + z;
+  float f = 16777217.0f + z;
+  printf("trunc %d %d %lld %u\n", (int)d, (int)-d, (long long)(1e18 + z), (unsigned)(3.99 + z));
+  printf("tofloat %.1f %.1f %.17g\n", (double)f, (double)(float)(16777217 + z), (double)(9007199254740993LL + z));
+  double nan = 0.0 / (0.0 + z);
+  double nz = -0.0 + z * 0;
+  double negz = -(0.0 + z);
+  printf("nan %d %d %d %d %d\n", nan == nan, nan != nan, nan < 1, !(nan >= 1), nan > nan);
+  printf("zero %d %g %g %g\n", negz == 0.0, negz, 1 / negz, nz);
+  float ff = 0.1f + z;
+  double dd = 0.1 + z;
+  printf("fd %d %.17g %.9g\n", ff == dd, ff + dd, ff * 3);
+  unsigned k = 0;
+  int loops = 0;
+  for (unsigned j = 3 + z; j < 100; j -= 1)
+    ++loops, k += j;
+  printf("wrap %d %u\n", loops, k);
+  long long big = 0x7FFFFFFFFFFFFFFFLL + z;
+  printf("limits %lld %lld %llu\n", big, -big - 1, (unsigned long long)(-big - 1));
+  int t = 5 + z;
+  auto r1 = t > 3 ? 1u : -1;
+  auto r2 = t > 9 ? 1u : -1;
+  auto r3 = t > 9 ? 2.5f : 1;
+  printf("ternary %u %u %g %d\n", r1, r2, (double)r3, (int)sizeof(r3));
+  printf("division %d %d %d %d\n", (-9 + z) / 4, (-9 + z) % 4, (9 + z) % -4, (int)((-9 + z) / 4u));
+  float big2 = 3.0e38f + z;
+  printf("inf %g %g %d\n", (double)(big2 * 10), (double)(-big2 * 10), big2 * 10 == big2 * 100);
+  double sub = 4.9e-324 + z;
+  printf("subnormal %g %g %d\n", sub, sub / 2, sub > 0);
+  printf("hex %a %a\n", 1.0 / 3 + z, (double)(1.0f / 3 + z));
+  long double ld = 1.0L / 3 + z;
+  printf("ld %.17g %d\n", (double)ld, (int)(sizeof(ld) >= 8));
+  return 0;
+}

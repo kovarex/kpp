@@ -1,0 +1,80 @@
+// Integer conversions at the edges: C varargs promotions, enums to and from integers, switches over
+// wide and negative values, ++ and -- at the limits of unsigned types, min/max idioms, abs of the minimum.
+enum Plain { P0, P1, P2 = 100, PNeg = -5 };
+enum class Big : unsigned long long { Top = 0xffffffffffffffffull, Mid = 1ull << 40 };
+enum Bits : unsigned { BA = 1u << 31, BB = 1 };
+enum class Tiny : signed char { Low = -128, High = 127 };
+
+
+int classify(long long v)
+{
+  switch (v)
+  {
+    case -9223372036854775807LL - 1: return 1;
+    case -1: return 2;
+    case 0: return 3;
+    case 4294967296LL: return 4;
+    case 9223372036854775807LL: return 5;
+    default: return 0;
+  }
+}
+int classifyUnsigned(unsigned char c)
+{
+  switch (c)
+  {
+    case 255: return 1;
+    case 128: return 2;
+    case 0: return 3;
+    default: return 0;
+  }
+}
+template<typename T>
+T maxOf(T a, T b) { return a < b ? b : a; }
+int main()
+{
+  char c = -3;
+  short s = -30000;
+  unsigned char uc = 200;
+  bool b = true;
+  float f = 1.5f;
+  printf("varargs %d %d %d %d %.2f %u\n", c, s, uc, b, f, (unsigned)c);
+  printf("plain %d %d %d sizeof %d\n", P2 + 1, PNeg * 2, (int)(PNeg < P0), (int)sizeof(Plain));
+  printf("big %llu %llu %d\n", (unsigned long long)Big::Top, (unsigned long long)Big::Mid >> 20, (int)(Big::Top > Big::Mid));
+  printf("bits %u %d\n", BA | BB, (int)sizeof(BA));
+  printf("tiny %d %d\n", (int)Tiny::Low, (int)Tiny::High);
+  Plain fromInt = (Plain)2;
+  Tiny fromWide = (Tiny)200;
+  Big fromNeg = (Big)-1;
+  printf("casts %d %d %llu\n", (int)fromInt, (int)fromWide, (unsigned long long)fromNeg);
+  printf("switch %d %d %d %d %d %d\n", classify(-9223372036854775807LL - 1), classify(-1), classify(0), classify(4294967296LL), classify(9223372036854775807LL), classify(7));
+  printf("switch unsigned %d %d %d %d\n", classifyUnsigned((unsigned char)-1), classifyUnsigned(128), classifyUnsigned(256), classifyUnsigned(5));
+  unsigned char up = 255;
+  ++up;
+  unsigned short down = 0;
+  down--;
+  unsigned long long all = 0;
+  all--;
+  printf("wrap %d %d %llu\n", up, down, all);
+  int minimum = -2147483647 - 1;
+  unsigned magnitude = 0u - (unsigned)minimum;
+  long long widened = -(long long)minimum;
+  printf("abs %u %lld\n", magnitude, widened);
+  printf("max %d %u %lld %d\n", maxOf(-1, 1), maxOf(0u, 4000000000u), maxOf(-5LL, -7LL), maxOf<int>('a', 98));
+  long long accum = 0;
+  for (int i = 0; i < 100000; ++i)
+    accum += (long long)i * i;
+  unsigned hash = 0;
+  for (int i = 0; i < 1000; ++i)
+    hash = hash * 31u + (unsigned)i;
+  printf("loops %lld %u\n", accum, hash);
+  unsigned long long mulHigh = 0xffffffffull * 0xffffffffull;
+  printf("mulHigh %llu\n", mulHigh);
+  int idx = -1;
+  unsigned long long asIndex = (unsigned long long)idx;
+  printf("index %llu %d\n", asIndex, (int)(asIndex + 1));
+  int digits = 0;
+  for (unsigned long long n = 18446744073709551615ull; n; n /= 10)
+    ++digits;
+  printf("digits %d\n", digits);
+  return 0;
+}

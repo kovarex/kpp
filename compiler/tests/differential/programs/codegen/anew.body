@@ -1,0 +1,41 @@
+// array new: elements built from a list, a constructor that throws partway destroys the built ones
+int built = 0;
+class Piece
+{
+public:
+  int id;
+  Piece() : id(-1) { ++built; }
+  Piece(int i) : id(i)
+  {
+    if (i == 13)
+      throw 13;
+    printf("+%d ", id);
+    ++built;
+  }
+  ~Piece() { printf("-%d ", id); --built; }
+};
+int main()
+{
+  try
+  {
+    Piece* p = new Piece[4]{11, 12, 13, 14};
+    delete[] p;
+  }
+  catch (int v)
+  {
+    printf("caught %d, built %d\n", v, built);
+  }
+  try
+  {
+    int n = 3;
+    Piece* p = new Piece[n];
+    printf("default %d %d\n", p[0].id, built);
+    delete[] p;
+    printf("\n");
+  }
+  catch (int v)
+  {
+    printf("caught %d\n", v);
+  }
+  return 0;
+}

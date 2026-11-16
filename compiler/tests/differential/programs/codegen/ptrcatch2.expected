@@ -1,0 +1,12 @@
+# kpp's output: a C* thrown is no match for a handler of B*& ([except.handle] 3: only cv T and const T& take the conversion), so B* const& catches it; clang's MSVC target crashes (0xC0000005) and llvm-mingw's catches it by B*& (Itanium's runtime matches it, a known bug).
+B* const& 2 1 | 2
+B* const& -1 0 | 2
+B* const& -1 0 | 2
+const void* 0 | 4
+const void* 1 | 4
+exact B*& 2 | 1
+any | 5
+const A* 1 | 1
+const A* -1 | 1
+const A* -1 | 1
+exit 0

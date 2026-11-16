@@ -1,0 +1,4 @@
+# kpp's output: clang's constant evaluator leaves out the destructor of a while condition's last variable (w2 121, w3 1321 at compile time; its run time gives 1212 and 13212, as kpp's does both ways).
+1212 1212 13212 6 11 -11
+1212 1212 13212 6 11 -11
+exit 0

@@ -1,0 +1,19 @@
+struct In { int a; int b; };
+struct B5 { int x = 5; int y; };
+struct D5 : B5 { int z; };
+struct Line { In from; In to; };
+struct Poly { int n; Line edges[2]; };
+
+int main()
+{
+  In m[2][2] = {1, 2, 3};
+  printf("%d %d %d %d %d %d\n", m[0][0].a, m[0][0].b, m[0][1].a, m[0][1].b, m[1][0].a, m[1][1].b);
+  D5 d{1, 2, 3};
+  D5 e{{}, 3};
+  printf("%d %d %d %d %d %d\n", d.x, d.y, d.z, e.x, e.y, e.z);
+  Poly p{2, 1, 2, 3, 4, 5, 6, 7, 8};
+  printf("%d %d %d %d %d %d %d\n", p.n, p.edges[0].from.a, p.edges[0].to.b, p.edges[1].from.a, p.edges[1].from.b, p.edges[1].to.a, p.edges[1].to.b);
+  Line lines[] = {In{1, 2}, 3, 4, {5, 6}, In{7, 8}};
+  printf("%d %d %d %d %d\n", (int)(sizeof(lines) / sizeof(Line)), lines[0].to.a, lines[0].to.b, lines[1].from.b, lines[1].to.a);
+  return 0;
+}

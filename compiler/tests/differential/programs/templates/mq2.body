@@ -1,0 +1,15 @@
+class A { public: int x = 1; virtual int f() { return 10; } int g() const { return 11; } virtual ~A() {} };
+class Other { public: int y = 2; virtual int h() { return 20; } virtual ~Other() {} };
+class B : public Other, public A { public: int f() override { return 30; } int own() { return x + 40; } };
+template <int (A::*M)()> int call(A& a) { return (a.*M)(); }
+template <int (A::*M)() const> int callC(const A& a) { return (a.*M)(); }
+template <int (B::*M)()> int callB(B& b) { return (b.*M)(); }
+template <int (B::*M)() const> int callBC(B& b) { return (b.*M)(); }
+int main()
+{
+  B b;
+  A a;
+  printf("%d %d %d %d\n", call<&A::f>(a), call<&A::f>(b), callC<&A::g>(b), callB<&B::own>(b));
+  printf("%d %d\n", callB<&B::f>(b), 0);
+  return 0;
+}

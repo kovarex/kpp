@@ -1,0 +1,66 @@
+// The overload-set idiom given lambdas: closures as bases, their call operators one overload set.
+template<class... Ts>
+struct Overload : Ts...
+{
+  using Ts::operator()...;
+};
+
+template<class... Ts>
+struct Tagged : Ts...
+{
+  using Ts::operator()...;
+  int tag = 7;
+  int operator()(double d) const { return tag + (int)(d * 10); }
+};
+template<class... Ts>
+Tagged(Ts...) -> Tagged<Ts...>;
+
+struct Counter
+{
+  int base;
+  int operator()(long x) const { return base + (int)x; }
+};
+
+template<class F, class A>
+auto apply(F&& f, A a) { return f(a); }
+
+int main()
+{
+  int k = 5;
+  Overload o{[](int x) { return x + 1; }, [k](const char* s) { return k + 100 + (int)s[0]; }};
+  printf("%d %d\n", o(41), o("abc"));
+  // conversions decide: char promotes to int, float promotes to double
+  Overload p{[](int x) { return 1; }, [](double x) { return 2; }};
+  printf("%d %d %d %d\n", p(1), p(2.5), p('c'), p(1.5f));
+  // a generic lambda: the non-template wins a tie, the template an exact match
+  Overload g{[](int x) { return 10; }, [](auto x) { return (int)sizeof(x); }};
+  printf("%d %d %d %d\n", g(5), g(2.5), g((short)1), g("text"));
+  // a mutable lambda's state lives in the base subobject
+  Overload m{[n = 0]() mutable { return ++n; }, [](int x) { return -x; }};
+  int a1 = m();
+  int a2 = m();
+  int a3 = m(9);
+  printf("%d %d %d\n", a1, a2, a3);
+  // a reference capture
+  int total = 0;
+  Overload r{[&total](int x) { total += x; return total; }, [&total](const char* s) { total += 1000; return total; }};
+  r(3);
+  r("x");
+  r(4);
+  printf("%d\n", total);
+  // a class's own call operator beside the closures'
+  Tagged t{[](int x) { return x * 3; }};
+  printf("%d %d %d\n", t(4), t(0.5), t.tag);
+  // a closure beside a class with its own call operator
+  Overload c{[](int x) { return x + 1000; }, Counter{50}};
+  printf("%d %d\n", c(1), c(2L));
+  // passed on, called in a template
+  printf("%d %d\n", apply(o, 1), apply(o, "q"));
+  // a closure as the one base, its call operator found by lookup
+  auto twice = [k](int x) { return 2 * x + k; };
+  struct Wrapper : decltype(twice) { int extra = 3; };
+  Wrapper w{twice};
+  printf("%d %d\n", w(10), w.extra);
+  printf("sizes %d %d %d\n", (int)sizeof(o), (int)sizeof(p), (int)sizeof(r));
+  return 0;
+}

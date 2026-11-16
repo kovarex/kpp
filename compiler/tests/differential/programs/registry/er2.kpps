@@ -1,0 +1,60 @@
+extern "C" int printf(const char* format, ...);
+// er1 (thread I, 2026-11-09): ErrorCode, Errc and SystemError against std::error_code, std::errc and
+// std::system_error: the value and category of each way to make one, clear and assign, comparison
+// with another code and with every Errc (the system category's mapping of each system error to a
+// condition, on Windows std's table of Windows errors, elsewhere errno), the Errc values themselves.
+std::Errc conditions[26] = {
+  std::Errc::operation_not_permitted, std::Errc::no_such_file_or_directory, std::Errc::no_such_process, std::Errc::interrupted, std::Errc::io_error,
+  std::Errc::resource_unavailable_try_again, std::Errc::illegal_byte_sequence, std::Errc::permission_denied, std::Errc::device_or_resource_busy,
+  std::Errc::file_exists, std::Errc::cross_device_link, std::Errc::no_such_device, std::Errc::not_a_directory, std::Errc::is_a_directory,
+  std::Errc::invalid_argument, std::Errc::too_many_files_open, std::Errc::file_too_large, std::Errc::no_space_on_device, std::Errc::read_only_file_system,
+  std::Errc::resource_deadlock_would_occur, std::Errc::filename_too_long, std::Errc::function_not_supported, std::Errc::directory_not_empty,
+  std::Errc::not_supported, std::Errc::operation_not_supported, std::Errc::timed_out};
+
+const char* category(const std::ErrorCode& ec)
+{
+  return ec.category().name();
+}
+
+void describe(const char* label, const std::ErrorCode& ec)
+{
+  bool asBool = false;
+  if (ec)
+    asBool = true;
+  printf("%s: value %d category %s bool %d\n", label, ec.value(), category(ec), (int)asBool);
+}
+
+void matches(const char* label, const std::ErrorCode& ec)
+{
+  printf("%s:", label);
+  int count = 0;
+  for (int i = 0; i < 26; ++i)
+  {
+    bool equal = ec == conditions[i];
+    bool reversed = conditions[i] == ec;
+    bool different = ec != conditions[i];
+    if (equal)
+    {
+      printf(" %d", i);
+      ++count;
+    }
+    if (equal != reversed || equal == different)
+      printf(" (inconsistent at %d)", i);
+  }
+  printf(" (%d)\n", count);
+}
+
+int main()
+{
+  for (int e = 1; e < 20000; ++e)
+  {
+    std::ErrorCode ec(e, std::systemCategory());
+    int found = -1;
+    for (int i = 0; i < 26; ++i)
+      if (ec == conditions[i])
+        found = i;
+    if (found >= 0)
+      printf("%d %d\n", e, found);
+  }
+  return 0;
+}

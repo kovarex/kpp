@@ -1,0 +1,28 @@
+// same-named local classes, classes in anonymous namespaces, instances; vtables and descriptors must stay apart
+class Base { public: virtual ~Base() {} virtual int id() { return 0; } };
+Base* first() { class Loc : public Base { public: int id() override { return 1; } }; static Loc l; return &l; }
+Base* second() { class Loc : public Base { public: int id() override { return 2; } }; static Loc l; return &l; }
+template<class T> Base* inst() { class Loc : public Base { public: int id() override { return sizeof(T); } }; static Loc l; return &l; }
+bool isFirst(Base* p) { class Loc : public Base { }; return dynamic_cast<Loc*>(p) != nullptr; }
+namespace { class Hidden : public Base { public: int id() override { return 7; } }; }
+namespace a { class C : public Base { public: int id() override { return 8; } }; }
+namespace b { class C : public Base { public: int id() override { return 9; } }; }
+class Outer { public: class C : public Base { public: int id() override { return 10; } }; };
+class Outer2 { public: class C : public Base { public: int id() override { return 11; } }; };
+template<class T> class Tm : public Base { public: int id() override { return sizeof(T); } };
+enum E1 { x1 };
+int main() {
+  Base* p = first(); Base* q = second(); Base* r = inst<int>(); Base* s = inst<double>();
+  printf("%d %d %d %d\n", p->id(), q->id(), r->id(), s->id());
+  printf("%d %d %d\n", typeid(*p) == typeid(*q), typeid(*r) == typeid(*s), typeid(*p) == typeid(*p));
+  printf("%d\n", isFirst(p));
+  a::C ac; b::C bc; Outer::C oc; Outer2::C pc; Hidden h;
+  Base* all[5] = { &ac, &bc, &oc, &pc, &h };
+  for (Base* x : all) { printf("%d:", x->id()); for (Base* y : all) printf(" %d", typeid(*x) == typeid(*y)); printf(" %d %d %d\n", dynamic_cast<a::C*>(x) != nullptr, dynamic_cast<Outer::C*>(x) != nullptr, dynamic_cast<b::C*>(x) != nullptr); }
+  Tm<int> ti; Tm<unsigned> tu; Tm<const int*> tc; Tm<int*> tp;
+  Base* tt[4] = { &ti, &tu, &tc, &tp };
+  for (Base* x : tt) { for (Base* y : tt) printf(" %d", typeid(*x) == typeid(*y)); printf(" %d %d\n", dynamic_cast<Tm<int>*>(x) != nullptr, dynamic_cast<Tm<int*>*>(x) != nullptr); }
+  printf("%d %d %d %d\n", typeid(int) == typeid(const int), typeid(int&) == typeid(int), typeid(int*) == typeid(const int*), typeid(E1) == typeid(int));
+  try { class Thrown { public: int v = 3; }; try { throw Thrown(); } catch (int) { printf("int\n"); } } catch (...) { printf("all\n"); }
+  return 0;
+}

@@ -1,0 +1,23 @@
+// A noexcept destructor running during unwinding: its own try works, other exceptions go on.
+struct Inner { ~Inner() { try { throw 2; } catch (int) { printf("inner caught\n"); } } };
+void f() { Inner i; throw 1; }
+struct Calls { ~Calls() { try { f(); } catch (int e) { printf("calls caught %d\n", e); } } };
+void g() { Calls c; throw 3; }
+struct Local { ~Local() { Inner i; printf("local\n"); } };
+class B1 { public: int x = 1; virtual ~B1() { printf("~B1\n"); } };
+class B2 { public: int y = 2; virtual ~B2() { printf("~B2\n"); } };
+class D : public B1, public B2 { public: ~D() override { printf("~D\n"); } };
+struct Rethrown { ~Rethrown() { try { try { throw 4; } catch (int) { printf("first\n"); throw; } } catch (int e) { printf("second %d\n", e); } } };
+struct Holder { Inner a; Calls b; };
+int main()
+{
+  try { f(); } catch (int e) { printf("outer %d\n", e); }
+  try { g(); } catch (int e) { printf("outer %d\n", e); }
+  { Local l; }
+  B2* p = new D;
+  delete p;
+  { Rethrown r; }
+  { Holder h; }
+  printf("end\n");
+  return 0;
+}

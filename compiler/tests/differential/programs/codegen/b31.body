@@ -1,0 +1,49 @@
+// battery 31: literal types (decimal and hex past int, char kinds), division and remainder with
+// negative operands, conversions between integer types and from floating values, shifts of
+// negative values (C++20), narrowing compound assignments, bool arithmetic, mixed signedness in
+// comparisons and ?:, floating rounding, infinity and negative zero.
+int main()
+{
+  auto a = 2147483648;
+  auto b = 0x80000000;
+  auto c = 4294967296;
+  auto d = 0xFFFFFFFFFFFFFFFF;
+  auto e = -2147483648;
+  printf("sizes %d %d %d %d %d\n", (int)sizeof(a), (int)sizeof(b), (int)sizeof(c), (int)sizeof(d), (int)sizeof(e));
+  printf("signs %d %d %d %d\n", a > 0, b > 0, (int)(e < 0), (int)(d > 0));
+  printf("chars %d %d %d %d\n", (int)sizeof('a'), (int)sizeof(u'x'), (int)sizeof(U'x'), (int)sizeof(L'x'));
+  int m = -7, n = 2, p = 7, q = -2;
+  printf("divmod %d %d %d %d %d %d\n", m / n, m % n, p / q, p % q, m / q, m % q);
+  unsigned u = 0;
+  printf("wrap %u %u\n", u - 1, (unsigned)-5);
+  double big = 3.99, neg = -3.99;
+  printf("conv %d %d %d %d %d\n", (int)big, (int)neg, (int)(unsigned char)300, (int)(signed char)200, (int)(unsigned)4294967295u);
+  printf("shift %u %d %d %d\n", 1u << 31, -1 >> 1, (-1) << 1, -16 >> 2);
+  char ch = 100;
+  ch += 100;
+  unsigned char uc = 250;
+  uc += 10;
+  short s = 30000;
+  s += 30000;
+  printf("narrow %d %d %d\n", (int)ch, (int)uc, (int)s);
+  bool t = true;
+  bool five = 5;
+  printf("bool %d %d %d\n", t + t, (int)five, (int)(t * 3));
+  printf("mixed %d %u %d\n", (int)(-1 < 0u), true ? -1 : 0u, (int)(-1 < (long long)0u));
+  float f = 16777217;
+  double tenth = 0.1;
+  printf("float %.1f %d %d\n", f, (int)((float)tenth == tenth), (int)(0.1f + 0.2f == 0.3f));
+  double huge = 1e308;
+  double inf = huge * 10;
+  double nz = -0.0;
+  printf("inf %d %d %d %g\n", (int)(inf > huge), (int)(nz == 0.0), (int)(1 / nz < 0), 1.0 / 3);
+  long long ll = 9007199254740993LL;
+  double asDouble = (double)ll;
+  printf("ll %lld %.0f %lld\n", ll, asDouble, (long long)asDouble);
+  unsigned long long ull = 18446744073709551615ULL;
+  printf("ull %llu %.0f\n", ull, (double)ull);
+  int intMax = 2147483647;
+  long long widened = intMax + 1LL;
+  printf("widen %lld %d\n", widened, (int)(unsigned)widened);
+  return 0;
+}

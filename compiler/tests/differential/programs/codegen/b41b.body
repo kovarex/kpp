@@ -1,0 +1,73 @@
+// battery 41: templates: CRTP's static dispatch to the derived class, a template template
+// parameter, a member template of a class template, an explicit specialization of a member
+// function of one instance, non-type parameters of kinds bool, char, enum and auto, a dependent
+// base's member through this->, and a static member function template.
+template<class Derived>
+struct Shape
+{
+  int area() const { return static_cast<const Derived*>(this)->compute() * 10; }
+  int sides() const { return Derived::corners; }
+};
+struct Square : Shape<Square>
+{
+  int side = 3;
+  static constexpr int corners = 4;
+  int compute() const { return side * side; }
+};
+struct Triangle : Shape<Triangle>
+{
+  static constexpr int corners = 3;
+  int compute() const { return 6; }
+};
+template<class T>
+struct Holder
+{
+  T value;
+  int size() const { return (int)sizeof(T); }
+};
+template<template<class> class C, class T>
+int wrappedSize(T v)
+{
+  C<T> c{v};
+  return c.size() * 100 + (int)c.value;
+}
+template<class T>
+struct Converter
+{
+  T base;
+  template<class U>
+  U as() const { return (U)base + (U)1; }
+  int kind() const { return 1; }
+};
+enum class Color { Red = 3, Green = 5 };
+template<bool B, char C, Color K, auto V>
+int params() { return (B ? 1000 : 0) + C * 10 + (int)K + (int)V; }
+template<class T>
+struct Base
+{
+  T stored = 7;
+};
+template<class T>
+struct Derived : Base<T>
+{
+  T get() const { return this->stored * 2; }
+};
+struct Factory
+{
+  template<class T>
+  static T make(int v) { return T(v) / 2; }
+};
+int main()
+{
+  Square s;
+  Triangle t;
+  printf("crtp %d %d %d %d\n", s.area(), s.sides(), t.area(), t.sides());
+  printf("ttp %d %d\n", wrappedSize<Holder>(5), wrappedSize<Holder>('A'));
+  Converter<int> ci{41};
+  Converter<double> cd{2.5};
+  printf("member %d %.1f %d %d %d\n", ci.as<int>(), ci.as<double>(), cd.as<int>(), ci.kind(), cd.kind());
+  printf("params %d %d\n", params<true, 'a', Color::Green, 7>(), params<false, 'b', Color::Red, 'x'>());
+  Derived<int> d;
+  printf("dependent %d %d %.2f\n", d.get(), Factory::make<int>(7), Factory::make<double>(7));
+  return 0;
+}

@@ -1,0 +1,62 @@
+// dynamic_cast with repeated bases and non-public bases, handlers likewise
+class S { public: int s = 1; virtual ~S() {} };
+class T : public S { public: int t = 2; };
+class L : public T { public: int l = 3; };
+class R : public T { public: int r = 4; };
+class D : public L, public R { public: int d = 5; };
+class X { public: int x = 6; virtual ~X() {} };
+class E : public D, public X { public: int e = 7; };
+template<class Q, class F> int is(F* p) { return dynamic_cast<Q*>(p) != nullptr; }
+void down() {
+  D d; d.R::t = 40; d.L::t = 30;
+  L* l = &d; R* r = &d; S* sl = static_cast<T*>(l); S* sr = static_cast<T*>(r);
+  // the T above each S: the one the S belongs to
+  printf("%d %d\n", dynamic_cast<T*>(sl)->t, dynamic_cast<T*>(sr)->t);
+  printf("%d %d\n", dynamic_cast<L*>(sl) == l, dynamic_cast<R*>(sr) == r);
+  printf("%d %d\n", is<R>(sl), is<L>(sr));
+  printf("%d %d\n", dynamic_cast<R*>(sl) == r, dynamic_cast<L*>(sr) == l);
+  printf("%d %d\n", is<D>(sl), is<D>(sr));
+}
+void crossAmbiguous() {
+  E e; X* x = &e; D* d = &e;
+  printf("%d %d %d %d %d\n", is<D>(x), is<L>(x), is<R>(x), is<T>(x), is<S>(x));
+  printf("%d\n", dynamic_cast<D*>(x) == d);
+}
+// private and protected paths
+class P0 { public: int a = 1; virtual ~P0() {} };
+class P1 : public P0 { public: int b = 2; };
+class Pm : private P1 { public: P0* up() { return this; } P1* mid() { return this; } };
+class Pt : public Pm { public: int c = 3; };
+class O1 { public: virtual ~O1() {} };
+class Pn : public Pm, public O1 { };
+void nonpublic() {
+  Pm m; P0* a = m.up(); P1* b = m.mid();
+  printf("%d %d %d\n", is<Pm>(a), is<Pm>(b), is<P1>(a));
+  Pt t; P0* c = t.up(); P1* d = t.mid(); printf("%d %d %d %d\n", is<Pt>(c), is<Pm>(c), is<Pt>(d), is<P1>(c));
+  Pn n; O1* o = &n; P0* e = n.up(); printf("%d %d %d %d\n", is<P0>(o), is<P1>(o), is<Pm>(o), is<O1>(e));
+}
+// a private base reached by a public path too: only the public one counts
+class Q0 { public: int v = 1; virtual ~Q0() {} };
+class Q1 : private Q0 { public: Q1() { Q0::v = 11; } };
+class Q2 : public Q0 { public: Q2() { v = 22; } };
+class Q3 : public Q1, public Q2 { };
+class Y0 { public: virtual ~Y0() {} };
+class Q4 : public Q3, public Y0 { };
+void mixed() { Q4 q; Y0* y = &q; Q0* z = dynamic_cast<Q0*>(y); printf("%d\n", z != nullptr); if (z) printf("%d\n", z->v); }
+// handlers: a repeated or non-public base catches nothing
+class H0 { public: int h = 1; virtual ~H0() {} };
+class H1 : public H0 { };
+class H2 : public H0 { };
+class H3 : public H1, public H2 { };
+class H4 : private H0 { };
+class H5 : protected H0 { };
+void handlers() {
+  try { try { throw H3(); } catch (H0&) { printf("H0\n"); } } catch (H1&) { printf("H1\n"); }
+  try { try { throw H4(); } catch (H0&) { printf("H0\n"); } } catch (...) { printf("all\n"); }
+  try { try { throw H5(); } catch (const H0&) { printf("H0\n"); } } catch (...) { printf("all\n"); }
+  H3 s; H4 p;
+  try { try { throw &s; } catch (H0*) { printf("H0*\n"); } } catch (H3*) { printf("H3*\n"); }
+  try { try { throw &p; } catch (H0*) { printf("H0*\n"); } } catch (H4*) { printf("H4*\n"); }
+  try { try { throw H3(); } catch (H0) { printf("H0v\n"); } } catch (...) { printf("all\n"); }
+}
+int main() { down(); crossAmbiguous(); nonpublic(); mixed(); handlers(); return 0; }

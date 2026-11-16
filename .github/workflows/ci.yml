@@ -268,6 +268,53 @@ jobs:
         shell: cmd
         run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/${{ matrix.config == 'debug' && 2 || 4 }} ${{ matrix.config == 'windows-gnu' && '--target windows-gnu --release' || matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
+  # The differential tests (compiler/tests/differential/README.md; kovarex, 2026-11-16): the threads'
+  # comparison programs and random program generators, each built by kpp and as C++ by clang++ (MSVC's
+  # target, and llvm-mingw's where the two C++ builds may differ), their outputs compared, in debug and
+  # --release, in 2 shards each. A difference not in pending.txt fails, and so does a pending one that
+  # matches. kpp's gate leaves them out: about 5 minutes a configuration on this machine's 32 threads.
+  differential:
+    needs: build
+    runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
+    timeout-minutes: 60
+    name: differential ${{ matrix.config }} ${{ matrix.shard }}/2
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [debug, release]
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kpp
+          path: compiler/build
+
+      - name: llvm-mingw cache
+        uses: actions/cache@v4
+        with:
+          path: build/llvm-mingw
+          key: llvm-mingw-${{ hashFiles('tools/sysroot/llvm-mingw.ps1') }}
+
+      # kpp's clang and the first C++ reference from Visual Studio's Clang component (the runner's need
+      # not be Community), the second reference from llvm-mingw.
+      - name: Tools
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+          if (-not $vs) { throw 'no Visual Studio with the Clang component' }
+          "KPP_CLANG=$vs\VC\Tools\Llvm\x64\bin\clang.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "KPP_DIFF_CXX=$vs\VC\Tools\Llvm\x64\bin\clang++.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          $root = & tools\sysroot\llvm-mingw.ps1 | Select-Object -Last 1
+          "KPP_DIFF_CXX2=$root\bin\clang++.exe" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+          "CPUs: $env:NUMBER_OF_PROCESSORS"
+
+      - name: differential
+        shell: cmd
+        run: python -I compiler\tests\differential\run.py --jobs 8 --shard ${{ matrix.shard }}/2 ${{ matrix.config == 'release' && '--release' || '' }}
+
   # FreeBSD (docs/design.md, "Targets and hosts", stage 6): the spec built and linked for FreeBSD 14.3
   # here (run_spec.py --target freebsd, against tools\sysroot\freebsd.ps1's sysroot), then run in a
   # FreeBSD 14.3 VM (freebsd_run). On every run. The known failures (stages 3 and 4,
@@ -1078,7 +1125,7 @@ jobs:
   # (freebsd_build, freebsd_run, libraries_freebsd_build, libraries_freebsd_run), macos_build or macos_host:
   # a red one of those alone does not stop a release.
   publish:
-    needs: [run_tests, spec, package, linux_spec, linux_host]
+    needs: [run_tests, spec, differential, package, linux_spec, linux_host]
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 30

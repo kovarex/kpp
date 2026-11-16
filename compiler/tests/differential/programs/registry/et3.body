@@ -1,0 +1,43 @@
+template<class T> int unfixedLocal()
+{
+  enum L { a = sizeof(T), b = a + 1 };
+  L x = b;
+  return (int)x;
+}
+template<long long N> long long wideLocal()
+{
+  enum L { a = N };
+  return (long long)sizeof(L) * 1000 + (long long)(a > 0);
+}
+template<long long N> struct Wide { enum { v = N }; enum E { w = N, x = 1 }; };
+template<class T> struct Fn
+{
+  static int local()
+  {
+    struct In { enum : T { a = 9 }; enum class G : T { b = 1 }; };
+    return (int)sizeof(typename In::G) * 100 + (int)In::a;
+  }
+};
+template<class T> auto lambda()
+{
+  enum class L : T { a = 3 };
+  auto f = [](L x) { return (int)sizeof(x) * 10 + (int)x; };
+  return f(L::a);
+}
+template<class T> int staticOfEnum()
+{
+  enum class L : T { a = 3, b = 4 };
+  static L held = L::b;
+  L all[2] = {L::a, L::b};
+  return (int)held + (int)sizeof(all);
+}
+int main()
+{
+  printf("%d %d\n", unfixedLocal<char>(), unfixedLocal<long long>());
+  printf("%lld\n", wideLocal<5>());
+  printf("%d %d\n", (int)sizeof(Wide<5>::v), (int)sizeof(Wide<5>::E));
+  printf("%d %d\n", Fn<short>::local(), Fn<long long>::local());
+  printf("%d %d\n", lambda<short>(), lambda<long long>());
+  printf("%d %d\n", staticOfEnum<short>(), staticOfEnum<long long>());
+  return 0;
+}

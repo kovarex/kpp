@@ -1,0 +1,8 @@
+// a local variable named accumulate (a kpp contextual keyword) hides the library's accumulate
+int accumulate(int a, int b) { return a + b; }
+int main()
+{
+  auto accumulate = [](int a, int b) { return a * b; };
+  printf("K1 %d\n", accumulate(3, 4));
+  return 0;
+}

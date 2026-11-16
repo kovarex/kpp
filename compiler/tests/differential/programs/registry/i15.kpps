@@ -1,0 +1,39 @@
+extern "C" int printf(const char* format, ...);
+// battery i15: String's members at the edges of their positions, against std::string: find and
+// rfind with a position past the end and an empty needle, substr at size(), a count past the end,
+// compare of substrings, find_first_of / find_last_not_of from a position, replace and erase with
+// counts past the end, insert at size(), resize down and up with a fill, conversions from text.
+void show(const char* label, const String& s) { printf("%s [%s] %d\n", label, s.c_str(), (int)s.size()); }
+int main()
+{
+  String s = "abcabcab";
+  printf("find %d %d %d %d %d %d\n", (int)s.find("ab", 1), (int)s.find("", 3), (int)s.find("", 8), (int)(s.find("", 9) == String::npos),
+         (int)(s.find("ab", 20) == String::npos), (int)s.find('c', 3));
+  printf("rfind %d %d %d %d %d\n", (int)s.rfind("ab"), (int)s.rfind("ab", 5), (int)s.rfind("ab", 0), (int)s.rfind(""), (int)s.rfind("", 3));
+  printf("rfind %d %d\n", (int)(s.rfind("x") == String::npos), (int)s.rfind('a', 100));
+  show("substr", s.substr(8));
+  show("substr", s.substr(5, 100));
+  show("substr", s.substr(2, 0));
+  printf("compare %d %d %d %d\n", s.compare(0, 3, "abc") == 0, s.compare(3, 3, "abc") == 0, s.compare("abd") < 0, s.compare(6, 100, "ab") == 0);
+  printf("firstOf %d %d %d %d\n", (int)s.find_first_of("cb", 3), (int)s.find_last_of("a"), (int)s.find_last_not_of("ab"), (int)s.find_first_not_of("abc") == -1);
+  printf("firstOf %d %d\n", (int)s.find_last_of("c", 4), (int)s.find_first_not_of("a", 3));
+  String r = s;
+  r.replace(6, 100, "XYZ");
+  show("replace", r);
+  r.replace((size_t)0, 0, "<");
+  show("replace", r);
+  r.erase(4, 100);
+  show("erase", r);
+  r.insert(r.size(), ">>");
+  show("insert", r);
+  r.resize(2);
+  show("resize", r);
+  r.resize(5, '.');
+  show("resize", r);
+  String t(3, 'z');
+  String u("hello world", 5);
+  show("ctor", t);
+  show("ctor", u);
+  printf("ops %d %d %d %d\n", (int)(String("abc") < String("abd")), (int)(String("ab") < String("abc")), (int)(String("b") > String("abc")), (int)(String("") == String()));
+  return 0;
+}

@@ -1,0 +1,160 @@
+// Algorithms, Optional, Function, Pair, Tuple, UniquePtr, SharedPtr, Bitset.
+
+void showV(const char* what, const Vector<int>& v)
+{
+  printf("%s:", what);
+  for (int x : v)
+    printf(" %d", x);
+  printf("\n");
+}
+
+struct Item
+{
+  int key;
+  int order;
+};
+
+int main()
+{
+  Vector<int> v = {5, 3, 9, 1, 3, 7, 3, 8, 2, 6};
+  Vector<int> s = v;
+  sort(s.begin(), s.end());
+  showV("sort", s);
+  sort(s.begin(), s.end(), [](int a, int b) { return a > b; });
+  showV("sort desc", s);
+  sort(s.begin(), s.end());
+  printf("lowerBound 3 at %d, upperBound 3 at %d, lowerBound 4 at %d, lowerBound 10 at %d\n", (int)(lowerBound(s.begin(), s.end(), 3) - s.begin()),
+         (int)(upperBound(s.begin(), s.end(), 3) - s.begin()), (int)(lowerBound(s.begin(), s.end(), 4) - s.begin()), (int)(lowerBound(s.begin(), s.end(), 10) - s.begin()));
+  printf("binarySearch %d %d\n", (int)binarySearch(s.begin(), s.end(), 7), (int)binarySearch(s.begin(), s.end(), 4));
+  auto er = equalRange(s.begin(), s.end(), 3);
+  printf("equalRange 3: %d..%d\n", (int)(er.first - s.begin()), (int)(er.second - s.begin()));
+  Vector<int> u = s;
+  u.erase(unique(u.begin(), u.end()), u.end());
+  showV("unique", u);
+  Vector<int> r = v;
+  rotate(r.begin(), r.begin() + 3, r.end());
+  showV("rotate 3", r);
+  reverse(r.begin(), r.end());
+  showV("reverse", r);
+  Vector<int> rm = v;
+  rm.erase(removeIf(rm.begin(), rm.end(), [](int x) { return x % 3 == 0; }), rm.end());
+  showV("removeIf %3", rm);
+  printf("accumulate %d\n", accumulate(v.begin(), v.end(), 0));
+  printf("max %d min %d\n", *maxElement(v.begin(), v.end()), *minElement(v.begin(), v.end()));
+  Vector<int> ties = {4, 9, 9, 2, 9};
+  printf("maxElement of ties at %d\n", (int)(maxElement(ties.begin(), ties.end()) - ties.begin()));
+  Vector<int> mins = {3, 1, 1};
+  printf("minElement of ties at %d\n", (int)(minElement(mins.begin(), mins.end()) - mins.begin()));
+  printf("min of equal pair picks first %d, max picks first %d\n", &min(ties[1], ties[2]) == &ties[1], &max(ties[1], ties[2]) == &ties[1]);
+  printf("allOf %d anyOf %d noneOf %d\n", (int)allOf(v.begin(), v.end(), [](int x) { return x > 0; }), (int)anyOf(v.begin(), v.end(), [](int x) { return x > 8; }),
+         (int)noneOf(v.begin(), v.end(), [](int x) { return x > 9; }));
+  printf("isSorted %d %d until %d\n", (int)isSorted(s.begin(), s.end()), (int)isSorted(v.begin(), v.end()), (int)(isSortedUntil(v.begin(), v.end()) - v.begin()));
+  printf("adjacentFind at %d\n", (int)(adjacentFind(s.begin(), s.end()) - s.begin()));
+  Vector<int> perm = {1, 2, 3};
+  printf("permutations:");
+  do
+  {
+    printf(" %d%d%d", perm[0], perm[1], perm[2]);
+  } while (nextPermutation(perm.begin(), perm.end()));
+  printf(" after %d%d%d\n", perm[0], perm[1], perm[2]);
+  Vector<int> dup = {1, 2, 2, 1};
+  printf("nextPermutation with repeats:");
+  int steps = 0;
+  while (nextPermutation(dup.begin(), dup.end()))
+  {
+    printf(" %d%d%d%d", dup[0], dup[1], dup[2], dup[3]);
+    ++steps;
+  }
+  printf(" (%d)\n", steps);
+  Vector<int> nth = v;
+  nthElement(nth.begin(), nth.begin() + 4, nth.end());
+  printf("nthElement 4: %d\n", nth[4]);
+  Vector<int> a = {1, 3, 5, 7}, b = {2, 3, 4, 7, 9}, out;
+  merge(a.begin(), a.end(), b.begin(), b.end(), backInserter(out));
+  showV("merge", out);
+  out.clear();
+  setIntersection(a.begin(), a.end(), b.begin(), b.end(), backInserter(out));
+  showV("setIntersection", out);
+  out.clear();
+  setDifference(b.begin(), b.end(), a.begin(), a.end(), backInserter(out));
+  showV("setDifference", out);
+  printf("lexicographicalCompare %d %d %d\n", (int)lexicographicalCompare(a.begin(), a.end(), b.begin(), b.end()),
+         (int)lexicographicalCompare(a.begin(), a.begin() + 2, a.begin(), a.end()), (int)lexicographicalCompare(a.begin(), a.end(), a.begin(), a.end()));
+
+  Vector<Item> items;
+  for (int i = 0; i < 40; ++i)
+    items.push_back(Item{(i * 7) % 5, i});
+  stableSort(items.begin(), items.end(), [](const Item& x, const Item& y) { return x.key < y.key; });
+  printf("stableSort:");
+  for (const Item& it : items)
+    printf(" %d.%d", it.key, it.order);
+  printf("\n");
+
+  Optional<int> o;
+  printf("optional empty %d value_or %d\n", (int)o.has_value(), o.value_or(7));
+  o = 5;
+  printf("optional %d %d\n", (int)o.has_value(), *o);
+  Optional<int> p = 3;
+  printf("optional compare %d %d %d %d\n", (int)(o > p), (int)(o == 5), (int)(Optional<int>() < p), (int)(Optional<int>() == nullopt));
+  printf("optional vs empty %d %d %d\n", (int)(p > nullopt), (int)(nullopt < p), (int)(Optional<int>() <= Optional<int>()));
+  o.reset();
+  printf("reset %d\n", (int)o.has_value());
+  try
+  {
+    printf("%d\n", o.value());
+  }
+  catch (...)
+  {
+    printf("value of empty threw\n");
+  }
+  Optional<String> os = String("abc");
+  os.emplace(3, 'z');
+  printf("emplace %s\n", os->c_str());
+  Optional<String> moved = move(os);
+  printf("moved-from has_value %d moved %s\n", (int)os.has_value(), moved->c_str());
+
+  Function<int(int)> f;
+  printf("function empty %d\n", (int)(bool)f);
+  try
+  {
+    f(1);
+  }
+  catch (...)
+  {
+    printf("calling empty threw\n");
+  }
+  int captured = 10;
+  f = [captured](int x) { return x + captured; };
+  printf("function %d\n", f(5));
+  Function<int(int)> g = f;
+  f = nullptr;
+  printf("copy keeps %d, f empty %d\n", g(1), (int)(f == nullptr));
+
+  Pair<int, String> pr(1, "x");
+  Pair<int, String> pr2(1, "y");
+  printf("pair compare %d %d\n", (int)(pr < pr2), (int)(pr == pr2));
+  Tuple<int, int, int> t1 = makeTuple(1, 2, 3), t2 = makeTuple(1, 3, 0);
+  printf("tuple compare %d\n", (int)(t1 < t2));
+
+  SharedPtr<int> sp = makeShared<int>(4);
+  SharedPtr<int> sp2 = sp;
+  WeakPtr<int> wp = sp;
+  printf("shared use_count %d\n", (int)sp.use_count());
+  sp.reset();
+  printf("after reset %d expired %d\n", (int)sp2.use_count(), (int)wp.expired());
+  sp2.reset();
+  printf("expired %d lock null %d\n", (int)wp.expired(), (int)(wp.lock() == nullptr));
+  UniquePtr<int> up = makeUnique<int>(9);
+  UniquePtr<int> up2 = move(up);
+  printf("unique moved %d %d\n", (int)(up == nullptr), *up2);
+
+  Bitset<10> bits;
+  bits.set(1);
+  bits.set(9);
+  bits.flip(2);
+  printf("bitset %s count %d any %d all %d\n", bits.to_string().c_str(), (int)bits.count(), (int)bits.any(), (int)bits.all());
+  bits <<= 3;
+  printf("bitset << 3 %s\n", bits.to_string().c_str());
+  printf("bitset ulong %lu\n", (unsigned long)Bitset<10>(1023).to_ulong());
+  return 0;
+}
