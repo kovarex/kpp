@@ -183,6 +183,8 @@ auto codegen::Emitter::coverBegin(Node* at, const std::string& name) -> void
     hash = coverHashes.emplace(currentFile, text).first;
   }
   std::string shown = !name.empty() ? name : currentFunction ? qualifiedName(currentFunction) : currentFunctionName;
+  if (shown == "__kpp_program_main")
+    shown = "main"; // (a --tests build renames the program's main: to the reader it is main)
   coverMap = programPathOf(currentFile) + "\n" + hash->second + "\n" + shown + "\n" + std::to_string(lineOf(at, currentFile)) + "\n";
   coverProbe('F', coverPlace(at->token, at->token));
   coverRegion = 0; // (the body's first statements run whenever the entry does: one probe less per call)

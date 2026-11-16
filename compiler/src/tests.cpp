@@ -679,6 +679,14 @@ extern "C" const char* kpp_coverage_delta();
 extern "C" void kpp_coverage_apply(const char* delta);
 extern "C" bool kpp_coverage_write(const char* path);
 extern "C" const char* kpp_coverage_default_path();
+extern "C" void kpp_coverage_per_test(i32 limit);
+extern "C" void kpp_coverage_test_name(i32 test, const char* name);
+extern "C" void kpp_coverage_test_end(i32 test);
+extern "C" const char* kpp_coverage_take();
+extern "C" void kpp_coverage_give(const char* text);
+
+// --coverage-tests N: per test, N of the tests that ran each place named (0: the run as a whole).
+int __kppCoverageTestLimit = 10;
 
 extern "C" void kpp_check_failed(const char* file, int line, int column, const char* text, int kind)
 {
@@ -733,6 +741,7 @@ void __kppPrintHelp()
              "  --list                the selected tests, in the run's order, without running them\n"
              "  --report FILE         one JSON line per test and a summary (- for stdout)\n"
              "  --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; else the build's --coverage-file or kpp-coverage.json)\n"
+             "  --coverage-tests N    with it: how many tests ran each place and the first N of them (10; 0: the run as a whole)\n"
              "  -i, --interactive     a menu: a key chooses the tests (a all in parallel, A all here, a test or a suite\n"
              "                        found by typing, the clipboard's, the failed ones; space again), they run, again until q\n"
              "  --help                this text\n"
@@ -1154,6 +1163,8 @@ bool __kppRunOne(const __KppTest* test, u64 slowSeconds, u64* took)
 int __kppWork(const std::Vector<const __KppTest*>& selected, i64 from, u64 slowSeconds)
 {
   __KppTestState& state = __kppTestState();
+  if constexpr (config::coverage)
+    kpp_coverage_test_end(-1); // (the setup's: no test's)
   std::String line;
   char c = 0;
   while (__kppReadPipe(from, &c, 1) == 1)
@@ -1175,9 +1186,17 @@ int __kppWork(const std::Vector<const __KppTest*>& selected, i64 from, u64 slowS
       bool passed = __kppRunOne(selected[int(i)], slowSeconds, &took);
       __kppSend('R', __kppJsonTest(*selected[int(i)], passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
       if constexpr (config::coverage)
-        __kppSend('C', std::String(kpp_coverage_delta())); // (what the test ran, before it is done: the first process writes it)
+      {
+        if (__kppCoverageTestLimit > 0)
+          kpp_coverage_test_end(int(i));
+        else
+          __kppSend('C', std::String(kpp_coverage_delta())); // (what the test ran, before it is done: the first process writes it)
+      }
       __kppSend('D', std::String(passed ? "1" : "0"));
     }
+    if constexpr (config::coverage)
+      if (__kppCoverageTestLimit > 0)
+        __kppSend('T', std::String(kpp_coverage_take())); // (the job's tests' places: the first process adds them up)
     __kppSend('E', std::String());
   }
   testsTeardown();
@@ -1618,6 +1637,11 @@ template<typename Finished> bool __kppRunJobs(const std::Vector<const __KppTest*
     {
       if constexpr (config::coverage)
         kpp_coverage_apply(event.text.c_str());
+    }
+    else if (event.kind == 'T')
+    {
+      if constexpr (config::coverage)
+        kpp_coverage_give(event.text.c_str());
     }
     else if (event.kind == 'D')
     {
@@ -2150,11 +2174,24 @@ int main(int argc, char** argv)
       report = argv[++i];
     else if (std::strcmp(argv[i], "--coverage") == 0 && i + 1 < argc)
       coverage = argv[++i];
+    else if (std::strcmp(argv[i], "--coverage-tests") == 0 && i + 1 < argc)
+    {
+      u64 limit = 0;
+      if (!__kppNumber(argv[++i], limit) || limit > 1000)
+      {
+        std::println("--coverage-tests: a number of tests from 0 to 1000, not ", std::StringView(argv[i]));
+        return 2;
+      }
+      __kppCoverageTestLimit = int(limit);
+    }
     else
       others.push_back(std::String(argv[i]));
   }
   if constexpr (config::coverage)
+  {
     kpp_coverage_managed(); // (the runner writes it below, not the exit: a worker's goes to the first process)
+    kpp_coverage_per_test(__kppCoverageTestLimit);
+  }
   else if (coverage)
   {
     std::println("--coverage: the tests were built without --coverage (kpp --coverage --test ...)");
@@ -2390,6 +2427,10 @@ int main(int argc, char** argv)
     return 0;
   }
 
+  // (each test by its place in the run's order, the same in every process: the coverage file names them)
+  if constexpr (config::coverage)
+    for (int i = 0; i < int(selected.size()); ++i)
+      kpp_coverage_test_name(i, selected[i]->fullName.c_str());
   if (state.working)
     return __kppWork(selected, i64(workerIn), slowSeconds);
 
@@ -2452,8 +2493,12 @@ int main(int argc, char** argv)
       std::println("--jobs: the workers did not run every test");
   }
   else
-    for (const __KppTest* test : selected)
+  {
+    if constexpr (config::coverage)
+      kpp_coverage_test_end(-1); // (the setup's: no test's)
+    for (int position = 0; position < int(selected.size()); ++position)
     {
+      const __KppTest* test = selected[position];
       if (exitOnFailure && failed > 0)
       {
         ++notRun;
@@ -2462,9 +2507,12 @@ int main(int argc, char** argv)
       }
       u64 took = 0;
       bool passed = __kppRunOne(test, slowSeconds, &took);
+      if constexpr (config::coverage)
+        kpp_coverage_test_end(position);
       finished(test, passed, std::String());
       writeReport(__kppJsonTest(*test, passed ? "pass" : "fail", state.failures, double(took) / 1000000000.0));
     }
+  }
   testsTeardown();
   writeReport(std::toString("{\"summary\":{\"tests\":", run + notRun, ",\"failed\":", failed, ",\"notRun\":", notRun, ",\"seconds\":",
                             double(__kppNanoseconds() - runStarted) / 1000000000.0, "}}\n"));

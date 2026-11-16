@@ -18,10 +18,12 @@
 # answer N references (its log) and Visual Studio's Find All References window must show them (its
 # visible rows: between 1 and N).
 # -CoverageAt FILE:LINE:COLUMN with -CoverageText TEXT (docs/editors.md, "Coverage in Visual Studio"): once
-# Visual Studio is up, `kpp CELL coverage --run` (-CoverageCell, app by default) writes the project's
-# kpp-coverage.json, which must show by itself (the extension's log), Quick Info there must show TEXT
-# ("never false"), Tools.kppShowCoverage must hide it and show it again.
-#   test.ps1 -Name coverage -Project compiler\tests\lsp\coverage -File src\main.kpp -Line 10 -Column 7 -Definition src\main.kpp:3 -CoverageAt src\main.kpp:10:9 -CoverageText 'never false'
+# Visual Studio is up, the project's tests run with kpp --coverage (--coverage-file: the project's
+# kpp-coverage.json, as the coverage configuration's run writes it), which must show by itself (the
+# extension's log), Quick Info there must show TEXT ("never false"), at -CoverageTestsAt FILE:LINE:COLUMN
+# -CoverageTestsText TEXT (which tests ran it: "run by 1 test"), and Tools.kppShowCoverage must hide it and
+# show it again.
+#   test.ps1 -Name coverage -Project compiler\tests\lsp\coverage -File src\main.kpp -Line 10 -Column 7 -Definition src\main.kpp:3 -CoverageAt src\main.kpp:10:9 -CoverageText 'never false' -CoverageTestsAt src\main.kpp:11:7 -CoverageTestsText 'run by 1 test'
 # -NavigateBack: View.NavigateBackward after Edit.GoToDefinition must land at -File:-Line again (the
 # navigation history Alt+Left uses).
 # -Solution opens the solution kpp --generate-visual-studio-files writes instead of the folder; with
@@ -60,7 +62,8 @@ param(
   [switch]$NavigateBack,
   [string]$CoverageAt,
   [string]$CoverageText,
-  [string]$CoverageCell = 'app'
+  [string]$CoverageTestsAt,
+  [string]$CoverageTestsText
 )
 $ErrorActionPreference = 'Stop'
 
@@ -206,6 +209,26 @@ $dte = $null
 while (-not $dte -and $watch.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 250; $dte = [KppVsRot]::Dte($devenv.Id) }
 if (-not $dte) { throw "test.ps1: no DTE for devenv $($devenv.Id)" }
 "Visual Studio up: {0:N1} s" -f $watch.Elapsed.TotalSeconds
+# The experimental instance's account dialog ("Sign in to Visual Studio", which a start after an instance
+# was killed shows) holds every DTE call: closed, as its Close button would (2026-11-16).
+$account = $null
+$t = [Diagnostics.Stopwatch]::StartNew()
+$ofDevenv = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, [int]$devenv.Id)
+$named = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Microsoft Visual Studio Account Settings')
+while (-not $account -and $t.Elapsed.TotalSeconds -lt 20)
+{
+  Start-Sleep -Milliseconds 500
+  # (a window of the main window's, not a top-level one)
+  foreach ($main in [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $ofDevenv))
+  {
+    if (-not $account) { $account = $main.FindFirst([Windows.Automation.TreeScope]::Children, $named) }
+  }
+}
+if ($account)
+{
+  $account.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
+  "closed Visual Studio's account dialog"
+}
 
 function Open($relative, $line, $column)
 {
@@ -387,11 +410,12 @@ try
   {
     $p = Position $CoverageAt
     Open $p.File $p.Line $p.Column
-    # The coverage configuration's run, as Ctrl+F5 in it: the project's kpp-coverage.json, shown by itself.
+    # The tests' run, as Ctrl+F5 on a test target in the coverage configuration: the project's
+    # kpp-coverage.json, which tests ran each place, shown by itself.
     Push-Location $copy
-    $ran = & $KppExe $CoverageCell coverage --run 2>&1
+    $ran = & $KppExe --no-server --coverage --coverage-file "$copy\kpp-coverage.json" --test src 2>&1
     Pop-Location
-    Check "kpp $CoverageCell coverage --run" (Test-Path "$copy\kpp-coverage.json") (($ran | Select-Object -Last 1) -join ' ')
+    Check 'kpp --coverage --test src' (Test-Path "$copy\kpp-coverage.json") (($ran | Select-Object -Last 1) -join ' ')
     $t = [Diagnostics.Stopwatch]::StartNew()
     $loaded = $null
     while (-not $loaded -and $t.Elapsed.TotalSeconds -lt 30)
@@ -412,6 +436,22 @@ try
     }
     Check "coverage's Quick Info at $CoverageAt" ($shown.Contains($CoverageText)) ("'{0}'; {1:N1} s" -f $shown, $t.Elapsed.TotalSeconds)
     Snap 'coverage'
+    if ($CoverageTestsAt)
+    {
+      $p = Position $CoverageTestsAt
+      $t = [Diagnostics.Stopwatch]::StartNew()
+      $shown = ''
+      while ($t.Elapsed.TotalSeconds -lt $Timeout)
+      {
+        Open $p.File $p.Line $p.Column
+        try { $dte.ExecuteCommand('Edit.QuickInfo') } catch { }
+        Start-Sleep -Milliseconds 700
+        $shown = ((PopupText | Select-Object -Unique) -join ' ') -replace '\s+', ' '
+        if ($shown.Contains($CoverageTestsText)) { break }
+      }
+      Check "coverage's tests in Quick Info at $CoverageTestsAt" ($shown.Contains($CoverageTestsText)) ("'{0}'; {1:N1} s" -f $shown, $t.Elapsed.TotalSeconds)
+      Snap 'coverage-tests'
+    }
     $dte.ExecuteCommand('Edit.SelectionCancel')
     try { $dte.ExecuteCommand('Tools.kppShowCoverage') } catch { "Tools.kppShowCoverage: $_" }
     Start-Sleep -Milliseconds 800

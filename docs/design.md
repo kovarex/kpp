@@ -3204,6 +3204,21 @@ not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes record
   configurations"); Visual Studio's extension watches that file in the folder of a .kpp document's build.kpp
   and shows a run's coverage as it is written. `--coverage-file FILE` sets where a run writes it when
   neither the runner's `--coverage` nor KPP_COVERAGE_FILE says.
+- **Which tests ran it** (kovarex, 2026-11-16: "per statement, with hovering, show number of tests, and show
+  several first tests"; "some configurable limit like 10 first tests"; "there would have to be some smart
+  logic so, when things are ran in parallel ... it would be decided which tests stay"). The runner's
+  `--coverage-tests N` (10 by default, 0: the run as a whole): each place (a statement, a condition's true and
+  its false, a missing default, a function; a template's instances share theirs, so a test counts once) says
+  how many tests ran it and the N lowest-numbered of them, a test's number its place in the run's order (the
+  one `--list` prints, the same in every process); a first line `{"tests":[...],"limit":N}` names them. The
+  probes are read and cleared after each test. Under `--jobs` a worker sends its places after each job and
+  the first process adds them up: each test runs in one process, so the counts are exact, and the lowest N
+  of every worker's lowest N are the run's lowest N, whichever finished first (spec
+  kpp/coverage_tests_per_place_capped). `kpp --coverage-merge` adds the counts and keeps the lowest N by the
+  tests' order across the files. Visual Studio's Quick Info: "run by 37 tests, the first 10: ...", a
+  condition's "true in ... / false in ...". On the game's tests (kpp branch d8e6a39, factorio-test in coverage,
+  `--jobs 16`, 9,529 tests, the machine not quiet): 196 and 207 s per test against 172 and 179 s with
+  `--coverage-tests 0`, the file 35 MB against 18 MB.
 - **Tools.** `kpp --coverage-merge FILE... -o OUT` adds runs' coverage up (a source of another hash in two
   files is an error: two versions do not merge); `kpp --coverage-export lcov FILE... -o OUT` writes lcov's
   tracefile (FN/FNDA, DA, BRDA: a condition's true and false, "-" never evaluated; a missing default), for

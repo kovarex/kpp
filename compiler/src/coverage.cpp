@@ -1,5 +1,6 @@
 #include "coverage.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -12,17 +13,26 @@
 // The coverage runtime, in kpp (docs/design.md 28). Module 0 of a --coverage build defines
 // kpp_coverage_entries, the table of every function's probes: its byte array (a byte set to 1 when
 // its probe ran), how many it has, and its region map (Codegen/CoverageProbes.hpp says the map's text).
-// The runtime merges the functions by file (a template's instances and a function's copies by their
-// places) and writes one JSON line per file and a summary line:
+// The runtime indexes the places the maps name (a statement, a condition's true and its false, a missing
+// default, a function: a template's instances and a function's copies share theirs) and writes one JSON
+// line per file and a summary line:
 //   {"file":"a.kpp","hash":"...","lines":[[line,hit]],"statements":[[l,c,l,c,hit]],
 //    "conditions":[[l,c,l,c,true,false]],"defaults":[[l,c,hit]],"functions":[["name",line,hit]]}
 //   {"summary":{"lines":[covered,total],"conditions":[covered,total],"functions":[covered,total]}}
 // A line's hit is 1 when every statement on it ran, 0 when none did, 2 when some did; a condition's
 // true and false are 1 when it was ever that; the conditions' summary counts each condition's two
-// outcomes and each missing default. The C functions:
+// outcomes and each missing default. Per test (the runner's --coverage-tests N, 10 by default; design.md
+// 28) a first line {"tests":["Suite.Test",...],"limit":N} names the run's tests in its order, and each place adds
+// `count,[test,...]`: how many tests ran it and the lowest-numbered N of them (a condition: its true's,
+// then its false's). The probes are cleared after each test, so each test's are its own; a --jobs
+// worker sends its places after each job (kpp_coverage_take) and the first process adds them up
+// (kpp_coverage_give): each test runs in one process, so the counts are exact, and the lowest N of the
+// lowest N of each are the run's, whoever finished first. The C functions:
 // - kpp_coverage_managed(): the test runner writes the coverage, not the program's exit;
-// - kpp_coverage_delta(): what was set since the last call (a --jobs worker sends it after each test);
-// - kpp_coverage_apply(delta): sets that (the first process, from a worker);
+// - kpp_coverage_delta() and kpp_coverage_apply(delta): a worker's probes set since the last call, to
+//   the first process (without per test);
+// - kpp_coverage_per_test(N), kpp_coverage_test_name(i, name), kpp_coverage_test_end(i): per test;
+// - kpp_coverage_take() and kpp_coverage_give(text): a worker's places, per test;
 // - kpp_coverage_write(path): writes the file (- for stdout) and prints the summary line.
 // Without the runner the program writes it at its exit, to KPP_COVERAGE_FILE or the default (--coverage-file,
 // else kpp-coverage.json in the working directory).
@@ -43,11 +53,45 @@ struct __KppCoverageEntry
 
 extern "C" const __KppCoverageEntry* kpp_coverage_entries(i64* count);
 
+// A place of the source the coverage says something of: a statement, a condition's true or its false,
+// a switch's missing default, a function. A template's instances and a function's copies share their
+// places (one key), so a test that ran two of them counts once.
+struct __KppCoveragePlace
+{
+  i32 file = 0;
+  u8 kind = 0;        // 0 statement, 1 a condition's true, 2 its false, 3 a missing default, 4 a function
+  std::String key;    // the place's numbers padded (the file's order), then its JSON numbers; a function: its line padded, its name
+  bool ranOutside = false; // ran outside every test (the setup, a program without tests)
+  i64 count = 0;      // the tests that ran it (per test: --coverage-tests)
+  i32 last = -1;      // the test that counted it last
+  std::Vector<i32> tests; // the lowest-numbered of them, at most the limit, in order
+};
+
+struct __KppCoverageSourceFile
+{
+  std::String path;
+  std::String hash;
+};
+
 struct __KppCoverageState
 {
   bool managed = false;
   std::Vector<std::Vector<u8>> sent; // per entry: what kpp_coverage_delta said already
   std::String delta;
+  // The places (made once, in the table's order, the same in every process of the run) and each
+  // probe's: the probes of entry e are probeFirst[e] on, probe g's places probePlaces[placesFirst[g]] on.
+  bool indexed = false;
+  std::Vector<__KppCoverageSourceFile> files;
+  std::Vector<__KppCoveragePlace> places;
+  std::Vector<i64> probeFirst;
+  std::Vector<i64> placesFirst;
+  std::Vector<i32> probePlaces;
+  // --coverage-tests N: per test, N the tests named per place (0: the run as a whole).
+  i32 limit = 0;
+  bool perTest = false;
+  std::Vector<std::String> testNames;
+  std::Vector<i32> touched; // places counted since kpp_coverage_take
+  std::Vector<u8> isTouched;
 };
 
 __KppCoverageState& __kppCoverageState()
@@ -119,18 +163,6 @@ extern "C" void kpp_coverage_apply(const char* delta)
   }
 }
 
-// What a file's functions say, merged: each place by its key (its numbers, padded, so that the
-// map's order is the file's).
-struct __KppCoverageFile
-{
-  std::String hash;
-  std::Map<std::String, int> statements;
-  std::Map<std::String, int> conditions; // 1 true, 2 false
-  std::Map<std::String, int> defaults;
-  std::Map<std::String, int> functions;   // key: line, then the name
-  std::Map<std::String, std::String> functionNames;
-};
-
 std::String __kppCoveragePadded(i64 value)
 {
   std::String digits;
@@ -189,68 +221,258 @@ std::String __kppCoverageLine(const char*& c)
   return line;
 }
 
-// `l c l c` as a key, and as JSON's numbers.
-bool __kppCoveragePlace(const char*& c, std::String& key, std::String& json)
+// `l c l c` as a key: the numbers padded, then as JSON's.
+bool __kppCoveragePlaceKey(const char*& c, std::String& key)
 {
   i64 values[4] = {0, 0, 0, 0};
   for (int i = 0; i < 4; ++i)
     if (!__kppCoverageNumber(c, values[i]))
       return false;
   key = std::String();
-  json = std::String();
+  for (int i = 0; i < 4; ++i)
+    key << __kppCoveragePadded(values[i]);
   for (int i = 0; i < 4; ++i)
   {
-    key << __kppCoveragePadded(values[i]);
     if (i > 0)
-      json.append(',');
-    json << values[i];
+      key.append(',');
+    key << values[i];
   }
   return true;
 }
 
-void __kppCoverageRead(const __KppCoverageEntry& entry, std::Map<std::String, __KppCoverageFile>& files)
+i32 __kppCoveragePlaceId(std::Map<std::String, i32>& ids, i32 file, u8 kind, const std::String& key)
 {
-  const char* c = entry.map;
-  std::String path = __kppCoverageLine(c);
-  __KppCoverageFile& file = files[path];
-  file.hash = __kppCoverageLine(c);
-  std::String name = __kppCoverageLine(c);
-  std::String line = __kppCoverageLine(c);
-  i64 probe = 0;
+  __KppCoverageState& state = __kppCoverageState();
+  std::String full;
+  full << file << "/" << i32(kind) << "/" << key;
+  auto found = ids.find(full);
+  if (found != ids.end())
+    return found->second;
+  i32 id = i32(state.places.size());
+  __KppCoveragePlace& place = state.places.emplace_back();
+  place.file = file;
+  place.kind = kind;
+  place.key = key;
+  ids[full] = id;
+  return id;
+}
+
+// The places and each probe's, from the functions' region maps (CoverageProbes.hpp's format).
+void __kppCoverageIndex()
+{
+  __KppCoverageState& state = __kppCoverageState();
+  if (state.indexed)
+    return;
+  state.indexed = true;
+  i64 count = 0;
+  const __KppCoverageEntry* entries = kpp_coverage_entries(&count);
+  std::Map<std::String, i32> fileIds;
+  std::Map<std::String, i32> placeIds;
+  i64 probes = 0;
+  for (i64 e = 0; e < count; ++e)
+  {
+    state.probeFirst.push_back(probes);
+    probes += entries[e].count;
+  }
+  state.probeFirst.push_back(probes);
+  std::Vector<std::Vector<i32>> ofProbe;
+  ofProbe.resize(size_t(probes));
+  for (i64 e = 0; e < count; ++e)
+  {
+    const char* c = entries[e].map;
+    std::String path = __kppCoverageLine(c);
+    std::String hash = __kppCoverageLine(c);
+    std::String name = __kppCoverageLine(c);
+    __kppCoverageLine(c); // (the function's line)
+    i32 file = 0;
+    if (auto found = fileIds.find(path); found != fileIds.end())
+      file = found->second;
+    else
+    {
+      file = i32(state.files.size());
+      fileIds[path] = file;
+      __KppCoverageSourceFile& f = state.files.emplace_back();
+      f.path = path;
+      f.hash = hash;
+    }
+    i64 first = state.probeFirst[size_t(e)];
+    i64 probe = 0;
+    while (*c != 0)
+    {
+      char kind = *c;
+      ++c;
+      std::String key;
+      if (kind == 'S')
+      {
+        i64 region = 0;
+        if (__kppCoverageNumber(c, region) && __kppCoveragePlaceKey(c, key) && region < entries[e].count)
+          ofProbe[size_t(first + region)].push_back(__kppCoveragePlaceId(placeIds, file, 0, key));
+      }
+      else if (kind == 'F')
+      {
+        if (__kppCoveragePlaceKey(c, key) && probe < entries[e].count)
+          ofProbe[size_t(first + probe)].push_back(__kppCoveragePlaceId(placeIds, file, 4, key.substr(0, 10) + name)); // (by its line, then its name)
+        ++probe;
+      }
+      else if (kind == 'R')
+        ++probe;
+      else if (kind == 'C')
+      {
+        if (__kppCoveragePlaceKey(c, key) && probe + 1 < entries[e].count)
+        {
+          ofProbe[size_t(first + probe)].push_back(__kppCoveragePlaceId(placeIds, file, 1, key));
+          ofProbe[size_t(first + probe + 1)].push_back(__kppCoveragePlaceId(placeIds, file, 2, key));
+        }
+        probe += 2;
+      }
+      else if (kind == 'D')
+      {
+        if (__kppCoveragePlaceKey(c, key) && probe < entries[e].count)
+          ofProbe[size_t(first + probe)].push_back(__kppCoveragePlaceId(placeIds, file, 3, key));
+        ++probe;
+      }
+      __kppCoverageLine(c); // (the rest of the line)
+    }
+  }
+  for (i64 g = 0; g < probes; ++g)
+  {
+    state.placesFirst.push_back(i64(state.probePlaces.size()));
+    for (i32 place : ofProbe[size_t(g)])
+      state.probePlaces.push_back(place);
+  }
+  state.placesFirst.push_back(i64(state.probePlaces.size()));
+  state.isTouched.resize(state.places.size());
+}
+
+// Test number `test` (its place in the run's order) among a place's lowest-numbered, at most the limit.
+void __kppCoverageKeepTest(std::Vector<i32>& tests, i32 test, i32 limit)
+{
+  if (i32(tests.size()) >= limit)
+  {
+    if (limit == 0 || test >= tests.back())
+      return;
+    tests.pop_back();
+  }
+  tests.push_back(test);
+  for (size_t i = tests.size() - 1; i > 0 && tests[i - 1] > tests[i]; --i)
+  {
+    i32 t = tests[i];
+    tests[i] = tests[i - 1];
+    tests[i - 1] = t;
+  }
+}
+
+// What the probes set since the last call, to their places: as test `test`'s (a test counted once per
+// place), or, test -1, as run outside the tests. Per test the probes are cleared again, so each test's
+// are its own.
+void __kppCoverageCollect(i32 test)
+{
+  __KppCoverageState& state = __kppCoverageState();
+  __kppCoverageIndex();
+  i64 count = 0;
+  const __KppCoverageEntry* entries = kpp_coverage_entries(&count);
+  for (i64 e = 0; e < count; ++e)
+  {
+    u8* flags = entries[e].flags;
+    i64 first = state.probeFirst[size_t(e)];
+    for (i64 k = 0; k < entries[e].count; ++k)
+    {
+      if (flags[k] == 0)
+        continue;
+      if (state.perTest)
+        flags[k] = 0;
+      i64 g = first + k;
+      for (i64 i = state.placesFirst[size_t(g)]; i < state.placesFirst[size_t(g + 1)]; ++i)
+      {
+        i32 id = state.probePlaces[size_t(i)];
+        __KppCoveragePlace& place = state.places[size_t(id)];
+        if (state.isTouched[size_t(id)] == 0)
+        {
+          state.isTouched[size_t(id)] = 1;
+          state.touched.push_back(id);
+        }
+        if (test < 0)
+          place.ranOutside = true;
+        else if (place.last != test)
+        {
+          place.last = test;
+          ++place.count;
+          __kppCoverageKeepTest(place.tests, test, state.limit);
+        }
+      }
+    }
+  }
+}
+
+// --coverage-tests N (the runner's): which tests ran each place, N of them named.
+extern "C" void kpp_coverage_per_test(i32 limit)
+{
+  __KppCoverageState& state = __kppCoverageState();
+  state.limit = limit;
+  state.perTest = limit > 0;
+}
+
+extern "C" void kpp_coverage_test_name(i32 test, const char* name)
+{
+  __KppCoverageState& state = __kppCoverageState();
+  if (test >= i32(state.testNames.size()))
+    state.testNames.resize(size_t(test) + 1);
+  state.testNames[size_t(test)] = std::String(name);
+}
+
+// After test number `test` (-1: before the first, the setup's).
+extern "C" void kpp_coverage_test_end(i32 test)
+{
+  if (__kppCoverageState().perTest)
+    __kppCoverageCollect(test);
+}
+
+// A --jobs worker's places since the last call, `place count outside test,test...` a line each, and
+// cleared: the first process adds them up (kpp_coverage_give). Each test runs in one process, so the
+// counts add up exactly, and the lowest-numbered tests of the run are the lowest of each's.
+extern "C" const char* kpp_coverage_take()
+{
+  __KppCoverageState& state = __kppCoverageState();
+  __kppCoverageCollect(-1); // (what ran between the tests: the worker's own setup)
+  state.delta = std::String();
+  for (i32 id : state.touched)
+  {
+    __KppCoveragePlace& place = state.places[size_t(id)];
+    state.delta << id << " " << place.count << " " << (place.ranOutside ? 1 : 0) << " ";
+    for (size_t i = 0; i < place.tests.size(); ++i)
+      state.delta << std::StringView(i > 0 ? "," : "") << place.tests[i];
+    state.delta << "\n";
+    place.count = 0;
+    place.ranOutside = false;
+    place.tests.clear();
+    state.isTouched[size_t(id)] = 0;
+  }
+  state.touched.clear();
+  return state.delta.c_str();
+}
+
+extern "C" void kpp_coverage_give(const char* text)
+{
+  __KppCoverageState& state = __kppCoverageState();
+  __kppCoverageIndex();
+  const char* c = text;
   while (*c != 0)
   {
-    char kind = *c;
-    ++c;
-    std::String key, json;
-    if (kind == 'S')
+    i64 id = 0, count = 0, outside = 0;
+    if (__kppCoverageNumber(c, id) && __kppCoverageNumber(c, count) && __kppCoverageNumber(c, outside) && id < i64(state.places.size()))
     {
-      i64 region = 0;
-      if (__kppCoverageNumber(c, region) && __kppCoveragePlace(c, key, json) && region < entry.count)
-        file.statements[key + json] |= entry.flags[region] != 0 ? 1 : 0;
+      __KppCoveragePlace& place = state.places[size_t(id)];
+      place.count += count;
+      place.ranOutside = place.ranOutside || outside != 0;
+      i64 test = 0;
+      while (__kppCoverageNumber(c, test))
+      {
+        __kppCoverageKeepTest(place.tests, i32(test), state.limit);
+        if (*c == ',')
+          ++c;
+      }
     }
-    else if (kind == 'F')
-    {
-      __kppCoveragePlace(c, key, json);
-      std::String functionKey = key.substr(0, 10) + name; // (by its line, then its name)
-      file.functions[functionKey] |= probe < entry.count && entry.flags[probe] != 0 ? 1 : 0;
-      file.functionNames[functionKey] = name;
-      ++probe;
-    }
-    else if (kind == 'R')
-      ++probe;
-    else if (kind == 'C')
-    {
-      if (__kppCoveragePlace(c, key, json) && probe + 1 < entry.count)
-        file.conditions[key + json] |= (entry.flags[probe] != 0 ? 1 : 0) | (entry.flags[probe + 1] != 0 ? 2 : 0);
-      probe += 2;
-    }
-    else if (kind == 'D')
-    {
-      if (__kppCoveragePlace(c, key, json) && probe < entry.count)
-        file.defaults[key + json] |= entry.flags[probe] != 0 ? 1 : 0;
-      ++probe;
-    }
-    __kppCoverageLine(c); // (the rest of the line)
+    __kppCoverageLine(c);
   }
 }
 
@@ -278,23 +500,67 @@ std::String __kppCoveragePercent(i64 covered, i64 total)
   return text;
 }
 
+bool __kppCoverageRan(const __KppCoveragePlace& place)
+{
+  return place.ranOutside || place.count > 0;
+}
+
+// `,count,[tests]` of a place, per test.
+std::String __kppCoverageTests(const __KppCoveragePlace& place)
+{
+  std::String out;
+  if (!__kppCoverageState().perTest)
+    return out;
+  out << "," << place.count << ",[";
+  for (size_t i = 0; i < place.tests.size(); ++i)
+    out << std::StringView(i > 0 ? "," : "") << place.tests[i];
+  out << "]";
+  return out;
+}
+
 extern "C" bool kpp_coverage_write(const char* path)
 {
-  i64 count = 0;
-  const __KppCoverageEntry* entries = kpp_coverage_entries(&count);
-  std::Map<std::String, __KppCoverageFile> files;
-  for (i64 e = 0; e < count; ++e)
-    __kppCoverageRead(entries[e], files);
-  i64 lines = 0, linesCovered = 0, conditions = 0, conditionsCovered = 0, functions = 0, functionsCovered = 0;
+  __KppCoverageState& state = __kppCoverageState();
+  __kppCoverageCollect(-1); // (what ran after the last test, or every probe: the run as a whole)
+  // Each file's places in its order: by the key (padded numbers first).
+  std::Vector<std::Map<std::String, i32>> statements, conditions, defaults, functions;
+  statements.resize(state.files.size());
+  conditions.resize(state.files.size());
+  defaults.resize(state.files.size());
+  functions.resize(state.files.size());
+  for (size_t id = 0; id < state.places.size(); ++id)
+  {
+    const __KppCoveragePlace& place = state.places[id];
+    std::Map<std::String, i32>& into = place.kind == 0 ? statements[size_t(place.file)] : place.kind == 3 ? defaults[size_t(place.file)]
+                                     : place.kind == 4 ? functions[size_t(place.file)] : conditions[size_t(place.file)];
+    if (place.kind == 2)
+      continue; // (with its true, below)
+    into[place.key] = i32(id);
+  }
+  // A condition's false is its true's place plus one: the index made them one after the other.
+  std::Vector<i32> order; // the files by path
+  std::Map<std::String, i32> byPath;
+  for (size_t f = 0; f < state.files.size(); ++f)
+    byPath[state.files[f].path] = i32(f);
+  for (auto& [p, f] : byPath)
+    order.push_back(f);
+  i64 lines = 0, linesCovered = 0, conditionsTotal = 0, conditionsCovered = 0, functionsTotal = 0, functionsCovered = 0;
   std::String out;
-  for (auto& [name, file] : files)
+  if (state.perTest)
+  {
+    out << "{\"tests\":[";
+    for (size_t i = 0; i < state.testNames.size(); ++i)
+      out << std::StringView(i > 0 ? "," : "") << __kppCoverageJson(state.testNames[i]);
+    out << "],\"limit\":" << state.limit << "}\n";
+  }
+  for (i32 f : order)
   {
     // Each line's statements: 1 ran, 2 did not (a line with both is partly run).
     std::Map<i64, int> lineHits;
-    for (auto& [key, hit] : file.statements)
+    for (auto& [key, id] : statements[size_t(f)])
       for (i64 l = __kppCoverageField(key, 0); l <= __kppCoverageField(key, 2); ++l)
-        lineHits[l] |= hit != 0 ? 1 : 2;
-    out << "{\"file\":" << __kppCoverageJson(name) << ",\"hash\":\"" << file.hash << "\",\"lines\":[";
+        lineHits[l] |= __kppCoverageRan(state.places[size_t(id)]) ? 1 : 2;
+    out << "{\"file\":" << __kppCoverageJson(state.files[size_t(f)].path) << ",\"hash\":\"" << state.files[size_t(f)].hash << "\",\"lines\":[";
     bool first = true;
     for (auto& [l, bits] : lineHits)
     {
@@ -306,42 +572,50 @@ extern "C" bool kpp_coverage_write(const char* path)
     }
     out << "],\"statements\":[";
     first = true;
-    for (auto& [key, hit] : file.statements)
+    for (auto& [key, id] : statements[size_t(f)])
     {
-      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageNumbers(key) << "," << hit << "]";
+      const __KppCoveragePlace& place = state.places[size_t(id)];
+      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageNumbers(key) << "," << (__kppCoverageRan(place) ? 1 : 0) << __kppCoverageTests(place) << "]";
       first = false;
     }
     out << "],\"conditions\":[";
     first = true;
-    for (auto& [key, outcomes] : file.conditions)
+    for (auto& [key, id] : conditions[size_t(f)])
     {
-      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageNumbers(key) << "," << (outcomes & 1) << "," << (outcomes >> 1) << "]";
+      const __KppCoveragePlace& isTrue = state.places[size_t(id)];
+      const __KppCoveragePlace& isFalse = state.places[size_t(id) + 1];
+      int t = __kppCoverageRan(isTrue) ? 1 : 0, fa = __kppCoverageRan(isFalse) ? 1 : 0;
+      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageNumbers(key) << "," << t << "," << fa << __kppCoverageTests(isTrue) << __kppCoverageTests(isFalse) << "]";
       first = false;
-      conditions += 2;
-      conditionsCovered += (outcomes & 1) + (outcomes >> 1);
+      conditionsTotal += 2;
+      conditionsCovered += t + fa;
     }
     out << "],\"defaults\":[";
     first = true;
-    for (auto& [key, hit] : file.defaults)
+    for (auto& [key, id] : defaults[size_t(f)])
     {
-      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageField(key, 0) << "," << __kppCoverageField(key, 1) << "," << hit << "]";
+      const __KppCoveragePlace& place = state.places[size_t(id)];
+      int hit = __kppCoverageRan(place) ? 1 : 0;
+      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageField(key, 0) << "," << __kppCoverageField(key, 1) << "," << hit << __kppCoverageTests(place) << "]";
       first = false;
-      ++conditions;
+      ++conditionsTotal;
       conditionsCovered += hit;
     }
     out << "],\"functions\":[";
     first = true;
-    for (auto& [key, hit] : file.functions)
+    for (auto& [key, id] : functions[size_t(f)])
     {
-      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageJson(file.functionNames[key]) << "," << __kppCoverageField(key, 0) << "," << hit << "]";
+      const __KppCoveragePlace& place = state.places[size_t(id)];
+      int hit = __kppCoverageRan(place) ? 1 : 0;
+      out << std::StringView(first ? "" : ",") << "[" << __kppCoverageJson(key.substr(10)) << "," << __kppCoverageField(key, 0) << "," << hit << __kppCoverageTests(place) << "]";
       first = false;
-      ++functions;
+      ++functionsTotal;
       functionsCovered += hit;
     }
     out << "]}\n";
   }
-  out << "{\"summary\":{\"lines\":[" << linesCovered << "," << lines << "],\"conditions\":[" << conditionsCovered << "," << conditions
-      << "],\"functions\":[" << functionsCovered << "," << functions << "]}}\n";
+  out << "{\"summary\":{\"lines\":[" << linesCovered << "," << lines << "],\"conditions\":[" << conditionsCovered << "," << conditionsTotal
+      << "],\"functions\":[" << functionsCovered << "," << functionsTotal << "]}}\n";
   bool toStdout = std::strcmp(path, "-") == 0;
   if (toStdout)
     std::print(out);
@@ -357,8 +631,8 @@ extern "C" bool kpp_coverage_write(const char* path)
     fclose(f);
   }
   std::String summary("coverage: lines ");
-  summary << __kppCoveragePercent(linesCovered, lines) << ", conditions " << __kppCoveragePercent(conditionsCovered, conditions) << ", functions "
-          << __kppCoveragePercent(functionsCovered, functions);
+  summary << __kppCoveragePercent(linesCovered, lines) << ", conditions " << __kppCoveragePercent(conditionsCovered, conditionsTotal) << ", functions "
+          << __kppCoveragePercent(functionsCovered, functionsTotal);
   if (!toStdout)
     summary << ": " << std::StringView(path);
   std::println(summary);
@@ -435,6 +709,38 @@ std::string placeText(const std::array<int, 4>& p)
 }
 }
 
+namespace
+{
+// A place's `count,[tests]` at items[at] and items[at + 1] (per test), its tests renamed by `names`
+// (this file's index -> the merged one), added to `into`, the lowest-numbered `limit` kept.
+void addTests(const Json& j, size_t at, const std::vector<int>& names, CoverageTests& into, size_t limit)
+{
+  if (j.items.size() < at + 2)
+    return;
+  into.count += j.items[at].integer();
+  for (const Json& t : j.items[at + 1].items)
+  {
+    long long i = t.integer();
+    if (i >= 0 && size_t(i) < names.size())
+      into.tests.push_back(names[size_t(i)]);
+  }
+  std::sort(into.tests.begin(), into.tests.end());
+  into.tests.erase(std::unique(into.tests.begin(), into.tests.end()), into.tests.end());
+  if (into.tests.size() > limit)
+    into.tests.resize(limit);
+}
+
+std::string testsText(const Coverage& coverage, const CoverageTests& t)
+{
+  if (!coverage.perTest)
+    return "";
+  std::string out = "," + std::to_string(t.count) + ",[";
+  for (size_t i = 0; i < t.tests.size(); ++i)
+    out += (i ? "," : "") + std::to_string(t.tests[i]);
+  return out + "]";
+}
+}
+
 bool readCoverage(const std::string& path, Coverage& into, std::string& error)
 {
   std::ifstream in(path, std::ios::binary);
@@ -445,6 +751,8 @@ bool readCoverage(const std::string& path, Coverage& into, std::string& error)
   }
   std::string line;
   size_t lineNumber = 0;
+  std::vector<int> names; // this file's test i -> into.tests's
+  std::vector<Json> lines;
   while (std::getline(in, line))
   {
     ++lineNumber;
@@ -459,15 +767,37 @@ bool readCoverage(const std::string& path, Coverage& into, std::string& error)
       error = path + ":" + std::to_string(lineNumber) + ": not a coverage file's line (kpp --coverage writes them)";
       return false;
     }
+    if (j.has("tests"))
+    {
+      into.perTest = true;
+      into.limit = std::max(into.limit, size_t(std::max<long long>(0, j["limit"].integer())));
+      for (const Json& t : j["tests"].items)
+      {
+        auto [at, added] = into.testIndex.try_emplace(t.text, int(into.tests.size()));
+        if (added)
+          into.tests.push_back(t.text);
+        names.push_back(at->second);
+      }
+      continue;
+    }
     if (j.has("summary"))
       continue;
-    const std::string& name = j["file"].text;
-    if (name.empty())
+    if (j["file"].text.empty())
     {
       error = path + ":" + std::to_string(lineNumber) + ": a line without its file";
       return false;
     }
-    auto [at, added] = into.try_emplace(name);
+    lines.push_back(std::move(j));
+  }
+  if (lineNumber == 0)
+  {
+    error = path + ": empty";
+    return false;
+  }
+  for (const Json& j : lines)
+  {
+    const std::string& name = j["file"].text;
+    auto [at, added] = into.files.try_emplace(name);
     CoverageFile& file = at->second;
     if (!added && file.hash != j["hash"].text)
     {
@@ -477,19 +807,32 @@ bool readCoverage(const std::string& path, Coverage& into, std::string& error)
     }
     file.hash = j["hash"].text;
     for (const Json& s : j["statements"].items)
-      file.statements[{number(s, 0), number(s, 1), number(s, 2), number(s, 3)}] |= number(s, 4) != 0 ? 1 : 0;
+    {
+      CoveragePlace& p = file.statements[{number(s, 0), number(s, 1), number(s, 2), number(s, 3)}];
+      p.hit |= number(s, 4) != 0 ? 1 : 0;
+      addTests(s, 5, names, p.ran, into.limit);
+    }
     for (const Json& c : j["conditions"].items)
-      file.conditions[{number(c, 0), number(c, 1), number(c, 2), number(c, 3)}] |= (number(c, 4) != 0 ? 1 : 0) | (number(c, 5) != 0 ? 2 : 0);
+    {
+      CoverageCondition& p = file.conditions[{number(c, 0), number(c, 1), number(c, 2), number(c, 3)}];
+      p.whenTrue |= number(c, 4) != 0 ? 1 : 0;
+      p.whenFalse |= number(c, 5) != 0 ? 1 : 0;
+      addTests(c, 6, names, p.ranTrue, into.limit);
+      addTests(c, 8, names, p.ranFalse, into.limit);
+    }
     for (const Json& d : j["defaults"].items)
-      file.defaults[{number(d, 0), number(d, 1)}] |= number(d, 2) != 0 ? 1 : 0;
+    {
+      CoveragePlace& p = file.defaults[{number(d, 0), number(d, 1)}];
+      p.hit |= number(d, 2) != 0 ? 1 : 0;
+      addTests(d, 3, names, p.ran, into.limit);
+    }
     for (const Json& f : j["functions"].items)
       if (f.items.size() >= 3)
-        file.functions[{int(f.items[1].integer()), f.items[0].text}] |= f.items[2].integer() != 0 ? 1 : 0;
-  }
-  if (lineNumber == 0)
-  {
-    error = path + ": empty";
-    return false;
+      {
+        CoveragePlace& p = file.functions[{int(f.items[1].integer()), f.items[0].text}];
+        p.hit |= f.items[2].integer() != 0 ? 1 : 0;
+        addTests(f, 3, names, p.ran, into.limit);
+      }
   }
   return true;
 }
@@ -497,9 +840,9 @@ bool readCoverage(const std::string& path, Coverage& into, std::string& error)
 std::map<int, int> coverageLines(const CoverageFile& file)
 {
   std::map<int, int> bits; // 1 a statement on it ran, 2 one did not
-  for (const auto& [place, hit] : file.statements)
+  for (const auto& [place, p] : file.statements)
     for (int l = place[0]; l <= place[2]; ++l)
-      bits[l] |= hit ? 1 : 2;
+      bits[l] |= p.hit ? 1 : 2;
   std::map<int, int> lines;
   for (const auto& [l, b] : bits)
     lines[l] = b == 1 ? 1 : b == 2 ? 0 : 2;
@@ -510,7 +853,14 @@ std::string coverageText(const Coverage& coverage, std::string& summary)
 {
   long long lines = 0, linesCovered = 0, conditions = 0, conditionsCovered = 0, functions = 0, functionsCovered = 0;
   std::string out;
-  for (const auto& [name, file] : coverage)
+  if (coverage.perTest)
+  {
+    out += "{\"tests\":[";
+    for (size_t i = 0; i < coverage.tests.size(); ++i)
+      out += (i ? "," : "") + jsonText(coverage.tests[i]);
+    out += "],\"limit\":" + std::to_string(coverage.limit) + "}\n";
+  }
+  for (const auto& [name, file] : coverage.files)
   {
     out += "{\"file\":" + jsonText(name) + ",\"hash\":\"" + file.hash + "\",\"lines\":[";
     const char* separator = "";
@@ -523,37 +873,38 @@ std::string coverageText(const Coverage& coverage, std::string& summary)
     }
     out += "],\"statements\":[";
     separator = "";
-    for (const auto& [p, hit] : file.statements)
+    for (const auto& [where, p] : file.statements)
     {
-      out += std::string(separator) + "[" + placeText(p) + "," + std::to_string(hit) + "]";
+      out += std::string(separator) + "[" + placeText(where) + "," + std::to_string(p.hit) + testsText(coverage, p.ran) + "]";
       separator = ",";
     }
     out += "],\"conditions\":[";
     separator = "";
-    for (const auto& [p, outcomes] : file.conditions)
+    for (const auto& [where, p] : file.conditions)
     {
-      out += std::string(separator) + "[" + placeText(p) + "," + std::to_string(outcomes & 1) + "," + std::to_string(outcomes >> 1) + "]";
+      out += std::string(separator) + "[" + placeText(where) + "," + std::to_string(p.whenTrue) + "," + std::to_string(p.whenFalse) +
+             testsText(coverage, p.ranTrue) + testsText(coverage, p.ranFalse) + "]";
       separator = ",";
       conditions += 2;
-      conditionsCovered += (outcomes & 1) + (outcomes >> 1);
+      conditionsCovered += p.whenTrue + p.whenFalse;
     }
     out += "],\"defaults\":[";
     separator = "";
-    for (const auto& [p, hit] : file.defaults)
+    for (const auto& [where, p] : file.defaults)
     {
-      out += std::string(separator) + "[" + std::to_string(p[0]) + "," + std::to_string(p[1]) + "," + std::to_string(hit) + "]";
+      out += std::string(separator) + "[" + std::to_string(where[0]) + "," + std::to_string(where[1]) + "," + std::to_string(p.hit) + testsText(coverage, p.ran) + "]";
       separator = ",";
       ++conditions;
-      conditionsCovered += hit;
+      conditionsCovered += p.hit;
     }
     out += "],\"functions\":[";
     separator = "";
-    for (const auto& [key, hit] : file.functions)
+    for (const auto& [key, p] : file.functions)
     {
-      out += std::string(separator) + "[" + jsonText(key.second) + "," + std::to_string(key.first) + "," + std::to_string(hit) + "]";
+      out += std::string(separator) + "[" + jsonText(key.second) + "," + std::to_string(key.first) + "," + std::to_string(p.hit) + testsText(coverage, p.ran) + "]";
       separator = ",";
       ++functions;
-      functionsCovered += hit;
+      functionsCovered += p.hit;
     }
     out += "]}\n";
   }
@@ -567,38 +918,38 @@ std::string coverageText(const Coverage& coverage, std::string& summary)
 std::string coverageLcov(const Coverage& coverage)
 {
   std::string out;
-  for (const auto& [name, file] : coverage)
+  for (const auto& [name, file] : coverage.files)
   {
     out += "TN:\nSF:" + name + "\n";
     int functionsHit = 0;
-    for (const auto& [key, hit] : file.functions)
+    for (const auto& [key, p] : file.functions)
       out += "FN:" + std::to_string(key.first) + "," + key.second + "\n";
-    for (const auto& [key, hit] : file.functions)
+    for (const auto& [key, p] : file.functions)
     {
-      out += "FNDA:" + std::to_string(hit) + "," + key.second + "\n";
-      functionsHit += hit;
+      out += "FNDA:" + std::to_string(p.hit) + "," + key.second + "\n";
+      functionsHit += p.hit;
     }
     out += "FNF:" + std::to_string(file.functions.size()) + "\nFNH:" + std::to_string(functionsHit) + "\n";
     // A condition's true and false are a branch pair of a block of its own ("-": never evaluated), a
     // missing default a branch alone.
     int block = 0, branches = 0, branchesHit = 0;
-    for (const auto& [p, outcomes] : file.conditions)
+    for (const auto& [where, p] : file.conditions)
     {
+      int outcomes[2] = {p.whenTrue, p.whenFalse};
       for (int outcome = 0; outcome < 2; ++outcome)
       {
-        int taken = (outcomes >> outcome) & 1;
-        out += "BRDA:" + std::to_string(p[0]) + "," + std::to_string(block) + "," + std::to_string(outcome) + "," +
-               (outcomes == 0 ? std::string("-") : std::to_string(taken)) + "\n";
+        out += "BRDA:" + std::to_string(where[0]) + "," + std::to_string(block) + "," + std::to_string(outcome) + "," +
+               (p.whenTrue + p.whenFalse == 0 ? std::string("-") : std::to_string(outcomes[outcome])) + "\n";
         ++branches;
-        branchesHit += taken;
+        branchesHit += outcomes[outcome];
       }
       ++block;
     }
-    for (const auto& [p, hit] : file.defaults)
+    for (const auto& [where, p] : file.defaults)
     {
-      out += "BRDA:" + std::to_string(p[0]) + "," + std::to_string(block++) + ",0," + std::to_string(hit) + "\n";
+      out += "BRDA:" + std::to_string(where[0]) + "," + std::to_string(block++) + ",0," + std::to_string(p.hit) + "\n";
       ++branches;
-      branchesHit += hit;
+      branchesHit += p.hit;
     }
     out += "BRF:" + std::to_string(branches) + "\nBRH:" + std::to_string(branchesHit) + "\n";
     int linesHit = 0;

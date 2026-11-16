@@ -1,0 +1,69 @@
+// spec: kpp --coverage's runner, per test (--coverage-tests N): each place says how many tests ran it and names the N with the lowest numbers in the run's order (a first line names them); under --jobs each worker's are added up, so the counts are exact and the tests named are the same whoever finished first
+// kpp: --coverage
+// test: --jobs 3 --coverage-tests 3 --coverage -
+int half(int x)
+{
+  if (x % 2 == 1)
+    return (x - 1) / 2;
+  return x / 2;
+}
+
+suite Apples
+{
+  test t00
+  {
+    check(half(0) == 0);
+  }
+  test t01
+  {
+    check(half(1) == 0);
+  }
+  test t02
+  {
+    check(half(2) == 1);
+  }
+  test t03
+  {
+    check(half(3) == 1);
+  }
+}
+
+suite Bananas
+{
+  test t04
+  {
+    check(half(4) == 2);
+  }
+  test t05
+  {
+    check(half(5) == 2);
+  }
+  test t06
+  {
+    check(half(6) == 3);
+  }
+  test t07
+  {
+    check(half(7) == 3);
+  }
+}
+
+suite Cherries
+{
+  test t08
+  {
+    check(half(8) == 4);
+  }
+  test t09
+  {
+    check(half(9) == 4);
+  }
+  test t10
+  {
+    check(half(10) == 5);
+  }
+  test t11
+  {
+    check(half(11) == 5);
+  }
+}

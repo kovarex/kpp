@@ -37,6 +37,23 @@ internal static class Coverage
         public int Line, Column, EndLine, EndColumn; // from 1; the end column is after the last character
         public string Kind = "statement";            // statement, condition, default
         public bool True, False, Ran;
+        // Per test (the runner's --coverage-tests): how many tests ran it and the first of them, by
+        // name; a condition's for its true and for its false. -1: the file does not say.
+        public long Count = -1, TrueCount = -1, FalseCount = -1;
+        public List<string> Tests = new(), TrueTests = new(), FalseTests = new();
+    }
+
+    // `count,[test,...]` at items[at] and items[at + 1], the tests by the file's names.
+    private static void ReadTests(JToken place, int at, List<string> names, ref long count, List<string> tests)
+    {
+        if (place is not JArray a || a.Count < at + 2)
+            return;
+        count = (long)a[at]!;
+        foreach (JToken t in a[at + 1] as JArray ?? new JArray())
+        {
+            int i = (int)t!;
+            tests.Add(i >= 0 && i < names.Count ? names[i] : $"test {i}");
+        }
     }
 
     internal sealed class FileCoverage
@@ -73,20 +90,32 @@ internal static class Coverage
         var read = new Dictionary<string, FileCoverage>(StringComparer.OrdinalIgnoreCase);
         string folder = Path.GetDirectoryName(path)!;
         int count = 0;
+        var names = new List<string>();
         foreach (string line in File.ReadAllLines(path))
         {
             if (string.IsNullOrWhiteSpace(line))
                 continue;
             JObject o = JObject.Parse(line);
+            if (o["tests"] is JArray testNames)
+            {
+                foreach (JToken t in testNames)
+                    names.Add((string?)t ?? "");
+                continue;
+            }
             string? name = (string?)o["file"];
             if (name is null)
                 continue;
             string source = Path.IsPathRooted(name) ? name : Path.GetFullPath(Path.Combine(folder, name));
             var file = new FileCoverage { Hash = (string?)o["hash"] ?? "" };
             foreach (JToken s in o["statements"] as JArray ?? new JArray())
-                file.Places.Add(new Place { Line = (int)s[0]!, Column = (int)s[1]!, EndLine = (int)s[2]!, EndColumn = (int)s[3]!, Ran = (int)s[4]! != 0 });
+            {
+                var p = new Place { Line = (int)s[0]!, Column = (int)s[1]!, EndLine = (int)s[2]!, EndColumn = (int)s[3]!, Ran = (int)s[4]! != 0 };
+                ReadTests(s, 5, names, ref p.Count, p.Tests);
+                file.Places.Add(p);
+            }
             foreach (JToken c in o["conditions"] as JArray ?? new JArray())
-                file.Places.Add(new Place
+            {
+                var p = new Place
                 {
                     Kind = "condition",
                     Line = (int)c[0]!,
@@ -95,9 +124,14 @@ internal static class Coverage
                     EndColumn = (int)c[3]!,
                     True = (int)c[4]! != 0,
                     False = (int)c[5]! != 0,
-                });
+                };
+                ReadTests(c, 6, names, ref p.TrueCount, p.TrueTests);
+                ReadTests(c, 8, names, ref p.FalseCount, p.FalseTests);
+                file.Places.Add(p);
+            }
             foreach (JToken d in o["defaults"] as JArray ?? new JArray())
-                file.Places.Add(new Place
+            {
+                var p = new Place
                 {
                     Kind = "default",
                     Line = (int)d[0]!,
@@ -105,7 +139,10 @@ internal static class Coverage
                     EndLine = (int)d[0]!,
                     EndColumn = (int)d[1]! + "switch".Length,
                     Ran = (int)d[2]! != 0,
-                });
+                };
+                ReadTests(d, 3, names, ref p.Count, p.Tests);
+                file.Places.Add(p);
+            }
             read[Key(source)] = file;
             ++count;
         }
@@ -233,6 +270,16 @@ internal static class Coverage
         int start = first.Start.Position + Math.Min(p.Column - 1, first.Length);
         int end = last.Start.Position + Math.Min(p.EndColumn - 1, last.Length);
         return end > start ? new SnapshotSpan(snapshot, start, end - start) : null;
+    }
+
+    /// <summary>"3 tests: A, B, C"; "1,234 tests, the first 10: A, ..., J"; "no test" (it ran outside the tests).</summary>
+    public static string TestsText(long count, List<string> tests)
+    {
+        if (count <= 0)
+            return "no test";
+        string names = string.Join(", ", tests);
+        string noun = count == 1 ? "test" : "tests";
+        return tests.Count >= count ? $"{count:N0} {noun}: {names}" : $"{count:N0} {noun}, the first {tests.Count}: {names}";
     }
 
     /// <summary>What a place says: null when it is all covered.</summary>
@@ -409,21 +456,30 @@ internal sealed class CoverageQuickInfoSource : IAsyncQuickInfoSource
         Coverage.FileCoverage? file = Coverage.Of(this.document.FilePath);
         if (point is null || file is null || !Coverage.Matches(snapshot, file))
             return Task.FromResult<QuickInfoItem?>(null);
-        // The innermost place there that the run missed: a condition inside its statement.
+        // The innermost place there: a condition inside its statement. Without per-test counts only
+        // what the run missed says something.
         Coverage.Place? found = null;
         SnapshotSpan foundSpan = default;
         foreach (Coverage.Place p in file.Places)
-            if (Coverage.Missing(p) is not null && Coverage.SpanOf(snapshot, p) is SnapshotSpan s && s.Contains(point.Value) &&
-                (found is null || foundSpan.Contains(s)))
+            if ((Coverage.Missing(p) is not null || p.Count >= 0 || p.TrueCount >= 0) && Coverage.SpanOf(snapshot, p) is SnapshotSpan s &&
+                s.Contains(point.Value) && (found is null || foundSpan.Contains(s)))
             {
                 found = p;
                 foundSpan = s;
             }
         if (found is null)
             return Task.FromResult<QuickInfoItem?>(null);
-        string text = found.Kind == "condition" ? $"kpp coverage: this condition was {Coverage.Missing(found)}"
-                      : found.Kind == "default" ? "kpp coverage: no value fell outside this switch's cases"
-                      : "kpp coverage: not run";
+        string text;
+        if (found.Kind == "condition")
+        {
+            text = Coverage.Missing(found) is string missing ? $"kpp coverage: this condition was {missing}" : "kpp coverage: this condition was true and false";
+            if (found.TrueCount >= 0)
+                text += $"\ntrue in {Coverage.TestsText(found.TrueCount, found.TrueTests)}\nfalse in {Coverage.TestsText(found.FalseCount, found.FalseTests)}";
+        }
+        else if (found.Kind == "default")
+            text = found.Ran ? $"kpp coverage: a value outside the cases in {Coverage.TestsText(found.Count, found.Tests)}" : "kpp coverage: no value fell outside this switch's cases";
+        else
+            text = found.Ran ? (found.Count >= 0 ? $"kpp coverage: run by {Coverage.TestsText(found.Count, found.Tests)}" : "kpp coverage: run") : "kpp coverage: not run";
         return Task.FromResult<QuickInfoItem?>(new QuickInfoItem(snapshot.CreateTrackingSpan(foundSpan, SpanTrackingMode.EdgeInclusive), text));
     }
 

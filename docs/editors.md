@@ -306,7 +306,9 @@ as soon as it is written. *Tools > kpp > Show Coverage* (a check; Tools.kppShowC
 the active document or in the solution's folder, else one picked. Each statement that ran has a green
 background, one that did not a red one; a condition only ever true or only ever false is amber, one never
 evaluated (`bar()` in `foo() && bar()`) red, a switch whose missing default was never taken amber at its
-`switch`; Quick Info over them says which ("kpp coverage: this condition was never false"). The same
+`switch`; Quick Info over them says which ("kpp coverage: this condition was never false"), and which tests
+ran it when the run counted them (the runner's `--coverage-tests`, 10 by default): "run by 37 tests, the
+first 10: ...", a condition's "true in ..." and "false in ...". The same
 command hides it; *Load Coverage File...* (Tools.kppLoadCoverageFile) shows another. The file is watched: a
 later run's shows when it is written. A document whose text is not the run's (its hash) shows none. The
 colours are Fonts and Colors' "kpp Covered", "kpp Not Covered" and "kpp Partly Covered". tools/vs/vsix/
