@@ -119,8 +119,8 @@ shortest text.
 **format's `{}` of a floating value is that same text, not std::format's**: std::format and to_chars
 choose the shorter of the positional and the exponent form (`1e+15`, `123456789012345680`); kpp's is
 positional up to an exponent of 16 (`1000000000000000`, `1.2345678901234568e+17`), as toString's,
-one text for every way a value is written (docs/stdlib/text.md). The differential test
-stdlib-g2/text1 lists it (2026-11-16).
+one text for every way a value is written (docs/stdlib/text.md; kovarex, 2026-11-16: it stays). The
+differential test stdlib-g2/text1 lists it.
 
 **String and WString have no `+=`; `<<` appends** (docs/stdlib/text.md, 2026-11-01, kovarex:
 design.md 14). The converter writes a std::string's `+=` as `<<`: an integer that C++ appends as one
