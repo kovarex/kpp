@@ -59,6 +59,11 @@ try
   {
     if ($lcov -notmatch "(?m)^$([regex]::Escape($line))$") { Fail "lcov has no line $line`:`n$lcov" }
   }
+  # -i (the menu): each run writes the file, a's workers' coverage too; it wrote none (2026-11-16).
+  [IO.File]::WriteAllText("$work\keys.txt", 'aq')
+  cmd /c "`"$KppExe`" --no-server --coverage --test sign.kpp -- -i --coverage menu.json < keys.txt > menu.txt 2>&1"
+  if (-not (Test-Path menu.json)) { Fail "-i wrote no coverage file: $(Get-Content menu.txt -Raw)" }
+  elseif ((Get-Content menu.json -Raw) -ne $expected) { Fail "-i's a wrote another coverage than the run of all:`n$(Get-Content menu.json -Raw)" }
   # Another version of the source: its coverage does not merge with the first's.
   Add-Content -Encoding ascii sign.kpp '// changed'
   $out = & $KppExe --no-server --coverage --test sign.kpp -- --coverage changed.json 2>&1
@@ -69,5 +74,5 @@ finally
 {
   Pop-Location
 }
-if ($failed -eq 0) { 'ok   coverage: two suites'' runs merged are the run of both, lcov, two versions of a source refused' }
+if ($failed -eq 0) { 'ok   coverage: two suites'' runs merged are the run of both, lcov, two versions of a source refused, -i''s file' }
 exit $failed

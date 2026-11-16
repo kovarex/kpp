@@ -1909,7 +1909,7 @@ std::Vector<const __KppTest*> __kppChosen(const __KppChoice& choice, const std::
   return selected;
 }
 
-int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skipSuites, const char* tag, u64 slowSeconds)
+int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skipSuites, const char* tag, u64 slowSeconds, const char* coverage)
 {
   const char* executable = argv[0];
   __KppTestState& state = __kppTestState();
@@ -2058,6 +2058,11 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
                  ms / 1000, ".", std::StringView(ms % 1000 < 100 ? "0" : ""), std::StringView(ms % 1000 < 10 ? "0" : ""), ms % 1000, " s)");
     last = choice;
     __kppSaveInteractive(path, last, failed);
+    // What ran so far in this menu, written after each run (--coverage FILE, else the build's file) so
+    // that an editor watching it shows it then; it wrote none, the runner having taken the exit's
+    // write (kovarex 2026-11-16).
+    if constexpr (config::coverage)
+      kpp_coverage_write(coverage ? coverage : kpp_coverage_default_path());
   }
   testsTeardown();
   return 0;
@@ -2288,7 +2293,7 @@ int main(int argc, char** argv)
     });
   }
   if (interactive && !state.working)
-    return __kppInteractive(argc, argv, skipSuites, tag, slowSeconds);
+    return __kppInteractive(argc, argv, skipSuites, tag, slowSeconds, coverage);
 
   // A filter no test matches, or a suite or tag no suite has, is a mistake on the command line: it
   // would run nothing and pass.

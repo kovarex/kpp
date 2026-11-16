@@ -113,6 +113,9 @@ selection is not typed on the command line each time):
 - **q**: quit (`testsTeardown` runs then);
 - **T**, **S**, **V**, **F**: the same, with the suites they depend on.
 
+Built with `--coverage`, the menu writes the coverage file after each run (`--coverage FILE`, else
+the build's), with what every run since the menu started ran, so an editor watching it shows it then.
+
 The chosen tests run in the same process, so a debugger's breakpoints hold: in Visual Studio, put
 `-i` in the project's Command Arguments and press F5. The menu then shows again. The last choice
 and the failed tests are kept in `<executable>.interactive` beside the executable. On a console the
