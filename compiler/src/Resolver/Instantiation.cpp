@@ -1743,7 +1743,13 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
     {
       Lookup inner = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
       if (inner.decl && inner.decl != d)
+      {
+        // `using std::Vector;` then `Vector<int>`: the arguments written where it is named, typed there (the declaration's
+        // own name has none: until 2026-11-16 "no constructor or deduction guide of Vector deduces its arguments from ()").
+        if (lastPart.hasTemplateArgs)
+          return typeOfTypeDecl(inner.decl, inner, lastPart, ctx, depth + 1);
         return typeOfTypeDecl(inner.decl, inner, static_cast<UsingNameDecl*>(d)->name.last(), TypeContext{lexicalScopeOf(d), nullptr, nullptr}, depth + 1);
+      }
       return types.unknown();
     }
     default:

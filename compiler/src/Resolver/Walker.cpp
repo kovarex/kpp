@@ -7717,6 +7717,16 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     Subst friendArgs; // the class arguments of the friend functions argument-dependent lookup finds
     if (l.found == Found::Global)
       l = impl.withNamespaceUsings(l, 0); // `using lib::size;` beside the namespace's own size(int)
+    // `using std::String;` then `String(p)`: the class the using-declaration names, a functional cast as `std::String(p)` is
+    // (until 2026-11-16 the declaration itself, a value of no type, which codegen took for a function's address).
+    if (l.decl && l.decl->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(l.decl)->isEnum && !l.ambiguousWith && l.foundIn &&
+        l.foundIn->kind == ScopeKind::Namespace)
+    {
+      Lookup target = impl.lookupQualified(static_cast<UsingNameDecl*>(l.decl)->name, impl.lexicalScopeOf(l.decl), nullptr, 0);
+      if (Decl* t = target.decl; t && (t->kind == NodeKind::ClassDecl || t->kind == NodeKind::EnumDecl || t->kind == NodeKind::UsingAliasDecl ||
+                                       (t->kind == NodeKind::VariableDecl && (t->flags & DF_Typedef))))
+        l = target;
+    }
     if ((!l.decl || l.decl->kind != NodeKind::FunctionDecl) && l.found != Found::Dependent && n->name.parts.size() > 1 &&
         n->name.last().special == 2 && P(n->name.last().opToken) == P::Assign && c->args.size() == 1 && thisType)
     {

@@ -1,14 +1,21 @@
-// spec: a top-level using-declaration of a library's class template or class names it as the library does: after `using std::Vector;` `Vector<int> v;` is a std::Vector<int>, and after `using std::String;` `String(p)` makes a std::String from p (a functional cast), as `std::String(p)` does
-// pending: `Vector<int> v;` is "no constructor or deduction guide of Vector deduces its arguments from ()" (the template's arguments dropped), and `String(p)` is "codegen does not support taking the address of String yet"; an alias (`using String = std::String;`, `template <typename T> using Vector = std::Vector<T>;`) works. Found adapting the differential tests' programs to the std scope (compiler/tests/differential/std-names.kpp), 2026-11-16; A
+// spec: a top-level using-declaration of a library's class template or class names it as the library does: after `using std::Vector;` `Vector<int> v;` is a std::Vector<int> and `Vector<int>()` makes one, and after `using std::String;` `String(p)` makes a std::String from p (a functional cast), as `std::String(p)` does; a namespace's own using-declaration too
 extern "C" int printf(const char* format, ...);
 using std::String;
 using std::Vector;
+namespace words
+{
+using std::String;
+String twice(const char* p) { return String(p) + String(p); }
+}
 int main()
 {
   Vector<int> v;
   v.push_back(3);
+  auto made = Vector<int>();
+  made.push_back(4);
+  made.push_back(5);
   const char* p = "abc";
   String s = String(p);
-  printf("%d %s\n", (int)v.size(), s.c_str());
+  printf("%d %d %s %s\n", (int)v.size(), (int)made.size(), s.c_str(), words::twice("ab").c_str());
   return 0;
 }
