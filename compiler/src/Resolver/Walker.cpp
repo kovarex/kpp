@@ -819,8 +819,8 @@ auto GlobalScope::Impl::Walker::checkUnusedNames(FunctionDecl* f) -> void
   // [[maybe_unused]] keeps one. Once, in the walk as written: a template's own walk, whose names its instances
   // share. Not a parameter of an empty body, nor of a virtual function or one that overrides, whose signature is
   // another's. A class object whose making or ending does something (a lock, a timer) is used by being there, as
-  // C++ compilers take it, and so is a reference that keeps a temporary alive. --unused-checks until the standard
-  // library and the converted game are free of them.
+  // C++ compilers take it, and so is a reference that keeps a temporary alive. On by default since 2026-11-16 (the
+  // game's kpp branch free of them).
   if (!unusedChecksOn() || !f || !f->body || probing || activeSubst || retypingElements || !file || file->isImported)
     return;
   // (reported in a template's own walk too, where reportHere leaves errors to the instances: once for all of them)

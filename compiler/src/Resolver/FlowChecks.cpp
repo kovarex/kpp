@@ -13,9 +13,9 @@
 //   parameter (a pointer's size): no silent wrong answers.
 // - The likely slips (item 4: "make these errors, but not warnings? What is the reason to have them in the code
 //   anyway?"): a function's name as a condition, an `else` indented as an outer `if`'s, `return std::move(x)` of a
-//   local; and, while the game still has them (--slip-checks), an assignment as a condition, an `if` whose body is
-//   `;`, a switch on an enum naming neither every enumerator nor a default, an integer division stored in a floating
-//   variable or returned as one.
+//   local; and (on by default since 2026-11-16, when the game was free of them) an assignment as a condition, an
+//   `if` whose body is `;`, a switch on an enum naming neither every enumerator nor a default, an integer division
+//   stored in a floating variable or returned as one.
 #include "GlobalScopeImpl.hpp"
 #include "../Ast/AstWalk.hpp"
 #include <algorithm>

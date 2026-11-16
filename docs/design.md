@@ -491,9 +491,9 @@ replacements, in the order of how much code they remove:
    to a class (it may keep a temporary alive) and a lambda that copies what it captures are used by being
    there, as C++ compilers take them; so is a condition's variable. A name counts wherever it is spelled:
    a template's argument (`Sequence<count>`), a local class's member, a decltype qualifier. A template is
-   judged once, in its own walk. Under `--unused-checks` until the converted game is free of them (the
-   standard library, the libraries, the spec and the tests are); `tools/unused/fix.py` writes
-   `[[maybe_unused]]` where a compile's errors (`--diagnostic-columns`) point, a capture left to a hand.
+   judged once, in its own walk. On by default since 2026-11-16, when the game's kpp branch was free of them
+   (its PR #8726; `--unused-checks` is still accepted); `tools/unused/fix.py` writes `[[maybe_unused]]` where
+   a compile's errors (`--diagnostic-columns`) point, a capture left to a hand.
    Specs kpp/unused_names_are_errors, kpp/unused_names_kept_or_exempt.
    A local read before anything is assigned to it is an error (2026-11-11, kovarex's "ok" to item 2 of thread
    D's survey: zero is the rule for what has no initializer, "Sanitizers and debug checks" below, and a read the
@@ -559,9 +559,10 @@ replacements, in the order of how much code they remove:
    - an integer division stored in a floating variable, assigned to one or returned as one
      (`double h = a / b;`): it truncates first. `double(a) / b`, or `double(a / b)` when the truncation is
      meant; constants that divide exactly (`3600 / 2`) are not one.
-   The last four are under `--slip-checks` until the game is free of them: it has 24 (13 assignments as
-   conditions, 8 empty bodies, StackWalker's switch without NumSymTypes, and 2 divisions, ChartRenderer's
-   `64 / alert.sprite->getFinalWidth()` among them). Specs
+   The last four are on by default since 2026-11-16, when the game's kpp branch was free of its 24 (13
+   assignments as conditions, 8 empty bodies, StackWalker's switch without NumSymTypes, and 2 divisions,
+   ChartRenderer's `64 / alert.sprite->getFinalWidth()` among them; its PR #8726); `--slip-checks` is still
+   accepted. Specs
    language/function_name_as_a_condition_is_error, language/else_indented_as_an_outer_if_is_error,
    language/return_std_move_of_a_local_is_error, kpp/slip_checks_are_errors, kpp/slips_that_are_not.
 The spellings above are the working proposal; each is settled and recorded here when the feature

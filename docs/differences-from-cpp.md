@@ -640,15 +640,15 @@ p[Property::Text] = String("hello");
 - **See:** [design 7][d7], item 8; specs `language/end_of_a_value_returning_function_is_error`, `language/noreturn_ends_a_path`,
   `language/noreturn_function_that_returns_is_error`.
 
-### Unused names are errors (this stage)
+### Unused names are errors (built)
 
 - **C++:** compilers warn, where asked (-Wunused-variable, -Wunused-parameter, -Wunused-but-set-variable,
   -Wunused-lambda-capture).
 - **kpp:** a local nothing uses, a local only ever assigned, a parameter nothing uses and a lambda capture
   nothing uses are compile errors (kovarex, 2026-11-11); `(void)x;` or `[[maybe_unused]]` keeps one, and the
   unnamed `_` needs neither. Not a parameter of an empty body, a virtual function, an override or main, nor a
-  class object whose making or ending does something (a guard). Behind `--unused-checks` until the converted
-  game is free of them; `tools/unused/fix.py` marks what a compile reports.
+  class object whose making or ending does something (a guard). On by default since 2026-11-16 (it was behind
+  `--unused-checks` until the game was free of them); `tools/unused/fix.py` marks what a compile reports.
 - **See:** [design 7][d7], item 8; specs `kpp/unused_names_are_errors`, `kpp/unused_names_kept_or_exempt`.
 
 ### A local without an initializer is zero, and reading it first is an error (built)
@@ -691,7 +691,7 @@ p[Property::Text] = String("hello");
 - **See:** [design 7][d7], item 8; specs `language/constant_division_by_zero_is_error`,
   `language/constant_index_outside_an_array_is_error`, `language/constant_mistakes_only_where_they_run`.
 
-### Likely slips are errors (built, four of them this stage)
+### Likely slips are errors (built)
 
 - **C++:** compilers warn, some by default: a function's name as a condition (-Wpointer-bool-conversion), a
   dangling `else` (-Wdangling-else), `return std::move(local)` (-Wpessimizing-move), `if (x = f())`
@@ -699,7 +699,7 @@ p[Property::Text] = String("hello");
   integer division stored in a `double` (clang-tidy).
 - **kpp:** each is a compile error where it runs (kovarex, 2026-11-11). `if ((x = f()))` says the assignment is
   meant, `{}` an empty body, `default:` the enumerators left out, `double(a / b)` the truncation. The last four
-  are behind `--slip-checks` until the game is free of them.
+  are on by default since 2026-11-16 (behind `--slip-checks` until the game was free of them).
 - **See:** [design 7][d7], item 8; specs `language/function_name_as_a_condition_is_error`,
   `language/else_indented_as_an_outer_if_is_error`, `language/return_std_move_of_a_local_is_error`,
   `kpp/slip_checks_are_errors`, `kpp/slips_that_are_not`.
