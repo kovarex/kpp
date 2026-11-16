@@ -500,6 +500,16 @@ if exist kpp\convert_slips rd /s /q kpp\convert_slips
 fc /b kpp\convert_slips\convert_slips\slips.kpp tests\convert_slips.expected.kpp > nul && (echo slips: as expected) || (echo slips: DIFFERS& fc kpp\convert_slips\convert_slips\slips.kpp tests\convert_slips.expected.kpp & goto :failed)
 %KPP% --std ..\..\stdlib --quiet --slip-checks --exe kpp\convert_slips.exe kpp\convert_slips || goto :failed
 kpp\convert_slips.exe > nul || goto :failed
+set "STEP=long lines check"
+echo == long lines: tests\convert_longlines\longlines.cpp converted, written with `this` as a reference and in the conversion's code style ^(--convert-style^): X-macro lists, which a macro's expansion writes on one line, laid out in the code style ^(tests\convert_longlines.expected.kpp^), and it runs ^(tests\convert_longlines.expected^)
+if exist kpp\convert_longlines rd /s /q kpp\convert_longlines
+%KPP% --no-std --quiet --convert kpp\convert_longlines --ext .cpp tests\convert_longlines || goto :failed
+%KPP% --convert-this-reference kpp\convert_longlines > nul || goto :failed
+%KPP% --convert-style kpp\convert_longlines > nul || goto :failed
+fc /b kpp\convert_longlines\convert_longlines\longlines.kpp tests\convert_longlines.expected.kpp > nul && (echo long lines: as expected) || (echo long lines: DIFFERS& fc kpp\convert_longlines\convert_longlines\longlines.kpp tests\convert_longlines.expected.kpp & goto :failed)
+%KPP% --std ..\..\stdlib --quiet --this-reference --exe kpp\convert_longlines.exe kpp\convert_longlines || goto :failed
+kpp\convert_longlines.exe > kpp\convert_longlines.out.txt
+fc /w kpp\convert_longlines.out.txt tests\convert_longlines.expected > nul && (echo long lines: output as expected) || (echo long lines: OUTPUT DIFFERS & fc /w kpp\convert_longlines.out.txt tests\convert_longlines.expected & goto :failed)
 set "STEP=bitfield check"
 echo == bitfield: tests\convert_bitfield converted: BITFIELD written with the members its own definition has ^(Factorio 2.1.24's, without the xor and complement operators: tests\convert_bitfield.expected^)
 if exist kpp\convert_bitfield rd /s /q kpp\convert_bitfield

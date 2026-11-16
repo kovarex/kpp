@@ -161,6 +161,8 @@ void usage(FILE* out)
           "  --convert-merge-flag OFF ON OUT COND  two builds' marked conversions as one, by the config constant\n"
           "                COND (config::steam): false in OFF's builds, true in ON's\n"
           "  --convert-this-reference DIR...  write `this` as a reference in the .kpp files below each directory\n"
+          "  --convert-style PATH...  the converter's code style (long lines split, one-liners, empty lines) on\n"
+          "                each .kpp file given and those below each directory given\n"
           "  --convert-merge D R OUT [CHOICES [F]]  the configurations' marked conversions D and R (and the final F) as one, into OUT\n"
           "                root's name (B\\libraries\\Lua\\lapi.c as D\\libraries\\Lua\\lapi.kpp)\n"
           "  --c-sources   with --convert: the inputs are C (a C library), converted by C's rules\n"

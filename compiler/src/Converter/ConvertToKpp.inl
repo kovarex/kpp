@@ -1269,9 +1269,10 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     text = withNotEqualsDropped(text, total, notEqualReview);
     text = withSuiteHeadersResolved(std::move(text), total);
     // (a conversion the configurations merge gets them in convertMerge, the last step, with the empty
-    // lines: here, around an #if group's marks, the texts of two configurations would differ)
+    // lines: here, around an #if group's marks, the texts of two configurations would differ; so do its
+    // long lines, StyleLongLines.inl)
     if (!convertMarks)
-      text = withOneLiners(text);
+      text = withOneLiners(withLongLinesSplit(text));
     if (convertNativeTests && key.rfind("tests/", 0) == 0)
       text = withTestDeclarationsMarked(withLocalChecksRenamed(std::move(text), total), total);
     if (ov)

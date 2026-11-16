@@ -2121,3 +2121,43 @@ int convertThisReference(const std::vector<std::filesystem::path>& directories)
   printf("convert-this-reference: %zu files: this-> written this. %zu, *this written this %zu, this written &this %zu\n", files, counts[0], counts[1], counts[2]);
   return 0;
 }
+
+int convertStyle(const std::vector<std::filesystem::path>& paths)
+{
+  std::vector<std::filesystem::path> files;
+  for (const std::filesystem::path& path : paths)
+  {
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(path, ec))
+      files.push_back(path);
+    else if (std::filesystem::is_directory(path, ec))
+    {
+      for (const auto& entry : std::filesystem::recursive_directory_iterator(path))
+        if (entry.is_regular_file() && entry.path().extension() == ".kpp")
+          files.push_back(entry.path());
+    }
+    else
+    {
+      fprintf(stderr, "convert-style: %s is no file or directory\n", path.generic_string().c_str());
+      return 1;
+    }
+  }
+  size_t changed = 0;
+  for (const std::filesystem::path& file : files)
+  {
+    std::string text;
+    if (!readFile(file, text))
+    {
+      fprintf(stderr, "convert-style: cannot read %s\n", file.generic_string().c_str());
+      return 1;
+    }
+    std::string written = withStyleEmptyLines(text);
+    if (written != text)
+    {
+      writeConvertedFile(file, written);
+      ++changed;
+    }
+  }
+  printf("convert-style: %zu of %zu files changed\n", changed, files.size());
+  return 0;
+}

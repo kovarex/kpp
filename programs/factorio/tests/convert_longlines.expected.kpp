@@ -1,0 +1,111 @@
+// tests\convert_longlines: X-macro lists, whose expansions the converter writes on one line each, laid out as the
+// code style lays them out (StyleLongLines.inl; Factorio's InputAction.hpp/.cpp wrote lines of up to 172,566
+// characters): an enum's constants filled to the line's length, a switch's cases one to a line, a case label's values
+// filled and lined up after `case `, definitions one to a line and expanded when they do not fit, an if's and else's
+// statement on the next line a step in, an empty statement `;` kept on its statement's line. convert.cmd compares
+// the conversion with tests\convert_longlines.expected.kpp, builds it and runs it (tests\convert_longlines.expected).
+
+enum class Shape : u8
+{
+  Nothing, SomethingWithAVeryLongName, AnotherThingWithAnEvenLongerName, YetAnotherThingWithALongName,
+  TheLastOneWithoutASizeOfItsOwn,
+  SquareWithAVeryLongNameIndeed, RectangleWithAVeryLongNameIndeed, CircleWithAVeryLongNameIndeedToo,
+  TriangleWithAVeryLongNameIndeedToo,
+};
+
+struct Holder
+{
+  static bool noSize(Shape shape)
+  {
+    switch (shape)
+    {
+      case Shape::Nothing, Shape::SomethingWithAVeryLongName, Shape::AnotherThingWithAnEvenLongerName,
+           Shape::YetAnotherThingWithALongName, Shape::TheLastOneWithoutASizeOfItsOwn:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static const char* name(Shape shape)
+  {
+    switch (shape)
+    {
+      case Shape::Nothing: return "Nothing";
+      case Shape::SomethingWithAVeryLongName: return "SomethingWithAVeryLongName";
+      case Shape::AnotherThingWithAnEvenLongerName: return "AnotherThingWithAnEvenLongerName";
+      case Shape::YetAnotherThingWithALongName: return "YetAnotherThingWithALongName";
+      case Shape::TheLastOneWithoutASizeOfItsOwn: return "TheLastOneWithoutASizeOfItsOwn";
+      case Shape::SquareWithAVeryLongNameIndeed: return "SquareWithAVeryLongNameIndeed";
+      case Shape::RectangleWithAVeryLongNameIndeed: return "RectangleWithAVeryLongNameIndeed";
+      case Shape::CircleWithAVeryLongNameIndeedToo: return "CircleWithAVeryLongNameIndeedToo";
+      case Shape::TriangleWithAVeryLongNameIndeedToo: return "TriangleWithAVeryLongNameIndeedToo";
+    }
+    return "?";
+  }
+
+  static Holder Nothing() { return Holder(Shape::Nothing); }
+  static Holder SomethingWithAVeryLongName() { return Holder(Shape::SomethingWithAVeryLongName); }
+  static Holder AnotherThingWithAnEvenLongerName() { return Holder(Shape::AnotherThingWithAnEvenLongerName); }
+  static Holder YetAnotherThingWithALongName() { return Holder(Shape::YetAnotherThingWithALongName); }
+  static Holder TheLastOneWithoutASizeOfItsOwn() { return Holder(Shape::TheLastOneWithoutASizeOfItsOwn); }
+
+  i32 getSquareWithAVeryLongNameIndeed() const
+  {
+    if constexpr (sizeof(i32) > sizeof(i32))
+      return i32(this.value) * 2;
+    else
+      /* the small ones as they are */
+      return i32(this.value);
+  }
+
+  i64 getRectangleWithAVeryLongNameIndeed() const
+  {
+    if constexpr (sizeof(i64) > sizeof(i32))
+      return i64(this.value) * 2;
+    else
+      /* the small ones as they are */
+      return i64(this.value);
+  }
+
+  f64 getCircleWithAVeryLongNameIndeedToo() const
+  {
+    if constexpr (sizeof(f64) > sizeof(i32))
+      return f64(this.value) * 2;
+    else
+      /* the small ones as they are */
+      return f64(this.value);
+  }
+
+  f32 getTriangleWithAVeryLongNameIndeedToo() const
+  {
+    if constexpr (sizeof(f32) > sizeof(i32))
+      return f32(this.value) * 2;
+    else
+      /* the small ones as they are */
+      return f32(this.value);
+  }
+
+  Holder(Shape shape) : shape(shape), value(i32(shape)) {}
+  Shape shape;
+  i32 value;
+};
+
+i32 main()
+{
+  i32 sum = 0;
+  sum += Holder::Nothing().value + Holder::noSize(Shape::Nothing);
+  std::print(std::StringView(Holder::name(Shape::Nothing)), "\n");;
+  sum += Holder::SomethingWithAVeryLongName().value + Holder::noSize(Shape::SomethingWithAVeryLongName);
+  std::print(std::StringView(Holder::name(Shape::SomethingWithAVeryLongName)), "\n");;
+  sum += Holder::AnotherThingWithAnEvenLongerName().value + Holder::noSize(Shape::AnotherThingWithAnEvenLongerName);
+  std::print(std::StringView(Holder::name(Shape::AnotherThingWithAnEvenLongerName)), "\n");;
+  sum += Holder::YetAnotherThingWithALongName().value + Holder::noSize(Shape::YetAnotherThingWithALongName);
+  std::print(std::StringView(Holder::name(Shape::YetAnotherThingWithALongName)), "\n");;
+  sum += Holder::TheLastOneWithoutASizeOfItsOwn().value + Holder::noSize(Shape::TheLastOneWithoutASizeOfItsOwn);
+  std::print(std::StringView(Holder::name(Shape::TheLastOneWithoutASizeOfItsOwn)), "\n");;
+  Holder h(Shape::CircleWithAVeryLongNameIndeedToo);
+  std::print(sum, " ", std::significant(h.getCircleWithAVeryLongNameIndeedToo(), 6), " ");
+  std::print(std::significant(f64(h.getSquareWithAVeryLongNameIndeed()), 6), "\n");
+  return 0;
+}

@@ -629,10 +629,13 @@ inline std::string withOneLiners(const std::string& input)
   return result;
 }
 
-// Until nothing changes: an empty line inserted after a definition can meet one already there.
+#include "StyleLongLines.inl"
+
+// Until nothing changes: an empty line inserted after a definition can meet one already there. Long lines are split
+// first (StyleLongLines.inl), so that what they expand gets its one-liners and empty lines.
 std::string withStyleEmptyLines(const std::string& text)
 {
-  std::string result = withOneLiners(text);
+  std::string result = withOneLiners(withLongLinesSplit(text));
   for (int round = 0; round < 4; ++round)
   {
     std::string next = withStyleEmptyLinesOnce(result);

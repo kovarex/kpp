@@ -108,6 +108,9 @@ int convertMergePlatform(const std::filesystem::path& windowsDir, const std::fil
 int convertMergeFlag(const std::filesystem::path& offDir, const std::filesystem::path& onDir, const std::filesystem::path& outDir, const std::string& condition);
 // kpp --convert-this-reference DIR...: `this` as a reference (design.md 23d) in the .kpp files below each directory.
 int convertThisReference(const std::vector<std::filesystem::path>& directories);
+// kpp --convert-style PATH...: the code style a conversion's .kpp files are written in (its long lines split, its
+// one-liners and empty lines, StyleEmptyLines.inl) on each .kpp file given and those below each directory given.
+int convertStyle(const std::vector<std::filesystem::path>& paths);
 // kpp --convert-merge DEBUG RELEASE OUT: the two configurations' marked conversions made one into
 // OUT, each #if group whose texts differ written as `if constexpr (config::debug)` (design.md 12).
 // Returns 1 when they differ where no group can say so (reported, with the debug text written).
