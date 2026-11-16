@@ -1135,7 +1135,8 @@ if (Run 'pch')
 # count after a commit plus a base, a given number, the revision, version.txt's text), written again only when
 # HEAD moves, and by --check too; the after-build steps: the executable hard-linked into bin\, the PDB when there,
 # a config file written when missing and kept when there. Errors: a given number that is no number, a text file
-# and a step's file outside the project, a shallow clone.
+# and a step's file outside the project, a shallow clone, a clang flag or a kpp option off the allowlist (-fplugin=,
+# -Xclang, --clang-flags, --sysroot), where -O1 -DX=1 -fno-strict-aliasing and --keep-going build.
 if (Run 'buildinfo')
 {
   $project = Join-Path $work 'buildinfo'
@@ -1201,12 +1202,20 @@ if (Run 'buildinfo')
     foreach ($case in @(@('.given("7x")', '', 'the given number 7x is not a number of digits'),
                         @('.text("version", "../version.txt")', '', 'the file must be in the project''s directory'),
                         @('.text("version", "missing.txt")', '', 'no such file in the project'),
-                        @('.text("version", "version.txt")', "  app.linkAfterBuild(`"{exe}`", `"../app.exe`");`n", 'its files must be in the project''s directory')))
+                        @('.text("version", "version.txt")', "  app.linkAfterBuild(`"{exe}`", `"../app.exe`");`n", 'its files must be in the project''s directory'),
+                        @('.text("version", "version.txt")', "  project.configuration(`"debug`").clangFlag(`"-O1 -fplugin=x.dll`");`n", 'the clang flag "-fplugin=x.dll" is not one build.kpp may give'),
+                        @('.text("version", "version.txt")', "  project.configuration(`"debug`").cFlag(`"-Xclang`");`n", 'the clang flag "-Xclang" is not one build.kpp may give'),
+                        @('.text("version", "version.txt")', "  app.argument(`"--clang-flags`");`n  app.argument(`"-O1`");`n", '"--clang-flags" is not one'),
+                        @('.text("version", "version.txt")', "  app.argument(`"--sysroot`");`n  app.argument(`"sys`");`n", '"--sysroot" is not one')))
     {
       Set-Content 'build.kpp' (& $describe $case[0] $case[1])
       $output = (Kpp @('--no-server')) -join "`n"
       if ($code -eq 0 -or -not $output.Contains($case[2])) { Fail "buildInfo()$($case[0]) $($case[1]): exit $code, not '$($case[2])'`n$output" }
     }
+    # clang flags of the allowlist build
+    Set-Content 'build.kpp' (& $describe '.text("version", "version.txt")' "  project.configuration(`"debug`").clangFlag(`"-O1 -DX=1 -fno-strict-aliasing`");`n  app.argument(`"--keep-going`");`n")
+    $output = @(Kpp @('--no-server', '--run'))
+    if ($code -ne 0) { Fail "clang flags of the allowlist: exit $code`n$($output -join "`n")" }
     Set-Content 'build.kpp' (& $describe '' '')
     Set-Content '.git\shallow' $first
     RunGit @('commit', '-q', '--allow-empty', '-m', 'five') | Out-Null

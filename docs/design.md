@@ -1410,9 +1410,16 @@ commands for, kpp does itself, typed:
 - copying or linking the executable and writing a missing config file after the build:
   `linkAfterBuild`, `linkAfterBuildIfThere`, `writeAfterBuildIfMissing` (docs/build.md, "Steps after the
   build"; built 2026-11-16);
+- kpp options and clang flags a configuration or a cell gives (`argument`, `clangFlag`, `cFlag`) are an
+  allowlist, as Go's cgo flags are (Project/Describe.cpp, allowedKppOption and allowedClangFlag; built
+  2026-11-16): kpp's own options that name no program, sysroot, standard library or output (not
+  `--clang-flags`, `--sysroot`, `--std`, `--exe`, `--emit-llvm`, `--cinclude`, `--lib`, `--exclude`, which
+  have their own build.kpp calls where they are needed), and clang flags of one word that change only how
+  code compiles (-O, -D, -U, -W, -g, -f and -m but -fplugin=, -fpass-plugin= and -mllvm, -std=, clang-cl's
+  /O /D /W /EH /Zc: /arch: /std:); anything else is an error naming it. Tested by tests/project.ps1,
+  section buildinfo;
 - before-build and after-build commands are removed once the game's build.kpp has moved off them (it is
-  checked with the released kpp), and compiler flags (`clangFlag`, `cFlag`, the C libraries') become an
-  allowlist, as Go's cgo flags are: later, this stage.
+  checked with the released kpp).
 What stays: `debug(...)`'s command, which names the program F5 and `--run` start (the person starts it), and
 `kpp measure`'s compare commands, which run only when a person types `kpp measure --compare`.
 

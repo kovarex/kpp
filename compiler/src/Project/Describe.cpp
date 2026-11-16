@@ -246,6 +246,47 @@ namespace projects
     return true;
   }
 
+  // What a build.kpp may give kpp and clang (design.md, "What build.kpp can run"): no option that names a
+  // program, a directory programs are found in, a file to write, or text another program reads as its
+  // own arguments. An allowlist, as Go's of cgo's flags: clang has flags that load a plugin into it
+  // (-fplugin=, -fpass-plugin=, -Xclang -load), and kpp has options that pass text to clang or name the
+  // standard library, a sysroot or an output.
+  bool allowedKppOption(const std::string& option)
+  {
+    static const char* const allowed[] = {
+      "-j", "--ext", "--errors", "--unresolved", "--why", "--why-at", "--access-warnings", "--return-copy-warnings",
+      "--zero-null-warnings", "--indentation-warnings", "--unused-checks", "--slip-checks", "--this-warnings", "--this-pointer",
+      "--this-reference-warnings", "--this-reference", "--plain-enum-warnings", "--explicit-by-default", "--no-implicit-fallthrough",
+      "--struct-rule", "--c-type-warnings", "--quiet", "--msvc-diagnostics", "--diagnostic-columns", "--check", "--incremental-link",
+      "--subsystem", "--defer-link", "--toolchain", "--debug-info", "--optimize", "--no-optimize", "--target", "--keep-going",
+      "--stub-missing", "--no-inline", "--sanitize", "--lto", "--lto-partitions", "--opt-level", "--codegen-threads", "--keep-symbol",
+      "--config", "--release", "--tests", "--coverage", "--verify-incremental"};
+    return std::find_if(std::begin(allowed), std::end(allowed), [&](const char* a) { return option == a; }) != std::end(allowed);
+  }
+
+  // A clang or clang-cl flag a build.kpp may give (clangFlag, cFlag): one word of letters, digits and _ = : , . + / -,
+  // in a form that only changes how code is compiled: optimization, definitions, warnings, debug information,
+  // code generation (-f and -m flags, but -fplugin=, -fpass-plugin= and -mllvm), the language standard.
+  bool allowedClangFlag(const std::string& flag)
+  {
+    if (flag.size() < 2 || (flag[0] != '-' && flag[0] != '/'))
+      return false;
+    for (char c : flag)
+      if (!isalnum((unsigned char)c) && !strchr("_=:,.+/-", c))
+        return false;
+    auto starts = [&](const char* prefix) { return flag.rfind(prefix, 0) == 0; };
+    std::string body = flag.substr(1);
+    if (flag[0] == '/') // clang-cl's own spelling
+      return body == "O1" || body == "O2" || body == "Od" || body == "Ox" || body == "Oy-" || body == "Oi" || body == "Gy" || body == "GR-" ||
+             body == "utf-8" || body == "bigobj" || body == "permissive-" || body == "w" || starts("/D") || starts("/U") ||
+             starts("/W") || starts("/wd") || starts("/we") || starts("/EH") || starts("/Zc:") || starts("/arch:") || starts("/std:") ||
+             starts("/fp:") || starts("/Z7") || starts("/Zi");
+    if (starts("-fplugin") || starts("-fpass-plugin") || starts("-mllvm") || starts("-Wl,") || starts("-Wa,") || starts("-Wp,"))
+      return false;
+    return starts("-O") || starts("-D") || starts("-U") || starts("-W") || starts("-w") || starts("-g") || starts("-f") ||
+           starts("-m") || starts("-std=") || flag == "-pthread" || flag == "-pedantic";
+  }
+
   // A system library's name as Library::systemLibrary and Executable::systemLibrary give it: kpp
   // passes it as -lNAME, so it is a name the linker searches for (ssl, gdi32, libssl.a after a ':'),
   // never a path (/, \, ..) nor something an option could be read from (a leading -, a blank, a quote).
@@ -337,6 +378,47 @@ namespace projects
                     file.c_str(), l.name.c_str(), r.c_str(), fs::absolute(root, ec).lexically_normal().string().c_str());
             out.errors.push_back(r);
           }
+    // kpp's options and clang's flags a configuration or a cell gives: an allowlist (allowedKppOption, allowedClangFlag).
+    std::vector<const Configuration*> withOptions;
+    for (const Configuration& c : out.configurations)
+      withOptions.push_back(&c);
+    for (const Program& p : out.programs)
+      withOptions.push_back(&p);
+    for (const Configuration* c : withOptions)
+    {
+      for (size_t i = 0; i < c->arguments.size(); ++i)
+      {
+        const std::string& a = c->arguments[i];
+        int values = compileOptionValues(a);
+        if (!allowedKppOption(a))
+        {
+          fprintf(stderr, "%s: error: %s: build.kpp may give kpp its own options that change no program it runs and no file it "
+                          "writes, and \"%s\" is not one (docs/design.md, \"What build.kpp can run\")%s\n",
+                  file.c_str(), c->name.c_str(), a.c_str(),
+                  a == "--clang-flags" ? ": clangFlag(...) gives clang a flag" : a == "--cinclude" ? ": cInclude(...)" : a == "--lib" ? ": linkFile(...)"
+                  : a == "--exclude" ? ": exclude(...)" : "");
+          out.errors.push_back(a);
+          continue;
+        }
+        i += size_t(std::max(values, 0)); // (--coverage, which no compile option table lists, has none)
+      }
+      for (const std::vector<std::string>* list : {&c->clangFlags, &c->cFlags})
+        for (const std::string& entry : *list)
+          for (size_t at = 0; at < entry.size();)
+          {
+            size_t end = std::min(entry.find(' ', at), entry.size());
+            std::string flag = entry.substr(at, end - at);
+            at = end + 1;
+            if (!flag.empty() && !allowedClangFlag(flag))
+            {
+              fprintf(stderr, "%s: error: %s: the clang flag \"%s\" is not one build.kpp may give: optimization, definitions, warnings, "
+                              "debug information, -f and -m code generation flags (not -fplugin=, -fpass-plugin= or -mllvm), the standard "
+                              "(docs/design.md, \"What build.kpp can run\")\n",
+                      file.c_str(), c->name.c_str(), flag.c_str());
+              out.errors.push_back(flag);
+            }
+          }
+    }
     std::vector<const std::vector<std::string>*> systemLists;
     for (const Program& p : out.programs)
       systemLists.push_back(&p.systemLibraries);
