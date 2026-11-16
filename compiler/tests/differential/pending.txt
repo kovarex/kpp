@@ -4,7 +4,6 @@
 # of these are the language moving on since (std scope, explicit by default) or gaps found again.
 
 # Silent wrong answers of kpp's (a pending spec snippet each)
-codegen/p12 debug: an unscoped enum of unsigned char given to printf's ... is not promoted to int (spec interop/c_variadic_argument_of_a_small_enum_is_promoted; release happens to pass the bits right)
 
 # The standard library against MSVC's STL and libc++ (both agree; kpp differs), triaged 2026-11-16 (thread C)
 stdlib-e/fm1: format's 0 flag pads inf and nan with spaces: C++20 [format.string.std] says the 0 option pads "except when applied to an infinity or NaN", which both libraries do not follow
