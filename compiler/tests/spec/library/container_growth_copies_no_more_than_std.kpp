@@ -1,0 +1,52 @@
+// spec: Vector's resize(n, value) and insert(position, count, value) that reallocate build the new elements from value in the new block before the elements move, as std's: no copy of value of its own, which they made for when value is an element (one copy and one destruction more than std's); value may still be an element. HashMap's emplace(key, value) of a new key that grows the table builds the entry in its node after the growth: no entry built and moved (a stable table's entries keep their places)
+// factorio: none known; the differential tests stdlib-e/ct1, stdlib-e/ct2 and stdlib-g/vec1 (2026-11-16), which count against MSVC's STL and libc++
+struct Item
+{
+  static int copies, moves, destroyed;
+  int value;
+  Item(int value) : value(value) {}
+  Item(const Item& other) : value(other.value) { This::copies++; }
+  Item(Item&& other) : value(other.value) { This::moves++; }
+  Item& operator=(const Item& other) = default;
+  Item& operator=(Item&& other) = default;
+  ~Item() { This::destroyed++; }
+};
+
+int Item::copies = 0;
+int Item::moves = 0;
+int Item::destroyed = 0;
+
+void counts(const char* what)
+{
+  std::println(std::StringView(what), ": copies ", Item::copies, " moves ", Item::moves, " destroyed ", Item::destroyed);
+  Item::copies = 0;
+  Item::moves = 0;
+  Item::destroyed = 0;
+}
+
+int main()
+{
+  {
+    std::Vector<Item> v;
+    v.reserve(2);
+    v.emplace_back(1);
+    v.emplace_back(2);
+    counts("start");
+    v.resize(5, v[0]); // reallocates: 3 copies of the element, the 2 elements moved and destroyed
+    counts("resize growing, value an element");
+    std::println(v[0].value, " ", v[4].value, " ", v.size());
+    v.insert(v.begin() + 1, 20, v[1]); // reallocates again
+    counts("insert count growing, value an element");
+    std::println(v[0].value, " ", v[1].value, " ", v[20].value, " ", v[21].value, " ", v.size());
+  }
+  counts("destroyed");
+  {
+    std::HashMap<int, Item> map;
+    for (int i = 0; i < 100; ++i)
+      map.emplace(i, i * 2);
+    counts("100 HashMap emplaces");
+    std::println(map.size(), " ", map.at(99).value);
+  }
+  counts("map destroyed");
+  return 0;
+}

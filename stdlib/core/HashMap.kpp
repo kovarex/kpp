@@ -733,8 +733,19 @@ public:
     usize hash = this.table.hashKey(key);
     bool found;
     ContainerSize slot = this.table.place(key, hash, found);
-    if (slot == hashNoSlot) // growing moves a fast table's entries, which key and value may be
-      return this.insert(Pair<K, V>(forward<KArg>(key), forward<VArg>(value)));
+    if (slot == hashNoSlot)
+    {
+      // Growing moves a fast table's entries, which key and value may be: the entry is built before.
+      // A stable table's entries stay where they are, and the entry is built in its slot after the
+      // growth, as std's: no entry moved (the differential test stdlib-e/ct2).
+      if constexpr (stable)
+      {
+        this.table.grow();
+        return this.emplace(forward<KArg>(key), forward<VArg>(value));
+      }
+      else
+        return this.insert(Pair<K, V>(forward<KArg>(key), forward<VArg>(value)));
+    }
     if (!found)
       this.table.emplaceAt(slot, hash, forward<KArg>(key), forward<VArg>(value));
     return Pair<HashIterator<Pair<K, V>, stable>, bool>(this.table.iteratorAt(slot), !found);

@@ -10,14 +10,12 @@ registry/en3b: as registry/en3
 gen/pack/5: a pack expansion of calls takes their double results as int at compile time (spec templates/pack_expansion_of_calls_keeps_their_type_at_compile_time)
 gen/pack/7: as gen/pack/5, here an error ("a floating value out of the range of int32")
 
-# The standard library against MSVC's STL and libc++ (both agree; kpp differs)
-stdlib-e/ct1: resize(n, value) copies the value once more and destroys it once more
-stdlib-e/ct2: HashMap's emplace of a new key moves the element once more
-stdlib-e/fm1: format's zero padding of inf and nan pads with spaces (C++ pads with zeros after the sign)
-stdlib-e/io1: tellg after a read in text mode is one more than MSVC's and libc++'s
-stdlib-g/deq2: Deque's insert copies, moves and destroys other counts than both
-stdlib-g/vec1: Vector's insert copies, moves and destroys other counts than both
-stdlib-g2/text1: a double's text: 1e+15 written 1000000000000000, 1.2345678901234568e+17 kept where both write 123456789012345680
+# The standard library against MSVC's STL and libc++ (both agree; kpp differs), triaged 2026-11-16 (thread C)
+stdlib-e/fm1: format's 0 flag pads inf and nan with spaces: C++20 [format.string.std] says the 0 option pads "except when applied to an infinity or NaN", which both libraries do not follow
+stdlib-e/io1: file streams have no text mode (docs/differences-from-cpp.md, kovarex): tellg is the byte offset, 9, where the C runtime's text-mode ftell gives 8 on a file of LF lines, and "\n" is written as one byte
+stdlib-g/deq2: Deque's insert of copies and of a range moves the elements over where MSVC's copies, and so counts other copies, moves and destructions (unspecified by the standard; no extra element built)
+stdlib-g/vec1: Vector's insert moves once where MSVC's moves twice, and assigns over elements where MSVC's destroys and copies them (unspecified counts; kpp's are fewer)
+stdlib-g2/text1: a double's text is docs/stdlib/text.md's (kovarex 2026-11-01: positional up to an exponent of 16): 1e15 is 1000000000000000 and 1.2345678901234568e+17 keeps its exponent, where std::format's {} takes to_chars' shorter form (stdlib-conformance.md)
 
 # Not triaged yet: differs from both C++ builds
 codegen/p3: also prints an indeterminate value (S3's last number), which no build can match

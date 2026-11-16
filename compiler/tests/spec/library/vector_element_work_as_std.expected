@@ -14,7 +14,7 @@ insert range: new 0 copy 0 move 3 copy= 3 move= 1 destroy 0 | 0 0 1 2 1 2 3 4
 grown insert move: new 1 copy 0 move 5 copy= 0 move= 0 destroy 5 | 0 5 1 2 3
 push_back grows: new 1 copy 0 move 4 copy= 0 move= 0 destroy 4 | 0 1 2 9
 resize down: new 1 copy 0 move 0 copy= 0 move= 0 destroy 3 | 0 1
-resize up: new 1 copy 3 move 0 copy= 0 move= 0 destroy 2 | 0 1 2 2
+resize up: new 1 copy 2 move 0 copy= 0 move= 0 destroy 1 | 0 1 2 2
 assign fewer: new 0 copy 0 move 0 copy= 2 move= 0 destroy 2 | 0 1
 assign more within room: new 0 copy 4 move 0 copy= 2 move= 0 destroy 0 | 0 1 2 3 4 5
 assign count: new 1 copy 0 move 0 copy= 3 move= 0 destroy 4 | 7 7 7

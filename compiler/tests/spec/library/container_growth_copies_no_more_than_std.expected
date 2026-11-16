@@ -1,0 +1,9 @@
+start: copies 0 moves 0 destroyed 0
+resize growing, value an element: copies 5 moves 0 destroyed 2
+1 1 5
+insert count growing, value an element: copies 20 moves 5 destroyed 5
+1 2 2 2 25
+destroyed: copies 0 moves 0 destroyed 25
+100 HashMap emplaces: copies 0 moves 0 destroyed 0
+100 198
+map destroyed: copies 0 moves 0 destroyed 100

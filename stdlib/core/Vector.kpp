@@ -336,18 +336,45 @@ public:
       this.truncate(newLength);
       return;
     }
-    T copy(value); // value may be an element, and the elements may move
-    this.ensureRoom(newLength);
+    if consteval
+    {
+      // (constant evaluation: a copy of value, which may be an element, then the room)
+      if (newLength > this.allocated)
+      {
+        T copy(value);
+        this.ensureRoom(newLength);
+        for (; this.length < newLength; ++this.length)
+          new (this.items + this.length) T(copy);
+        return;
+      }
+    }
+    else if (newLength > this.allocated)
+    {
+      // value may be an element: the new elements are built in the new block first, and the elements
+      // move over after them, as std's (no copy of value of its own: one copy and one destruction
+      // fewer, the differential test stdlib-e/ct1). A throw leaves the vector as it was.
+      ContainerSize newCapacity = this.capacityFor(newLength);
+      T* grown = allocateArray<T>(newCapacity);
+      OwnedBlock block(grown);
+      BuiltObjects built(destroyObjects<T>);
+      while (built.count() < i64(newLength - this.length))
+        built.add(new (grown + this.length + built.count()) T(value));
+      this.adoptBlock(grown, newCapacity);
+      built.keep();
+      block.release();
+      this.length = newLength;
+      return;
+    }
     if constexpr (isNothrowCopyConstructible<T>)
     {
       for (; this.length < newLength; ++this.length)
-        new (this.items + this.length) T(copy);
+        new (this.items + this.length) T(value);
     }
     else
     {
       BuiltObjects built(destroyObjects<T>);
       while (built.count() < i64(newLength - this.length))
-        built.add(new (this.items + this.length + built.count()) T(copy));
+        built.add(new (this.items + this.length + built.count()) T(value));
       built.keep();
       this.length = newLength;
     }
@@ -413,8 +440,23 @@ public:
   // position of the first one.
   T* insert(const T* position, ContainerSize count, const T& value)
   {
-    T copy(value);
     ContainerSize index = ContainerSize(position - this.items);
+    // Growing: insertBuilt builds the copies in the new block before the elements move, so value may
+    // be an element without a copy of its own (one copy and one destruction fewer, as std's: the
+    // differential test stdlib-g/vec1). In place, the elements move over value's place: a copy first.
+    // (Constant evaluation takes the path below: insertBuilt's guards of built objects are not for it.)
+    if consteval
+    {
+    }
+    else
+    {
+      if (count > 0 && sizeSum(this.length, count, "vector too long") > this.allocated)
+      {
+        this.insertBuilt(index, Copies(&value, 0), count);
+        return this.items + index;
+      }
+    }
+    T copy(value);
     if constexpr (isNothrowCopyConstructible<T> && isNothrowMoveConstructible<T> && (isNothrowMoveAssignable<T> || !isMoveAssignable<T>))
     {
       ContainerSize moved = this.openSlots(index, count);
