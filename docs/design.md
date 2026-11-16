@@ -1980,7 +1980,8 @@ arguments, one after another, with nothing parsed.
   There is no free `appendTo` for users: a struct imported from a C header or a class of another
   library is printed field by field or wrapped.
 - **No silent fallback:** printing, `<<`, `+` or `Text` with a type that has no `appendTo` is a
-  compile error naming the type; a pointer prints only through an explicit `address(p)`.
+  compile error naming the type; a pointer prints only through an explicit `address(p)`, but a
+  char pointer, which is C text to its first zero (kovarex, 2026-11-16).
 - **Localisation** (where the order of the parts changes per language) is not this mechanism: a
   later localisation library with its own tools (kovarex). `format("{}", ...)` stays only with a
   compile-time literal format; a non-literal format is a compile error.
@@ -2327,9 +2328,13 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
     Specs: language/append_to_on_built_in_types, language/append_to_on_enumerations;
   - a free `appendTo` the program writes is an error, as it would never be called;
   - a string literal or an array of chars: C text, to its first zero;
-  - a pointer is no piece (the error points to `StringView(p)` or `address(p)`, and for an
-    enumeration's `e.str()` to `e` itself). Its error is the call's only one: codegen adds none for
-    the arguments it left unpacked (spec language/text_constructor_pointer_piece_is_error).
+  - a char pointer (`const char*`, `char*`): C text, to its first zero, as C++'s `out << p` (kovarex,
+    2026-11-16: "the most basic thing to expect"; until then an error asking for `StringView(p)`). A
+    null one stops at a release_assert (Text.kpp's appendCPointerPiece), in every build. Specs
+    language/text_char_pointer_piece, language/text_null_char_pointer_piece_stops;
+  - any other pointer is no piece (the error points to `address(p)`). Its error is the call's only
+    one: codegen adds none for the arguments it left unpacked (spec
+    language/text_constructor_pointer_piece_is_error).
 - **Compile errors (the lifetime rule):**
   - a Text anywhere but a parameter or a local initialized from a Text;
   - a data member, a global or static, a function's result, a pointer to one, `new`;

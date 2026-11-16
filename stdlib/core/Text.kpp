@@ -30,7 +30,7 @@ struct Text
 // What appends a piece, the compiler choosing by its type: a class's `void appendTo(String& out)
 // const`; a built-in type's or an enumeration's, which the standard library writes as a free
 // `void appendTo(T value, String& out)` (the program writes no free appendTo); or C text (a string
-// literal or an array of chars, to its first zero).
+// literal, an array of chars or a char pointer, to its first zero).
 template<typename T>
 void appendMemberPiece(const void* object, String& out)
 {
@@ -46,6 +46,14 @@ void appendFreePiece(const void* object, String& out)
 void appendCTextPiece(const void* object, String& out)
 {
   out.append(static_cast<const char*>(object));
+}
+
+// A char pointer: C text, to its first zero (kovarex, 2026-11-16). A null one is no text: it stops.
+void appendCPointerPiece(const void* object, String& out)
+{
+  const char* text = *static_cast<const char* const*>(object);
+  release_assert(text != nullptr);
+  out.append(text);
 }
 
 // The built-in types' appendTo (design.md 14: `x.appendTo(out)` for every type; the compiler

@@ -1,0 +1,21 @@
+// spec: a null char pointer as a piece of a Text is no text: the append stops at a release_assert, in a release build too, never a crash later or "(null)" (kovarex, 2026-11-16; design.md 14) (`assertion failed: text != nullptr`, then `stopped`)
+// run:
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, [[maybe_unused]] i32 line, [[maybe_unused]] i32 column, const char* text)
+{
+  std::println("assertion failed: ", text);
+  throw 1;
+}
+std::String join(std::Text text) { return std::toString(text); }
+const char* none(int count) { return count > 5 ? "x" : nullptr; }
+int main(int count, char**)
+{
+  try
+  {
+    std::println(join("p=", none(count)));
+  }
+  catch (i32)
+  {
+    std::println("stopped");
+  }
+  return 0;
+}

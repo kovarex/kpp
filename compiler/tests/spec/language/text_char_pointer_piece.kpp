@@ -1,0 +1,32 @@
+// spec: a char pointer is a piece of a Text, C text to its first zero, as a string literal is (kovarex, 2026-11-16; design.md 14): a const char* and a char* variable, a function's result, an enumeration's str(), in a call, a constructor, `<<` into a String and a constant (`tag=a name=Beta mutable=xyz <<x>> 3`)
+extern "C" import "stdio.h";
+enum class Kind : u8
+{
+  { Alpha, Beta }
+};
+struct Writer
+{
+  std::String out;
+  Writer(const char* tag, std::Text text)
+  {
+    this.out << tag << "=";
+    text.appendTo(this.out);
+  }
+};
+const char* name(char which) { return which == 'a' ? "a" : "b"; }
+std::String join(std::Text text) { return std::toString(text); }
+consteval int constantSize()
+{
+  const char* p = "cx";
+  return int(join("a", p).size());
+}
+int main()
+{
+  Writer w("tag", name('a'), " name=", Kind::Beta.str());
+  char buffer[4] = {'x', 'y', 'z', 0};
+  char* mutableText = buffer;
+  std::String s;
+  s << " <<" << static_cast<const char*>("x") << ">>";
+  printf("%s %s%s %d\n", w.out.c_str(), join("mutable=", mutableText).c_str(), s.c_str(), constantSize());
+  return 0;
+}

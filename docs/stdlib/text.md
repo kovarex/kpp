@@ -51,7 +51,7 @@ Each is a small value whose `appendTo` writes the text described; the names are 
   `zeroPadded(-5, 4)` is `-005`, `zeroPadded(withSign(3), 4)` `+003`. An infinity or a NaN is padded with spaces
   before it, as the flag does: `zeroPadded(fixed(-inf, 2), 8)` is `    -inf`.
 - `address(p)`: a pointer as 16 uppercase hexadecimal digits, no prefix, as MSVC's `%p`. It is the
-  only way to print a pointer: a pointer is no piece by itself.
+  only way to print a pointer, but a char pointer: any other pointer is no piece by itself.
 
 Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every platform.
 
@@ -69,7 +69,9 @@ Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every
   "FormatString does not take 1 piece: it throws LogicError("format: 2 {} for 1 piece")"); `{{`
   and `}}` are no escapes: a text with braces of its own is written in pieces.
 - `a + b`, one side a String or a StringView: a new String of both texts.
-- C text is no piece: `StringView(p)` is a `const char*`'s text, `address(p)` its address.
+- C text is a piece: a `const char*` or `char*` appends its text, to its first zero, as a string
+  literal does; a null one stops at a release_assert (kovarex, 2026-11-16). `address(p)` is its
+  address.
 - **A piece refers to its object; it is read when the text is written**, after every argument of
   the call is evaluated, as std::format reads its arguments (by reference), and unlike printf's
   copies. `println(cache.hits, " ", cache.get())`, where get() increments the mutable `hits`, prints

@@ -926,7 +926,8 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
   during the call only, and storing one is an error. `format` exists only with a literal format,
   checked against its arguments at compile time. The library has no `printf` or `cout`: C's `printf` is
   there only when imported. A bool prints as `true`, an enum as its name, and a pointer only through
-  `address(p)`.
+  `address(p)`, but a char pointer, which prints its C text as C++'s `<<` does (a null one stops,
+  where C++'s is undefined; 2026-11-16).
 - **Why:** a text that is not a literal can contain `%` or `{}`.
 - **See:** [design 14][d14]; specs `language/text_parameter_takes_arguments`,
   `language/text_parameter_placement_is_error`.
