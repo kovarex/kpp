@@ -26,7 +26,7 @@ template <class T> constexpr bool isDefaultConstructible = std::is_default_const
 template <class T> constexpr bool isClass = std::is_class_v<T>;
 template <class T> constexpr bool isEmpty = std::is_empty_v<T>;
 struct Agg { int a; double b; };
-struct NoDefault { IMPLICIT NoDefault(int) {} };
+struct NoDefault { NoDefault() = delete; IMPLICIT NoDefault(int) {} };
 int main()
 {
   printf("%d%d%d%d %d%d%d%d %d%d%d\n", isConstructible<int[3], int>, isConstructible<int[3], int, int, int>, isConstructible<int[3], int, int, int, int>, isConstructible<int[3]>,

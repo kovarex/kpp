@@ -1,6 +1,6 @@
 extern "C" int printf(const char* format, ...);
 struct Agg { int a; double b; };
-struct NoDefault { IMPLICIT NoDefault(int) {} };
+struct NoDefault { NoDefault() = delete; IMPLICIT NoDefault(int) {} };
 int main()
 {
   printf("%d%d%d%d %d%d%d%d %d%d%d\n", isConstructible<int[3], int>, isConstructible<int[3], int, int, int>, isConstructible<int[3], int, int, int, int>, isConstructible<int[3]>,
