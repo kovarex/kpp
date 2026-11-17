@@ -174,11 +174,37 @@ static DWORD WINAPI walkOverflow(LPVOID unused)
   return 0;
 }
 
+/* The exception's name, so that a report says what happened before its addresses (kovarex 2026-11-17: an endless
+   recursion showed only "exception 0xc00000fd"); null for one without a name here. */
+static const char* exceptionName(DWORD code)
+{
+  switch (code)
+  {
+    case EXCEPTION_STACK_OVERFLOW: return "stack overflow (an endless recursion, or a frame too large)";
+    case EXCEPTION_ACCESS_VIOLATION: return "access violation";
+    case EXCEPTION_INT_DIVIDE_BY_ZERO: return "integer division by zero";
+    case EXCEPTION_INT_OVERFLOW: return "integer overflow";
+    case EXCEPTION_ILLEGAL_INSTRUCTION: return "illegal instruction";
+    case EXCEPTION_PRIV_INSTRUCTION: return "privileged instruction";
+    case EXCEPTION_IN_PAGE_ERROR: return "in-page error (a file mapped into memory could not be read)";
+    case EXCEPTION_BREAKPOINT: return "breakpoint";
+    case EXCEPTION_DATATYPE_MISALIGNMENT: return "misaligned data";
+    case 0xC0000374u: return "heap corruption";
+    case 0xC0000409u: return "fail fast (a security check or __fastfail)";
+    case 0xE06D7363u: return "C++ exception";
+    default: return NULL;
+  }
+}
+
 static LONG WINAPI report(EXCEPTION_POINTERS* e)
 {
   EXCEPTION_RECORD* r = e->ExceptionRecord;
   char text[256];
-  snprintf(text, sizeof text, "kpp crash report: exception 0x%08lx at %p", r->ExceptionCode, r->ExceptionAddress);
+  const char* name = exceptionName(r->ExceptionCode);
+  if (name)
+    snprintf(text, sizeof text, "kpp crash report: %s, exception 0x%08lx at %p", name, r->ExceptionCode, r->ExceptionAddress);
+  else
+    snprintf(text, sizeof text, "kpp crash report: exception 0x%08lx at %p", r->ExceptionCode, r->ExceptionAddress);
   say(text);
   if (r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
   {
