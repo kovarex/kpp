@@ -1,0 +1,38 @@
+// A typed union (`union enum`) in kpp's style: its alternatives' block on lines of its own, its data members and
+// functions after it, as a kpp enum's values and members; kpp format leaves it as it is (tests\format.ps1).
+struct Pos
+{
+  int x = 0;
+  int y = 0;
+};
+
+union enum Action : u8
+{
+  { {void, Nothing}, {Pos, Move}, {std::String, Say} }
+  u32 tick = 0;
+  u16 player = 0;
+
+  bool moves() const { return this == Action::Move; }
+};
+
+union enum Input : u8
+{
+  {
+    {void, Nothing},
+    {int, Count},
+    {std::String, Name}
+  }
+  u32 tick = 0;
+};
+
+union enum Small
+{
+  { {int, A}, {void, B} }
+};
+
+int main()
+{
+  Action action;
+  action[Action::Move] = Pos{1, 2};
+  return action.moves() ? 0 : 1;
+}

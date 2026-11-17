@@ -274,7 +274,7 @@ namespace
     void bodyBraces(uint32_t open, uint16_t frame, uint16_t level, Brace kind, Ctx innerCtx, uint16_t innerLevel, Rule innerRule);
     void list(uint32_t open, uint16_t frame, uint16_t level, uint32_t stmt);
     void lambdaBody(uint32_t open, uint16_t frame, uint16_t level, uint32_t stmt);
-    void enumBody(uint32_t open, uint16_t frame, uint16_t level);
+    void enumBody(uint32_t open, uint16_t frame, uint16_t level, bool values);
     bool requiresBrace(uint32_t open) const
     {
       if (role(open) != 0 || open == 0)
@@ -702,7 +702,8 @@ namespace
       const Token& t = tok(i);
       if (!sawParams && head == Brace::None)
       {
-        if (t.is(Kw::enum_) || (i == start && isIdent(i, "flags") && tok(i + 1).getKind() == TokenKind::Identifier &&
+        // (`union enum NAME`, design.md 8.5: a typed union's braces are a kpp enum's, its alternatives' block first)
+        if (t.is(Kw::enum_) || (t.is(Kw::union_) && tok(i + 1).is(Kw::enum_)) || (i == start && isIdent(i, "flags") && tok(i + 1).getKind() == TokenKind::Identifier &&
                                 (isP(i + 2, P::Colon) || isP(i + 2, P::LBrace)))) // (`flags NAME : u16 {`, design.md 27: a kpp enum's braces)
           head = Brace::Enum;
         else if (t.is(Kw::class_) || t.is(Kw::struct_) || t.is(Kw::union_))
@@ -735,7 +736,7 @@ namespace
         if (i == start && ctx == Ctx::Class && i > 0 && isP(i - 1, P::LBrace) && info[i - 1].brace == Brace::Enum)
         {
           // a kpp enum's values (or a flags declaration's flags) in their own block, members after it
-          enumBody(i, frame, level);
+          enumBody(i, frame, level, true);
           return close + 1;
         }
         if (roleIs(i, NodeKind::BraceInitExpr))
@@ -778,7 +779,7 @@ namespace
         }
         if (head == Brace::Enum)
         {
-          enumBody(i, frame, level);
+          enumBody(i, frame, level, false);
           uint32_t last = close;
           if (isP(close + 1, P::Semi))
             last = close + 1;
@@ -935,10 +936,11 @@ namespace
     body(open + 1, close, frame, uint16_t(level + 1), Ctx::Block, Rule::IndentBlock);
   }
 
-  void Formatter::enumBody(uint32_t open, uint16_t frame, uint16_t level)
+  // values: open is the values' own block (a typed union's `{ {int, Integer}, ... }` starts with a brace too).
+  void Formatter::enumBody(uint32_t open, uint16_t frame, uint16_t level, bool values)
   {
     uint32_t close = info[open].match;
-    if (isP(open + 1, P::LBrace))
+    if (!values && isP(open + 1, P::LBrace))
     {
       // a kpp enum (design.md 8.5, a flags declaration's too, 27): its values' block, then members as a class's
       bodyBraces(open, frame, level, Brace::Enum, Ctx::Class, uint16_t(level + 1), Rule::IndentClass);
