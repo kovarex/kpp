@@ -1,11 +1,11 @@
 // Stand-in for FloatCast.kpp for the Util smoke test.  The real one logs through the game's
 // global context; these stubs use Logging::logAndAbortOrThrow.
-void FloatCastCheckFailed(float value, const char* targetType, float converted)
+void FloatCastCheckFailed([[maybe_unused]] float value, [[maybe_unused]] const char* targetType, [[maybe_unused]] float converted)
 {
   Logging::logAndAbortOrThrow("FloatCast.kpp", 5, LogLevel::Error, "float_cast failed");
 }
 
-void FloatCastCheckFailed(double value, const char* targetType, double converted)
+void FloatCastCheckFailed([[maybe_unused]] double value, [[maybe_unused]] const char* targetType, [[maybe_unused]] double converted)
 {
   Logging::logAndAbortOrThrow("FloatCast.kpp", 9, LogLevel::Error, "float_cast failed");
 }

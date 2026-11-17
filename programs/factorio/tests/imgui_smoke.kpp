@@ -8,7 +8,7 @@ extern "C" import "stdint.h";
 
 static float plotSample(void* data, int idx) { return ((float*)data)[idx] * 2.0f; }
 
-static bool item(void* data, int idx, const char** out_text)
+static bool item([[maybe_unused]] void* data, int idx, const char** out_text)
 {
   static const char* names[] = {"first", "second", "third"};
   *out_text = names[idx];

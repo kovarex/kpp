@@ -366,8 +366,9 @@ kpp\agui_smoke.exe > kpp\agui_smoke.out.txt
 fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected > nul && (echo agui smoke test: output as expected& set /a SMOKES+=1) || (echo agui smoke test: OUTPUT DIFFERS & fc /w kpp\agui_smoke.out.txt tests\agui_smoke.expected & goto :failed)
 set "STEP=Util smoke test"
 echo == Util smoke test: tests\util_smoke.kpp against the converted Util subset (containers, sorting, the math expression evaluator; Logging, Util helpers, Math, FloatCast, RuntimeError and prefetch stubbed)
+rem (ExtendedBitBuffer and ScopedEntityStorage are the game's: an Entity's and a Surface's, which the subset has not)
 set UFILES=
-for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer set UFILES=!UFILES! %%f
+for %%f in (kpp\Util\Container\*.kpp) do if not %%~nf==ExtendedBitBuffer if not %%~nf==ScopedEntityStorage set UFILES=!UFILES! %%f
 %KPP% --std ..\..\stdlib %CINC% --quiet --exe kpp\util_smoke.exe !FILES! !UFILES! tests\stubs\SystemClipboard.kpp tests\stubs\Log.kpp tests\stubs\UtilHelpers.kpp tests\stubs\MathStubs.kpp tests\stubs\FloatCast.kpp tests\stubs\UtilTemplateNames.kpp kpp\src\c-imports.kpp kpp\src\Util\ReleaseAssert.kpp kpp\Util\Sort kpp\Util\MathExpressions kpp\Util\BitBuffer.kpp kpp\Util\ToStr.kpp kpp\Util\LogLevel.kpp kpp\src\Typedefs.kpp kpp\src\TypeTraitsExtensions.kpp kpp\src\Graphics\BitmapFormat.kpp kpp\src\Noise\NoiseRegisterIndex.kpp tests\util_smoke.kpp %TRIOLINK% || goto :failed
 kpp\util_smoke.exe > kpp\util_smoke.out.txt
 fc /w kpp\util_smoke.out.txt tests\util_smoke.expected > nul && (echo util smoke test: output as expected& set /a SMOKES+=1) || (echo util smoke test: OUTPUT DIFFERS & fc /w kpp\util_smoke.out.txt tests\util_smoke.expected & goto :failed)

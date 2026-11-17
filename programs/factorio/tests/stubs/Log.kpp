@@ -9,14 +9,14 @@ class Logging
 public:
   // (the game's takes the message's pieces: design.md 14's printf rewrite)
   [[noreturn]]
-  static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, std::Text text)
+  static void logAndAbortOrThrow(const char* file, uint32_t line, [[maybe_unused]] LogLevel level, std::Text text)
   {
     std::println("abort at ", std::StringView(file), ":", line, ": ", std::toString(text));
     abort();
   }
 
   [[noreturn]]
-  static void logAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, const std::String& message)
+  static void logAndAbortOrThrow(const char* file, uint32_t line, [[maybe_unused]] LogLevel level, const std::String& message)
   {
     std::println("abort at ", std::StringView(file), ":", line, ": ", message);
     abort();
@@ -24,7 +24,7 @@ public:
 
   template<typename EnumType>
   [[noreturn]]
-  static void logEnumAndAbortOrThrow(const char* file, uint32_t line, LogLevel level, EnumType value)
+  static void logEnumAndAbortOrThrow(const char* file, uint32_t line, [[maybe_unused]] LogLevel level, EnumType value)
   {
     std::println("abort at ", std::StringView(file), ":", line, ": unknown enum value ", int(value));
     abort();
