@@ -421,6 +421,8 @@ if exist kpp\convert_formats rd /s /q kpp\convert_formats
 call :ebdfix kpp\convert_formats || goto :failed
 %KPP% --std ..\..\stdlib --this-pointer --quiet --exe kpp\convert_formats.exe kpp\convert_formats || goto :failed
 kpp\convert_formats.exe > kpp\convert_formats.out.txt
+rem (and written without the casts and StringView chains a value printing the same needs not: `player`, `small`, `toStr(tick)`, C text `actionName(1)`)
+findstr /c:", updateTick, " kpp\convert_formats\convert_formats\formats.kpp | findstr /c:", player, " | findstr /c:", small, " | findstr /c:", toStr(tick), " | findstr /c:", actionName(1), " > nul || (echo printf formats: A VALUE THAT PRINTS THE SAME WRITTEN WITH A CAST & goto :failed)
 fc /w kpp\convert_formats.out.txt tests\convert_formats.expected > nul && (echo printf formats: output as expected& set /a SMOKES+=1) || (echo printf formats: OUTPUT DIFFERS & fc /w kpp\convert_formats.out.txt tests\convert_formats.expected & goto :failed)
 echo == namespace-scope objects: tests\convert_init\init.cpp, objects initialized by parentheses at namespace and class scope, converted to braces or `= T(args)` (kpp reads `T f(...)` there as a function) and run, prints what its C++ build prints (tests\convert_init.expected)
 if exist kpp\convert_init rd /s /q kpp\convert_init

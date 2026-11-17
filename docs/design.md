@@ -2085,6 +2085,17 @@ As converted (thread C, 2026-11-02):
   conversions).
 - A `%s` of a `.c_str()` or `.what()` call is C text whatever the class (kpp dd480a7c): 810 of the
   1,084 `StringView((const char*)(x))` became `StringView(x)`, 274 left.
+- **No cast where the value already prints the same** (kovarex, 2026-11-16: the leftovers in
+  InputAction::str()): a `%u`, `%d` or `%i` whose argument's declared type prints the conversion's text
+  as it is (an unsigned type no wider than the conversion's, a signed one no wider for `%d`, an unsigned
+  one narrower for `%d`; never char or bool) is the value itself: `%u` of a PlayerIndex (u16) is
+  `playerIndex`, not `u32(playerIndex)`; an `int` read by `%u` keeps its `u32(x)`. A `%s` of the game's
+  `toCStr(x)` (`toStr(x).c_str()`) is the String `toStr(x)`, and x itself where its declared type is an
+  integer or a std::string, whose text is toStr's. Since C text is a piece (kpp 0.2.1513), a `%s` of C text
+  is the pointer itself, an unknown type's `(const char*)(x)`, and a run-time format alone is passed as it
+  is: no `StringView(...)` around either. Test: convert.cmd's printf formats step
+  (tests\convert_formats), its output and its written form. The game's kpp branch got the same
+  simplification from a script whose every rewrite the compiler confirmed by type (wube/Factorio#8774, 2026-11-17).
 - std::to_string, by the overload C++ calls for its argument: an integer's is `toString(x)` (9 the
   converter's types show), a floating value's `toString(fixed(x, 6))` (8; std::to_string writes C's
   `%f` through the C runtime, not trio), and the rest's `toStringAsStd(x)` (307: a bool, a char or an

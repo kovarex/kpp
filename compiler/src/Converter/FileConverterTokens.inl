@@ -1197,7 +1197,7 @@
     // design.md 14's printf rewrite: a call of ssprintf, or a printf statement, with a literal format
     // becomes toString(...) or print(...) of pieces, the text C printed: the format's text between
     // its conversions as literals, each conversion its argument as the piece that writes it so
-    // (`%u` uint32_t(x), the 32 bits printf reads; `%s` StringView(p), or the String a c_str() came
+    // (`%u` uint32_t(x), the 32 bits printf reads; `%s` p itself (C text is a piece), or the String a c_str() came
     // from; `%5.2f` alignRight(fixed(x, 2), 5); `%08x` hex(x, 8); `%p` address(p)). A conversion
     // outside that leaves the call as it is (counted): `*` widths, precision on integers and
     // strings, the ' ' and '#' flags but for `%#0Nx`, %E %G %a %n, wide strings. A `*` width is
@@ -1341,6 +1341,44 @@
         return exactIntegerName(static_cast<VariableDecl*>(d)->type, depth + 1);
       return {};
     }
+    // `%s` of the game's `toCStr(x)`, which convertTokens wrote `toStr(x).c_str()`: the String is
+    // the piece, `toStr(x)`, and x itself where its type prints what toStr writes (an integer's
+    // decimal digits, a std::string's text), so no `StringView((const char*)(...))` around it.
+    bool toCStrPiece(Expr* plain, uint32_t argEnd)
+    {
+      if (!plain || plain->kind != NodeKind::CallExpr || argEnd < 1 || !toks[argEnd - 1].is(P::RParen))
+        return false;
+      auto* call = static_cast<CallExpr*>(plain);
+      if (call->args.size() != 1 || call->callee->kind != NodeKind::NameExpr)
+        return false;
+      auto* callee = static_cast<NameExpr*>(call->callee);
+      if (callee->name.parts.size() != 1 || callee->name.parts[0].symbol == UINT32_MAX || symbols.name(callee->name.parts[0].symbol) != "toCStr")
+        return false;
+      uint32_t nameAt = toks[callee->token].offset, closeAt = toks[argEnd - 1].offset;
+      Edit* open = nullptr;
+      Edit* close = nullptr;
+      for (Edit& e : edits)
+        if (e.offset == nameAt && e.length > 0 && e.text == "toStr(")
+          open = &e;
+        else if (e.offset == closeAt && e.length == 1 && e.text == ").c_str()")
+          close = &e;
+      if (!open || !close)
+        return false;
+      Type* type = plainTypeOf(call->args[0]);
+      std::string exact = exactIntegerName(type);
+      if ((!exact.empty() && exact != "char") || (type && isStdStringType(type)))
+      {
+        open->text.clear();
+        close->text.clear();
+        counts.add("printf %s of toCStr(x) written x, whose text is toStr's");
+      }
+      else
+      {
+        close->text = ")";
+        counts.add("printf %s of toCStr(x) written toStr(x)");
+      }
+      return true;
+    }
     // The opening and closing text around an argument that make it the piece a conversion writes.
     bool printfPiece(const PrintfConversion& c, Expr* arg, uint32_t argEnd, bool trio, std::string& open, std::string& close, uint32_t& cStrDot,
                      const std::string& widthText = std::string())
@@ -1385,8 +1423,16 @@
         case 'i':
         case 'u':
         {
+          // (no cast where the value's own type prints the same text: an unsigned type no wider
+          // than the conversion's, or for a signed conversion a signed one no wider or an unsigned
+          // one narrower; `%u` of a u16 is the u16, `%d` of a u8 the u8)
           std::string type = integerType(c.conversion != 'u');
-          if (exact != type && !(literalInteger && (type == "int32_t" || type == "uint32_t")))
+          auto bits = [](const std::string& name) { return name == "size_t" ? 64 : name.size() > 4 ? atoi(name.c_str() + (name[0] == 'u' ? 4 : 3)) : 0; };
+          auto isUnsigned = [](const std::string& name) { return name[0] == 'u' || name == "size_t"; };
+          bool exactPrintsSame = !exact.empty() && exact != "char" && bits(exact) > 0 &&
+                                 (isUnsigned(exact) ? bits(exact) < bits(type) || (isUnsigned(type) && bits(exact) == bits(type))
+                                                    : !isUnsigned(type) && bits(exact) <= bits(type));
+          if (exact != type && !exactPrintsSame && !(literalInteger && (type == "int32_t" || type == "uint32_t")))
             valueOpen = type + "(", valueClose = ")";
           break;
         }
@@ -1413,6 +1459,8 @@
           break;
         case 's':
           if (plain && plain->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(plain)->literalKind == TokenKind::String)
+            break;
+          if (toCStrPiece(plain, argEnd))
             break;
           if (plain && plain->kind == NodeKind::CallExpr && static_cast<CallExpr*>(plain)->args.empty() &&
               static_cast<CallExpr*>(plain)->callee->kind == NodeKind::MemberExpr)
@@ -1452,13 +1500,12 @@
                          (symbols.name(static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee)->member.parts[0].symbol) == "c_str" ||
                           symbols.name(static_cast<MemberExpr*>(static_cast<CallExpr*>(plain)->callee)->member.parts[0].symbol) == "what");
             bool text = charPointer || cText || (type && isStdStringType(type)) || (plain && plain->kind == NodeKind::ConditionalExpr);
+            // (C text is a piece itself, design.md 14, kpp 0.2.1513: no StringView around it)
             if (arg && !text)
             {
-              valueOpen = "std::StringView((const char*)(", valueClose = "))";
-              counts.add("printf %s of a pointer of another or unknown type written StringView((const char*)(x))");
+              valueOpen = "(const char*)(", valueClose = ")";
+              counts.add("printf %s of a pointer of another or unknown type written (const char*)(x)");
             }
-            else
-              valueOpen = "std::StringView(", valueClose = ")";
           }
           break;
         case 'f':
@@ -1503,7 +1550,7 @@
     }
     // The printf rewrite in a macro's expansion (a local macro's text, written at its use), where
     // there are no expressions: the calls of ssprintf and of the game's format functions found by
-    // name, each value written with its type (`int32_t(x)` for %d, `StringView(p)` for %s).
+    // name, each value written with its type (`int32_t(x)` for %d, p itself for %s).
     std::string rewritePrintfText(const std::string& t, int depth = 0)
     {
       if (depth > 8 || (t.find("ssprintf") == std::string::npos && t.find("Logging::") == std::string::npos && t.find("printf") == std::string::npos &&
@@ -1704,21 +1751,8 @@
               std::string widthText = conversions[n].starWidth ? texts[a++] : std::string();
               const std::string& value = texts[a++];
               PrintfConversion conversion = conversions[n];
-              if (conversion.conversion == 's' && !value.empty() && (value[0] == '"' || (value[0] == 'R' && value.size() > 1 && value[1] == '"')))
-              {
-                // (a literal: itself, aligned as asked)
-                ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
-                if (ok && o.compare(0, 16, "std::StringView(") == 0)
-                  o.erase(0, 16), cl.erase(0, 1);
-                else if (ok && o.find("std::StringView(") != std::string::npos)
-                {
-                  size_t at = o.find("std::StringView(");
-                  o.erase(at, 16);
-                  cl.erase(0, 1);
-                }
-              }
-              else
-                ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
+              // (C text, a literal or a pointer, is a piece itself)
+              ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
               if (ok)
               {
                 if (!segments[n].empty())
@@ -1744,7 +1778,7 @@
             for (size_t a = 0; a < formatIndex; ++a)
               rewritten += texts[a] + ", ";
             if (following == 0)
-              rewritten += "std::StringView(" + f + ")";
+              rewritten += f;
             else
             {
               rewritten += "ssprintf(" + f;
@@ -2128,6 +2162,13 @@
         bool alone = all.size() == 1;
         if (alone && format->kind == NodeKind::LiteralExpr)
           return false;
+        if (alone)
+        {
+          // (the format alone is C text, a piece itself: design.md 14, kpp 0.2.1513)
+          printfRewritten.insert(call);
+          counts.add("format function calls of a run-time format alone written as they are (C text is a piece)");
+          return true;
+        }
         // (before the format, not at it: a rewrite of the format itself, ssprintf's of a run-time
         // format inside, replaces it and would cancel an insertion there)
         if (formatFirst == 0)
@@ -2138,11 +2179,11 @@
           if (e.length > 0 && e.offset < after && e.offset + e.length == after)
             ending = &e;
         if (ending)
-          ending->text += alone ? "std::StringView(" : "ssprintf(";
+          ending->text += "ssprintf(";
         else if (after < toks[formatFirst].offset)
-          replace(after, toks[formatFirst].offset - after, std::string(" ") + (alone ? "std::StringView(" : "ssprintf("));
+          replace(after, toks[formatFirst].offset - after, " ssprintf(");
         else
-          insert(after, alone ? "std::StringView(" : "ssprintf(");
+          insert(after, "ssprintf(");
         uint32_t at = endOffset(paren - 1);
         Edit* parenRewrite = nullptr;
         for (Edit& e : edits)
@@ -2153,8 +2194,7 @@
         else
           backEdits.push_back({at, 0, ")"});
         printfRewritten.insert(call);
-        counts.add(alone ? "format function calls of a run-time format alone written StringView(format)"
-                         : "format function calls of a run-time format written ssprintf(format, ...)");
+        counts.add("format function calls of a run-time format written ssprintf(format, ...)");
         return true;
       };
       if (!stringMacroFirst && (format->kind != NodeKind::LiteralExpr || static_cast<LiteralExpr*>(format)->literalKind != TokenKind::String))

@@ -95,15 +95,15 @@ i32 main()
 {
   i32 sum = 0;
   sum += Holder::Nothing().value + Holder::noSize(Shape::Nothing);
-  std::print(std::StringView(Holder::name(Shape::Nothing)), "\n");;
+  std::print(Holder::name(Shape::Nothing), "\n");;
   sum += Holder::SomethingWithAVeryLongName().value + Holder::noSize(Shape::SomethingWithAVeryLongName);
-  std::print(std::StringView(Holder::name(Shape::SomethingWithAVeryLongName)), "\n");;
+  std::print(Holder::name(Shape::SomethingWithAVeryLongName), "\n");;
   sum += Holder::AnotherThingWithAnEvenLongerName().value + Holder::noSize(Shape::AnotherThingWithAnEvenLongerName);
-  std::print(std::StringView(Holder::name(Shape::AnotherThingWithAnEvenLongerName)), "\n");;
+  std::print(Holder::name(Shape::AnotherThingWithAnEvenLongerName), "\n");;
   sum += Holder::YetAnotherThingWithALongName().value + Holder::noSize(Shape::YetAnotherThingWithALongName);
-  std::print(std::StringView(Holder::name(Shape::YetAnotherThingWithALongName)), "\n");;
+  std::print(Holder::name(Shape::YetAnotherThingWithALongName), "\n");;
   sum += Holder::TheLastOneWithoutASizeOfItsOwn().value + Holder::noSize(Shape::TheLastOneWithoutASizeOfItsOwn);
-  std::print(std::StringView(Holder::name(Shape::TheLastOneWithoutASizeOfItsOwn)), "\n");;
+  std::print(Holder::name(Shape::TheLastOneWithoutASizeOfItsOwn), "\n");;
   Holder h(Shape::CircleWithAVeryLongNameIndeedToo);
   std::print(sum, " ", std::significant(h.getCircleWithAVeryLongNameIndeedToo(), 6), " ");
   std::print(std::significant(f64(h.getSquareWithAVeryLongNameIndeed()), 6), "\n");
