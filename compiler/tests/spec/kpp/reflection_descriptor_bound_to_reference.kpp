@@ -1,0 +1,23 @@
+// spec: a reflection descriptor's m.name, m.offset, a.name and a.tag passed to a `const T&` parameter, deduced or not
+// design.md 8.3, 8.5; InputActionTestMaker wrote std::StringView(a.name) until 2026-11-17 ("a template parameter whose
+// value is not known here")
+struct Settings { int width = 640; bool fullscreen = false; };
+union enum class Shape : u8
+{
+  {
+    {Empty, void},
+    {Circle, int},
+    {Square, double},
+  }
+};
+template<typename T> int size(const T& value) { return int(sizeof(value)); }
+template<typename T> std::String text(const T& value) { return std::toString(value); }
+int length(const char* const& name) { return int(std::StringView(name).size()); }
+int main()
+{
+  for constexpr (auto m : members(Settings))
+    std::println(std::format("{} {} {} {}", text(m.name), length(m.name), size(m.name), size(m.offset)));
+  for constexpr (auto a : alternatives(Shape))
+    std::println(std::format("{} {} {} {}", text(a.name), length(a.name), size(a.tag), text(int(a.tag))));
+  return 0;
+}

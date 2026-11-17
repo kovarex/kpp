@@ -936,6 +936,11 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       Decl* d = m->resolved;
       if (d && d->kind == NodeKind::EnumeratorDecl)
         break; // `s.E` bound to a reference: its value goes to a temporary (below)
+      // A reflection descriptor's m.name, m.offset, a.tag, a.boxed bound to a reference (`length(a.name)` with
+      // `const T&`): its value goes to a temporary too, as any constant's (until 2026-11-17 "a template parameter whose
+      // value is not known here", the descriptor itself asked for its place: InputActionTestMaker).
+      if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Member && !m->dynamicMember)
+        break;
       std::string object;
       const Ty* baseTy;
       if (m->op == P::Arrow)
