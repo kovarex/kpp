@@ -11,7 +11,7 @@ enum class Mode : u8
 };
 union enum class Action : u16
 {
-  { {int, Move}, {bool, Stop} }
+  { {Move, int}, {Stop, bool} }
 };
 using ActionType = Action::Tag;
 int main()

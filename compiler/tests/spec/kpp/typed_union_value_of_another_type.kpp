@@ -27,7 +27,7 @@ public:
 
 union enum Held : u8
 {
-  { {std::String, Words}, {Fixed, Number} }
+  { {Words, std::String}, {Number, Fixed} }
 };
 
 int twice(int value)

@@ -10,7 +10,7 @@ struct Attacking
 };
 union enum AIState
 {
-  { {::Patrolling, Patrolling}, {::Attacking, Attacking} }
+  { {Patrolling, ::Patrolling}, {Attacking, ::Attacking} }
   template<typename T>
   T& get() { for constexpr (auto a : alternatives(AIState)) if constexpr (std::isSame<a.type, T>) return (this)[a]; }
   template<typename T>

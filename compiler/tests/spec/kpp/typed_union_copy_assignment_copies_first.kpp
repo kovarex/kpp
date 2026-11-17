@@ -29,7 +29,7 @@ public:
 
 union enum U : u8
 {
-  { {int, Number}, {Safe, First}, {Risky, Second} }
+  { {Number, int}, {First, Safe}, {Second, Risky} }
 };
 
 int main()

@@ -4,7 +4,7 @@ struct Patrolling { int steps; };
 struct Attacking { int target; };
 union enum AIState : uint8_t
 {
-  { {Patrolling, Patrol}, {Attacking, Attack} }
+  { {Patrol, Patrolling}, {Attack, Attacking} }
 };
 
 int describe(const Patrolling& p) { return p.steps; }

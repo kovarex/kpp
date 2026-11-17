@@ -11,7 +11,7 @@ struct Tracked
 };
 union enum Action : u16
 {
-  { {int, Count}, {std::String, Text} }
+  { {Count, int}, {Text, std::String} }
   u64 tick = 7;
   std::String name = "init";
   Tracked tracked = Tracked(1);

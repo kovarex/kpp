@@ -2,7 +2,7 @@
 // same signature the uses name it and the renamed function's declarations go; another signature is refused.
 union enum class Action : u8
 {
-  { {i32, Move}, {void, Stop} }
+  { {Move, i32}, {Stop, void} }
 
   Tag getType() const { return this.tag(); }
   i32 speed() const;

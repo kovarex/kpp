@@ -480,7 +480,7 @@ checked against the suite, the 40 end-to-end tests and the CommonUtil and Agui s
    follows enum substitutions as it did class ones. Spec: `kpp/enum_from_str`,
    `templates/enum_through_parameter`.
 10. **Typed unions** (design.md 8.5), the shape of `InputAction` and `std::variant` uses. The
-    parser desugars `union enum Property : u8 { { {int, Integer}, {String, Text} } ... }` to a
+    parser desugars `union enum Property : u8 { { {Integer, int}, {Text, String} } ... }` to a
     class with a nested kpp enum `Tag` (unscoped, so `Property::Integer` is the tag value), a `tag`
     member and an anonymous union of one storage member per alternative; the type checker gives
     `p[Property::Integer]` the alternative's type and `p == Property::Integer` bool; the code

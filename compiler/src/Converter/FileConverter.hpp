@@ -1039,7 +1039,7 @@
             // the others qualified as any union's (an alternative named String hides the type).
             if (!v.info->localTypes.count(normalizedSpelling(type)))
               type = qualifiedAlternativeType(type, *v.info, v.memberStart);
-            list += std::string(list.empty() ? "" : ", ") + "{" + type + ", " + v.info->alternatives[a].name + "}";
+            list += std::string(list.empty() ? "" : ", ") + "{" + v.info->alternatives[a].name + ", " + type + "}";
           }
           // std::variant's ==, the same alternative with equal values; a template, so that as for
           // std::variant an alternative without == matters only where two unions are compared.

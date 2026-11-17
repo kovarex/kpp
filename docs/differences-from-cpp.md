@@ -637,7 +637,7 @@ enum class Direction : u8
 ```cpp
 union enum Property : u8
 {
-  { {int, Integer}, {double, Double}, {String, Text} }
+  { {Integer, int}, {Double, double}, {Text, String} }
 };
 Property p = 5;
 p[Property::Text] = String("hello");
@@ -661,7 +661,7 @@ p[Property::Text] = String("hello");
 ```cpp
 union enum class Action : u8
 {
-  { {int, Move}, {void, Stop} }
+  { {Move, int}, {Stop, void} }
 
   // Beside the creator Move(int): both exist.
   static Action Move(int left, int right) { return Action::Move(left - right); }

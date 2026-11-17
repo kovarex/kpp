@@ -21,7 +21,7 @@ struct Reader
 };
 union enum Action : u16
 {
-  { {int, Count}, {std::String, Text}, {Tracked, Watched} }
+  { {Count, int}, {Text, std::String}, {Watched, Tracked} }
   u64 tick = 7;
   Tracked member = Tracked(100);
 

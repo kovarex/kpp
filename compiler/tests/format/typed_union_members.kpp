@@ -8,7 +8,7 @@ struct Pos
 
 union enum Action : u8
 {
-  { {void, Nothing}, {Pos, Move}, {std::String, Say} }
+  { {Nothing, void}, {Move, Pos}, {Say, std::String} }
   u32 tick = 0;
   u16 player = 0;
 
@@ -18,16 +18,16 @@ union enum Action : u8
 union enum Input : u8
 {
   {
-    {void, Nothing},
-    {int, Count},
-    {std::String, Name}
+    {Nothing, void},
+    {Count, int},
+    {Name, std::String}
   }
   u32 tick = 0;
 };
 
 union enum Small
 {
-  { {int, A}, {void, B} }
+  { {A, int}, {B, void} }
 };
 
 int main()

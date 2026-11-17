@@ -5,7 +5,7 @@ struct Attacking { int target; };
 
 union enum AIState : uint8_t
 {
-  { {Patrolling, Patrol}, {Attacking, Attack} }
+  { {Patrol, Patrolling}, {Attack, Attacking} }
 };
 
 AIState next(int n)

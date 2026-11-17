@@ -2,7 +2,7 @@
 // error: typed_union_switch_over_alternatives_twice_is_error.kpp:14: error: the case value 0 is a label of this switch twice
 union enum class Action : u8
 {
-  { {int, Move}, {int, Jump} }
+  { {Move, int}, {Jump, int} }
 };
 
 void print(const Action& action)

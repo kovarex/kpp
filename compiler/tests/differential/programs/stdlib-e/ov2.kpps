@@ -57,11 +57,11 @@ void counts(const char* step)
 }
 union enum U : u8
 {
-  { {Tracked, Tr}, {int, Int}, {String, Text} }
+  { {Tr, Tracked}, {Int, int}, {Text, String} }
 };
 union enum T : u8
 {
-  { {int, Int}, {Thrower, Th} }
+  { {Int, int}, {Th, Thrower} }
 };
 void show(const char* name, const U& u)
 {

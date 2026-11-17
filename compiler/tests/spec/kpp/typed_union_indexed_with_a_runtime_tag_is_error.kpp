@@ -2,7 +2,7 @@
 // error: typed_union_indexed_with_a_runtime_tag_is_error.kpp:10: error: the typed union Action is indexed with a tag known only at run time: its alternative is chosen by a constant tag; switch on the tag over `for constexpr (auto a : alternatives(Action)) case a.tag:` and use `u[a]`
 union enum class Action : u8
 {
-  { {int, Move}, {void, Stop} }
+  { {Move, int}, {Stop, void} }
 };
 
 void set(Action& action, Action::Tag type)

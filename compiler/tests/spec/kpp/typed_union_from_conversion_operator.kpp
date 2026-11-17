@@ -2,7 +2,7 @@
 // factorio: the game's tests' CustomTestInputHandler, `implicit operator InputAction() const`, passed to TestScenario::perform(InputAction&& action): "no overload of TestScenario::perform takes (CustomTestInputHandler)"
 union enum class Action : u16
 {
-  { {int, Count}, {std::String, Text} }
+  { {Count, int}, {Text, std::String} }
 };
 struct Handler
 {

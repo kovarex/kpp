@@ -15,7 +15,7 @@ struct Destination
 };
 union enum Action : u16
 {
-  { {int, Count}, {Fixed, Pinned}, {Destination, Cargo} }
+  { {Count, int}, {Pinned, Fixed}, {Cargo, Destination} }
 
   Action() {}
   Action(Action::Tag tag, int value, bool read)

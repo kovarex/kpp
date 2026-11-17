@@ -7,7 +7,7 @@ struct Pos { int x = 0; int y = 0; };
 
 union enum class Action : u8
 {
-  { {NoData, Nothing}, {Pos, Move}, {Pos, Jump}, {std::String, Say}, {int, Count} }
+  { {Nothing, NoData}, {Move, Pos}, {Jump, Pos}, {Say, std::String}, {Count, int} }
   u32 tick = 0;
 };
 

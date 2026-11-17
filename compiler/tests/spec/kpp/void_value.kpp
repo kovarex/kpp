@@ -27,7 +27,7 @@ Out& operator<<(Out& out, void) { out.text << "-;"; return out; }
 
 union enum class Action : u8
 {
-  { {void, Nothing}, {int, Count}, {void, Stop}, {std::String, Say} }
+  { {Nothing, void}, {Count, int}, {Stop, void}, {Say, std::String} }
 };
 
 void nothing() {}

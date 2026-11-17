@@ -10,7 +10,7 @@ enum class Plain
 };
 union enum class Action : u16
 {
-  { {int, Count}, {std::String, Text} }
+  { {Count, int}, {Text, std::String} }
 };
 static_assert(std::isSame<Direction::UnderlyingType, u8> && std::isSame<Plain::UnderlyingType, int>);
 static_assert(std::isSame<Action::Tag::UnderlyingType, u16> && std::isSame<Action::Tag::UnderlyingType, std::UnderlyingType<Action::Tag>>);

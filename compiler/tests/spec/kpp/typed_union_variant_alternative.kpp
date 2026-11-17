@@ -10,7 +10,7 @@ struct Resting
 };
 union enum State
 {
-  { {Walking, Walk}, {Resting, Rest} }
+  { {Walk, Walking}, {Rest, Resting} }
 };
 static constexpr size_t RestIndex = 1;
 static_assert(std::isSame<std::VariantAlternative<0, State>, Walking>);

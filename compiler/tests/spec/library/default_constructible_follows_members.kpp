@@ -7,11 +7,11 @@ struct NoDefault
 };
 union enum FirstHasNone : uint8_t
 {
-  { {NoDefault, First}, {int, Second} }
+  { {First, NoDefault}, {Second, int} }
 };
 union enum FirstHasOne : uint8_t
 {
-  { {int, First}, {NoDefault, Second} }
+  { {First, int}, {Second, NoDefault} }
 };
 struct Holds { NoDefault n; };
 struct HoldsInitialised { NoDefault n = NoDefault(1); };

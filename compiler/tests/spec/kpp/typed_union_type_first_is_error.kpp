@@ -1,0 +1,12 @@
+// spec: a typed union's alternative is written {Name, type}, its tag first (design.md 8.5, kovarex 2026-11-17): the
+// order it had until then, the type first, is a compile error
+// error: typed_union_type_first_is_error.kpp:6: error: expected the name of the alternative: an alternative is written {Name, type}
+union enum Action : u16
+{
+  { {int, Count}, {std::String, Text} }
+};
+int main()
+{
+  Action a;
+  return 0;
+}

@@ -9,7 +9,7 @@ public:
 
 union enum Held : u8
 {
-  { {int, Count}, {std::String, Words}, {Named, Object} }
+  { {Count, int}, {Words, std::String}, {Object, Named} }
 };
 
 int main()

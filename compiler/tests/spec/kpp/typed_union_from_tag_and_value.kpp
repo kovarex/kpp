@@ -13,7 +13,7 @@ struct Pos
 };
 union enum U : uint8_t
 {
-  { {NoDefault, First}, {std::String, Text}, {std::String, Comment}, {int, Int1}, {int, Int2}, {Pos, Where} }
+  { {First, NoDefault}, {Text, std::String}, {Comment, std::String}, {Int1, int}, {Int2, int}, {Where, Pos} }
 };
 U note(const std::String& s) { return U(U::Comment, s); }
 int main()

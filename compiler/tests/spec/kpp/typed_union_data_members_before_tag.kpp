@@ -7,11 +7,11 @@ struct Big
 };
 union enum Bare : u16
 {
-  { {int, Small}, {Big, Large} }
+  { {Small, int}, {Large, Big} }
 };
 union enum Action : u16
 {
-  { {int, Small}, {Big, Large} }
+  { {Small, int}, {Large, Big} }
   u64 tick = 0;
   u16 player = 0;
 };

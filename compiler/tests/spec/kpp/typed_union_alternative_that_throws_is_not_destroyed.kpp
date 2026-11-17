@@ -23,7 +23,7 @@ struct Counted
 };
 union enum T : u8
 {
-  { {int, Int}, {Counted, C} }
+  { {Int, int}, {C, Counted} }
 };
 int main()
 {

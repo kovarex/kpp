@@ -14,7 +14,7 @@ struct Noisy
 };
 union enum U : u8
 {
-  { {int, Int}, {std::String, Text}, {Noisy, N} }
+  { {Int, int}, {Text, std::String}, {N, Noisy} }
 };
 
 int main()

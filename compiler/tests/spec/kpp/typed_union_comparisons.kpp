@@ -2,7 +2,7 @@
 // factorio: UndoActionDescription's defaulted <=> over its ValueVariant (std::variant converted to a typed union)
 union enum Value
 {
-  { {int, Integer}, {double, Real}, {std::String, Text} }
+  { {Integer, int}, {Real, double}, {Text, std::String} }
 };
 struct Entry
 {

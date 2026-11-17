@@ -2,7 +2,7 @@
 // factorio: InputAction's named constructors (`InputAction::Build(parameters)`, 358 of them, 1,272 calls) have the names of its actions
 union enum class Action : u16
 {
-  { {int, Count}, {std::String, Text} }
+  { {Count, int}, {Text, std::String} }
 
   static Action Count(int n) { return Action(Action::Tag::Count, n); }
   static Action Text(std::StringView text) { return Action(Action::Tag::Text, std::String(text)); }

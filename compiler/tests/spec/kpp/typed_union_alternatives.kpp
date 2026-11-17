@@ -2,7 +2,7 @@
 // design.md 8.5 (decided 2026-10-28); the converter's std::variant mapping: SerialiserHelper/DeserialiserHelper save and load of variants (index, variant_size, variant_alternative_t)
 union enum Value : uint8_t
 {
-  { {int, Number}, {double, Ratio}, {std::String, Text} }
+  { {Number, int}, {Ratio, double}, {Text, std::String} }
 };
 
 template<class U>

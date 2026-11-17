@@ -10,7 +10,7 @@ public:
 };
 union enum U : u8
 {
-  { {int, Number}, {Pinned, Fixed} }
+  { {Number, int}, {Fixed, Pinned} }
 };
 int main()
 {

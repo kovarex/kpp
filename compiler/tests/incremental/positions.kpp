@@ -103,7 +103,7 @@ struct Walking { int steps; };
 struct Waiting { int ticks; };
 union enum Activity : uint8_t
 {
-  { {Walking, Walk}, {Waiting, Wait} }
+  { {Walk, Walking}, {Wait, Waiting} }
 };
 
 // A `for constexpr` body with a local class (a copy of the body per element), in a function that inlines elementHelper():

@@ -22,7 +22,7 @@ public:
 };
 union enum Slot : uint8_t
 {
-  { {int, Empty}, {Loaded, Full} }
+  { {Empty, int}, {Full, Loaded} }
 
   template<typename T, typename... Args>
   T& emplace(Args&&... args)

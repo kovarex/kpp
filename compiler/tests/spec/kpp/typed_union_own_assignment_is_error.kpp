@@ -2,7 +2,7 @@
 // error: typed_union_own_assignment_is_error.kpp:7: error: the typed union Action declares an assignment operator: a typed union's copy and move constructors, destructor and assignments are the compiler's (design.md 8.5)
 union enum Action : u16
 {
-  { {int, Count}, {std::String, Text} }
+  { {Count, int}, {Text, std::String} }
 
   Action& operator=(const Action& other) { return this; }
 };

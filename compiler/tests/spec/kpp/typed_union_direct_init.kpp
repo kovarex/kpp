@@ -6,7 +6,7 @@ struct Square
 };
 union enum Shape : uint8_t
 {
-  { {int, Circle}, {Square, Box} }
+  { {Circle, int}, {Box, Square} }
 };
 struct Holder
 {

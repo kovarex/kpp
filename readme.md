@@ -134,7 +134,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   ```cpp
   union enum Property : u8
   {
-    { {int, Integer}, {double, Double}, {std::String, Text} }
+    { {Integer, int}, {Double, double}, {Text, std::String} }
   };
 
   std::String describe(const Property& p)
@@ -166,7 +166,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   ```cpp
   union enum class Action : u8
   {
-    { {void, Stop}, {int, Move} }
+    { {Stop, void}, {Move, int} }
 
     static Action Move(int left, int right) { return Action::Move(left - right); }  // an overload
   };

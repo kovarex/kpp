@@ -2,7 +2,7 @@
 // error: typed_union_data_members_compared_is_error.kpp:13: error: the typed union Action has data members of its own, which the built-in == would leave out: declare its operator== (design.md 8.5)
 union enum Action : u16
 {
-  { {int, Count}, {std::String, Text} }
+  { {Count, int}, {Text, std::String} }
   u64 tick = 7;
 };
 int main()

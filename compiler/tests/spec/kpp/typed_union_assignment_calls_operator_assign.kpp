@@ -24,7 +24,7 @@ public:
 
 union enum Held : u8
 {
-  { {int, Count}, {Noisy, Object}, {std::String, Words}, {Refusing, Picky} }
+  { {Count, int}, {Object, Noisy}, {Words, std::String}, {Picky, Refusing} }
 };
 
 Noisy make(int value) { return Noisy(value); }

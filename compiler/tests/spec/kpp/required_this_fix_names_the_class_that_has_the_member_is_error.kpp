@@ -28,7 +28,7 @@ struct Filled { int amount; };
 struct Empty { int unused; };
 union enum Held : uint8_t
 {
-  { {Filled, Full}, {Empty, Nothing} }
+  { {Full, Filled}, {Nothing, Empty} }
 };
 int main()
 {

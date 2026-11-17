@@ -2,7 +2,7 @@
 // found by thread D (2026-11-05): `v[V::Number]` of a typed union local was no constant (the interpreter made typed unions, but read their alternatives only as constant data of a global)
 union enum V : uint8_t
 {
-  { {int, Number}, {double, Ratio}, {std::String, Name} }
+  { {Number, int}, {Ratio, double}, {Name, std::String} }
 };
 constexpr int read()
 {

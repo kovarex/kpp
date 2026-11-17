@@ -2,7 +2,7 @@
 // factorio: the converter's DeserialiserHelper override for std::variant (loadSTDVariantIndirect): `return T(a.tag, input.template load<a.type>());`
 union enum V : uint8_t
 {
-  { {int, Number}, {std::String, Text}, {std::String, Comment} }
+  { {Number, int}, {Text, std::String}, {Comment, std::String} }
 };
 V load(int index)
 {

@@ -2,7 +2,7 @@
 // design.md 8.5; replaces std::variant and the tagged unions of InputAction
 union enum Property : uint8_t
 {
-  { {int, Integer}, {double, Double}, {std::String, Text} }
+  { {Integer, int}, {Double, double}, {Text, std::String} }
 };
 int main()
 {

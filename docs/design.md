@@ -750,7 +750,7 @@ payload, stored as the tag plus storage for the largest alternative.
 ```
 union enum Property : u8
 {
-  { {int, Integer}, {double, Double}, {std::String, Text}, {std::String, Comment} }
+  { {Integer, int}, {Double, double}, {Text, std::String}, {Comment, std::String} }
   std::String str() const;
 };
 Property p;
@@ -758,7 +758,10 @@ p[Integer] = 5;                        // sets the tag, constructs the value (de
 if (p == Property::Integer) use(p[Integer]);   // p[Integer] on another tag: release_assert
 switch (p) { case Integer: return std::format("{}", p[Integer]); case Text: return p[Text]; ... }
 ```
-Alternatives are listed by `alternatives(Property)` for reflection. `InputAction`,
+An alternative is written `{Name, type}`, the tag first as an enum's enumerator is (kovarex 2026-11-17, with no
+transition period: until then it was `{type, Name}`, now an error, "expected the name of the alternative: an alternative
+is written {Name, type}" at a keyword type, "expected ',' between the name and the type" at a qualified one, and the
+type not declared at a name; spec kpp/typed_union_type_first_is_error). Alternatives are listed by `alternatives(Property)` for reflection. `InputAction`,
 `EditorAction`, `NetworkMessage`, `UpgradableEntity` in Factorio are this shape.
 Done 2026-10-25: `union enum` with methods; `p[Integer] = v` (the value first, which may read what the
 union holds; the alternative held takes it by its operator=, as std::variant, and another is
@@ -777,7 +780,7 @@ done 2026-10-29:
   a `U` (or `const U&`) parameter set the alternative whose type is x's type without references
   and `const`, when exactly one alternative has that type: `AIState next() { return
   Patrolling(...); }`. No other conversion takes part (an `int` does not set a `double`
-  alternative), and a type two alternatives share (`{String, Text}, {String, Comment}`) is a
+  alternative), and a type two alternatives share (`{Text, String}, {Comment, String}`) is a
   compile error naming both (write `u[Text] = x`).
 - *`alternatives(U)`*, as `members(T)` (8.3): U's alternatives in declaration order, for `for
   constexpr`. An alternative `a` has `a.name` (a string literal), `a.type` (usable where a type is
@@ -817,7 +820,7 @@ constexpr condition or a constexpr variable reading it were errors. Specs: kpp/t
 kpp/typed_union_switch_over_alternatives_twice_is_error.
 
 *An alternative of type void* (kovarex 2026-11-17, for InputAction's 61 actions without data, which held an empty
-InputActionNoData): `{void, Stop}` carries no value. It is built from its tag alone (`Action(Action::Tag::Stop)`, a
+InputActionNoData): `{Stop, void}` carries no value. It is built from its tag alone (`Action(Action::Tag::Stop)`, a
 tag read at run time too) or as the first alternative's default, and is held, switched on, copied, moved, assigned and
 compared like any other (two unions holding the same void alternative are equal). `u[Stop] = void()` sets it (kovarex,
 2026-11-17), the alternative held destroyed and the union's own members kept, as `u[Move] = value` keeps them: InputAction's
@@ -838,7 +841,7 @@ void)`). Spec: kpp/void_value. A typed union indexed with a tag known only at ru
 error naming the switch to write (kpp/typed_union_indexed_with_a_runtime_tag_is_error); until then codegen's "indexed
 with something other than one of its alternatives". The parser stores it as an empty class of the union's own (`__Void`, one byte in the
 storage the other alternatives share), so no part of layout, building or destruction sees a void field. Until then
-`{void, Stop}` stopped on "codegen does not support sizeof void". Specs: kpp/typed_union_void_alternative,
+`{Stop, void}` stopped on "codegen does not support sizeof void". Specs: kpp/typed_union_void_alternative,
 kpp/typed_union_void_alternative_set_with_value_is_error.
 
 Decided by kovarex 2026-10-31: *from a tag and a value*. Several tags may carry the same type, as

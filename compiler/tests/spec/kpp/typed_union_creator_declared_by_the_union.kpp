@@ -4,7 +4,7 @@
 // beside the creator: InputAction's `SetCircuitModeOfOperation(EnumType mode, bool value)` calls the creator.
 union enum class Action : u8
 {
-  { {int, Move}, {void, Stop}, {int, Jump}, {int, Turn}, {void, Wait} }
+  { {Move, int}, {Stop, void}, {Jump, int}, {Turn, int}, {Wait, void} }
 
   template<typename... Args>
   static Action Move(Args&&... steps) { return Action(Action::Tag::Move, (steps + ...) * 2); }

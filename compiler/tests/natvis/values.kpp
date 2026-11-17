@@ -460,7 +460,7 @@ struct Tree
 
 union enum Property : uint8_t
 {
-  { {int, Integer}, {double, Real}, {std::String, Text} }
+  { {Integer, int}, {Real, double}, {Text, std::String} }
 };
 
 int main()

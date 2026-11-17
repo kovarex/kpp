@@ -29,7 +29,7 @@ public:
   constexpr Zoom(Distance d) : data(d) {}
   union enum Data
   {
-    { {::Zoom::Scale, ByScale}, {::Zoom::Distance, ByDistance} }
+    { {ByScale, ::Zoom::Scale}, {ByDistance, ::Zoom::Distance} }
   };
   Data data;
 };

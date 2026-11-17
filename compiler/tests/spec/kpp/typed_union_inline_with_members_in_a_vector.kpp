@@ -26,14 +26,14 @@ struct Walk
 };
 union enum Action : u16 inline(112)
 {
-  { {Walk, StartWalking}, {Blueprint, SetupBlueprint}, {Raw, RawBytes} }
+  { {StartWalking, Walk}, {SetupBlueprint, Blueprint}, {RawBytes, Raw} }
   u64 updateTick = 0;
   u16 playerIndex = 0;
 };
 template<typename T>
 union enum Holder : u8 inline(sizeof(void*) * 2)
 {
-  { {int, Small}, {T, Value} }
+  { {Small, int}, {Value, T} }
 };
 int main()
 {

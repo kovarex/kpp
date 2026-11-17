@@ -316,7 +316,7 @@ auto GlobalScope::Impl::typeTrait(const NamePart& part, const TypeContext& ctx, 
       return types.unknown();
     Decl* alt = def->alternatives[size_t(index->value)];
     if (alt->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(alt)->voidAlternative)
-      return types.voidType(); // (`{void, Stop}`: no value, its storage the union's __Void)
+      return types.voidType(); // (`{Stop, void}`: no value, its storage the union's __Void)
     Subst s = substFor(u);
     return declaredTypeOf(alt, s.empty() ? nullptr : &s, depth + 1);
   }

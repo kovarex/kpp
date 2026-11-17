@@ -19,11 +19,11 @@ struct Large
 };
 union enum Action : u16 inline(16)
 {
-  { {int, Count}, {Large, Big}, {Large, OtherBig} }
+  { {Count, int}, {Big, Large}, {OtherBig, Large} }
 };
 union enum Plain : u16
 {
-  { {int, Count}, {Large, Big} }
+  { {Count, int}, {Big, Large} }
 };
 static_assert(sizeof(Action) == 16, "the tag and a pointer's storage: the larger alternatives are on the heap");
 static_assert(!std::isTriviallyCopyable<Action> && !std::isTriviallyDestructible<Action>);

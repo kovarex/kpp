@@ -17,7 +17,7 @@ public:
 
 union enum Held : u8
 {
-  { {int, Count}, {std::String, Words}, {Named, Object}, {Both, Two} }
+  { {Count, int}, {Words, std::String}, {Object, Named}, {Two, Both} }
 };
 
 const char* text = "a text long enough to be held outside the object";

@@ -12548,7 +12548,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
             return record(e, unknown(Why::Operator));
           if (static_cast<VariableDecl*>(u->alternatives[size_t(*v)])->voidAlternative)
           {
-            // `{void, Stop}`: its value is void (design.md 8.5, void as a value): `out << u[a]` takes a
+            // `{Stop, void}`: its value is void (design.md 8.5, void as a value): `out << u[a]` takes a
             // `operator<<(Out&, void)`; `u[Stop] = void()` sets it (typeOfBinaryOperator).
             return record(e, types.voidType());
           }

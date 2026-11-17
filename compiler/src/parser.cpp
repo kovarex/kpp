@@ -3974,7 +3974,7 @@ namespace
 
     // Returns true if a declaration was produced; false if this is an elaborated type specifier
     // that the caller should parse as a normal declaration (`struct X* p;`).
-    // `union enum Property : u8 { { {int, Integer}, {double, Double}, {String, Text} } members... };`
+    // `union enum Property : u8 { { {Integer, int}, {Double, double}, {Text, String} } members... };`
     // (design.md 8.5): a class holding a tag and one alternative at a time. Desugared here into a
     // class with a nested kpp enum `Tag` of the alternatives' names (unscoped, so `Property::Integer`
     // names the tag value), a `tag` member and an anonymous union of one storage member per
@@ -4047,26 +4047,35 @@ namespace
       ClassDecl* voidClass = nullptr; // (the storage of void alternatives)
       if (expect(P::LBrace, "expected '{' before the alternatives of the union enum"))
       {
+        bool failed = false; // (inside an alternative: skipped to the list's '}', one error for it)
         while (!at(P::RBrace) && !at(TokenKind::End))
         {
           if (!expect(P::LBrace, "expected '{' before an alternative"))
             break;
-          Type* type = parseType();
-          if (!type)
-          {
-            error("expected the type of the alternative");
-            break;
-          }
-          type = parseTypeSuffixes(type);
-          expect(P::Comma, "expected ',' between the type and the name of the alternative");
+          // `{Name, type}`: the tag first, as an enumerator, then its type (kovarex 2026-11-17; the type came
+          // first until then).
           if (!atIdent())
           {
-            error("expected the name of the alternative");
+            error("expected the name of the alternative: an alternative is written {Name, type}");
+            failed = true;
             break;
           }
           uint32_t name = tok().id;
           uint32_t nameToken = pos;
           advance();
+          if (!expect(P::Comma, "expected ',' between the name and the type of the alternative: an alternative is written {Name, type}"))
+          {
+            failed = true;
+            break;
+          }
+          Type* type = parseType();
+          if (!type)
+          {
+            error("expected the type of the alternative");
+            failed = true;
+            break;
+          }
+          type = parseTypeSuffixes(type);
           expect(P::RBrace, "expected '}' after the alternative");
           currentParent = tag;
           EnumeratorDecl* en = decl<EnumeratorDecl>(nameToken);
@@ -4076,7 +4085,7 @@ namespace
           field->type = type;
           if (type->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(type)->keyword == Kw::void_)
           {
-            // `{void, Stop}`: no value; stored as an empty class of the union's own, made once (design.md 8.5).
+            // `{Stop, void}`: no value; stored as an empty class of the union's own, made once (design.md 8.5).
             if (!voidClass)
             {
               currentParent = c;
@@ -4103,6 +4112,8 @@ namespace
           if (!accept(P::Comma))
             break;
         }
+        for (int depth = 1; failed && !at(TokenKind::End) && !(depth == 0 && at(P::RBrace)); advance())
+          depth += at(P::LBrace) ? 1 : at(P::RBrace) ? -1 : 0;
         expect(P::RBrace, "expected '}' after the alternatives of the union enum");
       }
       tag->enumerators = makeSpanOf(enumerators);

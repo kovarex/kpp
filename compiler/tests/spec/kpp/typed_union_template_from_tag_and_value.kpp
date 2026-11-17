@@ -11,7 +11,7 @@ struct Tracked
 template<typename T>
 union enum Holder : u8
 {
-  { {int, Small}, {T, Value} }
+  { {Small, int}, {Value, T} }
 };
 int main()
 {

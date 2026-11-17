@@ -6,7 +6,7 @@
 // error: typed_union_variant_api_is_error.kpp:17: error: visit takes no typed union (Value): a `union enum` is asked with `v == Value::Name` (or v.tag()) and read with `v[Name]` (design.md 8.5)
 union enum Value : u8
 {
-  { {int, Integer}, {double, Real} }
+  { {Integer, int}, {Real, double} }
 };
 int ask(Value v)
 {

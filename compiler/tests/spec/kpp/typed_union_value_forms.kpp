@@ -4,16 +4,16 @@ struct Patrolling { int steps; };
 struct Attacking { int target; };
 union enum AIState : uint8_t
 {
-  { {Patrolling, Patrol}, {Attacking, Attack} }
+  { {Patrol, Patrolling}, {Attack, Attacking} }
 };
 union enum Value : uint8_t
 {
-  { {int, Number}, {double, Ratio}, {std::String, Text} }
+  { {Number, int}, {Ratio, double}, {Text, std::String} }
 };
 template<class T>
 union enum Maybe : uint8_t
 {
-  { {int, None}, {T, Some} }
+  { {None, int}, {Some, T} }
 };
 struct S { int x = 1; double y = 2.5; };
 

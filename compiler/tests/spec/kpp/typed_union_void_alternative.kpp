@@ -1,5 +1,5 @@
 // spec: a typed union's alternative of type void carries no value (kovarex 2026-11-17, for InputAction's 61 actions
-// without data, which held an empty InputActionNoData): `{void, Name}` stores nothing (an empty class of the union's own),
+// without data, which held an empty InputActionNoData): `{Name, void}` stores nothing (an empty class of the union's own),
 // is built from its tag alone (`U(U::Tag::Name)`), set with `u[Name] = void()` (the union's own members kept) and is the
 // first alternative's default; it is held, switched on, copied, moved,
 // assigned and compared like any other, and generic code tells it by `std::isSame<a.type, void>`; read, it is the void
@@ -10,17 +10,17 @@ struct Pos { int x = 0; int y = 0; bool operator==(const Pos&) const = default; 
 // Without members of its own: the built-in == and < (the same void alternative is equal), and the size of the values alone.
 union enum class Signal : u8
 {
-  { {void, Off}, {int, Level}, {void, Pulse} }
+  { {Off, void}, {Level, int}, {Pulse, void} }
 };
 
 union enum class Level : u8
 {
-  { {int, Value} }
+  { {Value, int} }
 };
 
 union enum class Action : u8
 {
-  { {void, Nothing}, {Pos, Move}, {void, Stop}, {std::String, Say} }
+  { {Nothing, void}, {Move, Pos}, {Stop, void}, {Say, std::String} }
   u32 tick = 0;
 };
 

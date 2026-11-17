@@ -19,7 +19,7 @@ struct Attacking
 };
 union enum State : uint8_t
 {
-  { {Patrolling, Patrol}, {Attacking, Attack} }
+  { {Patrol, Patrolling}, {Attack, Attacking} }
 };
 std::Optional<State> maybe(int step)
 {

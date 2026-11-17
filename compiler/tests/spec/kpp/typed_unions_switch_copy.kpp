@@ -9,7 +9,7 @@ struct Tracked
 };
 union enum Value : uint8_t
 {
-  { {int, Number}, {std::String, Text}, {Tracked, Owned} }
+  { {Number, int}, {Text, std::String}, {Owned, Tracked} }
   std::String describe() const
   {
     switch (this)

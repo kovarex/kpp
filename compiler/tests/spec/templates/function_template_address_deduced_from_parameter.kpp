@@ -3,9 +3,9 @@
 union enum class Action : u8
 {
   {
-    {void, Nothing},
-    {bool, SetFlag},
-    {int, SetCount},
+    {Nothing, void},
+    {SetFlag, bool},
+    {SetCount, int},
   }
 };
 
