@@ -27,7 +27,7 @@
     bool indentationWarnings = true; // the misleading-indentation warning, on by default (--indentation-warnings kept for scripts)
     bool unusedChecks = true; // unused locals, parameters and captures are errors (Walker::checkUnusedNames), on by default (--unused-checks kept for scripts)
     bool slipChecks = true; // the likely slips are errors (Walker::FlowChecks), on by default (--slip-checks kept for scripts)
-    bool unusedFieldChecks = false; // --unused-field-checks: a private field nothing names is an error (GlobalScope::reportUnusedFields)
+    bool unusedFieldChecks = true; // a private field nothing names is an error (GlobalScope::reportUnusedFields), on by default (--unused-field-checks kept for scripts)
     bool thisWarnings = false; // --this-warnings
     bool thisPointer = false; // --this-pointer: the program's own files keep C++'s pointer (the warnings that convert from it, convert.cmd)
     bool thisReference = false; // --this-reference: required `this.` and `this` the object (design.md 23c, 23d), not in the standard library's files

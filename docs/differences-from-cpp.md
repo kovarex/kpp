@@ -649,8 +649,8 @@ p[Property::Text] = String("hello");
   unnamed `_` needs neither. Not a parameter of an empty body, a virtual function, an override or main, nor a
   class object whose making or ending does something (a guard). On by default since 2026-11-16 (it was behind
   `--unused-checks` until the game was free of them); `tools/unused/fix.py` marks what a compile reports.
-  A private data member nothing names but its own initializers is an error too, under `--unused-field-checks`
-  until the game is free of them (this stage).
+  A private data member nothing names but its own initializers is an error too, on by default since 2026-11-17
+  (behind `--unused-field-checks` until the game was free of them).
 - **See:** [design 7][d7], item 8; specs `kpp/unused_names_are_errors`, `kpp/unused_names_kept_or_exempt`,
   `kpp/unused_private_fields_are_errors`, `kpp/unused_private_fields_kept_or_exempt`.
 

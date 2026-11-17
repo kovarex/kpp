@@ -127,7 +127,7 @@ bool unusedChecksOn();
 // division stored in a floating variable or returned as one.
 void setSlipChecks(bool on);
 bool slipChecksOn();
-// Whether a private data member nothing names is an error (--unused-field-checks; GlobalScope::reportUnusedFields).
+// Whether a private data member nothing names is an error (on by default; GlobalScope::reportUnusedFields).
 void setUnusedFieldChecks(bool on);
 bool unusedFieldChecksOn();
 void noteZeroNullWarning(const std::string& warning);

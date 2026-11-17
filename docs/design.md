@@ -507,7 +507,8 @@ replacements, in the order of how much code they remove:
    classes it names (Walker::recordFieldNames: by name, read from the member list unrecorded, so a layout edit
    stays incremental), and after a build's walks, a compile server's walk of an edit too, the fields no record
    names are reported (GlobalScope::reportUnusedFields, a unit of its own whose errors go before the next report).
-   Under `--unused-field-checks` until the game is free of them: its kpp branch at 174dd30 has 53 (2026-11-16).
+   On by default since 2026-11-17, when the game's kpp branch was free of them (its PR #8773: of 53, 18 removed and
+   35 kept with `[[maybe_unused]]`); `--unused-field-checks` is still accepted.
    Specs kpp/unused_private_fields_are_errors, kpp/unused_private_fields_kept_or_exempt.
    A local read before anything is assigned to it is an error (2026-11-11, kovarex's "ok" to item 2 of thread
    D's survey: zero is the rule for what has no initializer, "Sanitizers and debug checks" below, and a read the
