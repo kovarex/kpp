@@ -11,6 +11,8 @@
 # Visual Studio's extension's semantic tokens (semanticColors, kpp/semanticTokensChanged), and kpp's own words (words.kpp).
 # navigation: tests\lsp\hierarchy, go to implementation and type definition, highlights, folding.
 # members: tests\lsp\members, completion after `this.`, `this->` and `This::`, and quick fixes.
+# enums: tests\lsp\enums, completion of a kpp enum's built-ins (count, values, fromStr, UnderlyingType after `E::`,
+# str after a value's `.`) for an enum, an enum class and a typed union's Tag, and a typed union's tag().
 # constructors: tests\lsp\constructors, a constructor's references: every construction overload resolution gives
 # it, written or not, an instance's (an emplace's) at the program's call that asked for it.
 # references: tests\lsp\references, a class used across files, through an alias, a member's qualifier and a
@@ -33,6 +35,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'colors'; Program = 'program'; Args = '--stdio' },
                       @{ Name = 'navigation'; Program = 'hierarchy'; Args = '--stdio' },
                       @{ Name = 'members'; Program = 'members'; Args = '--stdio' },
+                      @{ Name = 'enums'; Program = 'enums'; Args = '--stdio' },
                       @{ Name = 'constructors'; Program = 'constructors'; Args = '--stdio' },
                       @{ Name = 'references'; Program = 'references'; Args = '--stdio' }))
 {

@@ -1601,8 +1601,63 @@ namespace
     }
 
     // A declaration as written, from its first token to its body (or initializer), on one line.
+    // A kpp enum's built-in member (parser.cpp, addEnumBuiltins) or a typed union's Tag and tag(), as
+    // it would be written: the parser makes them at the enum's (the union's) first token, with no text
+    // of their own. Empty for any other declaration.
+    std::string builtinText(const KeptProgram& program, const Decl* d)
+    {
+      if (!d->parent || d->token != d->parent->token)
+        return {};
+      if (d->parent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(d->parent)->tagEnum)
+      {
+        auto* tag = static_cast<const EnumDecl*>(static_cast<const ClassDecl*>(d->parent)->tagEnum);
+        if (d == tag)
+          return std::string(tag->isClass ? "enum class Tag" : "enum Tag") + (tag->underlying ? " : " + underlyingText(d) : std::string());
+        if (d->kind == NodeKind::FunctionDecl && program.symbols->name(static_cast<const FunctionDecl*>(d)->name.last().symbol) == "tag")
+          return "Tag tag() const";
+        return {};
+      }
+      if (d->parent->kind != NodeKind::EnumDecl)
+        return {};
+      std::string self = declarationName(d->parent, *program.symbols);
+      switch (d->builtin)
+      {
+      case BUILTIN_EnumCount: return "static const int count";
+      case BUILTIN_EnumValues: return "static const " + self + " values[]";
+      case BUILTIN_EnumStr: return "const char* str() const";
+      case BUILTIN_EnumEnumeratorName: return "const char* enumeratorName() const";
+      case BUILTIN_EnumFromStr: return "static std::Optional<" + self + "> fromStr(const char* text)";
+      default: break;
+      }
+      if (d->kind != NodeKind::UsingAliasDecl)
+        return {};
+      std::string type = underlyingText(d->parent);
+      return "using UnderlyingType = " + (type.empty() ? std::string("int") : type);
+    }
+
+    // The underlying type written after an enum's `:` (up to its `{` or inline(N)), empty when none is.
+    std::string underlyingText(const Decl* e)
+    {
+      const Type* underlying = static_cast<const EnumDecl*>(e)->underlying;
+      std::string type;
+      if (underlying && e->file && e->file->tokens && underlying->token < e->file->tokens->size())
+      {
+        const std::vector<Token>& tokens = *e->file->tokens;
+        for (uint32_t k = underlying->token; k < tokens.size() && k < underlying->token + 16; ++k)
+        {
+          std::string_view text = e->file->text.substr(tokens[k].offset, tokens[k].length);
+          if (tokens[k].is(P::LBrace) || tokens[k].is(P::Semi) || text == "inline")
+            break;
+          type += text;
+        }
+      }
+      return type;
+    }
+
     std::string declarationText(const KeptProgram& program, const Decl* d)
     {
+      if (std::string builtin = builtinText(program, d); !builtin.empty())
+        return builtin;
       if (!d->file || !d->file->tokens || d->file->tokens->empty())
         return declarationName(d, *program.symbols);
       const std::vector<Token>& tokens = *d->file->tokens;
@@ -2883,7 +2938,8 @@ namespace
           std::string name = declarationName(d, *program.symbols);
           size_t colons = name.rfind("::");
           std::string own = colons == std::string::npos ? name : name.substr(colons + 2);
-          if (own.empty() || own == "(anonymous)" || !matches(own) || own.compare(0, 8, "operator") == 0 || own[0] == '~')
+          // (`__tag`, a typed union's: the compiler's own names are not written.)
+          if (own.empty() || own == "(anonymous)" || !matches(own) || own.compare(0, 8, "operator") == 0 || own[0] == '~' || own.compare(0, 2, "__") == 0)
             return;
           if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->returnType && !static_cast<FunctionDecl*>(d)->name.empty() &&
               static_cast<FunctionDecl*>(d)->name.last().special == 0)
@@ -2908,9 +2964,10 @@ namespace
             for (Decl* m : classes[c]->members)
               if (symbolKind(m) && (!onThis || isInstanceMember(m)))
                 add(m, c == 0 ? "0" : "1");
+          // A value of an enum: its instance members (str, enumeratorName), not its statics and types.
           if (cls && cls->kind == NodeKind::EnumDecl)
             for (Decl* m : static_cast<EnumDecl*>(cls)->members)
-              if (!onThis || isInstanceMember(m))
+              if (isInstanceMember(m))
                 add(m, "0");
           return;
         }
@@ -2943,19 +3000,44 @@ namespace
             }
             return;
           }
+          // The scope as written, `A::B` before `A::B::`: what it names ends so.
           std::string scope(program.symbols->name(tokens[k - 1].id));
+          for (uint32_t j = k - 1; j >= 2 && tokens[j - 1].is(P::ColonColon) && tokens[j - 2].getKind() == TokenKind::Identifier; j -= 2)
+            scope = std::string(program.symbols->name(tokens[j - 2].id)) + "::" + scope;
+          auto endsWithScope = [&](const std::string& name)
+          {
+            return name.size() >= scope.size() && name.compare(name.size() - scope.size(), scope.size(), scope) == 0 &&
+                   (name.size() == scope.size() || name.compare(name.size() - scope.size() - 2, 2, "::") == 0);
+          };
           knowSymbols(program);
           for (const Cache::Symbol& s : cache.symbols)
-          {
-            size_t at = s.container.size() >= scope.size() ? s.container.size() - scope.size() : std::string::npos;
-            if (at != std::string::npos && s.container.compare(at, scope.size(), scope) == 0 && (at == 0 || s.container.compare(at - 2, 2, "::") == 0))
+            if (endsWithScope(s.container))
               add(s.decl, "0");
-          }
-          // A scoped enum's enumerators (an unscoped one's are named without it).
+          // An enum's enumerators (an unscoped one's are named without it, so not found above) and its
+          // statics, the built-ins among them (count, values, fromStr, UnderlyingType): a typed union's
+          // Tag's too, and an enum's through an alias (`using InputActionType = InputAction::Tag;`).
           for (const Cache::Symbol& s : cache.symbols)
-            if (s.name == scope && s.decl->kind == NodeKind::EnumDecl)
-              for (Decl* e : static_cast<EnumDecl*>(s.decl)->enumerators)
-                add(e, "0");
+          {
+            if (!endsWithScope(s.container.empty() ? s.name : s.container + "::" + s.name))
+              continue;
+            Decl* d = s.decl;
+            for (int depth = 0; d && d->kind == NodeKind::UsingAliasDecl && depth < 8; ++depth)
+            {
+              Type* type = static_cast<UsingAliasDecl*>(d)->type;
+              d = type && type->kind == NodeKind::NamedType ? static_cast<NamedType*>(type)->resolved : nullptr;
+            }
+            if (!d || d->kind != NodeKind::EnumDecl)
+              continue;
+            if (Decl* defined = program.global->definitionOf(d))
+              d = defined;
+            if (d->kind != NodeKind::EnumDecl)
+              continue;
+            for (Decl* e : static_cast<EnumDecl*>(d)->enumerators)
+              add(e, "0");
+            for (Decl* m : static_cast<EnumDecl*>(d)->members)
+              if (!isInstanceMember(m))
+                add(m, "0");
+          }
           return;
         }
         // A name: the function's parameters and locals declared before, its class's members, then

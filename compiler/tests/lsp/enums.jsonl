@@ -1,0 +1,26 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\enums: completion of a kpp enum's built-ins
+// (count, values, fromStr, UnderlyingType after `E::`; str, enumeratorName after a value's `.`) for an enum,
+// an enum class and a typed union's Tag, and of a typed union's members after `.` (tag, never the hidden __tag).
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"// The language server's enums test (tests/lsp.ps1, enums.jsonl): completion of a kpp enum's\n// built-ins after `E::` and after a value's `.`, for an enum, an enum class and a typed union's\n// Tag, and of a typed union's own members.\nenum Color\n{\n  { Red, Green }\n};\nenum class Mode : u8\n{\n  { Off, On }\n};\nunion enum class Action : u16\n{\n  { {int, Move}, {bool, Stop} }\n};\nusing ActionType = Action::Tag;\nint main()\n{\n  Mode mode = Mode::On;\n  Action action(Action::Tag::Move, 3);\n  Action::Tag tag = action.tag();\n  int first = int(action.tag().str()[0]) - 'M';\n  return first + int(Color::count) + Mode::count + int(mode.str()[0]) + Action::Tag::count + ActionType::count + int(tag.str()[0]) - 'O' - 'M' - 8;\n}\n"}}}
+// `Color::`: an unscoped enum's enumerators and its static built-ins.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":22,"character":28},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+// `Mode::`: an enum class's.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":22,"character":43},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+// `Action::Tag::`: a typed union's Tag, an enum class, the same.
+{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":22,"character":85},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+// `ActionType::`: the same through an alias of the Tag, as the game's InputActionType.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":22,"character":105},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+// `mode.`: a value's instance built-ins, str and enumeratorName.
+{"jsonrpc":"2.0","id":6,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":22,"character":60},"context":{"triggerKind":2,"triggerCharacter":"."}}}
+// `tag.`: a Tag value's, the same.
+{"jsonrpc":"2.0","id":7,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":22,"character":121},"context":{"triggerKind":2,"triggerCharacter":"."}}}
+// `action.`: the typed union's tag() and its Tag type, never its hidden __tag field.
+{"jsonrpc":"2.0","id":8,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":20,"character":27},"context":{"triggerKind":2,"triggerCharacter":"."}}}
+// `action.tag().`: the Tag's instance built-ins through the call.
+{"jsonrpc":"2.0","id":9,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":21,"character":31},"context":{"triggerKind":2,"triggerCharacter":"."}}}
+// `Action::`: the typed union's Tag and tag, never __tag.
+{"jsonrpc":"2.0","id":10,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":19,"character":24},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+{"jsonrpc":"2.0","id":11,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

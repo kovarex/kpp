@@ -1,0 +1,24 @@
+// The language server's enums test (tests/lsp.ps1, enums.jsonl): completion of a kpp enum's
+// built-ins after `E::` and after a value's `.`, for an enum, an enum class and a typed union's
+// Tag, and of a typed union's own members.
+enum Color
+{
+  { Red, Green }
+};
+enum class Mode : u8
+{
+  { Off, On }
+};
+union enum class Action : u16
+{
+  { {int, Move}, {bool, Stop} }
+};
+using ActionType = Action::Tag;
+int main()
+{
+  Mode mode = Mode::On;
+  Action action(Action::Tag::Move, 3);
+  Action::Tag tag = action.tag();
+  int first = int(action.tag().str()[0]) - 'M';
+  return first + int(Color::count) + Mode::count + int(mode.str()[0]) + Action::Tag::count + ActionType::count + int(tag.str()[0]) - 'O' - 'M' - 8;
+}
