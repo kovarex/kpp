@@ -485,7 +485,17 @@ auto codegen::Emitter::assignAlternative(BinaryExpr* b) -> Value
   auto* i = static_cast<IndexExpr*>(b->lhs);
   Value base = rvalue(i->base);
   ClassDecl* c = typedUnionOf(base.ty, b);
-  return setAlternative(c, base.ty, base.text, alternativeIndex(c, i, b), b->rhs, b, b);
+  size_t index = alternativeIndex(c, i, b);
+  if (static_cast<VariableDecl*>(c->alternatives[index])->voidAlternative)
+  {
+    // `u[Stop] = void()` (design.md 8.5): the alternative held goes and the void one is set; the union's own
+    // members stay as they are.
+    rvalue(b->rhs);
+    destroyAlternative(c, base.ty, base.text, b);
+    constructAlternative(c, base.ty, base.text, index, nullptr, b);
+    return Value{"", types.voidType(), false};
+  }
+  return setAlternative(c, base.ty, base.text, index, b->rhs, b, b);
 }
 
 auto codegen::Emitter::setAlternative(ClassDecl* c, const Ty* t, const std::string& obj, size_t index, Expr* rhs, BinaryExpr* named, Node* at) -> Value

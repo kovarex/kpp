@@ -9321,8 +9321,25 @@ auto GlobalScope::Impl::Walker::typeOfBinary(BinaryExpr* b) -> const Ty*
 
 auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall& call, FunctionDecl*& callee, bool& member) -> const Ty*
 {
+  IndexExpr* savedVoidTarget = voidAlternativeTarget;
+  voidAlternativeTarget = !b->isKeyword && P(b->op) == P::Assign && b->lhs && b->lhs->kind == NodeKind::IndexExpr ? static_cast<IndexExpr*>(b->lhs) : nullptr;
   const Ty* l = walkExpr(b->lhs);
+  voidAlternativeTarget = savedVoidTarget;
   const Ty* r = walkExpr(b->rhs);
+  if (l && l->kind == TyKind::Void && !b->isKeyword && P(b->op) == P::Assign && b->lhs->kind == NodeKind::IndexExpr)
+  {
+    // `u[Stop] = void()`: a void alternative set, the union's own members kept (design.md 8.5).
+    if (r && r->isKnown() && types.stripRef(r)->kind != TyKind::Void)
+      reportHere(b->token, "a void alternative is set with `= void()`, not with a value of type " + types.toString(r, &symbols));
+    return types.voidType();
+  }
+  if (r && r->isKnown() && types.stripRef(r)->kind == TyKind::Void && l && l->isKnown() && !b->isKeyword && P(b->op) == P::Assign && !probing &&
+      b->lhs->kind == NodeKind::IndexExpr && typedUnionOf(types.stripRef(static_cast<IndexExpr*>(b->lhs)->base->ty ? static_cast<IndexExpr*>(b->lhs)->base->ty : types.unknown())))
+  {
+    // `u[Level] = void()`: void() sets a void alternative only.
+    reportHere(b->token, "`void()` sets only an alternative of type void; this one's is " + types.toString(types.unqualified(types.stripRef(l)), &symbols));
+    return types.unknown();
+  }
   if (!b->isKeyword && isAssignmentOp(P(b->op)) && b->lhs && b->lhs->kind == NodeKind::ConditionalExpr)
     checkAssignable(b->token, "the left operand of an assignment", b->lhs, l); // (`a?->o = x` of a class too: its operator= would take it)
   if (!b->isKeyword && (P(b->op) == P::Assign || P(b->op) == P::EqEq || P(b->op) == P::NotEq))
@@ -12487,12 +12504,14 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
             return record(e, unknown(Why::Operator));
           if (static_cast<VariableDecl*>(u->alternatives[size_t(*v)])->voidAlternative)
           {
+            if (voidAlternativeTarget == i)
+              return record(e, types.voidType()); // `u[Stop] = void()`: typeOfBinaryOperator checks the value
             // `{void, Stop}` carries no value to read or set: it is set from its tag (design.md 8.5).
             auto* tagEnum = static_cast<EnumDecl*>(u->tagEnum);
             std::string unionName(symbols.name(u->name.last().symbol));
             std::string name(symbols.name(static_cast<EnumeratorDecl*>(tagEnum->enumerators[size_t(*v)])->name));
-            reportHere(i->token, "the alternative " + name + " of the typed union " + unionName + " carries no value (its type is void): set it from its tag, `" +
-                                     unionName + "(" + unionName + (tagEnum->isClass ? "::Tag::" : "::") + name + ")`");
+            reportHere(i->token, "the alternative " + name + " of the typed union " + unionName + " carries no value (its type is void): set it with `u[" +
+                                     name + "] = void()`, or build it from its tag, `" + unionName + "(" + unionName + (tagEnum->isClass ? "::Tag::" : "::") + name + ")`");
             return record(e, unknown(Why::Operator));
           }
           Subst s = b->args.empty() ? Subst{} : impl.substFor(b);
