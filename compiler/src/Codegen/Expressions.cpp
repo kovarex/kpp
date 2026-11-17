@@ -868,6 +868,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         rvalue(static_cast<CastExpr*>(e)->operand); // `(void)x`: evaluated, result dropped
         return {"", types.voidType()};
       }
+      if (e->ty && e->ty->isReference() && types.unqualified(types.stripRef(e->ty))->kind == TyKind::Array)
+        return load(lvalue(e), e->ty, e); // `(A&&)a` of an array: the array the operand names, as static_cast's below
       return explicitConvert(rvalue(static_cast<CastExpr*>(e)->operand), e->ty, e);
     case NodeKind::NamedCastExpr:
     {
@@ -886,6 +888,13 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         directInitialize(addr, t, Span<Expr*>{&one, 1}, false, e, true);
         statementTemps.push_back({addr, t});
         return {addr, t, true};
+      }
+      if (c->castKind != Kw::reinterpret_cast_ && e->ty && e->ty->isReference() && types.unqualified(types.stripRef(e->ty))->kind == TyKind::Array)
+      {
+        // `static_cast<A&&>(a)` with `A` = `const char (&)[6]` (forward's cast, a string literal to a forwarding template): the
+        // array the operand names, read as any array is (load: its first element's address). The operand's value converted
+        // to the array was "a conversion from const char* to const char[6]" (language/static_cast_forwards_an_array_reference).
+        return load(lvalue(e), e->ty, e);
       }
       if (c->castKind == Kw::reinterpret_cast_ && e->ty && e->ty->isReference())
       {
