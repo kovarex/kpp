@@ -46,12 +46,13 @@
     // Retypes the body being emitted for args (a pack bound to one element, or the instance's own
     // arguments again): the function's copy (currentFunction), or a generic lambda's private copy
     // (retypedLambda) when its call operator is emitted.
-    void retypeForElement(const TemplateArgs& args, bool packElement = false)
+    // path: a `for constexpr`'s statement path (statementPath), the rest of a function's body left as it is typed.
+    void retypeForElement(const TemplateArgs& args, bool packElement = false, const std::vector<Stmt*>* path = nullptr)
     {
       if (retypedLambda)
         global.retypeLambdaFor(retypedLambdaTy, retypedLambda, args, packElement);
       else
-        global.retypeFor(currentFunction, args, currentClassTy, packElement);
+        global.retypeFor(currentFunction, args, currentClassTy, packElement, path && !path->empty() ? path : nullptr);
     }
 
     // Runs body on each value arguments stand for: an expression as it is, a pack expansion's

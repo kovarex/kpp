@@ -1,0 +1,48 @@
+// spec: a for constexpr among other statements: the locals declared before it, nested in an if, a loop and a switch,
+// and the statements after it, each element's body typed for its element
+// (codegen types each element's copy of the statements down to the loop, not the whole function: 2026-11-17)
+union enum class Value : u8
+{
+  {
+    {Number, int},
+    {Real, double},
+    {Flag, bool},
+  }
+};
+template<typename T> std::String describe(const T& value) { return std::toString(value); }
+std::String show(const Value& v, int unused)
+{
+  int before = 0;
+  switch (unused)
+  {
+    case 1: before = 10;
+    case 2: before = 20;
+    default: before = 3;
+  }
+  std::String prefix = "v";
+  for (int round = 0; round < 1; ++round)
+    if (before > 0)
+    {
+      double scale = 2.0;
+      switch (v.tag())
+      {
+        for constexpr (auto a : alternatives(Value))
+          case a.tag:
+          {
+            for constexpr (auto b : {1, 2})
+              prefix << std::toString(b);
+            return prefix + ":" + a.name + "=" + describe(v[a]) + " " + describe(scale * before);
+          }
+      }
+    }
+  std::String after = "none";
+  after << std::toString(before);
+  return after;
+}
+int main()
+{
+  std::println(show(Value::Number(5), 1));
+  std::println(show(Value::Real(2.5), 2));
+  std::println(show(Value::Flag(true), 7));
+  return 0;
+}

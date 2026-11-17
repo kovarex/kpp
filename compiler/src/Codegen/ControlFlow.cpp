@@ -194,6 +194,12 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
   else
     unsupported(f, "a for constexpr list that is neither types<...>, members(T), alternatives(U) nor a brace list of constants");
   const TemplateArgs* savedArgs = currentArgs;
+  // Each element re-types the statements down to the loop and the loop, not the whole function: a loop of n elements
+  // in a function of size m cost n * m before (kovarex, 2026-11-17: 400 alternatives beside a 2,000-case switch, 0.47 s
+  // of codegen, the switch alone 0.02 s).
+  std::vector<Stmt*> path;
+  if (!retypedLambda && currentFunction && currentFunction->body && !statementPath(currentFunction->body, f, path))
+    path.clear();
   Stmt* sharedBody = f->body;
   if (!f->elementBodies.empty() && f->elementBodies.size() != elements.size())
     unsupported(f, "a for constexpr whose copies of its body were made for another number of elements");
@@ -208,14 +214,49 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
         t = elements[index], bound = true;
     if (!bound)
       elementArgs.pairs.push_back({var, elements[index]});
-    retypeForElement(elementArgs);
+    retypeForElement(elementArgs, false, &path);
     currentArgs = &elementArgs;
     body(index);
     currentArgs = savedArgs;
   }
   f->body = sharedBody;
   if (!elements.empty())
-    retypeForElement(original);
+    retypeForElement(original, false, &path);
+}
+
+auto codegen::Emitter::statementPath(Stmt* s, Stmt* target, std::vector<Stmt*>& path, int depth) -> bool
+{
+  if (!s || depth > maxClassNesting) // (as deep as anything the walk goes into)
+    return false;
+  path.push_back(s);
+  if (s == target)
+    return true;
+  auto in = [&](Stmt* c) { return statementPath(c, target, path, depth + 1); };
+  bool found = false;
+  switch (s->kind)
+  {
+    case NodeKind::BlockStmt:
+      for (Stmt* c : static_cast<BlockStmt*>(s)->stmts)
+        if ((found = in(c)))
+          break;
+      break;
+    case NodeKind::IfStmt: found = in(static_cast<IfStmt*>(s)->init) || in(static_cast<IfStmt*>(s)->then) || in(static_cast<IfStmt*>(s)->else_); break;
+    case NodeKind::ForStmt: found = in(static_cast<ForStmt*>(s)->init) || in(static_cast<ForStmt*>(s)->body); break;
+    case NodeKind::RangeForStmt: found = in(static_cast<RangeForStmt*>(s)->body); break;
+    case NodeKind::ForConstexprStmt: found = in(static_cast<ForConstexprStmt*>(s)->body); break; // (the body being emitted: an element's copy)
+    case NodeKind::WhileStmt: found = in(static_cast<WhileStmt*>(s)->body); break;
+    case NodeKind::DoStmt: found = in(static_cast<DoStmt*>(s)->body); break;
+    case NodeKind::SwitchStmt: found = in(static_cast<SwitchStmt*>(s)->init) || in(static_cast<SwitchStmt*>(s)->body); break;
+    case NodeKind::TryStmt:
+      found = in(static_cast<TryStmt*>(s)->body);
+      for (const TryStmt::Handler& h : static_cast<TryStmt*>(s)->handlers)
+        found = found || in(h.body);
+      break;
+    default: break;
+  }
+  if (!found)
+    path.pop_back();
+  return found;
 }
 
 auto codegen::Emitter::rangeTemporaryBase(Expr* e) -> const Ty*

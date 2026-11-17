@@ -2011,7 +2011,7 @@ static void pushLoopVariables(Locals& locals, const Subst& subst)
 }
 
 const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements,
-                                       bool keepBranches)
+                                       bool keepBranches, const std::vector<Stmt*>* path)
 {
   Impl& impl = *this->impl;
   if (!f->file || !f->file->tokens)
@@ -2028,6 +2028,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   FileOfLookups walkedFile(f->file);
   w.retypingElements = retypingElements;
   w.keepConstexprBranches = keepBranches;
+  w.retypePath = path;
   if (!args.elementPacks.empty())
   {
     w.elementPacks = &args.elementPacks;
@@ -2067,9 +2068,9 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   return impl.deducedShape(nodes->returnType && !nodes->trailingReturn ? w.typeOf(nodes->returnType) : nullptr, deduced);
 }
 
-void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType, bool packElement)
+void GlobalScope::retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType, bool packElement, const std::vector<Stmt*>* path)
 {
-  typeFunctionFor(f, f, args, objectType, true, packElement);
+  typeFunctionFor(f, f, args, objectType, true, packElement, path);
 }
 
 FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType)

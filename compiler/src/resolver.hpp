@@ -666,7 +666,10 @@ public:
   // rewritten in place). objectType: the instantiated class for members, or null. packElement:
   // args bind a parameter pack to one of its elements (to emit a pattern of its expansion), and
   // the if constexpr branches the instance took with the whole pack stay taken.
-  void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType, bool packElement = false);
+  // path (one element of a `for constexpr`): the statements from f's body down to the loop, the loop last; only they
+  // are re-typed, the loop whole, beside the declarations in them (Walker::retypePath). Null: the whole body.
+  void retypeFor(FunctionDecl* f, const TemplateArgs& args, const Ty* objectType, bool packElement = false,
+                 const std::vector<Stmt*>* path = nullptr);
   // The instantiation of f for args (objectType: the instantiated class for members, or null): a
   // copy of the nodes f owns, typed for these arguments once and kept, so that the template's own
   // nodes are never written for an instantiation (docs/design.md, "Instantiations own their typed
@@ -801,7 +804,7 @@ private:
   // retypingElements: a type pack bound to one element (retypeFor), whose static_asserts are not
   // checked again; keepBranches: retypeFor's packElement.
   const Ty* typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, const TemplateArgs& args, const Ty* objectType, bool retypingElements = false,
-                            bool keepBranches = false);
+                            bool keepBranches = false, const std::vector<Stmt*>* path = nullptr);
   // The free function named symbol for these argument types, looked up from the namespaces of the
   // argument classes and enums and from context's (findFreeOperator, findFreeFunction).
   FunctionDecl* findFree(uint32_t symbol, const std::vector<const Ty*>& argTypes, Decl* context);

@@ -30,6 +30,9 @@
     // the element and currentArgs binding the loop variable to it; the original typing is
     // restored afterwards.
     void forEachConstexprElement(ForConstexprStmt* f, const std::function<void(size_t)>& body);
+    // The statements from s down to target, target last, through statements alone (a block's, a branch's, a loop's
+    // or switch's body, a try's); false, path as it was, when target is not among them (in a lambda).
+    static bool statementPath(Stmt* s, Stmt* target, std::vector<Stmt*>& path, int depth = 0);
 
     // The temporary a range-for's range is a member subobject of (`Duo{...}.a`, `makeHolder().items[1]`):
     // the base of a chain of `.member` and array elements, when it is a class prvalue. The reference

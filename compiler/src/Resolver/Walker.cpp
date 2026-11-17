@@ -6987,8 +6987,8 @@ auto GlobalScope::Impl::Walker::checkCaseValues(Stmt* body) -> void
 {
   // (Until 2026-11-08 no one asked: codegen gave LLVM a switch of two cases of one value, which it refuses, and the
   // evaluator took the first. A `for constexpr`'s labels are its elements', codegen's to tell.)
-  if (probing || !file || file->isImported || !body || body->kind != NodeKind::BlockStmt || (inGenericTemplate() && !activeSubst))
-    return;
+  if (probing || retypePath || !file || file->isImported || !body || body->kind != NodeKind::BlockStmt || (inGenericTemplate() && !activeSubst))
+    return; // (retypePath: the instance's typing checked its labels)
   std::unordered_map<int64_t, uint32_t> seen; // a value, the token of its first label
   for (Stmt* s : static_cast<BlockStmt*>(body)->stmts)
   {
@@ -12063,6 +12063,21 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
 {
   if (!s)
     return;
+  if (retypePath)
+  {
+    if (s == retypePath->back())
+    {
+      // The loop: the whole of it.
+      const std::vector<Stmt*>* path = retypePath;
+      retypePath = nullptr;
+      walkStmt(s);
+      retypePath = path;
+      return;
+    }
+    // Beside the path, its declarations only (what the loop may name).
+    if (s->kind != NodeKind::DeclStmt && s->kind != NodeKind::MacroStmt && std::find(retypePath->begin(), retypePath->end(), s) == retypePath->end())
+      return;
+  }
   switch (s->kind)
   {
     case NodeKind::BlockStmt:

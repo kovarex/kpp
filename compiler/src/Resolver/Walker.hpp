@@ -49,6 +49,11 @@
     // would decide anew (`isConstructible<T, Input&, Args&&...>`, false for each element alone).
     // Not for a `for constexpr` element, whose body's if constexpr depends on it.
     bool keepConstexprBranches = false;
+    // Of that re-typing for one element of a `for constexpr` (GlobalScope::retypeFor's path): the statements from the
+    // function's body down to the loop, the loop last. Only they, the loop whole and the declarations they hold are
+    // walked, what else is in the function keeping its typing: an element's re-typing costs the loop's body, not the
+    // function around it (kovarex, 2026-11-17: 400 alternatives beside a 2,000-case switch, 0.47 s of codegen).
+    const std::vector<Stmt*>* retypePath = nullptr;
     // Of that re-typing: the packs whose mentions name one element (TemplateArgs::elementPacks),
     // activeSubst binding them whole; null otherwise.
     const std::vector<Decl*>* elementPacks = nullptr;
