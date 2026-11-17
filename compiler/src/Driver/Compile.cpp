@@ -924,8 +924,9 @@ int compile(int argc, char** argv)
     // A build from scratch has no use for the kept build (its texts are copied above): freed now, on a thread of its own as
     // a build's predecessor always was, not held until this build is kept. Held, a server had two whole programs at once,
     // its codegen sessions with them: 28.6 GB after a build of the game's tests, 58.8 GB after the next one that was not
-    // incremental (kovarex's machine at 128 GB, 2026-11-16).
-    if (keptBuild)
+    // incremental (kovarex's machine at 128 GB, 2026-11-16). Not under --verify-incremental's build from scratch, which
+    // leaves the kept build as it is (replayDisabled): it is what the server's next build follows.
+    if (keptBuild && keptLock.owns_lock() && !replayDisabled())
       std::thread([old = std::move(keptBuild)]() mutable { old.reset(); }).detach();
     lastImportStamps.clear(); // this build's, if it imports any
   }
