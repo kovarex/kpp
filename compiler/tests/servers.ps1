@@ -28,16 +28,37 @@ Set-Content -Encoding ascii "$work\two.kpp" "int main() { std::println(2); retur
 # The process ids of the servers whose logs are in the test's TEMP, by log: each log's last server.
 # (Its last `started` line, not its first line: a client that started the server writes its steps into
 # the log, and it may reach the server's pipe before the server writes `started`; the first line was
-# then the client's, and "0 servers running" failed the gate under load, 2026-11-10.)
+# then the client's, and "0 servers running" failed the gate under load, 2026-11-10.) Not a server whose
+# log says it ended (an `exiting` line of its id after its `started`): Windows reuses a process id at
+# once, and a later server given an ended one's id was counted twice, once by the ended one's log, so
+# that two servers were there before the second had started.
 function Servers()
 {
   $out = @{}
   foreach ($log in @(Get-ChildItem "$work\tmp\kpp-server\*.log" -ErrorAction SilentlyContinue))
   {
-    $last = @(Select-String -Path $log.FullName -Pattern '\[(\d+)\] started') | Select-Object -Last 1
-    if ($last) { $out[$log.FullName] = [int]$last.Matches[0].Groups[1].Value }
+    $lines = @(Get-Content -LiteralPath $log.FullName -ErrorAction SilentlyContinue)
+    $id = 0
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -match '\[(\d+)\] started') { $id = [int]$Matches[1]; break } }
+    if (-not $id) { continue }
+    $ended = $false
+    for ($j = $i + 1; $j -lt $lines.Count; $j++) { if ($lines[$j] -match "\[$id\] .*exiting") { $ended = $true; break } }
+    if (-not $ended) { $out[$log.FullName] = $id }
   }
   return $out
+}
+# What the servers' logs end with, and the processes running from the test's folder: a failure's
+# explanation (a server that crashed, exited or never started), not only its count.
+function ServerState()
+{
+  $text = ''
+  foreach ($log in @(Get-ChildItem "$work\tmp\kpp-server\*.log" -ErrorAction SilentlyContinue))
+  {
+    $text += "`n  $($log.Name): " + ((@(Get-Content -LiteralPath $log.FullName -Tail 4 -ErrorAction SilentlyContinue)) -join "`n    ")
+  }
+  $root = [IO.Path]::GetFullPath($work)
+  $processes = @(Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { "$($_.Id) $(Split-Path -Leaf $_.Path)" })
+  return "$text`n  processes from the test's folder: $(if ($processes) { $processes -join ', ' } else { 'none' })"
 }
 # (Alive only while the process runs from this test's folder: a server that ended may have its id reused
 # by another process, and with other threads' builds running, one was, giving "3 servers running", 2026-11-04.)
@@ -56,17 +77,19 @@ function Build([string]$name)
   $script:lastReport = $report
   if ($code -ne 0) { Fail "$name did not build through a server: $report" }
 }
-# The servers running, once count of them are (or after $seconds): a client waits 20 s for the server
-# it starts and then builds in its own process ("no compile server could be reached"), and on a loaded
-# machine the server it started comes up after that, so the servers are counted when they are there,
-# not right after the build (F's gate, 2026-11-12: "0 servers after one build", "1 servers running after
-# two builds", servers.ps1 passing alone).
-function RunningServers([int]$count, [int]$seconds = 60)
+# The servers running, once count of them are (or after $seconds): a client waits for the server it
+# starts (up to 120 s, 5. below) and then builds in its own process ("no compile server could be
+# reached"), and on a loaded machine the server it started comes up after that, so the servers are
+# counted when they are there, not right after the build (F's gate, 2026-11-12: "0 servers after one
+# build", "1 servers running after two builds", servers.ps1 passing alone). Each running process once,
+# whichever logs name it; as long a wait as the client's costs nothing when they are there, and a
+# failure says what each server's log ends with (ServerState).
+function RunningServers([int]$count, [int]$seconds = 120)
 {
   $deadline = (Get-Date).AddSeconds($seconds)
   while ($true)
   {
-    $running = @((Servers).GetEnumerator() | Where-Object { Alive $_.Value })
+    $running = @((Servers).GetEnumerator() | Where-Object { Alive $_.Value } | Sort-Object { $_.Value } -Unique)
     if ($running.Count -ge $count -or (Get-Date) -ge $deadline) { return $running }
     Start-Sleep -Milliseconds 250
   }
@@ -84,7 +107,7 @@ function Ended([int]$id, [int]$seconds)
 # 1. A server exits once its kpp changes (here: written again, with a later time).
 Build 'one'
 $servers = @(RunningServers 1)
-if ($servers.Count -ne 1) { Fail "$($servers.Count) servers after one build, 1 expected: $script:lastReport" }
+if ($servers.Count -ne 1) { Fail "$($servers.Count) servers after one build, 1 expected: $script:lastReport$(ServerState)" }
 else
 {
   $log = $servers[0].Key
@@ -99,7 +122,7 @@ else
 Build 'one'
 Build 'two'
 $running = @(RunningServers 2 | ForEach-Object { $_.Value } | Sort-Object -Unique)
-if ($running.Count -ne 2) { Fail "$($running.Count) servers running after two builds, 2 expected: $script:lastReport" }
+if ($running.Count -ne 2) { Fail "$($running.Count) servers running after two builds, 2 expected: $script:lastReport$(ServerState)" }
 $ErrorActionPreference = 'Continue'
 $said = & $copy --stop-all-servers 2>&1 | Out-String
 $ErrorActionPreference = 'Stop'
@@ -184,7 +207,7 @@ foreach ($columns in @($false, $true))
   }
   # (each process once: a stopped server's id may be the next one's, its old log naming it too, CI 2026-11-05)
   $running = @(RunningServers 1 | ForEach-Object { $_.Value } | Sort-Object -Unique)
-  if ($running.Count -ne 1) { Fail "kpp --server $($c -join ' '), with and without --msvc-diagnostics: $($running.Count) servers running, 1 expected" }
+  if ($running.Count -ne 1) { Fail "kpp --server $($c -join ' '), with and without --msvc-diagnostics: $($running.Count) servers running, 1 expected$(ServerState)" }
   $ErrorActionPreference = 'Continue'
   & $copy --stop-all-servers 2>&1 | Out-Null
   $ErrorActionPreference = 'Stop'
