@@ -718,6 +718,7 @@
       NameExpr* name;
       Expr* address; // the `&name` around it, or null
       Lookup set;
+      bool templates = false; // the name, written without template arguments, names function templates alone
     };
     const std::vector<OverloadSetArgument>* callSets = nullptr; // the overload sets among the arguments of the call being typed
 

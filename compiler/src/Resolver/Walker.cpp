@@ -4923,7 +4923,7 @@ auto GlobalScope::Impl::Walker::takesCallSets(FunctionDecl* f, Subst& s) -> bool
     if (const Ty* generic = impl.declaredTypeOf(f, s.pairs.empty() ? nullptr : &s, 0); generic && generic->kind == TyKind::Function)
       for (const OverloadSetArgument& set : *callSets)
       {
-        if (set.index >= generic->args.size() || !set.set.overloads)
+        if (set.index >= generic->args.size() || !set.set.overloads || set.templates)
           continue;
         const Ty* pt = types.unqualified(types.stripRef(generic->args[set.index]));
         const Ty* pattern = pt && pt->kind == TyKind::Pointer ? pt->inner : pt;
@@ -4954,7 +4954,7 @@ auto GlobalScope::Impl::Walker::takesCallSets(FunctionDecl* f, Subst& s) -> bool
     return true;
   for (const OverloadSetArgument& set : *callSets)
   {
-    if (set.index >= ft->args.size() || !set.set.overloads)
+    if (set.index >= ft->args.size() || !set.set.overloads || set.templates)
       continue;
     const Ty* pt = types.unqualified(types.stripRef(ft->args[set.index]));
     const Ty* target = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
@@ -4989,6 +4989,13 @@ auto GlobalScope::Impl::Walker::overloadSetArgument(Expr* a, size_t index, Overl
   if (l.overloads)
     for (const Entry& e : *l.overloads)
       functions += e.decl && e.decl->kind == NodeKind::FunctionDecl && e.decl->templateParams.empty();
+  if (functions == 0 && !n->resolved->templateParams.empty() && !n->name.last().hasTemplateArgs)
+  {
+    // `add(name, &EditorAction::SetCloneTiles)` of a union enum class's creator, a template of a pack: the instance
+    // the chosen callee's parameter deduces, as a variable's type does (bindTemplateAddress through bindOverloadSet).
+    out = OverloadSetArgument{index, n, address, l, true};
+    return true;
+  }
   if (functions < 2)
     return false;
   out = OverloadSetArgument{index, n, address, l};
@@ -5149,6 +5156,11 @@ auto GlobalScope::Impl::Walker::bindTemplateAddresses(Expr* e, const Ty* target,
 
 auto GlobalScope::Impl::Walker::bindOverloadSet(const OverloadSetArgument& s, const Ty* pt) -> void
 {
+  if (s.templates)
+  {
+    bindTemplateAddress(s.address ? s.address : s.name, pt);
+    return;
+  }
   pt = pt ? types.unqualified(types.stripRef(pt)) : nullptr;
   const Ty* target = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
   if (!target || target->kind != TyKind::Function || types.isDependent(target))
@@ -6701,7 +6713,7 @@ auto GlobalScope::Impl::Walker::bindOverloadSetsToConstructor(const std::vector<
   bool ambiguous = false;
   std::vector<const Ty*> argTypes = argTypesOf(args);
   for (const OverloadSetArgument& set : sets)
-    if (set.index < argTypes.size())
+    if (set.index < argTypes.size() && !set.templates)
       argTypes[set.index] = types.unknown(); // the overload set decides nothing until the constructor is chosen
   if (FunctionDecl* ctor = impl.chooseAmong(constructors, argTypes, subst.empty() ? nullptr : &subst, nullptr, ambiguous); ctor && !ambiguous)
     bindOverloadSets(sets, impl.declaredTypeOf(ctor, subst.empty() ? nullptr : &subst, 0));
@@ -7709,7 +7721,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
     if (OverloadSetArgument s; overloadSetArgument(c->args[i], i, s))
     {
       sets.push_back(s);
-      walked[i] = types.unknown();
+      if (!s.templates)
+        walked[i] = types.unknown(); // (a template keeps the type it has without a target: a template callee deduces it)
     }
   WalkedArgs walkedArgsScope(*this, c->args, std::move(walked));
   struct SetsScope

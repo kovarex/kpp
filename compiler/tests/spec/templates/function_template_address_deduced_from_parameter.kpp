@@ -1,0 +1,44 @@
+// spec: a function template named without its arguments as a call's argument, for a parameter that is a pointer to a function of a known type, is the instance whose arguments are deduced from that type's parameters, as for a variable it initializes: for a function's, a member function's and a constructor's parameter, and a union enum class's creator, whose arguments are a pack
+// factorio: the map editor's checkboxes, `this.checkBoxes->add(name, value, &EditorAction::SetCloneTiles)` for a `EditorAction (*)(const bool&)` once EditorAction is a union enum class (2026-11-17)
+union enum class Action : u8
+{
+  {
+    {void, Nothing},
+    {bool, SetFlag},
+    {int, SetCount},
+  }
+};
+
+using FlagAction = Action (*)(const bool& value);
+using CountAction = Action (*)(int&& value);
+
+struct Twice
+{
+  template<typename T>
+  static int of(T&& value) { return int(value) * 2; }
+};
+
+int run(FlagAction action, bool value) { return action(value)[Action::Tag::SetFlag] ? 1 : 0; }
+
+struct Checkboxes
+{
+  int added = 0;
+  int add(int base, FlagAction action) { return this.added += base + run(action, true); }
+};
+
+struct Holder
+{
+  Holder(CountAction action) : count(action(5)[Action::Tag::SetCount]) {}
+  int count;
+};
+
+int apply(int (*f)(const int&), int value) { return f(value); }
+
+int main()
+{
+  Checkboxes boxes;
+  boxes.add(10, &Action::SetFlag);
+  Holder holder(&Action::SetCount);
+  std::println(run(&Action::SetFlag, true), " ", boxes.added, " ", holder.count, " ", apply(&Twice::of, 21), " ", apply(Twice::of, 4));
+  return 0;
+}
