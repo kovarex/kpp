@@ -101,6 +101,10 @@ Decided by kovarex; every thread follows them.
 - C:\Factorio's sources are read-only; only its FASTBuild build may write there (its build outputs),
   one FASTBuild run at a time, coordinated through the coordinator. The game runs from C:\factorio-in-kpp or a thread's scratch game dir with
   an isolated write dir; never write to %APPDATA%\Factorio.
+- Tests run in parallel by default (kovarex, 2026-11-17): kpp's runner, and so the game's factorio-test,
+  starts one worker per hardware thread without --jobs, and the game's workers get their own write
+  folders without --write-data. Pass neither: `factorio-test --config CONFIG` takes about 93 s, one process
+  about 15 minutes. `--jobs 0` (one after another, in this process) only for a debugger.
 - Line endings: resolver.cpp and Resolver/ LF, Codegen/ CRLF.
 - Decisions go into docs/design.md; open questions stay listed there until kovarex answers.
 - A change that adds or removes a deliberate difference from C++ updates docs/differences-from-cpp.md

@@ -94,6 +94,9 @@ The runner's options: `--filter TEXT` (the full name, `*` matching anything), `-
 `--report FILE` (`-` for stdout: one JSON line per test, then a summary line) and `--help`. The exit
 code is 0 when every test passed, 1 when one failed, 2 for a bad argument.
 
+The tests run in parallel by default: worker processes, one per hardware thread (below). Pass no
+`--jobs` to get that; `--jobs 0` runs them one after another in this process, for a debugger.
+
 ## Interactive mode: `-i`
 
 `-i` (or `--interactive`) runs the program's `testsSetup` and generators once, then shows a menu, and
@@ -131,14 +134,22 @@ start (heavy mode's fewer, as Factorio's). `--jobs` does not apply in this mode.
 
 ## Parallel runs: `--jobs N`
 
-`--jobs N` runs the tests in N worker processes (processes, not threads: tests may use globals).
+The tests run in worker processes (processes, not threads: tests may use globals). By default
+(kovarex, 2026-11-17) there are as many as `-i`'s **a** starts, one per hardware thread (1 to 64,
+then the program's `testsWorkers(count)`), and no more than the selection's suites; a selection of
+one suite runs in this process. `--jobs N` starts N; `--jobs 0` runs every test one after another
+in this process (a debugger's breakpoints hold there, as in `-i`).
 
-- The workers start once, at the beginning, and each runs the program's `testsSetup` itself.
+- The workers start once, after the first process's `testsSetup`, with the program's
+  `testsWorkerArguments()` added to their command line (the game's: a write directory of their
+  own), and each runs the program's `testsSetup` itself.
 - The first process runs no test: it hands out whole suites, the most tests first, or with
   `--durations FILE` (an earlier run's `--report`) single tests, the longest first, so that a long
   suite spreads over the workers.
-- What each test prints is collected and printed in the suites' dependency order, so the output,
-  the `after failures in` marks and the root failures are the same as a run in one process.
+- What the runner says of each test (its failures, `failed:` lines, the report) is collected and
+  printed in the suites' dependency order, so the output, the `after failures in` marks and the root
+  failures are the same as a run in one process. What a test prints itself goes straight to the
+  shared stdout, in the order the workers run it: `--jobs 0` keeps it in the run's order.
 - A worker that crashes fails the test it was in; another takes the rest of its suite.
 - A suite does not wait for its dependencies (the processes share nothing), except under
   `--exit-on-failure`, where suites stay whole and wait, so that a failure in a dependency stops the
@@ -160,14 +171,16 @@ customises its tests by defining these functions; each one it does not define do
 | `void testAssertFailed(const char* file, int line, int column, const char* text)` | instead of what a failing `assert` does in a test |
 
 A test build also gives the program `currentTestName()` (the running test's full name),
-`testWorker()` (which `--jobs` worker this is, from 1; 0 without `--jobs`), `runTest(name)` and
+`testWorker()` (which worker this is, from 1; 0 in the first process and in a run in this process), `runTest(name)` and
 `runCaptured(function)`.
 
 ### The game, as a worked example
 
 factorio-in-kpp's `tests/TestHooks.kpp` turns Factorio's own test program into hooks:
 
-- `testsSetup` gives each `--jobs` worker its own `--write-data DIR/worker-N`, then passes the
+- `testsSetup` gives each worker its own `--write-data DIR/worker-N`, DIR being the run's
+  `--write-data` or, without one, `testsWorkerArguments`' `<write-data>/fork-test-results` (the
+  config's write directory, where Factorio's `--fork` put its tasks'), then passes the
   arguments to the game's `fmain`, whose own option parser takes `--config`, `--crc-mode`,
   `--crc-file`, heavy mode, graphics and the rest, as Factorio's test program did.
 - `testsHelp` prints that parser's help.
@@ -177,5 +190,6 @@ factorio-in-kpp's `tests/TestHooks.kpp` turns Factorio's own test program into h
 - `testAfterEach` is Factorio's post-test validation (leak checks) and its cleanup of app states.
 - `testsTeardown` writes the CRC file and checks for leaked entities.
 
-`programs/factorio/tests.cmd --shards N` runs the game's tests with `--jobs N`, the last passing
-run's report as `--durations`.
+A plain `factorio-test --config CONFIG` runs the game's tests in parallel (93 s on a 32-thread
+machine, about 15 minutes with `--jobs 0`). `programs/factorio/tests.cmd --shards N` runs them with
+`--jobs N`, the last passing run's report as `--durations`.

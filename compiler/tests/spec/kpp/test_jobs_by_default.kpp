@@ -1,0 +1,68 @@
+// spec: without --jobs the runner runs the suites in worker processes at once, one per hardware thread up to the selection's suites (kovarex 2026-11-17: parallel by default, as -i's a): First and Second each mark their start and wait for the other's, so each sees the other start only when both run at once; one after the other, First never sees Second's (it gives up after 60 s)
+// test:
+// exit: 0
+if constexpr (config::platform == Platform::Windows)
+{
+  extern "C" int _putenv_s(const char* name, const char* value);
+  extern "C" unsigned long GetCurrentProcessId();
+  void setVariable(const char* name, const char* value) { _putenv_s(name, value); }
+  u64 processId() { return GetCurrentProcessId(); }
+}
+else
+{
+  extern "C" int setenv(const char* name, const char* value, int overwrite);
+  extern "C" int getpid();
+  void setVariable(const char* name, const char* value) { setenv(name, value, 1); }
+  u64 processId() { return u64(getpid()); }
+}
+
+// This run's name: the first process makes it before it starts the workers, which inherit it, so
+// two runs of the snippet at once share no directory.
+std::String nameThisRun()
+{
+  const char* variable = "KPP_SPEC_TEST_JOBS_BY_DEFAULT";
+  if (const char* inherited = std::getenv(variable); inherited && inherited[0] != 0)
+    return std::String(inherited);
+  std::String name;
+  name << "kpp-spec-test-jobs-by-default-" << processId() << "-" << std::SteadyClock::now().time_since_epoch().count();
+  setVariable(variable, name.c_str());
+  return name;
+}
+
+std::String runName = nameThisRun();
+
+std::filesystem::path runDirectory() { return std::filesystem::temp_directory_path() / runName; }
+
+// Marks this test's start, waits for the other's and marks that it saw it.
+void meet(const char* self, const char* other)
+{
+  std::filesystem::create_directories(runDirectory() / (std::String(self) << ".started"));
+  auto limit = std::SteadyClock::now() + std::Seconds(60);
+  while (!std::filesystem::exists(runDirectory() / (std::String(other) << ".started")))
+  {
+    if (std::SteadyClock::now() > limit)
+      return;
+    std::thisThread::sleepFor(std::Milliseconds(10));
+  }
+  std::filesystem::create_directory(runDirectory() / (std::String(self) << ".saw"));
+}
+
+suite First
+{
+  test Meets { meet("First", "Second"); }
+}
+
+suite Second
+{
+  test Meets { meet("Second", "First"); }
+}
+
+// (the first process, once both workers have ended)
+void testsTeardown()
+{
+  if (testWorker() != 0)
+    return;
+  bool together = std::filesystem::exists(runDirectory() / "First.saw") && std::filesystem::exists(runDirectory() / "Second.saw");
+  std::filesystem::remove_all(runDirectory());
+  std::println(std::StringView(together ? "together" : "one after the other"));
+}

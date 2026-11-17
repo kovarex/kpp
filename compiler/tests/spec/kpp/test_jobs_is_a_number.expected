@@ -1,1 +1,1 @@
---jobs takes a number of processes, not 0
+--jobs takes a number of processes (0: the tests in this process), not many

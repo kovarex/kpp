@@ -1,5 +1,5 @@
 // spec: tags select suites: without --tag the untagged suites run, with --tag t the suites tagged t (Factorio's SUITE_MODPACKS)
-// test: --tag vanilla
+// test: --jobs 0 --tag vanilla
 // exit: 0
 suite Common
 {

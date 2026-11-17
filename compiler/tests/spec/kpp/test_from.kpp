@@ -1,5 +1,5 @@
 // spec: --from NAME starts at a suite or test in the order; a name on the command line ignores case
-// test: --from middle
+// test: --jobs 0 --from middle
 // exit: 0
 suite Base
 {

@@ -1,5 +1,5 @@
 // spec: --shuffle SEED prints the seed and keeps the dependency order: one seed gives one order on every target
-// test: --shuffle 3
+// test: --jobs 0 --shuffle 3
 // exit: 0
 suite Base
 {

@@ -1,0 +1,13 @@
+// spec: without --jobs a selection of one suite runs in this process (testWorker() is 0): one job would keep one worker busy and the rest idle, and here a debugger's breakpoints hold
+// test: --suite Second
+// exit: 0
+suite First
+{
+  test Runs { std::println("First.Runs in worker ", testWorker()); }
+}
+
+suite Second
+{
+  test Runs { std::println("Second.Runs in worker ", testWorker()); }
+  test Again { std::println("Second.Again in worker ", testWorker()); }
+}

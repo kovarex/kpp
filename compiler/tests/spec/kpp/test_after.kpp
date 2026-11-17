@@ -1,5 +1,5 @@
 // spec: --after NAME starts just after a test, or after the last test of a suite
-// test: --after base.first
+// test: --jobs 0 --after base.first
 // exit: 0
 suite Base
 {

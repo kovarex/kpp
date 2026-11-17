@@ -362,7 +362,8 @@ per-test `"seconds"`. A test running longer than 5 minutes gets a warning line, 
 `SlowDetector` gives. XML: not needed, because `--report` is the machine format, and the game's
 scripts (suites.py, failures.py; H's) would read it.
 
-**Parallelism:** `--jobs N` (Q3 in design.md) schedules whole suites over N processes, the most tests
+**Parallelism:** the default since 2026-11-17 (kovarex), one process per hardware thread; `--jobs 0`
+runs the tests in one process. `--jobs N` (Q3 in design.md) schedules whole suites over N processes, the most tests
 first; with `--durations FILE` (an earlier run's `--report`) each test on its own, the longest first,
 as Factorio's `--fork` splits by its cached test times, so that a long suite's tests run in several
 processes at once (`tests.cmd --shards N` keeps the last passing run's report for the next; the game's tests went from

@@ -1,5 +1,5 @@
 // spec: a test's name is scoped to its suite: two suites may each have a test Empty, and the full name Suite.Test tells them apart
-// test:
+// test: --jobs 0
 // exit: 1
 suite Belts
 {

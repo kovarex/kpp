@@ -1,5 +1,5 @@
 // spec: suites run in dependency order (each after every suite it depends on; of the suites ready, the first by name), then the tests outside suites
-// test:
+// test: --jobs 0
 // exit: 0
 suite Combined depends Belts, Inserters
 {

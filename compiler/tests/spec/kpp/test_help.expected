@@ -9,8 +9,10 @@ kpp's test runner: runs the program's tests (design.md 8.7, docs/testing.md). It
   --exit-on-failure     stop after the first failed test (dependencies run first)
   --shuffle [SEED]      a random order within the dependencies' order; prints the seed
   --slow SECONDS        a line for each test that ran longer (300 by default)
-  --jobs N              N worker processes; the output in the suites' order all the same
-  --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first
+  --jobs N              N worker processes; the output in the suites' order all the same. Without it one
+                        per hardware thread, no more than the selection's suites (one suite: in this process);
+                        --jobs 0: the tests one after another in this process (a debugger's breakpoints hold)
+  --durations FILE      in worker processes: an earlier run's --report, each test on its own, the longest first
   --list                the selected tests, in the run's order, without running them
   --report FILE         one JSON line per test and a summary (- for stdout)
   --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; else the build's --coverage-file or kpp-coverage.json)

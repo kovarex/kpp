@@ -1,5 +1,5 @@
 // spec: --with-dependencies adds the suites the selection depends on, directly or further back, whole, in their order
-// test: --filter Top.* --with-dependencies
+// test: --jobs 0 --filter Top.* --with-dependencies
 // exit: 0
 suite Base
 {

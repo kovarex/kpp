@@ -1,4 +1,4 @@
-// spec: --jobs takes a positive number
-// test: --jobs 0
+// spec: --jobs takes a number of processes (0: the tests in this process)
+// test: --jobs many
 // exit: 2
 test Never { }

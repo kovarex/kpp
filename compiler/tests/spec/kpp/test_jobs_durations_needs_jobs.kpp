@@ -1,5 +1,5 @@
-// spec: --durations orders the suites of --jobs: without --jobs it is an error
-// test: --durations x.jsonl
+// spec: --durations orders the tests of worker processes: with --jobs 0, which runs them in this process, it is an error
+// test: --jobs 0 --durations x.jsonl
 // exit: 2
 suite Only
 {

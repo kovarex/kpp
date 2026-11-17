@@ -1,0 +1,12 @@
+// spec: --jobs 0 runs the tests one after another in this process (testWorker() is 0 in each), what they print in the run's order: the serial run, where a debugger's breakpoints hold
+// test: --jobs 0
+// exit: 0
+suite First
+{
+  test Runs { std::println("First.Runs in worker ", testWorker()); }
+}
+
+suite Second
+{
+  test Runs { std::println("Second.Runs in worker ", testWorker()); }
+}

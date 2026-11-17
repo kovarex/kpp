@@ -18,8 +18,10 @@
 // --with-dependencies, --from NAME, --after NAME, --tag TAG, --exit-on-failure, --shuffle [SEED],
 // --slow SECONDS, --jobs N, --durations FILE, --list, --report FILE (- for stdout). Exit code 0 when
 // every test run passed, 1 otherwise, 2 for a bad argument.
-// --jobs N: N worker processes of the same executable (--kpp-worker), each started once and before the
-// first process's testsSetup, since a program's may take seconds. The first process, which runs no
+// --jobs N: N worker processes of the same executable (--kpp-worker), each started once, after the
+// first process's testsSetup (testsWorkerArguments may need what it read). Without --jobs as many as
+// the hardware threads (-i's a), no more than the selection's suites; one suite, or --jobs 0, runs in
+// this process (kovarex 2026-11-17: parallel by default). The first process, which runs no
 // test, gives them a suite at a time, the most tests first; with --durations (an earlier run's
 // --report) a test at a time, the longest first, so that a long suite's tests run at once. With
 // --exit-on-failure suites stay whole and wait for their dependencies, so that a failure in one stops
@@ -737,8 +739,10 @@ void __kppPrintHelp()
              "  --exit-on-failure     stop after the first failed test (dependencies run first)\n"
              "  --shuffle [SEED]      a random order within the dependencies' order; prints the seed\n"
              "  --slow SECONDS        a line for each test that ran longer (300 by default)\n"
-             "  --jobs N              N worker processes; the output in the suites' order all the same\n"
-             "  --durations FILE      with --jobs: an earlier run's --report, each test on its own, the longest first\n"
+             "  --jobs N              N worker processes; the output in the suites' order all the same. Without it one\n"
+             "                        per hardware thread, no more than the selection's suites (one suite: in this process);\n"
+             "                        --jobs 0: the tests one after another in this process (a debugger's breakpoints hold)\n"
+             "  --durations FILE      in worker processes: an earlier run's --report, each test on its own, the longest first\n"
              "  --list                the selected tests, in the run's order, without running them\n"
              "  --report FILE         one JSON line per test and a summary (- for stdout)\n"
              "  --coverage FILE       a kpp --coverage build: what the tests ran, to FILE (- for stdout; else the build's --coverage-file or kpp-coverage.json)\n"
@@ -1317,9 +1321,8 @@ bool __kppJobWaits(const __KppSuite& suite, const std::Vector<__KppJob>& jobs)
   return false;
 }
 
-// --jobs' workers, started before the first process's testsSetup (the workers' run at the same time),
-// and ended when it returns, whatever it returns: an error after they started closes their input, and
-// they end.
+// --jobs' workers, started after the first process's testsSetup and selection, and ended when it
+// returns, whatever it returns: an error after they started closes their input, and they end.
 class __KppJobPool
 {
 public:
@@ -1472,6 +1475,19 @@ bool __kppReadDurations(const char* name, __KppDurations& seconds)
     }
   }
   return true;
+}
+
+// How many jobs __kppRunJobs makes of the selection: its suites (the tests outside suites one), or with
+// byTest its tests.
+int __kppJobCount(const std::Vector<const __KppTest*>& selected, bool byTest)
+{
+  if (byTest)
+    return int(selected.size());
+  int count = 0;
+  for (int i = 0; i < int(selected.size()); ++i)
+    if (i == 0 || std::strcmp(selected[i]->suite, selected[i - 1]->suite) != 0)
+      ++count;
+  return count;
 }
 
 // Runs the selection over the workers; finished(position, test) says each test's end, in the order of
@@ -2113,6 +2129,7 @@ int main(int argc, char** argv)
   bool seeded = false;
   u64 slowSeconds = 300;
   u64 jobs = 0;
+  bool jobsGiven = false; // --jobs N; without it as many as -i's a, up to the selection's jobs
   const char* durations = nullptr;
   u64 workerIn = 0, workerOut = 0, workerIndex = 0;
   bool interactive = false;
@@ -2155,11 +2172,12 @@ int main(int argc, char** argv)
     }
     else if (std::strcmp(argv[i], "--jobs") == 0 && i + 1 < argc)
     {
-      if (!__kppNumber(argv[++i], jobs) || jobs == 0)
+      if (!__kppNumber(argv[++i], jobs))
       {
-        std::println("--jobs takes a number of processes, not ", std::StringView(argv[i]));
+        std::println("--jobs takes a number of processes (0: the tests in this process), not ", std::StringView(argv[i]));
         return 2;
       }
+      jobsGiven = true;
     }
     else if (std::strcmp(argv[i], "--durations") == 0 && i + 1 < argc)
       durations = argv[++i];
@@ -2215,9 +2233,9 @@ int main(int argc, char** argv)
   }
   else if (interactive)
     jobs = 0; // (its tests run in this process: a debugger's breakpoints hold)
-  else if (durations && jobs == 0)
+  else if (durations && jobsGiven && jobs == 0)
   {
-    std::println("--durations orders the tests of --jobs: give --jobs N too");
+    std::println("--durations orders the tests of --jobs: --jobs 0 runs them in this process");
     return 2;
   }
   FILE* reportFile = nullptr;
@@ -2239,23 +2257,11 @@ int main(int argc, char** argv)
       fputs(text.c_str(), reportFile);
   };
 
-  // --jobs: the workers start now and run their testsSetup while this process runs its own, which
-  // the generators need (they get the seed this one would choose).
+  // (--jobs' workers get the seed this process chose: their generators and order are the same)
   if (shuffle && !seeded)
   {
     seed = __kppNanoseconds();
     seeded = true;
-  }
-  __KppJobPool pool;
-  if (jobs > 0 && !list)
-  {
-    std::Vector<std::String> extra;
-    if (shuffle)
-    {
-      extra.push_back(std::String("--shuffle"));
-      extra.push_back(std::toString(seed));
-    }
-    pool.started = pool.start(int(std::min(jobs, u64(1000))), std::move(extra), argc, argv);
   }
   // (--list too where generators make tests: a generator may read what the setup made, as the game's Saves
   // suite lists the saves under the data path its setup reads, kovarex 2026-11-12)
@@ -2442,6 +2448,36 @@ int main(int argc, char** argv)
   if (state.working)
     return __kppWork(selected, i64(workerIn), slowSeconds);
 
+  // (an unreadable --durations is an error also where the run goes in this process, which needs no order)
+  __KppDurations seconds;
+  if (durations && !__kppReadDurations(durations, seconds))
+  {
+    std::println("--durations: cannot read ", std::StringView(durations));
+    return 2;
+  }
+  // --jobs (kovarex 2026-11-17: in parallel by default, as -i's a): the workers start once this
+  // process's testsSetup has run, so that the program's testsWorkerArguments can name what they must
+  // not share (the game's write directory, which its setup reads from the config), and each runs its
+  // own. Without --jobs, -i's count (the hardware threads, then testsWorkers), no more than the
+  // selection's jobs; a selection of one job (one suite, the tests outside suites) runs here, as
+  // --jobs 0 does.
+  if (!jobsGiven)
+  {
+    int count = __kppJobCount(selected, durations && !exitOnFailure);
+    jobs = u64(count < 2 ? 0 : std::min(count, __kppWorkerCount()));
+  }
+  __KppJobPool pool;
+  if (jobs > 0)
+  {
+    std::Vector<std::String> extra = testsWorkerArguments();
+    if (shuffle)
+    {
+      extra.push_back(std::String("--shuffle"));
+      extra.push_back(std::toString(seed));
+    }
+    pool.started = pool.start(int(std::min(jobs, u64(1000))), std::move(extra), argc, argv);
+  }
+
   int run = 0, failed = 0, notRun = 0;
   std::Vector<const __KppTest*> roots; // the failed tests no failed dependency explains
   bool explained = false;         // a failure after a failed dependency
@@ -2479,12 +2515,6 @@ int main(int argc, char** argv)
   bool jobsRan = true;
   if (jobs > 0)
   {
-    __KppDurations seconds;
-    if (durations && !__kppReadDurations(durations, seconds))
-    {
-      std::println("--durations: cannot read ", std::StringView(durations));
-      return 2;
-    }
     jobsRan = __kppRunJobs(selected, pool, durations ? &seconds : nullptr, exitOnFailure, [&](int position, const __KppJobTest& result)
     {
       std::print(result.printed);

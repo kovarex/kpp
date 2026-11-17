@@ -1,5 +1,5 @@
 // spec: --exit-on-failure stops after the first failed test has finished; dependencies run first, so a failing dependency stops the run before its dependents
-// test: --exit-on-failure
+// test: --jobs 0 --exit-on-failure
 // exit: 1
 suite Splitters depends Belts
 {

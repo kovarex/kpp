@@ -4641,9 +4641,12 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   build failed. **Q2 is settled by 8.7** (2026-11-06): `--filter` replaces 8.6's `--run-test <name or
   file>`; it matches the full name, and `--suite`, `--skip-suite` and `--tag` select beside it.
 - **Isolation and parallelism.** **Q3 is settled by 8.7** (2026-11-06; test-suites.md (d), and its
-  question 2 decides how `--exit-on-failure` acts under `--jobs`): by default the tests run in one
-  process, one after another (the fastest; a crash ends the run and is reported as that test's);
-  `--jobs N` schedules suites, or with `--durations` tests, over N processes of the same executable, and a crash fails only
+  question 2 decides how `--exit-on-failure` acts under `--jobs`): by default the tests run in worker processes, as many as the hardware
+  threads (1 to 64, then the program's `testsWorkers`, as `-i`'s a), no more than the selection's
+  suites, and a selection of one suite in this process (kovarex, 2026-11-17: agents ran the game's
+  9,536 tests one after another, about 15 minutes against 93 s at 32); `--jobs 0` runs them one after
+  another in this process (a crash ends the run and is reported as that test's; a debugger's
+  breakpoints hold); `--jobs N` schedules suites, or with `--durations` tests, over N processes of the same executable, and a crash fails only
   its test (the process is started again for the rest of its share), which is what `suites.py` does
   by hand for the converted UnitTest++. No threads inside one process: tests may use globals. A suite
   does not wait for its dependencies, as Factorio's `--fork` does not: the processes share nothing,
@@ -4671,15 +4674,17 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   10%): `--jobs 16 --durations` 61.5 and 61.2 s against suites.py `--shards 16` 67.8 and 69.8 s;
   at 32, 65.1 and 64.2 s against 61.6 and 64.8 s; without `--durations` (most tests first) 59.0 s at
   16. Both are at the floor: Simulations alone takes 54 s, and a worker's `testsSetup` about 5 s
-  (C's 92.7 and 120.1 s at 16 waited for the dependencies). How: the N workers start once, and before
-  the first process's `testsSetup`, since a program's may take seconds; the first process runs
-  `testsSetup` too (the generators need it), selects as without `--jobs`, runs no test, and gives
+  (C's 92.7 and 120.1 s at 16 waited for the dependencies). How: the first process runs
+  `testsSetup` (the generators need it) and selects; then the N workers start once, with the program's
+  `testsWorkerArguments()` (2026-11-17: they started before the first process's `testsSetup`, which
+  left the hook nothing to read, and the game's workers needed `--write-data` given), each runs its
+  own `testsSetup`, and the first process runs no test and gives
   each idle worker the first suite in that order that may start, over a pipe. The workers send back what each test said, and the first
   process says it in the order of the suites, `failed:` lines, report and summary, so the output is
   the same whichever finished first (what a test prints itself goes straight to the shared stdout).
   A crash is `failed: S.t (it crashed: exit code 3)`, `"status":"crash"` in the report; a process that
   ends between tests with a suite in hand has nothing to blame, and the rest of the suite goes on.
-  `testWorker()` is the worker's number from 1, 0 in the first process and without `--jobs`, for what
+  `testWorker()` is the worker's number from 1, 0 in the first process and in a run in one process, for what
   processes must not share, such as a directory a hook writes to.
 - **The converted UnitTest++.** Q4 is answered (kovarex, 2026-11-06): the converter (thread C)
   turns `SUITE`, `TEST`, the fixtures, `DEPENDENCY`, the generators and the check macros into

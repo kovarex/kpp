@@ -1,0 +1,28 @@
+// spec: the workers of a run without --jobs start after the first process's testsSetup and get the program's testsWorkerArguments() (as -i's a): the game's names each worker's write directory from what its setup read, so a plain run needs no --write-data (kovarex 2026-11-17)
+// test:
+// exit: 0
+bool fromHook = false;
+
+void testsSetup(const std::Vector<std::String>& arguments)
+{
+  for (const std::String& argument : arguments)
+    if (argument == "--from-hook")
+      fromHook = true;
+}
+
+std::Vector<std::String> testsWorkerArguments()
+{
+  std::Vector<std::String> arguments;
+  arguments.push_back("--from-hook");
+  return arguments;
+}
+
+suite First
+{
+  test InAWorker { check(testWorker() != 0); check(fromHook); }
+}
+
+suite Second
+{
+  test InAWorker { check(testWorker() != 0); check(fromHook); }
+}
