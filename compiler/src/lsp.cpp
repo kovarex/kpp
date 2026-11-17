@@ -4008,10 +4008,25 @@ namespace
       {
         Json result;
         std::string error;
-        if (method == "textDocument/prepareRename" ? prepareRename(params, result, error) : rename(params, result, error))
+        bool prepare = method == "textDocument/prepareRename";
+        if (prepare ? prepareRename(params, result, error) : rename(params, result, error))
+        {
+          if (!prepare)
+          {
+            size_t edits = 0, files = 0;
+            for (const auto& [uri, list] : result["changes"].members)
+              edits += list.items.size(), ++files;
+            log("rename to %s: %zu edits in %zu files", params["newName"].text.c_str(), edits, files);
+          }
           respond(id, std::move(result));
+        }
         else
-          respondError(id, -32803, error.empty() ? "nothing to rename here" : error); // RequestFailed
+        {
+          if (error.empty())
+            error = "nothing to rename here";
+          log("%s refused: %s", prepare ? "prepareRename" : "rename", error.c_str());
+          respondError(id, -32803, error); // RequestFailed
+        }
       }
       else if (method == "textDocument/signatureHelp")
         respond(id, signatureHelp(params));

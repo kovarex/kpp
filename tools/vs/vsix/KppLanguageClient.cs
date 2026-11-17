@@ -97,7 +97,7 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
 
     public bool ShowNotificationOnInitializeFailed => true;
 
-    public object? MiddleLayer => null;
+    public object? MiddleLayer { get; } = new RenameRefusals();
 
     public object? CustomMessageTarget { get; } = new ServerNotifications();
 

@@ -24,6 +24,9 @@
 # -CoverageTestsText TEXT (which tests ran it: "run by 1 test"), and Tools.kppShowCoverage must hide it and
 # show it again.
 #   test.ps1 -Name coverage -Project compiler\tests\lsp\coverage -File src\main.kpp -Line 10 -Column 7 -Definition src\main.kpp:3 -CoverageAt src\main.kpp:10:9 -CoverageText 'never false' -CoverageTestsAt src\main.kpp:11:7 -CoverageTestsText 'run by 1 test'
+# -RenameAt FILE:LINE:COLUMN with -RenameTo NAME: Refactor.Rename there must rename it (the server's log, the
+# file's text); with -RenameRefused TEXT the server must refuse it with TEXT and Visual Studio must show TEXT.
+#   test.ps1 -Name rename -Project compiler\tests\lsp\program -File shapes.kpp -Line 13 -Column 15 -Definition shapes.kpp:6 -RenameAt shapes.kpp:6:7 -RenameTo width -RenameRefused 'already a member'
 # -NavigateBack: View.NavigateBackward after Edit.GoToDefinition must land at -File:-Line again (the
 # navigation history Alt+Left uses).
 # -Solution opens the solution kpp --generate-visual-studio-files writes instead of the folder; with
@@ -64,7 +67,10 @@ param(
   [string]$CoverageText,
   [string]$CoverageTestsAt,
   [string]$CoverageTestsText,
-  [switch]$RestartServer
+  [switch]$RestartServer,
+  [string]$RenameAt,
+  [string]$RenameTo,
+  [string]$RenameRefused
 )
 $ErrorActionPreference = 'Stop'
 
@@ -383,6 +389,87 @@ try
     }
     Check "Find All References' rows at $ReferencesAt" ($rows.Count -ge [Math]::Min(1, $ReferencesCount) -and $rows.Count -le $ReferencesCount) ("{0} rows in '{1}': {2}" -f $rows.Count, $(if ($pane) { $pane.Current.Name } else { 'no window' }), (($rows | Select-Object -First 4) -join ' | '))
     Snap 'references'
+  }
+
+  # Rename: Refactor.Rename (Ctrl+R, Ctrl+R) there, the new name put in its box and Enter; the server's answer (its log
+  # line) and the name in the file afterwards. -RenameRefused TEXT: the server must refuse it with TEXT instead, and
+  # Visual Studio must show why (the extension's message box). No key goes through the keyboard: Visual Studio
+  # need not be in front, and another program's window never gets one.
+  if ($RenameAt)
+  {
+    $log = ServerLog
+    $before = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'rename to |rename refused' }).Count
+    $p = Position $RenameAt
+    Add-Type -Namespace KppVs -Name Keys -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+'@
+    # The rename box's text field: an edit element whose value is the old name.
+    function RenameBox($old)
+    {
+      $window = [Windows.Automation.AutomationElement]::FromHandle($devenv.MainWindowHandle)
+      $edits = $window.FindAll([Windows.Automation.TreeScope]::Descendants,
+        (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Edit)))
+      foreach ($e in $edits)
+      {
+        try { if ($e.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value -eq $old) { return $e } } catch { }
+      }
+      $null
+    }
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $answered = $null
+    while (-not $answered -and $t.Elapsed.TotalSeconds -lt $Timeout)
+    {
+      Open $p.File $p.Line $p.Column
+      Start-Sleep -Seconds 2
+      try { $dte.ExecuteCommand('Refactor.Rename') } catch { "Refactor.Rename: $_" }
+      Start-Sleep -Seconds 3
+      Snap 'rename-started'
+      $text = @(Get-Content (Join-Path $copy $p.File))[$p.Line - 1]
+      $old = if ($text.Substring($p.Column - 1) -match '^\w+') { $Matches[0] } else { '' }
+      $box = RenameBox $old
+      if (-not $box) { "no rename box with '$old'"; continue }
+      $box.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($RenameTo)
+      $box.SetFocus()
+      # Enter, posted to Visual Studio's window (WPF takes it to the focused box without Visual Studio in front).
+      [KppVs.Keys]::PostMessage($devenv.MainWindowHandle, 0x100, [IntPtr]0x0D, [IntPtr]0x1C0001) | Out-Null
+      [KppVs.Keys]::PostMessage($devenv.MainWindowHandle, 0x101, [IntPtr]0x0D, [IntPtr]0xC01C0001) | Out-Null
+      $asked = [Diagnostics.Stopwatch]::StartNew()
+      while (-not $answered -and $asked.Elapsed.TotalSeconds -lt 15)
+      {
+        Start-Sleep -Milliseconds 500
+        $answered = @(Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match 'rename to |rename refused' }) | Select-Object -Skip $before -First 1
+      }
+    }
+    Start-Sleep -Seconds 3
+    Snap 'renamed'
+    if ($RenameRefused)
+    {
+      Check "the server refuses the rename at $RenameAt" ($answered -match [regex]::Escape($RenameRefused)) $(if ($answered) { $answered } else { 'no rename in the log' })
+      # The extension's message box (RenameRefusals.cs): a window inside Visual Studio's whose text has the reason; closed.
+      $shown = $null
+      $window = [Windows.Automation.AutomationElement]::FromHandle($devenv.MainWindowHandle)
+      $boxes = $window.FindAll([Windows.Automation.TreeScope]::Children,
+        (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Window)))
+      foreach ($w in $boxes)
+      {
+        foreach ($e in $w.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition))
+        {
+          if ($e.Current.Name -like "kpp: rename*$RenameRefused*") { $shown = $e.Current.Name -replace '\s+', ' ' }
+        }
+        if ($shown)
+        {
+          Snap 'rename-refused'
+          $w.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
+        }
+      }
+      Check "Visual Studio shows why the rename was refused" ($null -ne $shown) $(if ($shown) { $shown } else { "no 'kpp: rename' window with that text" })
+    }
+    else
+    {
+      Check "the server's rename at $RenameAt" ($answered -match 'rename to ') $(if ($answered) { $answered } else { 'no rename in the log' })
+      $text = $dte.ActiveDocument.Object('TextDocument').StartPoint.CreateEditPoint().GetText($dte.ActiveDocument.Object('TextDocument').EndPoint)
+      Check "the file has $RenameTo after the rename" ($text -match "\b$RenameTo\b") $(if ($text -match "\b$RenameTo\b") { 'found' } else { 'not in the active document' })
+    }
   }
 
   # Hover: Edit.QuickInfo, its popup's text.

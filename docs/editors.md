@@ -211,8 +211,13 @@ The kpp installer offers it when it finds such a Visual Studio; or double-click 
 from the release (or as `tools\vs\vsix\build.cmd` makes it; it needs the .NET 8 SDK). Then restart Visual
 Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
 - **What it gives:** errors as squiggles and in the Error List, go to definition (F12,
-  Edit.GoToDefinition), go to declaration (Ctrl+F12, Edit.GoToDeclaration), hover, completion and
-  references.
+  Edit.GoToDefinition), go to declaration (Ctrl+F12, Edit.GoToDeclaration), hover, completion,
+  references and rename (Ctrl+R, Ctrl+R: Refactor.Rename, every use in the checked cell's program).
+- **A refused rename** (a name that would clash, an operator, a virtual function, the standard library's)
+  shows the server's reason in a message box, "kpp: rename" (`RenameRefusals.cs`, a middle layer of the
+  language client): Visual Studio's client shows nothing when a rename request fails, so Refactor.Rename
+  seemed to do nothing (kovarex, 2026-11-17). VS Code shows the reason itself. `test.ps1 -RenameAt` checks
+  both, a rename and a refused one.
 - **Go to declaration:** Visual Studio's language client sends `textDocument/definition` for
   Edit.GoToDefinition but leaves Edit.GoToDeclaration unavailable. The extension handles that
   command in .kpp editors: it sends `textDocument/declaration` itself and opens the answer.
