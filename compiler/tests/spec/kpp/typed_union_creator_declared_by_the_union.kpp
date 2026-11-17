@@ -1,11 +1,21 @@
-// spec: a union enum class makes no creator of a name it declares itself (design.md 8.5): its own member is the one
-// called, as a class's own default constructor or operator= takes the place of the compiler's (kovarex 2026-11-17);
-// the other alternatives' creators are made as before
+// spec: a union enum class's member with a creator's signature takes the creator's place (design.md 8.5), as a
+// class's own default constructor or operator= takes the compiler's (kovarex 2026-11-17): `Name()` for a void
+// alternative, a function of one parameter pack for one with a value. Any other member of that name is an overload
+// beside the creator: InputAction's `SetCircuitModeOfOperation(EnumType mode, bool value)` calls the creator.
 union enum class Action : u8
 {
-  { {int, Move}, {void, Stop}, {int, Jump} }
+  { {int, Move}, {void, Stop}, {int, Jump}, {int, Turn}, {void, Wait} }
 
-  static Action Move(int steps) { return Action(Action::Tag::Move, steps * 2); }
+  template<typename... Args>
+  static Action Move(Args&&... steps) { return Action(Action::Tag::Move, (steps + ...) * 2); }
+
+  static Action Stop() { std::println("own Stop"); return Action(Action::Tag::Stop); }
+
+  // An overload beside the creator `Turn(int)`.
+  static Action Turn(int left, int right) { return Action::Turn(left - right); }
+
+  // A function of another name calls the creators as anyone does.
+  static Action Pause() { return Action::Wait(); }
 };
 
 int main()
@@ -13,6 +23,8 @@ int main()
   Action move = Action::Move(3);
   Action jump = Action::Jump(3);
   Action stop = Action::Stop();
-  std::println(move[Action::Tag::Move], " ", jump[Action::Tag::Jump], " ", stop.tag());
+  Action turn = Action::Turn(10, 4);
+  Action pause = Action::Pause();
+  std::println(move[Action::Tag::Move], " ", jump[Action::Tag::Jump], " ", stop.tag(), " ", turn[Action::Tag::Turn], " ", pause.tag());
   return 0;
 }

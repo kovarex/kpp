@@ -4165,24 +4165,34 @@ namespace
       parseBody();
       if (scopedTag && !inRecovery && !c->name.empty() && at(P::RBrace))
       {
-        // The members the union declares itself: a creator of that name is not made, the union's own is called
-        // (InputAction's hand-written ones, until the game drops them; kovarex 2026-11-17).
-        std::unordered_set<uint32_t> declared;
+        // A member the union declares itself with a creator's signature takes its place, as a class's own default
+        // constructor or operator= does (kovarex 2026-11-17): `Name()` for a void alternative, a function of one
+        // parameter pack (`template<typename... Args> Name(Args&&...)`) for one with a value; any other function of
+        // that name is an overload beside the creator (InputAction's `SetCircuitModeOfOperation(EnumType, bool)`). A
+        // data member or an alias of that name leaves no room for one.
+        std::unordered_set<uint32_t> noParameters, onePack, notFunctions;
         for (size_t i = mark; i < scratch.size(); ++i)
         {
           Node* n = scratch[i];
           if (n->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(n)->name.empty())
-            declared.insert(static_cast<FunctionDecl*>(n)->name.last().symbol);
+          {
+            auto* f = static_cast<FunctionDecl*>(n);
+            if (f->params.empty())
+              noParameters.insert(f->name.last().symbol);
+            else if (f->params.size() == 1 && static_cast<ParamDecl*>(f->params[0])->isPack)
+              onePack.insert(f->name.last().symbol);
+          }
           else if (n->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(n)->name.empty())
-            declared.insert(static_cast<VariableDecl*>(n)->name.last().symbol);
+            notFunctions.insert(static_cast<VariableDecl*>(n)->name.last().symbol);
           else if (n->kind == NodeKind::UsingAliasDecl)
-            declared.insert(static_cast<UsingAliasDecl*>(n)->name);
+            notFunctions.insert(static_cast<UsingAliasDecl*>(n)->name);
         }
         std::string u(symbols.name(c->name.last().symbol));
         std::vector<Token> made;
         for (size_t k = 0; k < enumerators.size(); ++k)
         {
-          if (declared.count(static_cast<EnumeratorDecl*>(enumerators[k])->name))
+          uint32_t symbol = static_cast<EnumeratorDecl*>(enumerators[k])->name;
+          if (notFunctions.count(symbol) || (static_cast<VariableDecl*>(alternatives[k])->voidAlternative ? noParameters : onePack).count(symbol))
             continue;
           std::string name(symbols.name(static_cast<EnumeratorDecl*>(enumerators[k])->name));
           std::string source = static_cast<VariableDecl*>(alternatives[k])->voidAlternative

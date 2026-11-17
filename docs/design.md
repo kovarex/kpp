@@ -942,9 +942,11 @@ U` makes a static creator per alternative, `U::Name(args...)`, which builds that
 `U(U::Tag::Name, args...)` does (a value of its type, by copy or move, or its constructor's arguments, in place), and
 `U::Name()` for a void alternative. A plain `union enum` makes none: its alternatives' names are its own. The parser
 writes them at the body's end (a member template forwarding its arguments, std::forward: a static_cast of an array
-reference is a codegen gap, pending language/static_cast_forwards_an_array_reference). A name the union declares
-itself gets no creator, its own member is called, as a class's own default constructor or operator= takes the place
-of the one the compiler makes (kovarex 2026-11-17). Building from a tag and a pack of one element (`U(U::Tag::X, forward<A>(a)...)`) builds it from that
+reference is a codegen gap, pending language/static_cast_forwards_an_array_reference). A member the union declares
+with a creator's signature takes its place, as a class's own default constructor or operator= takes the compiler's
+(kovarex 2026-11-17): `Name()` for a void alternative, a function of one parameter pack for one with a value. Any other
+function of that name is an overload beside the creator (InputAction's `SetCircuitModeOfOperation(EnumType mode, bool
+value)` calls it); a data member or alias of that name leaves no room for one. Building from a tag and a pack of one element (`U(U::Tag::X, forward<A>(a)...)`) builds it from that
 element, which stopped on "taking the address of a" before. Specs: kpp/typed_union_creators,
 kpp/typed_union_creator_declared_by_the_union.
 
