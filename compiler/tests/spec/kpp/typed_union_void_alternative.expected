@@ -1,0 +1,16 @@
+Nothing (no data)
+Stop (no data) 7
+Stop (no data) 7 true
+Move 1,2
+true false true
+Nothing (no data)
+Move 0,0
+Stop (no data)
+Say ''
+Nothing true
+Move false
+Stop true
+Say false
+true true
+true false true true false
+true true

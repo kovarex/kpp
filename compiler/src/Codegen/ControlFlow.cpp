@@ -185,7 +185,8 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
       if (!u)
         unsupported(f, "alternatives(U) where U is not a typed union");
       for (size_t i = 0; i < u->alternatives.size(); ++i)
-        elements.push_back(types.member(alternativeType(u, cls, i, f), u->alternatives[i], cls));
+        elements.push_back(types.member(static_cast<VariableDecl*>(u->alternatives[i])->voidAlternative ? types.voidType() : alternativeType(u, cls, i, f),
+                                        u->alternatives[i], cls)); // (a void alternative's a.type is void: design.md 8.5)
     }
     else
       collectMembers(cls, elements, f, 0);

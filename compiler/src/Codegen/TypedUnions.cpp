@@ -821,6 +821,8 @@ auto codegen::Emitter::typedUnionEqual(ClassDecl* c, const std::string& a, const
   startBlock(held);
   fn += "  store i1 true, ptr " + slot + "\n"; // (two valueless unions are equal, as std::variant's)
   forEachHeldAlternative(c, ta, done, at, [&](size_t k) {
+    if (static_cast<VariableDecl*>(c->alternatives[k])->voidAlternative)
+      return; // (no value: the same void alternative is equal, design.md 8.5)
     Value e = partsEqual(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
     fn += "  store i1 " + e.text + ", ptr " + slot + "\n";
   });
@@ -860,6 +862,8 @@ auto codegen::Emitter::typedUnionOrder(ClassDecl* c, const std::string& a, const
   startBlock(held);
   fn += "  store i8 0, ptr " + slot + "\n";
   forEachHeldAlternative(c, ta, done, at, [&](size_t k) {
+    if (static_cast<VariableDecl*>(c->alternatives[k])->voidAlternative)
+      return; // (no value: the same void alternative is equivalent, design.md 8.5)
     Value o = orderOfParts(alternativeAddress(c, t, a, k, at), alternativeAddress(c, t, b, k, at), alternativeType(c, t, k, at), at);
     fn += "  store i8 " + o.text + ", ptr " + slot + "\n";
   });

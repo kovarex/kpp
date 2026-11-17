@@ -185,6 +185,9 @@ struct VariableDecl : Decl
   // A hidden `auto&& a = get<i>(e)` that a tuple-like structured binding names (the resolver's
   // tupleBindings); the binding's name node in the object's list points at it (resolved).
   bool tupleBinding = false;
+  // A typed union's alternative of type void (`{void, Stop}`, design.md 8.5): no value, its storage an empty class of the
+  // union's own (`__Void`), its descriptor's type (`a.type`) void.
+  bool voidAlternative = false;
   // A static local: its number in the function at file or class level it is written in, which its storage's name
   // carries (Emitter::staticLocalName), not its place. UINT32_MAX: none.
   uint32_t number = UINT32_MAX;

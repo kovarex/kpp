@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2288 pass, 2 pending, 0 failing, 0 fixed** (2290 snippets, 261.4 s).
+**2290 pass, 2 pending, 0 failing, 0 fixed** (2292 snippets, 189.1 s).
 
 ## Language: statements, expressions, declarations
 
@@ -2155,6 +2155,8 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/typed_union_value_reads_the_held_one_through_a_reference.kpp` | the value assigned to a typed union may read what it holds through a reference or a pointer, which no check sees: the value comes first, so each line prints its text (design.md 8.5) | pass |  |  |
 | `kpp/typed_union_valueless_and_self_assignment.kpp` | a typed union assigned to itself keeps its value (`a = a` with a String alternative); one whose copy assignment's copy throws holds no alternative (valueless, as std::variant's valueless_by_exception) and destroys none; a valueless union equals only a valueless one and orders before every other (design.md 8.5: comparisons are std::variant's), a copy of it is valueless, and an assignment gives it an alternative again | pass |  |  |
 | `kpp/typed_union_variant_alternative.kpp` | VariantAlternative<I, U> of a typed union is the type of its I-th alternative, as std::variant_alternative_t is of a variant: in a static_assert, with an index given by a constant, in a declaration | pass | SegmentedUnitAI's five static_assert(isSame<VariantAlternative<PatrollingIndex, AIState>, SegmentedUnitAI::Patrolling>) |  |
+| `kpp/typed_union_void_alternative.kpp` | a typed union's alternative of type void carries no value (kovarex 2026-11-17, for InputAction's 61 actions | pass |  |  |
+| `kpp/typed_union_void_alternative_read_is_error.kpp` | an alternative of type void carries no value (design.md 8.5): reading or setting it through `u[Name]` is a compile error; it is set from its tag | pass |  |  |
 | `kpp/typed_unions.kpp` | typed unions (`union enum`) | pass |  |  |
 | `kpp/typed_unions_switch_copy.kpp` | typed unions: switch on the union, methods, copying and assignment carry the alternative, destruction follows the tag | pass |  |  |
 | `kpp/underscore_guard_varargs.kpp` | `_` guards of a nested class with a C-variadic constructor (what SAVING_TAG converts to) | pass | 688 uses (SAVING_TAG 647, SAVING_STATISTICS 41) |  |

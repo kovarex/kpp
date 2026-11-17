@@ -4044,6 +4044,7 @@ namespace
       storage->keyword = Kw::union_;
       storage->isDefinition = true;
       std::vector<Decl*> enumerators, alternatives;
+      ClassDecl* voidClass = nullptr; // (the storage of void alternatives)
       if (expect(P::LBrace, "expected '{' before the alternatives of the union enum"))
       {
         while (!at(P::RBrace) && !at(TokenKind::End))
@@ -4073,6 +4074,26 @@ namespace
           currentParent = storage;
           VariableDecl* field = decl<VariableDecl>(nameToken);
           field->type = type;
+          if (type->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(type)->keyword == Kw::void_)
+          {
+            // `{void, Stop}`: no value; stored as an empty class of the union's own, made once (design.md 8.5).
+            if (!voidClass)
+            {
+              currentParent = c;
+              voidClass = decl<ClassDecl>(start);
+              numberType(voidClass, false);
+              voidClass->keyword = Kw::struct_;
+              voidClass->isDefinition = true;
+              NamePart voidPart;
+              voidPart.symbol = symbols.intern("__Void");
+              voidClass->name.parts = makeSpanOf(std::vector<NamePart>{voidPart});
+              currentParent = storage;
+            }
+            NamedType* voidType = node<NamedType>(nameToken);
+            voidType->name.parts = voidClass->name.parts;
+            field->type = voidType;
+            field->voidAlternative = true;
+          }
           NamePart fieldPart;
           fieldPart.symbol = symbols.intern("__alt_" + std::string(symbols.name(name)));
           field->name.parts = makeSpanOf(std::vector<NamePart>{fieldPart});
@@ -4096,6 +4117,8 @@ namespace
       c->tagEnum = tag;
       c->alternatives = storage->members;
       pushDecl(tag);
+      if (voidClass)
+        pushDecl(voidClass);
       VariableDecl* tagField = decl<VariableDecl>(start);
       NamedType* tagType = node<NamedType>(start);
       tagType->name.parts = makeSpanOf(std::vector<NamePart>{tagPart});

@@ -147,7 +147,11 @@ auto GlobalScope::Impl::Walker::forConstexprElements(ForConstexprStmt* f, std::v
     if (!u)
       return false;
     for (Decl* alt : u->alternatives)
-      out.push_back(types.member(impl.declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0), alt, cls));
+    {
+      // (a void alternative's a.type is void, its storage the union's own empty __Void: design.md 8.5)
+      bool isVoid = alt->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(alt)->voidAlternative;
+      out.push_back(types.member(isVoid ? types.voidType() : impl.declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0), alt, cls));
+    }
     return true;
   }
   ClassDecl* def = impl.classDefinition(cls);
@@ -12481,6 +12485,16 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
             v = impl.constEval(i->args[0], ctx());
           if (!v || *v < 0 || size_t(*v) >= u->alternatives.size())
             return record(e, unknown(Why::Operator));
+          if (static_cast<VariableDecl*>(u->alternatives[size_t(*v)])->voidAlternative)
+          {
+            // `{void, Stop}` carries no value to read or set: it is set from its tag (design.md 8.5).
+            auto* tagEnum = static_cast<EnumDecl*>(u->tagEnum);
+            std::string unionName(symbols.name(u->name.last().symbol));
+            std::string name(symbols.name(static_cast<EnumeratorDecl*>(tagEnum->enumerators[size_t(*v)])->name));
+            reportHere(i->token, "the alternative " + name + " of the typed union " + unionName + " carries no value (its type is void): set it from its tag, `" +
+                                     unionName + "(" + unionName + (tagEnum->isClass ? "::Tag::" : "::") + name + ")`");
+            return record(e, unknown(Why::Operator));
+          }
           Subst s = b->args.empty() ? Subst{} : impl.substFor(b);
           const Ty* alt = impl.declaredTypeOf(u->alternatives[size_t(*v)], s.pairs.empty() ? nullptr : &s, 0);
           if (!alt || !alt->isKnown())

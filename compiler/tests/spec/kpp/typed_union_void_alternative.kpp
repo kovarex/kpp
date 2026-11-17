@@ -1,0 +1,86 @@
+// spec: a typed union's alternative of type void carries no value (kovarex 2026-11-17, for InputAction's 61 actions
+// without data, which held an empty InputActionNoData): `{void, Name}` stores nothing (an empty class of the union's own),
+// is built from its tag alone (`U(U::Tag::Name)`) and is the first alternative's default; it is held, switched on, copied, moved,
+// assigned and compared like any other, and generic code tells it by `std::isSame<a.type, void>` (reading `u[a]` on it
+// is a compile error, kpp/typed_union_void_alternative_read_is_error); VariantAlternative<I, U> of it is void.
+// design.md 8.5
+struct Pos { int x = 0; int y = 0; bool operator==(const Pos&) const = default; };
+
+// Without members of its own: the built-in == and < (the same void alternative is equal), and the size of the values alone.
+union enum class Signal : u8
+{
+  { {void, Off}, {int, Level}, {void, Pulse} }
+};
+
+union enum class Level : u8
+{
+  { {int, Value} }
+};
+
+union enum class Action : u8
+{
+  { {void, Nothing}, {Pos, Move}, {void, Stop}, {std::String, Say} }
+  u32 tick = 0;
+};
+
+std::String describe(const Action& action)
+{
+  std::String out;
+  out << action.tag();
+  switch (action.tag())
+  {
+    for constexpr (auto a : alternatives(Action))
+      case a.tag:
+        if constexpr (std::isSame<a.type, void>)
+          out << " (no data)";
+        else if constexpr (std::isSame<a.type, Pos>)
+          out << " " << action[a].x << "," << action[a].y;
+        else
+          out << " '" << action[a] << "'";
+  }
+  return out;
+}
+
+// A tag read at run time builds a void alternative as any other.
+Action make(u8 index)
+{
+  Action result;
+  switch (Action::Tag(index))
+  {
+    for constexpr (auto a : alternatives(Action))
+      case a.tag:
+        if constexpr (std::isSame<a.type, void>)
+          result = Action(a.tag);
+        else
+          result[a] = a.type();
+  }
+  return result;
+}
+
+int main()
+{
+  Action first;
+  std::println(describe(first));                        // the first alternative, void
+  Action stop(Action::Tag::Stop);
+  stop.tick = 7;
+  std::println(describe(stop), " ", stop.tick);
+  Action move;
+  move[Action::Tag::Move] = Pos{1, 2};
+  Action copy = move;
+  copy = stop;                                          // a value goes, a void alternative comes
+  std::println(describe(copy), " ", copy.tick, " ", copy == Action::Tag::Stop);
+  copy = std::move(move);                               // and back
+  std::println(describe(copy));
+  Action a(Action::Tag::Stop), b(Action::Tag::Stop), c(Action::Tag::Nothing);
+  std::println(a.tag() == b.tag(), " ", a.tag() == c.tag(), " ", int(a.tag()) > int(c.tag()));
+  for (u8 i = 0; i < u8(Action::Tag::count); i++)
+    std::println(describe(make(i)));
+  for constexpr (auto alt : alternatives(Action))
+    std::println(std::StringView(alt.name), " ", std::isSame<alt.type, void>);
+  std::println(std::isSame<VariantAlternative<0, Action>, void>, " ", std::isSame<VariantAlternative<1, Action>, Pos>);
+  Signal pulse(Signal::Tag::Pulse), pulse2(Signal::Tag::Pulse), off(Signal::Tag::Off), level;
+  level[Signal::Tag::Level] = 4;
+  std::println(pulse == pulse2, " ", pulse == off, " ", off < pulse, " ", level < pulse, " ", pulse == level);
+  std::println(sizeof(Signal) == sizeof(Level), " ", std::isTriviallyCopyable<Signal>);
+  return 0;
+}
