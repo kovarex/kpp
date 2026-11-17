@@ -1,7 +1,8 @@
 // spec: between a non-template operator and a member operator template whose conversions are alike, the non-template
 // is chosen ([over.match.best] 2.4): `out << 3` with `Out& operator<<(Out&, int)` and a member
-// `template<class T> Out& operator<<(const T&)` calls the first (`3`, clang's and MSVC's answer)
-// pending: the member template is called (`?4`), a silent wrong answer. Found writing kpp/void_value (2026-11-17); D
+// `template<class T> Out& operator<<(const T&)` calls the first (`3`, clang's and MSVC's answer); a member that is
+// not a template beats a free template alike, and a template taking an operand better wins (`?8` for a long long given
+// to `operator<<(Out&, int)`); a constant expression chooses as the program does
 struct Out
 {
   std::String text;
@@ -12,10 +13,37 @@ struct Out
 
 Out& operator<<(Out& out, int value) { out.text << value; return out; }
 
+struct In
+{
+  int last = 0;
+
+  In& operator+=(int value) { this.last = value; return this; }
+};
+
+template<class T>
+In& operator+=(In& in, const T&) { in.last = -1; return in; }
+
+struct Pick
+{
+  template<class T>
+  constexpr int operator-(const T&) const { return 2; }
+};
+
+constexpr int operator-(const Pick&, int) { return 3; }
+
 int main()
 {
   Out out;
   out << 3;
+  out << " ";
+  long long wide = 5;
+  out << wide;
   std::println(out.text);
+  In in;
+  in += 7;
+  std::println(in.last);
+  constexpr int chosen = Pick{} - 4;
+  static_assert(chosen == 3);
+  std::println(Pick{} - 4);
   return 0;
 }

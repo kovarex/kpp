@@ -468,13 +468,15 @@
   // checker's choice (Walker::operatorFunction) and codegen's (GlobalScope::implicitAssignmentBeats) alike.
   bool implicitAssignmentBeats(ClassDecl* def, const Ty* self, FunctionDecl* f, const Subst& subst, const Ty* rhs);
   // Whether free operator free (freeSubst: its class's arguments, a friend's) takes lhs and rhs
-  // strictly better than member operator member: no worse for either operand, better for one. Not a
-  // template, nor a unary operator (a member is kept there).
+  // strictly better than member operator member: no worse for either operand, better for one, or as
+  // well where the member is a template's specialization and the free one is not. Not a unary operator
+  // (a member is kept there).
   bool freeOperatorBeatsMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst, const Ty* lhs,
                                const Ty* rhs, size_t arity);
   // How free operator free and member operator member compare on lhs and rhs ([over.match.best]):
   // 1 the free one is better, -1 the member, 0 neither (the same ranks, or each better for one
-  // operand: ambiguous, as C++ has it), 2 not ranked (a template, a unary operator, a type not known).
+  // operand: ambiguous, as C++ has it; of the same ranks, the non-template is better when the other is a
+  // template's specialization), 2 not ranked (two templates, a unary operator, a type not known).
   int compareFreeWithMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst, const Ty* lhs,
                             const Ty* rhs, size_t arity);
 

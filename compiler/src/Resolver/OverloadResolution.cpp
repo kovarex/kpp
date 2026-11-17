@@ -3649,6 +3649,9 @@ auto GlobalScope::Impl::binaryOperatorRanks(FunctionDecl* f, const Subst& subst,
 
 auto GlobalScope::Impl::memberOperatorExact(FunctionDecl* f, const Subst& subst, const Ty* rhs, size_t arity) -> bool
 {
+  // (a template's specialization is not: a non-template free operator taking the operands as well beats it)
+  if (f && !f->templateParams.empty())
+    return arity < 2;
   std::vector<int> ranks = memberOperatorRanks(f, subst, rhs, arity);
   return ranks.empty() || arity < 2 || ranks[1] == 0;
 }
@@ -3705,21 +3708,41 @@ auto GlobalScope::Impl::freeOperatorBeatsMember(FunctionDecl* free, const Subst&
 auto GlobalScope::Impl::compareFreeWithMember(FunctionDecl* free, const Subst& freeSubst, FunctionDecl* member, const Subst& memberSubst,
                                                        const Ty* lhs, const Ty* rhs, size_t arity) -> int
 {
-  if (arity != 2 || !free || !free->templateParams.empty() || !member || !member->templateParams.empty())
+  // A template's specialization is ranked by the operands it deduces from (binaryOperatorRanks); of
+  // two alike, the non-template wins ([over.match.best] 2.4: `out << 3` with a member `template<class
+  // T> Out& operator<<(const T&)` beside `Out& operator<<(Out&, int)` called the member;
+  // language/non_template_operator_beats_member_template). Two templates are not ranked here.
+  bool freeTemplate = free && !free->templateParams.empty();
+  bool memberTemplate = member && !member->templateParams.empty();
+  if (arity != 2 || !free || !member || (freeTemplate && memberTemplate))
     return 2;
-  std::vector<int> mine = memberOperatorRanks(member, memberSubst, rhs, arity);
+  std::vector<int> mine = memberTemplate ? binaryOperatorRanks(member, memberSubst, true, lhs, rhs) : memberOperatorRanks(member, memberSubst, rhs, arity);
   if (mine.size() != 2)
     return 2;
-  const Ty* ft = declaredTypeOf(free, freeSubst.empty() ? nullptr : &freeSubst, 0);
-  if (!ft || ft->kind != TyKind::Function || ft->args.size() != 2)
-    return 2;
-  int first = std::max(1, conversionRank(lhs, ft->args[0])) - 1;
-  int second = std::max(1, conversionRank(rhs, ft->args[1])) - 1;
-  if (first >= NotViable - 1 || second >= NotViable - 1)
-    return -1; // (the free one does not take them)
+  int first, second;
+  if (freeTemplate)
+  {
+    std::vector<int> theirs = binaryOperatorRanks(free, freeSubst, false, lhs, rhs);
+    if (theirs.size() != 2)
+      return -1; // (the free one does not take them, or is not known to)
+    first = theirs[0];
+    second = theirs[1];
+  }
+  else
+  {
+    const Ty* ft = declaredTypeOf(free, freeSubst.empty() ? nullptr : &freeSubst, 0);
+    if (!ft || ft->kind != TyKind::Function || ft->args.size() != 2)
+      return 2;
+    first = std::max(1, conversionRank(lhs, ft->args[0])) - 1;
+    second = std::max(1, conversionRank(rhs, ft->args[1])) - 1;
+    if (first >= NotViable - 1 || second >= NotViable - 1)
+      return -1; // (the free one does not take them)
+  }
   if (first <= mine[0] && second <= mine[1] && (first < mine[0] || second < mine[1]))
     return 1;
   if (mine[0] <= first && mine[1] <= second && (mine[0] < first || mine[1] < second))
     return -1;
+  if (first == mine[0] && second == mine[1] && freeTemplate != memberTemplate)
+    return memberTemplate ? 1 : -1;
   return 0;
 }
