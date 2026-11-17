@@ -63,7 +63,8 @@ param(
   [string]$CoverageAt,
   [string]$CoverageText,
   [string]$CoverageTestsAt,
-  [string]$CoverageTestsText
+  [string]$CoverageTestsText,
+  [switch]$RestartServer
 )
 $ErrorActionPreference = 'Stop'
 
@@ -521,6 +522,31 @@ try
   $t = [Diagnostics.Stopwatch]::StartNew()
   while ((ErrorRow) -and $t.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 500 }
   Check 'the error gone after undo' (-not (ErrorRow)) ("{0:N1} s" -f $t.Elapsed.TotalSeconds)
+
+  # -RestartServer: the language server stopped as the installer stops it (kpp.iss, PrepareToInstall): the
+  # extension starts another, which serves the Error List again.
+  if ($RestartServer)
+  {
+    $servers = @(Get-CimInstance Win32_Process -Filter "Name='kpp.exe'" | Where-Object { $_.ParentProcessId -eq $devenv.Id -and $_.CommandLine -match '--lsp' })
+    $servers | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $again = @()
+    while (-not $again -and $t.Elapsed.TotalSeconds -lt $Timeout)
+    {
+      Start-Sleep -Milliseconds 500
+      $again = @(Get-CimInstance Win32_Process -Filter "Name='kpp.exe'" | Where-Object { $_.ParentProcessId -eq $devenv.Id -and $_.CommandLine -match '--lsp' -and $servers.ProcessId -notcontains $_.ProcessId })
+    }
+    Check 'a stopped language server started again' ($servers.Count -gt 0 -and $again.Count -gt 0) ("{0} stopped, {1} started; {2:N1} s" -f $servers.Count, $again.Count, $t.Elapsed.TotalSeconds)
+    Open $File $Line 1
+    $dte.ActiveDocument.Selection.Insert("  kppUndeclaredName();`n")
+    $document = $dte.ActiveDocument
+    $t = [Diagnostics.Stopwatch]::StartNew()
+    $found = $null
+    while (-not $found -and $t.Elapsed.TotalSeconds -lt $Timeout) { Start-Sleep -Milliseconds 500; $found = ErrorRow }
+    Check 'a typed error in the Error List from the new server' ([bool]$found) $(if ($found) { "'{0}'; {1:N1} s" -f $found, $t.Elapsed.TotalSeconds } else { 'none' })
+    $document.Undo() | Out-Null
+    $document.Save() | Out-Null
+  }
 
   # Inactive code: the regions the extension was sent for the file, as its log gives them.
   if ($InactiveFile)

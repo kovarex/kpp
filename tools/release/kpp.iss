@@ -238,6 +238,27 @@ begin
   end;
 end;
 
+// The language servers an editor started from this folder's kpp.exe (`kpp --lsp`) are stopped before the files are
+// replaced (kovarex, 2026-11-17: Visual Studio kept showing the old kpp's errors after an upgrade). The editors start
+// the new one: VS Code's client by itself, Visual Studio's extension when its server stops (KppLanguageClient). A
+// build running from this folder is left alone; the compile servers (copies in %TEMP%\kpp-server) stop by
+// themselves once their kpp changes.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Exe, Command: string;
+  Code: Integer;
+begin
+  Result := '';
+  Exe := AddBackslash(ExpandConstant('{app}')) + 'kpp.exe';
+  if not FileExists(Exe) then
+    exit;
+  Command := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter ''Name=''''kpp.exe'''''' | ' +
+    'Where-Object { $_.ExecutablePath -eq ''' + Exe + ''' -and $_.CommandLine -match ''--lsp'' } | ' +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"';
+  if not Exec('powershell.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    Log('Could not stop the language servers of ' + Exe + ' (exit ' + IntToStr(Code) + ')');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then

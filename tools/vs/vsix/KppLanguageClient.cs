@@ -103,9 +103,16 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
 
     public event AsyncEventHandler<EventArgs>? StartAsync;
 
-#pragma warning disable CS0067 // Part of ILanguageClient; the server is stopped by Visual Studio.
     public event AsyncEventHandler<EventArgs>? StopAsync;
-#pragma warning restore CS0067
+
+    /// <summary>
+    /// When the server stopped without being asked (installing a new kpp stops the old one, kpp.iss's
+    /// PrepareToInstall), the times it was started again: at most <see cref="MaxRestarts"/> in
+    /// <see cref="RestartWindow"/>, so that a server that crashes on start is not started for ever.
+    /// </summary>
+    private readonly Queue<DateTime> restarts = new();
+    private const int MaxRestarts = 5;
+    private static readonly TimeSpan RestartWindow = TimeSpan.FromMinutes(3);
 
     private JObject? cell;
     private Cell? watcher;
@@ -131,10 +138,18 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+        // (started again, RestartAsync: the log goes on, the stopped server's lines kept)
+        bool again = logWriter is not null;
+        if (logWriter is StreamWriter previous)
+        {
+            lock (previous)
+                previous.Dispose();
+            logWriter = null;
+        }
         StreamWriter log;
         try
         {
-            log = new StreamWriter(LogPath, append: false) { AutoFlush = true };
+            log = new StreamWriter(LogPath, append: again) { AutoFlush = true };
         }
         catch (IOException)
         {
@@ -159,20 +174,59 @@ internal sealed class KppLanguageClient : ILanguageClient, ILanguageClientCustom
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is not null)
-            {
-                lock (log)
-                    log.WriteLine(e.Data);
-            }
+                Write(log, e.Data);
         };
         process.Exited += (_, _) =>
         {
-            lock (log)
-                log.WriteLine($"kpp: the server exited with {process.ExitCode}");
+            Write(log, $"kpp: the server exited with {process.ExitCode}");
+            // (0: Visual Studio's shutdown and exit; anything else, a new kpp installed over it or a crash)
+            if (process.ExitCode != 0)
+                _ = this.RestartAsync();
         };
         if (!process.Start())
             throw new InvalidOperationException($"kpp: the language server {server} did not start.");
         process.BeginErrorReadLine();
         return new Connection(process.StandardOutput.BaseStream, process.StandardInput.BaseStream);
+    }
+
+    /// <summary>
+    /// A line of a server's in its log, which a server started again closed (its last stderr lines are dropped).
+    /// </summary>
+    private static void Write(StreamWriter log, string line)
+    {
+        lock (log)
+        {
+            try
+            {
+                log.WriteLine(line);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+    }
+
+    /// <summary>
+    /// The server stopped without being asked: Visual Studio's client is stopped and started again, which
+    /// finds kpp.exe anew (FindServer), so that a newly installed kpp serves at once.
+    /// </summary>
+    private async Task RestartAsync()
+    {
+        DateTime now = DateTime.UtcNow;
+        while (this.restarts.Count > 0 && now - this.restarts.Peek() > RestartWindow)
+            this.restarts.Dequeue();
+        if (this.restarts.Count >= MaxRestarts)
+        {
+            Log($"kpp: the server stopped {MaxRestarts} times in {RestartWindow.TotalMinutes} minutes: not started again");
+            return;
+        }
+        this.restarts.Enqueue(now);
+        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+        Log("kpp: starting the server again");
+        if (this.StopAsync is not null)
+            await this.StopAsync.InvokeAsync(this, EventArgs.Empty);
+        if (this.StartAsync is not null)
+            await this.StartAsync.InvokeAsync(this, EventArgs.Empty);
     }
 
     public Task OnServerInitializedAsync() => Task.CompletedTask;
