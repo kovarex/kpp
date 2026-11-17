@@ -643,6 +643,32 @@ Property p = 5;
 p[Property::Text] = String("hello");
 ```
 
+### A union enum class makes its creators, and your own of one signature replaces just that one (built)
+
+- **C++:** the compiler's special members follow all-or-nothing rules: declaring any constructor drops
+  the implicit default constructor, and declaring a copy or move operation drops others, so a class that
+  adds one constructor writes the others back with `= default`.
+- **kpp:** a `union enum class U` makes a static creator per alternative, `U::Name(args...)`, which builds
+  that alternative from its value or its constructor's arguments (`InputAction::CloseGui(data)`,
+  `InputAction::OpenGui()` for a void one). A member you declare replaces only the creator of its own
+  signature (`Name()` for a void alternative, a function of one parameter pack for one with a value); any
+  other member of that name is an overload beside it, and the rest are made as before. Nothing is dropped,
+  nothing is written back.
+- **Why:** kovarex (2026-11-17): in C++ "it is annoying that the auto generated default constructors are
+  dropped of the moment you have any custom constructor", and InputAction had 655 hand-written creators.
+- **See:** [design 8.5][d8]; specs `kpp/typed_union_creators`, `kpp/typed_union_creator_declared_by_the_union`.
+
+```cpp
+union enum class Action : u8
+{
+  { {int, Move}, {void, Stop} }
+
+  // Beside the creator Move(int): both exist.
+  static Action Move(int left, int right) { return Action::Move(left - right); }
+};
+Action a = Action::Move(3), b = Action::Move(10, 4), c = Action::Stop();
+```
+
 ## Expressions
 
 ### Falling off the end of a function that returns a value (built)

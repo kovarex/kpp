@@ -156,6 +156,25 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
     return 0;
   }
   ```
+
+  A `union enum class` (its tags in `U::Tag`) also makes a creator per alternative, `U::Name(...)`,
+  which builds it from its value or its constructor's arguments; an alternative of type `void` carries
+  no value. A member you write with a creator's signature replaces that one creator, and any other is an
+  overload beside it: unlike C++, where one constructor of your own drops the implicit default
+  constructor, nothing is dropped and nothing needs `= default` to come back.
+
+  ```cpp
+  union enum class Action : u8
+  {
+    { {void, Stop}, {int, Move} }
+
+    static Action Move(int left, int right) { return Action::Move(left - right); }  // an overload
+  };
+
+  Action stop = Action::Stop();         // the creators kpp makes
+  Action move = Action::Move(3);
+  Action turn = Action::Move(10, 4);    // yours, beside them
+  ```
 - **Reflection.** `for constexpr` over `members(T)` (or a typed union's
   `alternatives(U)`) writes code once for every member, which replaces the macros and the
   hand-written lists that save, load or show a class:
