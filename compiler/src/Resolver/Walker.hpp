@@ -1137,9 +1137,13 @@
 
     // Two rules of design.md 14 on text. A string literal plus or minus an integer is C++'s pointer
     // arithmetic, never text: an error (`&"abc"[1]` writes the pointer). A `<<` chain into a String
-    // mixed with `&`, `|` or `^` without parentheses binds as `(out << a) & b`: an error.
+    // mixed with `&`, `|` or `^` without parentheses binds as `(out << a) & b`: an error. A pointer plus
+    // a pointer (a string literal among them) is no arithmetic in C++ either: an error, naming the text
+    // a char pointer's was meant to be. True when its error makes the operation no value at all.
     static Expr* unparenthesized(Expr* e);
-    void checkTextOperators(BinaryExpr* b, P op, const Ty* l, const Ty* r);
+    bool checkTextOperators(BinaryExpr* b, P op, const Ty* l, const Ty* r);
+    // C text: a string literal, an array of chars or a char pointer (design.md 14), not dependent.
+    bool isCText(const Ty* t);
 
     // The type of `lhs op rhs`, and what the operator calls recorded on b (design.md 24).
     const Ty* typeOfBinary(BinaryExpr* b);

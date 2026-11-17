@@ -411,7 +411,12 @@ replacements, in the order of how much code they remove:
    `file:line:column: assertion failed: <expression text>` through `kpp_assert_failed`, which a
    program may define itself as `extern "C"` (debugger break, test exception); `CallerLocation`
    lives in `stdlib/core/Location.kpp`; `conditional(expr)` is written where `static` would be.
-   Operand values in the message: later.
+   Operand values in the message: later. A message (kovarex, 2026-11-17): `assert(cond, pieces...)` and
+   `release_assert(cond, pieces...)` take Text pieces after the condition, as a test's `check` does; the
+   parser writes `cond || std::__kppAssertMessage(pieces...)`, so the message is made only when cond fails,
+   and the hook gets `cond: message` (Text.kpp's __kppAssertText). Until then the parentheses held one
+   comma expression, so `assert(x, "text")` asserted the text's pointer and passed, silently. Spec
+   kpp/assert_message_pieces.
 3. Compile-time reflection: `for constexpr (m : members(T))` with `m.name`, `m.type` and
    `object.[m]`; `enumerators(E)` and `count(E)`; `nameof(expr)`.
 4. `if constexpr` and `for constexpr` at every scope (function, class, namespace), over typed
@@ -1960,7 +1965,14 @@ arguments, one after another, with nothing parsed.
   as a character). A `<<` chain into a String mixed with `&`, `|` or `^` without parentheses is a
   compile error, since `&` binds looser than `<<`. **`a + b` stays** for one-liners (kovarex: "the
   alternatives don't allow one liners in simple places"): a new String, when one side is a String
-  or StringView and the other has `appendTo` (`String s = "x = " + equation;`).
+  or StringView and the other has `appendTo` (`String s = "x = " + equation;`), or when both sides are C
+  text: string literals, char arrays or char pointers (`"names." + kind.str()`, `p + q`; kovarex
+  2026-11-17: "having to always patch the corner case when putting two strings together for the extra
+  case if one of them is c_str or not was always busy work"). The library's kppJoinCText makes it, a null
+  pointer stopping at its release_assert; C++ adds no two pointers, so nothing it compiles changes meaning,
+  and in a requirement or a substitution (`decltype(a + b)`) two pointers still do not form, as in C++.
+  Any other pointer plus a pointer is an error (until then typed int64, silently). Specs
+  language/c_text_plus_c_text_is_a_string, language/pointer_plus_pointer_is_error.
 - **Built in and in the standard library:** every integer, float, `bool`, `char`, `String`,
   `StringView` and container has `appendTo`; formatting options are small objects with it
   (kovarex, 2026-11-01, one for every printf specifier the converter meets): `hex(x)`,
@@ -2346,8 +2358,8 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
   - a Text not last, defaulted, or a parameter of an `extern "C"` function.
   - Errors inside the library's code are reported at the program's line that asked for it.
 - **Text in `+` and `<<`:** a string literal plus or minus an integer is C++'s pointer
-  arithmetic, never text, so it is an error (`&"abc"[n]` writes the pointer). So is a literal
-  plus a pointer or another literal. A `<<` chain into a String mixed with `&`, `|` or `^`
+  arithmetic, never text, so it is an error (`&"abc"[n]` writes the pointer). A literal plus C text
+  is text (above); a literal plus another pointer is an error, and so is a literal minus a pointer. A `<<` chain into a String mixed with `&`, `|` or `^`
   without parentheses (`out << flags & mask`, which is `(out << flags) & mask`) is an error.
   Specs: language/string_literal_plus_integer_is_error,
   language/shift_chain_with_bitwise_operator_is_error.

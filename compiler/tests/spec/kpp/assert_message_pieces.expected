@@ -1,0 +1,3 @@
+assertion failed: count == 2: count 1 kind Beta Beta
+assertion failed: false: the text is no condition
+made 0

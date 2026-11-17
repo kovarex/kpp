@@ -1,6 +1,7 @@
 // spec: a constructor's Text arguments with one that is no piece of a Text (a pointer other than a char pointer) give the piece's error alone, no other error for the call they left unpacked (until 2026-11-16 codegen also said the call had more arguments than parameters, and printed it first): a variable's `(...)` beside an overload without the Text, and `T(...)`
-// error: text_constructor_pointer_piece_is_error.kpp:18: error: a pointer (const uint32*) is no piece of a Text: write address(p) for its address (design.md 14)
-// error: text_constructor_pointer_piece_is_error.kpp:19: error: a pointer (const Action*) is no piece of a Text: write address(p) for its address (design.md 14)
+// error: text_constructor_pointer_piece_is_error.kpp:19: error: a pointer (const uint32*) is no piece of a Text: write address(p) for its address (design.md 14)
+// error: text_constructor_pointer_piece_is_error.kpp:20: error: a pointer (const Action*) is no piece of a Text: write address(p) for its address (design.md 14)
+// no-warning: codegen does not support
 struct Writer
 {
   Writer(std::String& sink, const char* tag) { sink << tag; }

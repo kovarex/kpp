@@ -68,7 +68,9 @@ Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every
   is an error), and so is a call whose pieces are not one per `{}` (`format("{} has {}", name)`:
   "FormatString does not take 1 piece: it throws LogicError("format: 2 {} for 1 piece")"); `{{`
   and `}}` are no escapes: a text with braces of its own is written in pieces.
-- `a + b`, one side a String or a StringView: a new String of both texts.
+- `a + b`, one side a String or a StringView, or both C text (string literals, char arrays, char
+  pointers): a new String of both texts (`"names." + kind.str()`). A null char pointer stops at a
+  release_assert.
 - C text is a piece: a `const char*` or `char*` appends its text, to its first zero, as a string
   literal does; a null one stops at a release_assert (kovarex, 2026-11-16). `address(p)` is its
   address.

@@ -1,0 +1,39 @@
+// spec: `assert(cond, pieces...)` and `release_assert(cond, pieces...)` take a message as Text pieces, as a test's check does, made only when cond fails, and the hook gets `cond: message` (kovarex, 2026-11-17; design.md 7); until then the parentheses held one comma expression, so `assert(x, "text")` asserted the text's pointer and passed, silently (`assertion failed: count == 2: count 1 kind Beta Beta`, then `made 0`, a release build without the assert's line)
+extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, [[maybe_unused]] i32 line, [[maybe_unused]] i32 column, const char* text)
+{
+  std::println("assertion failed: ", text);
+  throw 1;
+}
+enum class Kind : u8
+{
+  { Alpha, Beta }
+};
+int made = 0;
+int counted() { ++made; return 7; }
+void kinds(int count)
+{
+  Kind k = Kind::Beta;
+  release_assert(count == 1, "never made ", counted());
+  assert(count == 1, "never made ", counted());
+  release_assert(count == 2, "count ", count, " kind ", k, " ", k.str());
+}
+void text() { assert(false, "the text is no condition"); }
+int main(int count, char**)
+{
+  try
+  {
+    kinds(count);
+  }
+  catch (i32)
+  {
+  }
+  try
+  {
+    text();
+  }
+  catch (i32)
+  {
+  }
+  std::println("made ", made);
+  return 0;
+}

@@ -5789,8 +5789,26 @@ namespace
         advance();
         advance();
         s->startToken = pos;
-        s->cond = parseExpression();
+        // `assert(cond, pieces...)`: the pieces are its message, made only when cond fails, as check's (design.md 7,
+        // kovarex 2026-11-17). Until then the parentheses held one expression, so `assert(x, "text")` was C++'s comma
+        // operator and asserted the text's pointer, never null: it passed whatever x was, silently.
+        s->cond = parseAssignment();
         s->endToken = pos;
+        if (accept(P::Comma))
+        {
+          CallExpr* message = syntheticCall(s->cond->token, "__kppAssertMessage", parseTestArguments());
+          NamePart std;
+          std.symbol = symbols.intern("std");
+          NamePart name = static_cast<NameExpr*>(message->callee)->name.parts[0];
+          static_cast<NameExpr*>(message->callee)->name.parts = makeSpanOf(std::vector<NamePart>{std, name});
+          BinaryExpr* either = node<BinaryExpr>(s->cond->token);
+          either->lhs = s->cond;
+          either->rhs = message;
+          either->op = uint32_t(P::OrOr);
+          either->isKeyword = false;
+          s->cond = either;
+          s->hasMessage = true;
+        }
         expect(P::RParen, "expected ')' after the asserted expression");
         expect(P::Semi, "expected ';' after assert");
         return s;

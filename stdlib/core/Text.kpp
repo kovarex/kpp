@@ -56,6 +56,19 @@ void appendCPointerPiece(const void* object, String& out)
   out.append(text);
 }
 
+// `a + b` of two C texts (string literals, char arrays or char pointers): a new String of both texts, to
+// each one's first zero (kovarex, 2026-11-17: "having to always patch the corner case when putting two
+// strings together ... was always busy work"; design.md 14). C++ adds no two pointers; the compiler calls
+// this for it. A null one is no text: it stops, as a piece's does.
+String kppJoinCText(const char* left, const char* right)
+{
+  release_assert(left != nullptr && right != nullptr);
+  String out;
+  out.append(left);
+  out.append(right);
+  return out;
+}
+
 // The built-in types' appendTo (design.md 14: `x.appendTo(out)` for every type; the compiler
 // resolves the member call on a built-in to these, which only the standard library writes). One for
 // each type, taken exactly: an integer as its digits (u8 and i8 too: a character is appended only
@@ -96,4 +109,23 @@ void appendTo(E value, String& out)
   out.append("(");
   appendTo(static_cast<UnderlyingType<E>>(value), out);
   out.append(")");
+}
+
+// An assert's message (design.md 7: `assert(cond, pieces...)`, `release_assert(cond, pieces...)`, kovarex
+// 2026-11-17): the parser writes `cond || __kppAssertMessage(pieces...)`, so the message is made only when cond
+// fails, and the failure passes __kppAssertText(expression) to the assert hook: `cond: message`.
+private thread_local String assertMessage;
+private thread_local String assertText;
+
+bool __kppAssertMessage(Text message)
+{
+  assertMessage = toString(message);
+  return false;
+}
+
+const char* __kppAssertText(const char* expression)
+{
+  assertText = String(expression);
+  assertText << ": " << assertMessage;
+  return assertText.c_str();
 }

@@ -624,6 +624,10 @@ void runCodegen(Build& build)
          std::max<size_t>(1, cg.modules.size()));
   if (options.keepGoing && options.stubMissing && !options.check)
     printf("stubs: %zu functions left out are stubs that abort when called (--stub-missing)\n", cg.stubs);
+  // The checker's errors first, then codegen's: a failure of codegen that follows from one of them (one it
+  // could not tell from its own) reads after its cause (2026-11-17, kovarex: "codegen does not support a member
+  // access on a non-class object" came before "E has no member 'str'").
+  reportCheckerErrors(global, true, cg.instanceAssertsChecked);
   for (const std::string& e : cg.errors)
     fprintf(stderr, "%s\n", e.c_str());
   if (!cg.errors.empty())
@@ -635,7 +639,6 @@ void runCodegen(Build& build)
     fprintf(stderr, "%s\n", error.c_str());
     codegenExit = 1;
   }
-  reportCheckerErrors(global, true, cg.instanceAssertsChecked);
   reportAccessWarnings(build);
   reportReturnCopyWarnings(build);
   if (options.zeroNullWarnings)

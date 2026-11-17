@@ -1349,8 +1349,20 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         startBlock(okL);
         break;
       }
+      // With a message: the expression's text and the message the failed condition made (`cond: message`), the
+      // library's __kppAssertText, which the hook prints as it prints the expression alone.
+      std::string text = cStringConstant(sourceText(a->startToken, a->endToken));
+      if (a->hasMessage)
+      {
+        FunctionDecl* join = global.libraryFunction("__kppAssertText");
+        if (!join)
+          fail(s, "an assert with a message without the standard library's __kppAssertText");
+        std::string joined = newTemp();
+        emitCall(joined + " = ", "ptr " + useFunction(join, {}, nullptr, s) + "(ptr " + text + ")", false);
+        text = joined;
+      }
       emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
-                       std::to_string(column) + ", ptr " + cStringConstant(sourceText(a->startToken, a->endToken)) + ")", false);
+                       std::to_string(column) + ", ptr " + text + ")", false);
       fn += "  unreachable\n";
       usesAssert = true;
       startBlock(okL);

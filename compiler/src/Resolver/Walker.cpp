@@ -9211,10 +9211,27 @@ auto GlobalScope::Impl::Walker::unparenthesized(Expr* e) -> Expr*
   return e;
 }
 
-auto GlobalScope::Impl::Walker::checkTextOperators(BinaryExpr* b, P op, const Ty* l, const Ty* r) -> void
+auto GlobalScope::Impl::Walker::isCText(const Ty* t) -> bool
 {
-  if (probing || inGenericTemplate() || !file)
-    return;
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || !t->isKnown() || types.isDependent(t) || (t->kind != TyKind::Pointer && t->kind != TyKind::Array) || !t->inner)
+    return false;
+  const Ty* c = types.unqualified(t->inner);
+  return c->kind == TyKind::Char && c->bits == 8;
+}
+
+auto GlobalScope::Impl::Walker::checkTextOperators(BinaryExpr* b, P op, const Ty* l, const Ty* r) -> bool
+{
+  // A probe or a substitution: two pointers added do not form, as in C++ ([temp.deduct] 8), C text too (no join
+  // there: a requirement or an overload keeps C++'s answer), with no error.
+  if ((probing || substituting) && op == P::Plus && !b->isKeyword && l && r)
+  {
+    const Ty* ls = types.unqualified(types.stripRef(l)), *rs = types.unqualified(types.stripRef(r));
+    if ((ls->kind == TyKind::Pointer || ls->kind == TyKind::Array) && (rs->kind == TyKind::Pointer || rs->kind == TyKind::Array))
+      return true;
+  }
+  if (probing || substituting || inGenericTemplate() || !file)
+    return false;
   auto isLiteral = [](Expr* e)
   {
     e = unparenthesized(e);
@@ -9230,17 +9247,30 @@ auto GlobalScope::Impl::Walker::checkTextOperators(BinaryExpr* b, P op, const Ty
     t = t ? types.unqualified(types.stripRef(t)) : nullptr;
     return t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array);
   };
-  if ((op == P::Plus || op == P::Minus) && ((isLiteral(b->lhs) && isPointer(r)) || (isLiteral(b->rhs) && isPointer(l))))
+  auto isCharPointer = [&](const Ty* t)
   {
-    impl.reportCheckerError(file, b->token, std::string("a string literal ") + (op == P::Plus ? "+" : "-") +
-                                              " a pointer is no text: write StringView(\"...\") + x for text (design.md 14)");
-    return;
+    t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+    const Ty* c = t && (t->kind == TyKind::Pointer || t->kind == TyKind::Array) && t->inner ? types.unqualified(t->inner) : nullptr;
+    return c && c->kind == TyKind::Char && c->bits == 8;
+  };
+  // `p + q` of pointers other than two C texts (which join: typeOfBinaryOperator): C++ adds no two pointers (a
+  // string literal is one). Until 2026-11-17 it was typed int64, silently, and codegen failed on its use first.
+  if (op == P::Plus && isPointer(l) && isPointer(r) && !(isCharPointer(l) && isCharPointer(r)))
+  {
+    impl.reportCheckerError(file, b->token, std::string(isLiteral(b->lhs) || isLiteral(b->rhs) ? "a string literal + a pointer" : "a pointer + a pointer") +
+                                              " is no arithmetic: C++ adds no two pointers; only two C texts join (design.md 14)");
+    return true;
+  }
+  if (op == P::Minus && ((isLiteral(b->lhs) && isPointer(r)) || (isLiteral(b->rhs) && isPointer(l))))
+  {
+    impl.reportCheckerError(file, b->token, "a string literal - a pointer is no text (design.md 14)");
+    return true;
   }
   if ((op == P::Plus || op == P::Minus) && ((isLiteral(b->lhs) && isInteger(r)) || (isLiteral(b->rhs) && isInteger(l))))
     impl.reportCheckerError(file, b->token, std::string("a string literal ") + (op == P::Plus ? "+" : "-") +
                                               " an integer is pointer arithmetic, not text: write &\"...\"[n] for a pointer into it (design.md 14)");
   if (op != P::Amp && op != P::Pipe && op != P::Caret)
-    return;
+    return false;
   Decl* string = impl.libraryDecl("String", NodeKind::ClassDecl);
   auto intoString = [&](Expr* e)
   {
@@ -9258,6 +9288,7 @@ auto GlobalScope::Impl::Walker::checkTextOperators(BinaryExpr* b, P op, const Ty
     impl.reportCheckerError(file, b->token, std::string("a << chain into a String mixed with ") + o + " needs parentheses: `out << (a " + o +
                                               " b)` (design.md 14)");
   }
+  return false;
 }
 
 auto GlobalScope::Impl::Walker::typeOfBinary(BinaryExpr* b) -> const Ty*
@@ -9331,7 +9362,20 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
       }
     return r;
   }
-  checkTextOperators(b, op, l, r);
+  // `"names." + e.str()`: C text + C text (string literals, char arrays, char pointers) is a new String, the
+  // library's kppJoinCText called (kovarex, 2026-11-17, option B; design.md 14). C++ adds no two pointers, so no
+  // program C++ compiles changes meaning; a probe or a substitution keeps C++'s answer (checkTextOperators).
+  if (P(b->op) == P::Plus && !b->isKeyword && !probing && !substituting && isCText(l) && isCText(r))
+    if (auto* join = static_cast<FunctionDecl*>(impl.libraryDecl("kppJoinCText", NodeKind::FunctionDecl)))
+      if (const Ty* ft = impl.declaredTypeOf(join, nullptr, 0); ft && ft->kind == TyKind::Function)
+      {
+        call = OperatorCall::Function;
+        callee = join;
+        member = false;
+        return ft->inner;
+      }
+  if (checkTextOperators(b, op, l, r))
+    return types.unknown(); // (no value: what uses it follows from the error)
   const Ty* ls = types.stripRef(l);
   const Ty* rs = types.stripRef(r);
   if (!ls || !rs)

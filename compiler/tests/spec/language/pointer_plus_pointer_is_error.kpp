@@ -1,0 +1,20 @@
+// spec: a pointer plus a pointer is an error unless both are C text (which join into a String, spec language/c_text_plus_c_text_is_a_string), as C++ adds no two pointers: until 2026-11-17 kpp typed it int64, silently; and the error is the expression's only one, nothing reported again for its use; a member that does not exist on a value is the checker's error alone, before and without codegen's (kovarex's `"..." + actionType.str()` on a C++ enum class, which has no str(): codegen's "member access on a non-class object" came first)
+// error: pointer_plus_pointer_is_error.kpp:16: error: a pointer + a pointer is no arithmetic: C++ adds no two pointers; only two C texts join (design.md 14)
+// error: pointer_plus_pointer_is_error.kpp:17: error: a string literal + a pointer is no arithmetic: C++ adds no two pointers; only two C texts join (design.md 14)
+// error: pointer_plus_pointer_is_error.kpp:18: error: Plain has no member 'str'
+// no-warning: codegen does not support
+// no-warning: does not convert
+enum class Plain
+{
+  A, B
+};
+std::String localise(const std::String& key) { return key; }
+int take(long value) { return int(value); }
+int main(int count, char**)
+{
+  int* p = &count;
+  int sum = take(p + p);
+  std::String key = localise("names." + p);
+  std::String name = localise("names." + Plain::B.str());
+  return sum + int(key.size() + name.size());
+}

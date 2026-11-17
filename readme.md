@@ -69,7 +69,13 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   not compile; a value outside them (a corrupted byte, a bad cast) aborts at run time instead of
   falling out of the switch.
 - **No format strings.** `println("x = ", x)` prints its arguments in sequence; a type becomes text
-  through its `appendTo`, and a pointer prints only through `address(p)`.
+  through its `appendTo`, C text (a `const char*`) as its text, and any other pointer only through
+  `address(p)`. A function takes the same pieces as a trailing `Text` parameter (`log("x = ", x)`), and
+  so do `assert(cond, "x = ", x)` and `release_assert`, their message made only when `cond` fails.
+- **Strings join with `+`.** `"names." + kind.str()` is a String when both sides are C text (string
+  literals, char arrays, `const char*`) or one side is a String or StringView, so it never matters
+  whether a part came from `c_str()`. C++ adds no two pointers; a string literal plus an integer, C++'s
+  pointer arithmetic, is an error.
 - **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
   `a->b` are set. When one is not, a pointer result is null and a bool false, and any other result is an
   `Optional`, which `?:` unwraps: `i32 power = train?->engine->power ?: -1;`. `a ?: b` is `a ? a : b`
@@ -115,7 +121,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   int main()
   {
     for (Direction d : Direction::values)  // North true South, East false West, ...
-      std::println(std::StringView(d.str()), " ", d.isVertical(), " ", std::StringView(d.opposite().str()));
+      std::println(d, " ", d.isVertical(), " ", d.opposite());
     std::println(Direction::count, " ", Direction::fromStr("West").has_value());  // 4 true
     return 0;
   }

@@ -81,7 +81,8 @@ auto codegen::Emitter::holdsCheckerError(Node* at, uint32_t tokensAfter) -> bool
   forEachNode(at, [&](Node* n)
   {
     first = std::min(first, n->token);
-    last = std::max(last, n->token);
+    // A member access's own member name is the token after its `.` or `->` (`e.str()`: "E has no member 'str'").
+    last = std::max(last, n->kind == NodeKind::MemberExpr ? n->token + 1 : n->token);
   });
   return global.checkerErrorWithin(currentFile, first, last + tokensAfter);
 }

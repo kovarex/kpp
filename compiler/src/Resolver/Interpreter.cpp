@@ -3031,6 +3031,20 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
     return v.isObject() && v.type && !v.type->isBraceList() && types.unqualified(types.stripRef(v.type))->kind == TyKind::Class;
   };
   bool objects = classObject(l) || classObject(r);
+  // `"de" + p`: two C texts the checker joins by the library's kppJoinCText (design.md 14), called as codegen calls
+  // it, an array (a string literal's chars) given as the pointer to its first char.
+  if (node && op == P::Plus && node->call == OperatorCall::Function && node->callee && !node->calleeMember &&
+      node->callee == libraryDecl("kppJoinCText", NodeKind::FunctionDecl))
+  {
+    auto text = [this](const ConstValue& v) -> std::optional<ConstValue> {
+      const Ty* t = v.isObject() && v.type ? types.unqualified(types.stripRef(v.type)) : nullptr;
+      return t && t->kind == TyKind::Array && t->inner ? constPointerTo(v, types.pointer(t->inner)) : std::optional<ConstValue>(v);
+    };
+    std::optional<ConstValue> a = text(l), b = text(r);
+    if (!a || !b)
+      return std::nullopt;
+    return constCallOn(node->callee, {}, {*a, *b}, nullptr, depth + 1);
+  }
   if (!objects && (l.isAddress() || r.isAddress() || l.isMemberPointer() || r.isMemberPointer()))
     return constAddressArith(op, l, r, depth);
   if (!objects && (l.isPointer() || r.isPointer()))

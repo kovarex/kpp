@@ -190,11 +190,12 @@ when (config::timeMeasuring) TimeMeasurer timer("buildPhase");
 
 - **C++:** macros: `assert`, logging macros that vanish, `__FILE__` and `__LINE__`, or
   `std::source_location`.
-- **kpp:** `assert(e);` and `release_assert(e);` are statements. A `conditional(constant)` function's
+- **kpp:** `assert(e);` and `release_assert(e);` are statements, and take a message as Text pieces after
+  the condition, made only when it fails (`assert(n > 0, "n = ", n);`, 2026-11-17). A `conditional(constant)` function's
   calls compile to nothing when it is false, arguments unevaluated. `CallerLocation here = caller` as a
   parameter is filled at the call site.
 - **Why:** these were the macros no function could replace.
-- **See:** [design 7][d7]; spec `kpp/asserts_and_config`.
+- **See:** [design 7][d7]; specs `kpp/asserts_and_config`, `kpp/assert_message_pieces`.
 
 ```cpp
 conditional(config::debug) void trace(Text text);
@@ -323,8 +324,10 @@ Container::value_type first(const Container& container) { return container[0]; }
 ### A string literal does no pointer arithmetic with `+` (built)
 
 - **C++:** `"abc" + 1` is a pointer into the literal.
-- **kpp:** an error, and so is a literal plus a pointer. `"x = " + value` is text when the other side
-  is a String or StringView; `&"abc"[n]` is the pointer.
+- **kpp:** an error. `"x = " + value` is text when the other side is a String or StringView, and C text
+  plus C text (string literals, char arrays, char pointers: `"names." + kind.str()`) is a new String, where
+  C++ adds no two pointers (2026-11-17); any other pointer plus a pointer is an error, as in C++;
+  `&"abc"[n]` is the pointer.
 - **Why:** a reader expects text, and the program gets the wrong address silently.
 - **See:** [design 14][d14]; spec `language/string_literal_plus_integer_is_error`.
 
