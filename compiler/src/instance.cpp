@@ -300,6 +300,7 @@ Decl* InstanceCopier::decl(const Decl* d)
   {
     copy->when = expr(d->when);
     copy->whenKnown = -1; // decided again, for this instantiation
+    copy->whenSeen = 0;
   }
   if (!decls.count(const_cast<Decl*>(d)))
     decls[const_cast<Decl*>(d)] = copy;
@@ -338,6 +339,7 @@ Stmt* InstanceCopier::stmt(const Stmt* s)
       c->then = stmt(c->then);
       c->else_ = stmt(c->else_);
       c->constexprKnown = -1;
+      c->constexprSeen = 0;
       return c;
     }
     case NodeKind::AssertStmt:

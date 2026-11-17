@@ -1325,26 +1325,54 @@ namespace
     // The tokens [from, to) of a file its cell does not build: what the parser dropped (a false
     // `when` at namespace or class scope, a declaration-scope `if constexpr` branch not taken), and
     // what the walk decided in function bodies: an `if constexpr`'s discarded branch and a local's
-    // false `when`. A template's own body is decided per instance and none of it is shown.
+    // false `when`. A template's own body is decided per instance and none of it is shown. In a `for
+    // constexpr`, code is inactive only when no element takes it (kovarex, 2026-11-17): the walk's answers
+    // over every element (IfStmt::constexprSeen, Decl::whenSeen), with those of each element's own copy of
+    // the body (copyElementBodies), which has the original's tokens.
     std::vector<std::pair<uint32_t, uint32_t>> inactiveTokens(const ParsedFile& f)
     {
       std::vector<std::pair<uint32_t, uint32_t>> out = f.droppedTokens;
       const std::vector<Token>& tokens = *f.tokens;
+      auto isWhenDecl = [](Node* n)
+      { return n->kind == NodeKind::VariableDecl || n->kind == NodeKind::UsingAliasDecl || n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl; };
+      std::unordered_map<uint32_t, uint8_t> copiedIfs, copiedWhens; // by token: what the copies decided
+      std::function<void(Node*)> gatherCopies = [&](Node* n)
+      {
+        if (n->kind != NodeKind::ForConstexprStmt)
+          return;
+        for (Stmt* copy : static_cast<ForConstexprStmt*>(n)->elementBodies)
+          forEachNode(copy, [&](Node* c)
+          {
+            if (c->kind == NodeKind::IfStmt)
+              copiedIfs[c->token] |= static_cast<IfStmt*>(c)->constexprSeen;
+            else if (isWhenDecl(c))
+              copiedWhens[c->token] |= static_cast<Decl*>(c)->whenSeen;
+            else
+              gatherCopies(c);
+          });
+      };
+      forEachNode(f.decls, gatherCopies);
+      auto seen = [](std::unordered_map<uint32_t, uint8_t>& copied, Node* n, uint8_t own)
+      {
+        auto it = copied.find(n->token);
+        return uint8_t(own | (it == copied.end() ? 0 : it->second));
+      };
       forEachNode(f.decls, [&](Node* n)
       {
         if (n->kind == NodeKind::IfStmt)
         {
           auto* s = static_cast<IfStmt*>(n);
-          Stmt* discarded = !s->isConstexpr || s->constexprKnown < 0 ? nullptr : s->constexprKnown ? s->else_ : s->then;
-          if (discarded)
-            out.push_back({discarded->token, statementEnd(f, discarded)});
+          uint8_t taken = s->isConstexpr ? seen(copiedIfs, s, s->constexprSeen) : 0;
+          for (auto [branch, bit] : {std::pair<Stmt*, uint8_t>{s->then, 1}, {s->else_, 2}})
+            if (taken && branch && !(taken & bit))
+              out.push_back({branch->token, statementEnd(f, branch)});
         }
-        else if (n->kind == NodeKind::VariableDecl || n->kind == NodeKind::UsingAliasDecl || n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
+        else if (isWhenDecl(n))
         {
           // A local's false `when` (what a block may declare with one), from `when`: the declaration's
           // tokens begin after its parenthesized condition.
           auto* d = static_cast<Decl*>(n);
-          if (!d->when || d->whenKnown != 0)
+          if (!d->when || seen(copiedWhens, d, d->whenSeen) != 2)
             return;
           uint32_t from = d->token;
           if (from > 0 && tokens[from - 1].is(P::RParen))

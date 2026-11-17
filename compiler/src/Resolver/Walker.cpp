@@ -26,6 +26,22 @@ auto GlobalScope::Impl::Walker::formedOnly(const Ty* t, const Expr* a, const Exp
   return t;
 }
 
+// Forgets what an earlier walk of a for constexpr's body decided (IfStmt::constexprSeen, Decl::whenSeen), its own copies
+// of the body and the loops' inside them included, before its elements are walked again.
+static void clearSeen(Stmt* body)
+{
+  forEachNode(body, [](Node* n)
+  {
+    if (n->kind == NodeKind::IfStmt)
+      static_cast<IfStmt*>(n)->constexprSeen = 0;
+    else if (n->kind == NodeKind::VariableDecl || n->kind == NodeKind::UsingAliasDecl || n->kind == NodeKind::ClassDecl || n->kind == NodeKind::EnumDecl)
+      static_cast<Decl*>(n)->whenSeen = 0;
+    else if (n->kind == NodeKind::ForConstexprStmt)
+      for (Stmt* copy : static_cast<ForConstexprStmt*>(n)->elementBodies)
+        clearSeen(copy);
+  });
+}
+
 auto GlobalScope::Impl::copyElementBodies(ForConstexprStmt* f, const std::vector<const Ty*>& elements, const Subst* around, Scope* scope, FunctionDecl* function) -> void
 {
   size_t count = elements.size();
@@ -11971,6 +11987,8 @@ auto GlobalScope::Impl::Walker::whenHolds(Decl* d) -> bool
     return true;
   }
   d->whenKnown = int8_t(*known ? 1 : 0);
+  if (!retypingElements && !probing)
+    d->whenSeen = uint8_t((elementWalks ? d->whenSeen : 0) | (*known ? 1 : 2));
   // Several `when`s may declare one name, as an #ifdef/#else pair (`when (c) A t; when (!c) B
   // t;`); two that exist at once are a clash.
   uint32_t name = impl.absentName(d); // (a variable's, an alias's, a class's or an enumeration's)
@@ -12092,6 +12110,8 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           // its calls instantiated), as in C++.  Store the result so codegen can read it
           // without re-evaluating (codegen's TypeContext lacks function-body locals).
           i->constexprKnown = int8_t(*known ? 1 : 0);
+          if (!retypingElements && !probing)
+            i->constexprSeen = uint8_t((elementWalks ? i->constexprSeen : 0) | (*known ? 1 : 2));
           walkStmt(*known ? i->then : i->else_);
           locals.pop(mark);
           break;
@@ -12225,6 +12245,11 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
         bound.pairs.push_back({v, nullptr});
         const Subst* saved = activeSubst;
         plainElementWalks += !saved;
+        // What the elements decide is gathered from here, the outermost loop, over each element's walk (a branch some
+        // element takes is not inactive code: kovarex, 2026-11-17, InputAction's `if constexpr (std::isSame<a.type, void>)`).
+        if (elementWalks == 0 && !retypingElements && !probing)
+          clearSeen(f); // (its body, and its copies of the body)
+        ++elementWalks;
         activeSubst = &bound;
         for (size_t i = 0; i < elements.size(); ++i)
         {
@@ -12235,6 +12260,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           if (!checked && returnFrames.back())
             break;
         }
+        --elementWalks;
         activeSubst = saved;
         plainElementWalks -= !saved;
       }

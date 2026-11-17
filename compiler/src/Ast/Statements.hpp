@@ -18,6 +18,9 @@ struct IfStmt : Stmt
   // `if consteval` (1) and `if !consteval` (2), C++23, no condition: the first branch runs in a
   // compile-time evaluation (the second for `!`), the other one in the program, the only one emitted.
   uint8_t ifConsteval = 0;
+  // The branches the walk took, over every element of the `for constexpr` loops around it (constexprKnown is the last
+  // element's): 1 the first, 2 the else branch, 0 not decided (the language server's inactive code).
+  uint8_t constexprSeen = 0;
 };
 struct AssertStmt : Stmt { Expr* cond; uint32_t startToken, endToken; bool release = false; uint8_t testKind = 0; bool checksCall = false; bool hasMessage = false; }; // tokens of the expression text // assert(cond); release_assert(cond); testKind 1 check(cond), 2 require(cond) in a test; hasMessage: assert's or release_assert's `cond || std::__kppAssertMessage(pieces...)`
 struct ForStmt : Stmt { Stmt* init = nullptr; Node* cond = nullptr; Expr* step = nullptr; Stmt* body; };

@@ -38,3 +38,67 @@ int main()
     std::println("release ", pick());
   return 0;
 }
+
+// In a for constexpr, a branch is inactive only when no element takes it.
+int sizes()
+{
+  int total = 0;
+  for constexpr (typename T : types<char, int, double>)
+  {
+    when (sizeof(T) == 1) int one = 1;
+    when (sizeof(T) > 100) int huge = 100;
+    if constexpr (sizeof(T) == 1)
+      total += one;
+    else if constexpr (sizeof(T) == 4)
+      total += 4;
+    else
+      total += 8;
+    if constexpr (sizeof(T) > 100)
+      total += huge;
+    if constexpr (sizeof(T) <= 4)
+    {
+      if constexpr (sizeof(T) == 1)
+        total += 10;
+      else
+        total += 40;
+    }
+  }
+  return total;
+}
+
+// The same where each element has its own copy of the body (a local class).
+int boxes()
+{
+  int total = 0;
+  for constexpr (typename T : types<char, int>)
+  {
+    struct Box { T value; };
+    Box box{};
+    if constexpr (sizeof(T) == 1)
+      total += int(sizeof(box));
+    else
+      total += 2 * int(sizeof(box));
+    if constexpr (sizeof(T) > 100)
+      total += 100;
+  }
+  return total;
+}
+
+// A switch over a typed union's alternatives, as the game's InputAction load: both branches are taken.
+union enum class Action : u8
+{
+  { {int, Move}, {void, Stop} }
+
+  void load(int index, int value)
+  {
+    switch (Action::Tag(index))
+    {
+      for constexpr (auto a : alternatives(Action))
+        case a.tag:
+          if constexpr (std::isSame<a.type, void>)
+            this[a.tag] = void();
+          else
+            this[a.tag] = value;
+    }
+  }
+};

@@ -110,6 +110,7 @@
 
     int forConstexprDepth = 0; // for constexpr bodies this walk is inside (typed with the variable unbound)
     int plainElementWalks = 0; // bound to one element of a for constexpr in a function that is no template: no instance to wait for
+    int elementWalks = 0;      // bound to an element of a for constexpr (any): what it decides adds to IfStmt::constexprSeen, Decl::whenSeen
 
     // The elements of a for constexpr list under the current substitution: the types of
     // `types<A, B>`, the constants of `{1, 2}`, the descriptors of `alternatives(U)` and of

@@ -102,6 +102,9 @@ Status (2026-11-03):
   - a declaration-scope `if constexpr` branch the parser skipped and a false `when` at namespace or
     class scope, the `when (...)` included: the parser keeps their tokens (ParsedFile::droppedTokens);
   - a local's false `when`.
+  In a `for constexpr` body, a branch or a local `when` is inactive only when no element takes it (kovarex,
+  2026-11-17: `if constexpr (std::isSame<a.type, void>)` over `alternatives(InputAction)` showed the
+  last alternative's answer), the loops around it and each element's own copy of the body included.
   A template's own body is decided per instance, so none of it is inactive. Discarded code is not
   name-checked, so it has no diagnostics, and hover in it answers nothing. A switch of cell checks
   again and sends the new regions.
