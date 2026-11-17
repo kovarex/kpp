@@ -1,0 +1,52 @@
+// spec: void is a value (kovarex 2026-11-17, option A: generic code over a typed union's alternatives reads a void
+// alternative as any other): `void()` is the one void value; a function may take a parameter of type void beside
+// others (`Out& operator<<(Out&, void)`; a lone `(void)` still means no parameters, as in C), and an argument of type
+// void is passed to it; `u[Stop]` on a void alternative is a void value, so `output << u[a]` serialises every
+// alternative without if constexpr. A deliberate difference from C++ (docs/differences-from-cpp.md).
+// design.md 8.5
+struct Out
+{
+  std::String text;
+};
+
+Out& operator<<(Out& out, int value) { out.text << value << ";"; return out; }
+Out& operator<<(Out& out, const std::String& value) { out.text << "'" << value << "';"; return out; }
+Out& operator<<(Out& out, void) { out.text << "-;"; return out; }
+
+union enum class Action : u8
+{
+  { {void, Nothing}, {int, Count}, {void, Stop}, {std::String, Say} }
+};
+
+void nothing() {}
+int twice(int x) { return 2 * x; }
+int describe(void) { return 7; }        // (void) alone: no parameters, as in C
+int count(int a, void, int b) { return a + b; }
+
+void save(Out& out, const Action& action)
+{
+  switch (action.tag())
+  {
+    for constexpr (auto a : alternatives(Action))
+      case a.tag: out << action[a];
+  }
+}
+
+int main()
+{
+  Out out;
+  out << void() << 3 << nothing();
+  std::println(out.text);
+  std::println(describe(), " ", count(1, void(), 2), " ", count(twice(1), nothing(), 3));
+  Out saved;
+  Action a;
+  save(saved, a);
+  a[Action::Tag::Count] = 5;
+  save(saved, a);
+  a[Action::Tag::Stop] = void();
+  save(saved, a);
+  a[Action::Tag::Say] = std::String("hi");
+  save(saved, a);
+  std::println(saved.text);
+  return 0;
+}

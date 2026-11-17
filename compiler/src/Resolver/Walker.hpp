@@ -81,9 +81,6 @@
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
-    // The left operand of `u[Stop] = void()` being walked: a void alternative, set by it (design.md 8.5), which
-    // any other use of `u[Stop]` is an error.
-    IndexExpr* voidAlternativeTarget = nullptr;
     bool inSpecializationPattern = false; // a class specialization's arguments, which no instance walks again
     // A probe's names that nothing declares, kept for the walker that made it (a requires-expression in a template's own
     // walk or in a function that is no template), which reports them: in a requirement that depends on nothing they are

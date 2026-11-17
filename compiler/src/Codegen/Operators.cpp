@@ -1099,7 +1099,7 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
       addArgument(arg);
   }
   for (const Ty* pt : ft->args)
-    s.paramTypes.push_back(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, c));
+    s.paramTypes.push_back(parameterType(pt, c));
   s.variadic = ft->variadic;
   std::string sig = signatureText(s);
   if (s.returnType == "void")

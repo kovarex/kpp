@@ -422,7 +422,7 @@ auto codegen::Emitter::callIndirectC(const std::string& fnText, const Ty* ft, Sp
     s.returnType = ret->isReference() ? "ptr" : llType(ret, c);
   for (const Ty* pt : ft->args)
   {
-    s.paramTypes.push_back(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, c));
+    s.paramTypes.push_back(parameterType(pt, c));
     s.paramTys.push_back(pt);
   }
   s.variadic = ft->variadic;
@@ -553,7 +553,7 @@ auto codegen::Emitter::methodSignature(const Ty* ft, Node* at) -> Signature
   }
   for (const Ty* pt : ft->args)
   {
-    s.paramTypes.push_back(isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, at));
+    s.paramTypes.push_back(parameterType(pt, at));
     s.paramTys.push_back(pt);
   }
   s.variadic = ft->variadic;
@@ -599,12 +599,12 @@ auto codegen::Emitter::signatureOf(FunctionDecl* f) -> Signature
       // A deduced pack still in one piece (`Args&&...` of a member template): one parameter per element.
       for (const Ty* e : pt->args)
       {
-        s.paramTypes.push_back(isAggregate(e) || e->isReference() || !e->isKnown() ? "ptr" : llType(e, f));
+        s.paramTypes.push_back(parameterType(e, f));
         s.paramTys.push_back(e);
       }
       continue;
     }
-    s.paramTypes.push_back(isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, f));
+    s.paramTypes.push_back(parameterType(pt, f));
     s.paramTys.push_back(pt);
   }
   s.variadic = ft->variadic;

@@ -351,8 +351,8 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
         {
           bool isRef = pt->isReference();
           std::string ps = "%v" + std::to_string(temp++);
-          allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : llType(pt, f)) + "\n";
-          fn += "  store " + (isRef ? std::string("ptr") : llType(pt, f)) + " " + paramNames[slot] + ", ptr " + ps + "\n";
+          allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : parameterType(pt, f)) + "\n";
+          fn += "  store " + (isRef ? std::string("ptr") : parameterType(pt, f)) + " " + paramNames[slot] + ", ptr " + ps + "\n";
           local = {ps, pt, isRef};
         }
         // (a pack's elements are the debugger's as one each: name#k)

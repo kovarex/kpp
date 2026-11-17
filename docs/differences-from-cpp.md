@@ -351,6 +351,18 @@ Container::value_type first(const Container& container) { return container[0]; }
 - **See:** [Targets and hosts][dtargets]; specs `interop/c_long_double_function_off_windows_is_error`,
   `interop/c_long_double_function_declared_in_kpp_off_windows_is_error`, `library/strtold_on_every_target`.
 
+### `void` is a value (built)
+
+- **C++:** `void` has no values: no parameter has type void (a lone `(void)` means none), and a void expression
+  is no argument.
+- **kpp:** `void()` is the one void value. A function may take a parameter of type void beside others
+  (`Out& operator<<(Out&, void)`), and a void expression is passed to it (`out << f()` for a `void f()`); a lone
+  `(void)` still means no parameters. A typed union's alternative of type void reads as the void value
+  (`out << u[a]`), so code over every alternative needs no `if constexpr` for those without data.
+- **Why:** kovarex (2026-11-17), for InputAction's save: "being able to get void for these would generally
+  improve generic code related to these union enums".
+- **See:** [design 8.5][d8]; specs `kpp/void_value`, `kpp/typed_union_void_alternative`.
+
 ### Undecided number types (undecided)
 
 - **`float` and `double`:** deprecated like `int`, or plain synonyms of `f32` and `f64`. They work today.

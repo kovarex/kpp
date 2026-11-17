@@ -97,6 +97,14 @@ namespace codegen
 
     static bool isLambda(const Ty* t) { return t && t->kind == TyKind::Lambda && t->decl; }
     static bool isAggregate(const Ty* t) { return isClass(t) || isLambda(t); }
+    // A parameter's LLVM type: a pointer for a class, a reference or a type not known yet; LLVM's empty struct for void
+    // (design.md 8.5, void as a value: `Out& operator<<(Out&, void)`); else the type's own.
+    std::string parameterType(const Ty* t, Node* at)
+    {
+      if (isAggregate(t) || t->isReference() || !t->isKnown())
+        return "ptr";
+      return types.unqualified(t)->kind == TyKind::Void ? "{}" : llType(t, at);
+    }
     // A result that comes back through the caller's hidden result slot: a class, and a closure (a
     // lambda returned by value lives in memory like every closure; returned as an LLVM value, its
     // address and its bytes were confused: `ret %closure %o3`).

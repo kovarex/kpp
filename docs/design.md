@@ -822,15 +822,19 @@ tag read at run time too) or as the first alternative's default, and is held, sw
 compared like any other (two unions holding the same void alternative are equal). `u[Stop] = void()` sets it (kovarex,
 2026-11-17), the alternative held destroyed and the union's own members kept, as `u[Move] = value` keeps them: InputAction's
 loading sets its tick and player first, then the action (`this[a] = void()` in generic code). Its descriptor's `a.type`
-and `VariantAlternative<I, U>` are void, so generic code tells it by `if constexpr (std::isSame<a.type, void>)`. Any
-other use of `u[Stop]` (and `u[a]` for it) is a compile error, "the alternative Stop of the typed union Action carries
-no value (its type is void): set it with `u[Stop] = void()`, or build it from its tag", as are a value assigned to it
-and `void()` assigned to an alternative that has one. Open: reading it as a void value that a function takes
-(`output << this[a]` with a `Serialiser& operator<<(Serialiser&, void)`), which needs void as a value (asked
-2026-11-17). The parser stores it as an empty class of the union's own (`__Void`, one byte in the
+and `VariantAlternative<I, U>` are void. `u[Stop]` read is the void value (option A, kovarex 2026-11-17: void is a
+value), so `out << u[a]` over every alternative takes an `Out& operator<<(Out&, void)` and generic code needs no `if
+constexpr`; `std::isSame<a.type, void>` still tells it. A value assigned to it and `void()` assigned to an alternative
+that has one are errors.
+
+*void as a value* (kovarex 2026-11-17, option A; docs/differences-from-cpp.md). `void()` is the one void value. A
+function may take a parameter of type void beside others (`int count(int a, void, int b)`, `Out& operator<<(Out&,
+void)`), and an argument of type void (`void()`, a call of a void function, a void alternative) is passed to it,
+evaluated first; a lone `(void)` still means no parameters, as in C. Codegen passes LLVM's empty struct, `{}
+zeroinitializer` (Emitter::parameterType); lambdas and function pointers take one as functions do. Spec: kpp/void_value. The parser stores it as an empty class of the union's own (`__Void`, one byte in the
 storage the other alternatives share), so no part of layout, building or destruction sees a void field. Until then
 `{void, Stop}` stopped on "codegen does not support sizeof void". Specs: kpp/typed_union_void_alternative,
-kpp/typed_union_void_alternative_read_is_error, kpp/typed_union_void_alternative_set_with_value_is_error.
+kpp/typed_union_void_alternative_set_with_value_is_error.
 
 Decided by kovarex 2026-10-31: *from a tag and a value*. Several tags may carry the same type, as
 before (many InputActions with the same data, told apart by the tag); construction from a value

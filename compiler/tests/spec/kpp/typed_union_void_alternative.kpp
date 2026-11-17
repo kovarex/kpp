@@ -2,8 +2,8 @@
 // without data, which held an empty InputActionNoData): `{void, Name}` stores nothing (an empty class of the union's own),
 // is built from its tag alone (`U(U::Tag::Name)`), set with `u[Name] = void()` (the union's own members kept) and is the
 // first alternative's default; it is held, switched on, copied, moved,
-// assigned and compared like any other, and generic code tells it by `std::isSame<a.type, void>` (reading `u[a]` on it
-// is a compile error, kpp/typed_union_void_alternative_read_is_error); VariantAlternative<I, U> of it is void.
+// assigned and compared like any other, and generic code tells it by `std::isSame<a.type, void>`; read, it is the void
+// value (kpp/void_value); VariantAlternative<I, U> of it is void.
 // design.md 8.5
 struct Pos { int x = 0; int y = 0; bool operator==(const Pos&) const = default; };
 

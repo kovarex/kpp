@@ -1528,6 +1528,12 @@ auto codegen::Emitter::nullPointerConstant(Expr* e) -> bool
 
 auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::string
 {
+  if (pt && types.unqualified(pt)->kind == TyKind::Void)
+  {
+    // A void parameter (design.md 8.5, void as a value): the argument evaluated, the value LLVM's empty struct.
+    rvalue(arg);
+    return "{} zeroinitializer";
+  }
   if (arg->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(arg)->text)
     return "ptr " + textTemporary(static_cast<BraceInitExpr*>(arg), at); // a Text parameter's packed arguments (design.md 14)
   if (pt && pt->isReference())

@@ -751,6 +751,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       {
         std::string addr = alternativeLvalue(c, base, i, e, true);
         const Ty* altTy = types.stripRef(e->ty);
+        if (altTy->kind == TyKind::Void)
+          return Value{"", types.voidType(), false}; // `u[Stop]` of a void alternative, checked held: the void value (design.md 8.5)
         return isClass(altTy) ? Value{addr, altTy, false} : load(addr, altTy, e);
       }
       if (isClass(base.ty))

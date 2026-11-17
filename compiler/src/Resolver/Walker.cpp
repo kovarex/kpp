@@ -9321,10 +9321,7 @@ auto GlobalScope::Impl::Walker::typeOfBinary(BinaryExpr* b) -> const Ty*
 
 auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall& call, FunctionDecl*& callee, bool& member) -> const Ty*
 {
-  IndexExpr* savedVoidTarget = voidAlternativeTarget;
-  voidAlternativeTarget = !b->isKeyword && P(b->op) == P::Assign && b->lhs && b->lhs->kind == NodeKind::IndexExpr ? static_cast<IndexExpr*>(b->lhs) : nullptr;
   const Ty* l = walkExpr(b->lhs);
-  voidAlternativeTarget = savedVoidTarget;
   const Ty* r = walkExpr(b->rhs);
   if (l && l->kind == TyKind::Void && !b->isKeyword && P(b->op) == P::Assign && b->lhs->kind == NodeKind::IndexExpr)
   {
@@ -12504,15 +12501,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
             return record(e, unknown(Why::Operator));
           if (static_cast<VariableDecl*>(u->alternatives[size_t(*v)])->voidAlternative)
           {
-            if (voidAlternativeTarget == i)
-              return record(e, types.voidType()); // `u[Stop] = void()`: typeOfBinaryOperator checks the value
-            // `{void, Stop}` carries no value to read or set: it is set from its tag (design.md 8.5).
-            auto* tagEnum = static_cast<EnumDecl*>(u->tagEnum);
-            std::string unionName(symbols.name(u->name.last().symbol));
-            std::string name(symbols.name(static_cast<EnumeratorDecl*>(tagEnum->enumerators[size_t(*v)])->name));
-            reportHere(i->token, "the alternative " + name + " of the typed union " + unionName + " carries no value (its type is void): set it with `u[" +
-                                     name + "] = void()`, or build it from its tag, `" + unionName + "(" + unionName + (tagEnum->isClass ? "::Tag::" : "::") + name + ")`");
-            return record(e, unknown(Why::Operator));
+            // `{void, Stop}`: its value is void (design.md 8.5, void as a value): `out << u[a]` takes a
+            // `operator<<(Out&, void)`; `u[Stop] = void()` sets it (typeOfBinaryOperator).
+            return record(e, types.voidType());
           }
           Subst s = b->args.empty() ? Subst{} : impl.substFor(b);
           const Ty* alt = impl.declaredTypeOf(u->alternatives[size_t(*v)], s.pairs.empty() ? nullptr : &s, 0);

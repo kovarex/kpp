@@ -996,8 +996,8 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
         {
           bool isRef = pt->isReference();
           std::string ps = "%v" + std::to_string(temp++);
-          allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : llType(pt, l)) + "\n";
-          fn += "  store " + (isRef ? std::string("ptr") : llType(pt, l)) + " " + paramNames[slot] + ", ptr " + ps + "\n";
+          allocas += "  " + ps + " = alloca " + (isRef ? std::string("ptr") : parameterType(pt, l)) + "\n";
+          fn += "  store " + (isRef ? std::string("ptr") : parameterType(pt, l)) + " " + paramNames[slot] + ", ptr " + ps + "\n";
           local = {ps, pt, isRef};
           if (!name.empty())
             debugVariable(name, pd, ps, pt, uint32_t(slot + 1));
@@ -1197,7 +1197,7 @@ auto codegen::Emitter::lambdaThunk(const Ty* t, const Ty* fnTy, Node* at) -> std
   for (size_t i = 0; i < fnTy->args.size(); ++i)
   {
     const Ty* pt = fnTy->args[i];
-    std::string ty = isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, at);
+    std::string ty = parameterType(pt, at);
     params += (params.empty() ? "" : ", ") + ty + " %a" + std::to_string(i);
     args += ", " + ty + " %a" + std::to_string(i);
   }
@@ -1287,7 +1287,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
         const Ty* pt = position < callTy->args.size() ? callTy->args[position] : nullptr;
         if (!pt)
           unsupported(at, "too many arguments to a lambda");
-        sig += ", " + std::string(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, at));
+        sig += ", " + parameterType(pt, at);
         argText += ", " + argumentText(pt, pattern, at);
         ++position;
       });
@@ -1296,7 +1296,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
     const Ty* pt = position < callTy->args.size() ? callTy->args[position] : nullptr;
     if (!pt)
       unsupported(at, "too many arguments to a lambda");
-    sig += ", " + std::string(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, at));
+    sig += ", " + parameterType(pt, at);
     argText += ", " + argumentText(pt, arg, at);
     ++position;
   }
@@ -1312,7 +1312,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
     if (!pd->defaultValue)
       unsupported(at, "a call to a lambda without an argument for its parameter " + (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(position + 1)));
     const Ty* pt = callTy->args[position];
-    sig += ", " + std::string(isAggregate(pt) || pt->isReference() ? "ptr" : llType(pt, at));
+    sig += ", " + parameterType(pt, at);
     if (pd->defaultValue->kind == NodeKind::CallerExpr)
       argText += ", ptr " + callerLocation(pt, at); // `CallerLocation here = caller`: this call's location, as for a function
     else

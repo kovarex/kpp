@@ -731,6 +731,8 @@ auto codegen::Emitter::load(const std::string& addr, const Ty* ty, Node* at) -> 
   }
   if (ty->kind == TyKind::Function)
     return {addr, types.pointer(ty)}; // a function (through a reference, `F&& f`): its address, nothing to load
+  if (types.unqualified(ty)->kind == TyKind::Void)
+    return {"", types.voidType()}; // a void parameter's (design.md 8.5, void as a value): nothing to load
   if (isAggregate(ty))
     return {addr, types.unqualified(ty)};
   std::string r = newTemp();

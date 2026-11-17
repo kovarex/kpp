@@ -253,7 +253,7 @@ auto codegen::Emitter::lambdaSignatureOf(const Ty* callTy, Node* at) -> Signatur
   }
   for (const Ty* pt : callTy->args)
   {
-    s.paramTypes.push_back(isAggregate(pt) || pt->isReference() || !pt->isKnown() ? "ptr" : llType(pt, at));
+    s.paramTypes.push_back(parameterType(pt, at));
     s.paramTys.push_back(pt);
   }
   s.returnType = s.hasSret ? "void" : ret->isReference() ? "ptr" : llType(ret, at);
