@@ -1,0 +1,89 @@
+// spec: a switch over a typed union's alternatives, one case per element of `for constexpr (auto a : alternatives(U))`
+// with `case a.tag:`; `a.tag` is a constant expression (a case label, an if constexpr condition, a constexpr
+// variable, a template argument), so the game's save and load of InputAction are one generic switch each
+// design.md 8.2 (case labels in a for constexpr), 8.5 (alternatives(U)); kovarex 2026-11-17
+struct NoData {};
+struct Pos { int x = 0; int y = 0; };
+
+union enum class Action : u8
+{
+  { {NoData, Nothing}, {Pos, Move}, {Pos, Jump}, {std::String, Say}, {int, Count} }
+  u32 tick = 0;
+};
+
+void save(std::String& out, const NoData&) { out << "-"; }
+void save(std::String& out, const Pos& p) { out << p.x << "," << p.y; }
+void save(std::String& out, const std::String& s) { out << "'" << s << "'"; }
+void save(std::String& out, int i) { out << i; }
+
+template<class T> T loadValue([[maybe_unused]] int seed) { return T(); }
+template<> Pos loadValue<Pos>(int seed) { return Pos{seed, seed + 1}; }
+template<> int loadValue<int>(int seed) { return seed * 10; }
+template<> std::String loadValue<std::String>(int seed) { return std::toString("s", seed); }
+
+template<int tag> int weight() { return tag * 100; }
+
+// The alternative held, saved: one case per alternative, a special case by if constexpr.
+std::String saveAction(const Action& action)
+{
+  std::String out;
+  switch (action.tag())
+  {
+    for constexpr (auto a : alternatives(Action))
+    {
+      case a.tag:
+        if constexpr (a.tag == Action::Tag::Jump)
+          out << "jump ";
+        save(out, action[a]);
+    }
+  }
+  return out;
+}
+
+// An alternative chosen by a tag read at run time, built from loaded data.
+Action loadAction(u8 index, int seed)
+{
+  Action result;
+  switch (Action::Tag(index))
+  {
+    for constexpr (auto a : alternatives(Action))
+      case a.tag: result[a] = loadValue<a.type>(seed);
+  }
+  return result;
+}
+
+// Every case returns.
+bool noData(Action::Tag tag)
+{
+  switch (tag)
+  {
+    for constexpr (auto a : alternatives(Action))
+      case a.tag: return std::isSame<a.type, NoData>;
+  }
+}
+
+int weightOf(Action::Tag tag)
+{
+  int result = -1;
+  switch (tag)
+  {
+    for constexpr (auto a : alternatives(Action))
+    {
+      case a.tag:
+        constexpr int index = int(a.tag);
+        static_assert(index >= 0 && index < int(Action::Tag::count));
+        result = weight<index>();
+    }
+  }
+  return result;
+}
+
+int main()
+{
+  for (u8 i = 0; i < u8(Action::Tag::count); i++)
+  {
+    Action action = loadAction(i, i);
+    std::println(action.tag(), " ", saveAction(action), " ", noData(action.tag()), " ", weightOf(action.tag()));
+  }
+  return 0;
+}

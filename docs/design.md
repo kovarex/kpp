@@ -795,6 +795,26 @@ alternative of type int32", "a String is ambiguous for the typed union D: its al
 and Comment both have that type". Overload resolution ranks the conversion from a value like a
 converting constructor's.
 Spec snippets: kpp/typed_union_from_value, kpp/typed_union_alternatives.
+*A switch over the alternatives* (kovarex 2026-11-17, for InputAction's save and load: one generic switch each instead
+of a case per action): `a.tag` is a constant expression, so it labels a case of a `for constexpr` in a switch's body
+(8.2), decides an `if constexpr` and initialises a constexpr variable or a template argument:
+```
+switch (this.tag())
+{
+  for constexpr (auto a : alternatives(InputAction))
+    case a.tag: output << this[a];
+}
+switch (InputActionType(index))   // a tag read at run time
+{
+  for constexpr (auto a : alternatives(InputAction))
+    case a.tag: this[a] = load<a.type>(input);
+}
+```
+An alternative needing other code is an `if constexpr (a.tag == InputActionType::Build)` in the body, braced with its
+label (`{ case a.tag: ...; ... }`). A tag labelled twice (by hand and by the loop) is the error a value twice is.
+Until then `a.tag` was a constant only to codegen's own reads (`u[a]`, `u == a.tag`), and a case label, an if
+constexpr condition or a constexpr variable reading it were errors. Specs: kpp/typed_union_switch_over_alternatives,
+kpp/typed_union_switch_over_alternatives_twice_is_error.
 
 Decided by kovarex 2026-10-31: *from a tag and a value*. Several tags may carry the same type, as
 before (many InputActions with the same data, told apart by the tag); construction from a value

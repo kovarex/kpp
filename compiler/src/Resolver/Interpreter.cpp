@@ -638,6 +638,24 @@ auto GlobalScope::Impl::constObjectType(Expr* object, const TypeContext& ctx, bo
   return t && t->kind == TyKind::Class && !types.isDependent(t) && !mentionsUnknown(t) ? t : nullptr;
 }
 
+auto GlobalScope::Impl::constDescriptorTag(MemberExpr* m, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "tag")
+    return std::nullopt;
+  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  t = t ? types.stripRef(t) : nullptr;
+  size_t index = 0;
+  ClassDecl* u = t && t->kind == TyKind::Member ? Walker::alternativeOf(t, index) : nullptr;
+  if (!u || !u->tagEnum)
+    return std::nullopt;
+  auto& enumerators = static_cast<EnumDecl*>(u->tagEnum)->enumerators;
+  if (index >= enumerators.size() || enumerators[index]->kind != NodeKind::EnumeratorDecl)
+    return std::nullopt;
+  if (Subst s = memberSubst(t->args[0], u->ownScope, depth + 1); !s.pairs.empty())
+    return constValueOfDecl(enumerators[index], ctx, depth + 1, &s); // (the tag of a class template's instance)
+  return constValueOfDecl(enumerators[index], ctx, depth + 1);
+}
+
 auto GlobalScope::Impl::constSteps() -> uint64_t&
 {
   static thread_local uint64_t steps = 0;
@@ -752,6 +770,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
       auto* m = static_cast<MemberExpr*>(e);
       if (m->dynamicMember || m->member.parts.empty())
         return std::nullopt;
+      if (std::optional<ConstValue> tag = constDescriptorTag(m, ctx, depth))
+        return tag;
       if (m->member.parts.size() != 1)
         return m->base && m->resolved && m->resolved->kind == NodeKind::VariableDecl && !(m->resolved->flags & (DF_Static | DF_Typedef))
                  ? constMemberRead(m, ctx, depth) // `b.A::v`: the data member of the base the qualifier names
