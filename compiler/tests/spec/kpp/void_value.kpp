@@ -9,6 +9,18 @@ struct Out
   std::String text;
 };
 
+// Every type: a void value takes no `const T&` (no reference to void exists), so the void overload is the one
+// `any << void()` calls.
+struct Any
+{
+  std::String text;
+
+  template<class T>
+  Any& operator<<(const T&) { this.text << "?" << sizeof(T) << ";"; return this; }
+};
+
+Any& operator<<(Any& any, void) { any.text << "-;"; return any; }
+
 Out& operator<<(Out& out, int value) { out.text << value << ";"; return out; }
 Out& operator<<(Out& out, const std::String& value) { out.text << "'" << value << "';"; return out; }
 Out& operator<<(Out& out, void) { out.text << "-;"; return out; }
@@ -36,7 +48,9 @@ int main()
 {
   Out out;
   out << void() << 3 << nothing();
-  std::println(out.text);
+  Any any;
+  any << void() << 2.5;
+  std::println(out.text, " ", any.text);
   std::println(describe(), " ", count(1, void(), 2), " ", count(twice(1), nothing(), 3));
   Out saved;
   Action a;

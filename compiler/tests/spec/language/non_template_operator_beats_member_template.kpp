@@ -1,0 +1,21 @@
+// spec: between a non-template operator and a member operator template whose conversions are alike, the non-template
+// is chosen ([over.match.best] 2.4): `out << 3` with `Out& operator<<(Out&, int)` and a member
+// `template<class T> Out& operator<<(const T&)` calls the first (`3`, clang's and MSVC's answer)
+// pending: the member template is called (`?4`), a silent wrong answer. Found writing kpp/void_value (2026-11-17); D
+struct Out
+{
+  std::String text;
+
+  template<class T>
+  Out& operator<<(const T&) { this.text << "?" << sizeof(T); return this; }
+};
+
+Out& operator<<(Out& out, int value) { out.text << value; return out; }
+
+int main()
+{
+  Out out;
+  out << 3;
+  std::println(out.text);
+  return 0;
+}

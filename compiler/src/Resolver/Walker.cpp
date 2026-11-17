@@ -12497,6 +12497,14 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           }
           else
             v = impl.constEval(i->args[0], ctx());
+          if (!v && firstIndex && !probing && types.unqualified(types.stripRef(firstIndex)) == types.unqualified(impl.tagTypeOf(u, b)))
+          {
+            // `u[type]` with a tag read at run time: which alternative, so its type, is not known (design.md 8.5).
+            std::string unionName(symbols.name(u->name.last().symbol));
+            reportHere(i->token, "the typed union " + unionName + " is indexed with a tag known only at run time: its alternative is chosen by a "
+                                 "constant tag; switch on the tag over `for constexpr (auto a : alternatives(" + unionName + ")) case a.tag:` and use `u[a]`");
+            return record(e, unknown(Why::Operator));
+          }
           if (!v || *v < 0 || size_t(*v) >= u->alternatives.size())
             return record(e, unknown(Why::Operator));
           if (static_cast<VariableDecl*>(u->alternatives[size_t(*v)])->voidAlternative)

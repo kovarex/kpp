@@ -831,7 +831,12 @@ that has one are errors.
 function may take a parameter of type void beside others (`int count(int a, void, int b)`, `Out& operator<<(Out&,
 void)`), and an argument of type void (`void()`, a call of a void function, a void alternative) is passed to it,
 evaluated first; a lone `(void)` still means no parameters, as in C. Codegen passes LLVM's empty struct, `{}
-zeroinitializer` (Emitter::parameterType); lambdas and function pointers take one as functions do. Spec: kpp/void_value. The parser stores it as an empty class of the union's own (`__Void`, one byte in the
+zeroinitializer` (Emitter::parameterType); lambdas and function pointers take one as functions do. No reference to void
+exists: a void argument fails the deduction of a `const T&` or `T&&` parameter (2026-11-17: the game's Serialiser has a
+`template<class T> operator<<(const T&)`, which took `output << this[a]` with T void beside its `operator<<(Serialiser&,
+void)`). Spec: kpp/void_value. A typed union indexed with a tag known only at run time (`this[type] = void()`) is an
+error naming the switch to write (kpp/typed_union_indexed_with_a_runtime_tag_is_error); until then codegen's "indexed
+with something other than one of its alternatives". The parser stores it as an empty class of the union's own (`__Void`, one byte in the
 storage the other alternatives share), so no part of layout, building or destruction sees a void field. Until then
 `{void, Stop}` stopped on "codegen does not support sizeof void". Specs: kpp/typed_union_void_alternative,
 kpp/typed_union_void_alternative_set_with_value_is_error.

@@ -3253,6 +3253,14 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
 {
   if (!pattern || !arg || depth > 16 || !arg->isKnown())
     return;
+  if (pattern->isReference() && types.unqualified(types.stripRef(arg))->kind == TyKind::Void)
+  {
+    // A void value (design.md 8.5, void as a value) given to `const T&` or `T&&`: no reference to void exists, so the
+    // candidate fails ([temp.deduct] 11.4), as `out << u[a]` beside a `Serialiser& operator<<(Serialiser&, void)`
+    // needs: the class's `template<class T> operator<<(const T&)` took it with T void.
+    out.failed = true;
+    return;
+  }
   if (pattern->kind == TyKind::DependentMember)
     return; // `typename T::Unit` is not a deduced context
   if (arg->isBraceList())
