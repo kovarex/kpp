@@ -482,6 +482,15 @@ class or a base already has, a name used anywhere in a local's function, and, fo
 any declaration outside function bodies so named (one global scope). The edits are returned, not
 applied: the editor applies them, and the next check is the build that confirms them.
 
+**Rename onto an existing member merges** (kovarex, 2026-11-17: InputAction::getType onto the typed
+union's own `tag()`). When the new name is the one member so named in the class and its bases, a
+function of the same type (parameters and return), constness, volatility, reference qualifier and
+staticness, neither function a template, virtual or under a `when`, and no derived class declares the
+name, every use of the renamed function names that member and its declarations are removed (a whole line
+when nothing else is on it, its line break too); `mergeInto` and `declarationSpan` in lsp.cpp. Another
+member so named is refused, saying why (overloaded, not a function, another signature, a derived class's).
+The rename covers the checked cell's program only: a target it does not build keeps the old name.
+
 **Quick fixes** come from the diagnostic's message, so the compiler states each fix once, for the
 command line and the editor alike. A mechanical error ends, before any parenthesized note such as
 `(design.md 8)`, with one of two clauses, OLD copied from the source where the error points:

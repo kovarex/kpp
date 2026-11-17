@@ -19,6 +19,7 @@
 # base's base in an initializer, in a program whose test code is checked (a clean first check, checked again with --tests).
 # And a virtual function's: its own, what it overrides and what overrides it, no sibling's and no overload's.
 # And a flags declaration's set and flags (design.md 27), from their declarations, which the parser rewrites, and their rename.
+# merge: tests\lsp\merge, a rename onto a member the class already has: merged with the same signature, else refused.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -37,7 +38,8 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'members'; Program = 'members'; Args = '--stdio' },
                       @{ Name = 'enums'; Program = 'enums'; Args = '--stdio' },
                       @{ Name = 'constructors'; Program = 'constructors'; Args = '--stdio' },
-                      @{ Name = 'references'; Program = 'references'; Args = '--stdio' }))
+                      @{ Name = 'references'; Program = 'references'; Args = '--stdio' },
+                      @{ Name = 'merge'; Program = 'merge'; Args = '--stdio' }))
 {
   $name = $session.Name
   $program = Join-Path $work $session.Program

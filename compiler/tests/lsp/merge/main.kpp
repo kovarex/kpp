@@ -1,0 +1,20 @@
+// The language server's rename onto a member the class already has (tests/lsp.ps1, merge.jsonl): with the
+// same signature the uses name it and the renamed function's declarations go; another signature is refused.
+union enum class Action : u8
+{
+  { {i32, Move}, {void, Stop} }
+
+  Tag getType() const { return this.tag(); }
+  i32 speed() const;
+  i32 pace() const { return 3; }
+  i32 rate(i32 x) const { return x; }
+};
+
+i32 Action::speed() const { return 3; }
+
+i32 main()
+{
+  Action a = Action::Stop();
+  i32 n = a.getType() == Action::Tag::Stop ? 1 : 0;
+  return n + a.speed() + a.pace() + a.rate(1) - 8;
+}

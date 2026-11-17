@@ -3416,6 +3416,84 @@ namespace
       return {};
     }
 
+    // The member function a rename onto a name its class already has merges target into (kovarex, 2026-11-17:
+    // InputAction::getType onto the union's own tag()): the one member so named in its class and bases, a function
+    // of the same type, constness and staticness, neither of them a template, virtual or under a `when`, and no
+    // class derived from it declaring the name (a call through it would find that one). Every use is renamed and
+    // target's declarations are removed. Null when no member is so named; why says why one so named cannot take it.
+    FunctionDecl* mergeInto(const KeptProgram& program, Decl* target, const std::string& newName, std::string& why)
+    {
+      GlobalScope& global = *program.global;
+      Decl* cls = target->kind == NodeKind::FunctionDecl ? global.owningClass(target) : nullptr;
+      if (!cls)
+        return nullptr;
+      auto spelled = [&](const Decl* d) { return declarationName(d, *program.symbols) == newName || (symbolOf(d) != UINT32_MAX && program.symbols->name(symbolOf(d)) == newName); };
+      std::vector<ClassDecl*> classes;
+      classesOf(global, cls, classes);
+      std::vector<Decl*> named;
+      for (ClassDecl* c : classes)
+        for (Decl* m : c->members)
+          if (spelled(m))
+            named.push_back(m);
+      if (named.empty())
+        return nullptr;
+      Decl* other = named[0];
+      std::string member = "'" + newName + "' is already a member of " + declarationName(global.owningClass(other) ? global.owningClass(other) : cls, *program.symbols);
+      if (canonical(global, other) == target)
+      {
+        why = "it is named so already";
+        return nullptr;
+      }
+      if (named.size() > 1 || other->kind != NodeKind::FunctionDecl)
+      {
+        why = member + (other->kind != NodeKind::FunctionDecl ? ", not a function to merge it into" : ", overloaded: which one it would merge into cannot be told");
+        return nullptr;
+      }
+      auto* f = static_cast<FunctionDecl*>(target);
+      auto* g = static_cast<FunctionDecl*>(other);
+      const uint32_t qualifiers = DF_Static | DF_Const | DF_Volatile | DF_RefQual | DF_BothConst;
+      const Ty* ft = global.typeOfDecl(f);
+      if (f->isTemplate || g->isTemplate || f->when || g->when || (g->flags & (DF_Virtual | DF_Override)) || (f->flags & qualifiers) != (g->flags & qualifiers) || !ft ||
+          ft != global.typeOfDecl(g))
+      {
+        why = member + ", of another signature: only a function of the same parameters, return type, constness and staticness is merged into it";
+        return nullptr;
+      }
+      for (ClassDecl* d : derivedOf(program, cls))
+        for (Decl* m : d->members)
+          if (spelled(m))
+          {
+            why = member + ", and of " + declarationName(d, *program.symbols) + ", derived from it, which a call through it would find";
+            return nullptr;
+          }
+      return g;
+    }
+
+    // A declaration's text, [from, to) in its file, with the rest of its lines when only blanks are there (the line
+    // goes with it, its line break included).
+    std::pair<size_t, size_t> declarationSpan(const ParsedFile* f, const Decl* d)
+    {
+      const std::vector<Token>& tokens = *f->tokens;
+      if (d->token >= tokens.size() || d->endToken <= d->token || d->endToken > tokens.size())
+        return {0, 0};
+      size_t from = tokens[d->token].offset, to = size_t(tokens[d->endToken - 1].offset) + tokens[d->endToken - 1].length;
+      std::string_view text = f->text;
+      size_t lineStart = from, lineEnd = to;
+      while (lineStart > 0 && (text[lineStart - 1] == ' ' || text[lineStart - 1] == '\t'))
+        --lineStart;
+      while (lineEnd < text.size() && (text[lineEnd] == ' ' || text[lineEnd] == '\t'))
+        ++lineEnd;
+      if ((lineStart == 0 || text[lineStart - 1] == '\n') && (lineEnd == text.size() || text[lineEnd] == '\r' || text[lineEnd] == '\n'))
+      {
+        if (lineEnd < text.size() && text[lineEnd] == '\r')
+          ++lineEnd;
+        if (lineEnd < text.size() && text[lineEnd] == '\n')
+          ++lineEnd;
+        return {lineStart, lineEnd};
+      }
+      return {from, to};
+    }
+
     // prepareRename: the name's range, or an error saying why it cannot be renamed.
     bool prepareRename(const Json& params, Json& result, std::string& error)
     {
@@ -3469,7 +3547,11 @@ namespace
           error = "cannot rename " + oldName + ": " + why;
           return;
         }
-        if (std::string why = clashOf(program, target, newName); !why.empty())
+        std::string why;
+        FunctionDecl* into = mergeInto(program, target, newName, why);
+        if (why.empty() && !into)
+          why = clashOf(program, target, newName);
+        if (!why.empty())
         {
           error = "cannot rename " + oldName + " to " + newName + ": " + why;
           return;
@@ -3480,14 +3562,40 @@ namespace
           error = "cannot rename " + oldName + ": " + why;
           return;
         }
+        // Merged into an existing member: its declarations go (whole lines where they are alone on theirs), and
+        // every use names the member.
+        std::map<const ParsedFile*, std::vector<std::pair<size_t, size_t>>, ByFileOrder> removed;
+        if (into)
+          for (const ParsedFile* f : program.files)
+            for (const Occurrence& o : cache.occurrences[f])
+              if (o.declaration && o.decl && canonical(*program.global, o.decl) == target)
+                if (auto [from, to] = declarationSpan(f, o.decl); to > from)
+                  if (std::find(removed[f].begin(), removed[f].end(), std::make_pair(from, to)) == removed[f].end())
+                    removed[f].push_back({from, to});
         Json changes = Json::object();
-        for (const auto& [f, tokens] : places)
+        auto edited = [&](const ParsedFile* f) -> Json&
         {
-          Json edits = Json::array();
+          std::string uri = uriOf(overlayKey(f->path), f->path);
+          if (!changes.has(uri))
+            changes.set(uri, Json::array());
+          for (auto& [key, value] : changes.members)
+            if (key == uri)
+              return value;
+          return changes.members.back().second;
+        };
+        for (const auto& [f, tokens] : places)
           for (uint32_t k : tokens)
-            edits.push(Json::object().set("range", tokenRange(f, k)).set("newText", newName));
-          changes.set(uriOf(overlayKey(f->path), f->path), std::move(edits));
-        }
+          {
+            size_t at = (*f->tokens)[k].offset;
+            bool inRemoved = false;
+            for (const auto& [from, to] : removed[f])
+              inRemoved = inRemoved || (at >= from && at < to);
+            if (!inRemoved)
+              edited(f).push(Json::object().set("range", tokenRange(f, k)).set("newText", newName));
+          }
+        for (const auto& [f, spans] : removed)
+          for (const auto& [from, to] : spans)
+            edited(f).push(Json::object().set("range", range(f->text, startsOf(f), from, to)).set("newText", ""));
         result = Json::object().set("changes", std::move(changes));
       });
       return error.empty();

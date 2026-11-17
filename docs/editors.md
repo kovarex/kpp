@@ -90,7 +90,13 @@ Status (2026-11-03):
     write);
   - folding ranges: braces over more than one line, runs of two or more `//` comment lines;
   - completion, triggered by `.`, `>` and `:`;
-  - rename, with prepareRename.
+  - rename, with prepareRename. It edits the checked cell's program: a target the cell does not build
+    (the game's tests, factorio-test, beside factorio) keeps the old name, so rename in a cell that builds
+    every user. A new name the class (or a base) already has is refused, unless it is one member function
+    of the same type, constness and staticness, neither a template nor virtual, with no derived class
+    declaring the name: then the two merge, every use names that member and the renamed function's
+    declarations go, their lines with them (kovarex, 2026-11-17: InputAction::getType onto the union's own
+    tag(), 110 edits in 24 files in factorio-test; tests\lsp\merge).
 - **Positions** are UTF-16 columns, the protocol's default.
 - **Inactive code** (kovarex, 2026-11-03): the code the checked cell does not build is sent as
   clangd's notification `textDocument/inactiveRegions` (`{textDocument: {uri}, regions: Range[]}`),
