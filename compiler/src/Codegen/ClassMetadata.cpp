@@ -1552,7 +1552,23 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       fail(args[0], "the tag constructing the typed union " + qualifiedName(c) + " is no constant one of its alternatives");
     constructTypedUnion(c, t, addr, at, [&]
     {
-      if (args.size() <= 2)
+      if (args.size() == 2 && isPackExpansion(args[1]))
+      {
+        // `U(U::Tag::X, forward<A>(a)...)` (a union enum class's creator, design.md 8.5): of one element, the
+        // alternative built from it as from a value; of none, default-built; of more, its constructor's arguments.
+        Expr* pattern = static_cast<UnaryExpr*>(args[1])->operand;
+        size_t count = 0;
+        forEachPackElement(pattern, at, [&](size_t) { ++count; });
+        if (count <= 1)
+        {
+          bool built = false;
+          forEachPackElement(pattern, at, [&](size_t) { constructAlternative(c, t, addr, size_t(*index), pattern, at); built = true; });
+          if (!built)
+            constructAlternative(c, t, addr, size_t(*index), nullptr, at);
+          return;
+        }
+      }
+      if (args.size() <= 2 && !(args.size() == 2 && isPackExpansion(args[1])))
         constructAlternative(c, t, addr, size_t(*index), args.size() == 2 ? args[1] : nullptr, at);
       else
       {

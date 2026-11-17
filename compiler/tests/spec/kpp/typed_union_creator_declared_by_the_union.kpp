@@ -1,0 +1,18 @@
+// spec: a union enum class makes no creator of a name it declares itself (design.md 8.5): its own member is the one
+// called, as a class's own default constructor or operator= takes the place of the compiler's (kovarex 2026-11-17);
+// the other alternatives' creators are made as before
+union enum class Action : u8
+{
+  { {int, Move}, {void, Stop}, {int, Jump} }
+
+  static Action Move(int steps) { return Action(Action::Tag::Move, steps * 2); }
+};
+
+int main()
+{
+  Action move = Action::Move(3);
+  Action jump = Action::Jump(3);
+  Action stop = Action::Stop();
+  std::println(move[Action::Tag::Move], " ", jump[Action::Tag::Jump], " ", stop.tag());
+  return 0;
+}

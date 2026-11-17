@@ -1,0 +1,42 @@
+// spec: a `union enum class U` makes a static creator per alternative, `U::Name(args...)`, which builds that
+// alternative from the arguments as `U(U::Tag::Name, args...)` does, and `U::Name()` for a void alternative
+// (kovarex 2026-11-17: InputAction's 657 hand-written creators, `InputAction::CloseGui(data)`); a plain union enum,
+// whose alternatives' names are its own, makes none (kpp/typed_union_creator_declared_by_the_union: the union's own member of that name).
+// design.md 8.5
+struct Pos
+{
+  Pos() {}
+  Pos(int x, int y) : x(x), y(y) {}
+  int x = 0;
+  int y = 0;
+};
+
+struct Counted
+{
+  Counted(std::String name) : name(name) {}
+  Counted(const Counted& other) : name(other.name) { std::println("copied ", this.name); }
+  Counted(Counted&& other) : name(std::move(other.name)) {}
+  std::String name;
+};
+
+union enum class Action : u8
+{
+  { {void, Nothing}, {Pos, Move}, {Pos, Jump}, {std::String, Say}, {Counted, Keep} }
+  u32 tick = 0;
+};
+
+int main()
+{
+  Action nothing = Action::Nothing();
+  Action move = Action::Move(Pos(1, 2));
+  Action jump = Action::Jump(3, 4);                 // the alternative's constructor takes them, in place
+  Action say = Action::Say("hello");
+  Pos p(5, 6);
+  Action again = Action::Move(p);                   // from an lvalue
+  Counted kept("box");
+  Action keep = Action::Keep(std::move(kept));      // moved, never copied
+  std::println(nothing.tag(), " ", move.tag(), " ", move[Action::Tag::Move].x, move[Action::Tag::Move].y);
+  std::println(jump.tag(), " ", jump[Action::Tag::Jump].x, jump[Action::Tag::Jump].y, " ", say[Action::Tag::Say]);
+  std::println(again[Action::Tag::Move].x, " ", keep[Action::Tag::Keep].name, " ", keep.tick);
+  return 0;
+}

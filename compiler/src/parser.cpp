@@ -4147,13 +4147,53 @@ namespace
         f->body = body;
         pushDecl(f);
       }
-      while (!at(P::RBrace) && !at(TokenKind::End))
+      // `union enum class U`: a static creator per alternative, `U::Name(args...)` for `U(U::Tag::Name, args...)`
+      // and `U::Name()` for a void one (kovarex, 2026-11-17: InputAction's 657 hand-written ones; design.md 8.5),
+      // parsed from tokens written at the body's end, at the alternative's name. Only for a scoped tag: a plain
+      // union enum's alternatives are its own names already.
+      auto parseBody = [&]
       {
-        if (accept(P::Semi))
-          continue;
-        parseDeclaration(Scope::Class);
-        if (inRecovery)
-          break;
+        while (!at(P::RBrace) && !at(TokenKind::End))
+        {
+          if (accept(P::Semi))
+            continue;
+          parseDeclaration(Scope::Class);
+          if (inRecovery)
+            break;
+        }
+      };
+      parseBody();
+      if (scopedTag && !inRecovery && !c->name.empty() && at(P::RBrace))
+      {
+        // The members the union declares itself: a creator of that name is not made, the union's own is called
+        // (InputAction's hand-written ones, until the game drops them; kovarex 2026-11-17).
+        std::unordered_set<uint32_t> declared;
+        for (size_t i = mark; i < scratch.size(); ++i)
+        {
+          Node* n = scratch[i];
+          if (n->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(n)->name.empty())
+            declared.insert(static_cast<FunctionDecl*>(n)->name.last().symbol);
+          else if (n->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(n)->name.empty())
+            declared.insert(static_cast<VariableDecl*>(n)->name.last().symbol);
+          else if (n->kind == NodeKind::UsingAliasDecl)
+            declared.insert(static_cast<UsingAliasDecl*>(n)->name);
+        }
+        std::string u(symbols.name(c->name.last().symbol));
+        std::vector<Token> made;
+        for (size_t k = 0; k < enumerators.size(); ++k)
+        {
+          if (declared.count(static_cast<EnumeratorDecl*>(enumerators[k])->name))
+            continue;
+          std::string name(symbols.name(static_cast<EnumeratorDecl*>(enumerators[k])->name));
+          std::string source = static_cast<VariableDecl*>(alternatives[k])->voidAlternative
+                                 ? "public: static " + u + " " + name + "() { return " + u + "(" + u + "::Tag::" + name + "); }"
+                                 : "public: template<typename... __KppArgs> static " + u + " " + name + "(__KppArgs&&... __kpp_args) { return " + u + "(" + u +
+                                     "::Tag::" + name + ", std::forward<__KppArgs>(__kpp_args)...); }"; // (std::forward: a static_cast<A&&> of an array reference is codegen's gap, language/static_cast_forwards_an_array_reference)
+          std::vector<Token> one = synthesize(source, enumerators[k]->token);
+          made.insert(made.end(), one.begin(), one.end());
+        }
+        toks.insert(toks.begin() + pos, made.begin(), made.end());
+        parseBody();
       }
       // The tag and the alternatives' storage after the union's own data members (design.md 8.5):
       // members and tag share one head, as a hand-written tagged union has them (the game's

@@ -932,6 +932,17 @@ enumerators, so U's own members may take them. `U::Tag::Count` is the tag (`u[U:
 `u == U::Tag::Count`, `case U::Tag::Count:`, `U(U::Tag::Count, 3)`), and an alias (`using InputActionType =
 InputAction::Tag;`) names it as the game did. Spec: kpp/typed_union_scoped_tag.
 
+*Creators* (kovarex 2026-11-17, for InputAction's 657 hand-written `InputAction::CloseGui(data)`): a `union enum class
+U` makes a static creator per alternative, `U::Name(args...)`, which builds that alternative from the arguments as
+`U(U::Tag::Name, args...)` does (a value of its type, by copy or move, or its constructor's arguments, in place), and
+`U::Name()` for a void alternative. A plain `union enum` makes none: its alternatives' names are its own. The parser
+writes them at the body's end (a member template forwarding its arguments, std::forward: a static_cast of an array
+reference is a codegen gap, pending language/static_cast_forwards_an_array_reference). A name the union declares
+itself gets no creator, its own member is called, as a class's own default constructor or operator= takes the place
+of the one the compiler makes (kovarex 2026-11-17). Building from a tag and a pack of one element (`U(U::Tag::X, forward<A>(a)...)`) builds it from that
+element, which stopped on "taking the address of a" before. Specs: kpp/typed_union_creators,
+kpp/typed_union_creator_declared_by_the_union.
+
 *inline(N)* (kovarex 2026-11-16, option D of the InputAction study: "without the inline, everything is
 directly in the object, the inline creates the limit"). `union enum InputAction : u16 inline(112)` keeps an
 alternative of at most N bytes in the union and one larger on the heap, its storage holding the address;

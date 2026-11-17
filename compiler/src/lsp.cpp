@@ -1606,6 +1606,8 @@ namespace
     // of their own. Empty for any other declaration.
     std::string builtinText(const KeptProgram& program, const Decl* d)
     {
+      if (std::string creator = creatorText(program, d); !creator.empty())
+        return creator;
       if (!d->parent || d->token != d->parent->token)
         return {};
       if (d->parent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(d->parent)->tagEnum)
@@ -1633,6 +1635,54 @@ namespace
         return {};
       std::string type = underlyingText(d->parent);
       return "using UnderlyingType = " + (type.empty() ? std::string("int") : type);
+    }
+
+    // A union enum class's creator of an alternative (parser.cpp: written at the alternative's name, design.md
+    // 8.5) as it would be written: `static Action Move(int)`, `static Action Stop()` for a void one. Empty for any
+    // other declaration.
+    std::string creatorText(const KeptProgram& program, const Decl* d)
+    {
+      if (d->kind != NodeKind::FunctionDecl || !d->parent || d->parent->kind != NodeKind::ClassDecl || !(d->flags & DF_Static))
+        return {};
+      auto* u = static_cast<const ClassDecl*>(d->parent);
+      auto* tag = u->tagEnum ? static_cast<const EnumDecl*>(u->tagEnum) : nullptr;
+      if (!tag || !tag->isClass || static_cast<const FunctionDecl*>(d)->name.empty())
+        return {};
+      uint32_t name = static_cast<const FunctionDecl*>(d)->name.last().symbol;
+      for (size_t k = 0; k < tag->enumerators.size() && k < u->alternatives.size(); ++k)
+      {
+        auto* en = static_cast<const EnumeratorDecl*>(tag->enumerators[k]);
+        // (written at the alternative's name: the same place in the text, at another token)
+        const std::vector<Token>* tokens = u->file ? u->file->tokens : nullptr;
+        if (en->name != name || !tokens || d->token >= tokens->size() || en->token >= tokens->size() ||
+            (*tokens)[d->token].offset != (*tokens)[en->token].offset)
+          continue;
+        std::string self = declarationName(u, *program.symbols), alternative(program.symbols->name(name));
+        auto* field = static_cast<const VariableDecl*>(u->alternatives[k]);
+        if (field->voidAlternative)
+          return "static " + self + " " + alternative + "()";
+        std::string type;
+        if (field->type && u->file && u->file->tokens && field->type->token < u->file->tokens->size())
+        {
+          const std::vector<Token>& tokens = *u->file->tokens;
+          int depth = 0;
+          for (uint32_t i = field->type->token; i < tokens.size() && i < field->type->token + 32; ++i)
+          {
+            if (tokens[i].is(P::Less))
+              ++depth;
+            else if (tokens[i].is(P::Greater))
+              --depth;
+            else if (depth == 0 && (tokens[i].is(P::Comma) || tokens[i].is(P::RBrace)))
+              break;
+            std::string_view text = u->file->text.substr(tokens[i].offset, tokens[i].length);
+            if (!type.empty() && (std::isalnum((unsigned char)type.back()) || type.back() == '_') && (std::isalnum((unsigned char)text[0]) || text[0] == '_'))
+              type += ' ';
+            type += text;
+          }
+        }
+        return "static " + self + " " + alternative + "(" + type + ")";
+      }
+      return {};
     }
 
     // The underlying type written after an enum's `:` (up to its `{` or inline(N)), empty when none is.

@@ -1,0 +1,10 @@
+// spec: `static_cast<A&&>(a)` forwards an argument whose type is an array reference (a string literal given to a
+// forwarding template, `A` = `const char (&)[6]`), as std::forward does: the reference passed on, no conversion
+// pending: codegen does not support a conversion from const char* to const char[6]: the cast converts the reference's array instead of passing the reference on. Found writing union enum class creators (2026-11-17); B
+template<typename... A> std::String make(A&&... a) { return std::String(static_cast<A&&>(a)...); }
+
+int main()
+{
+  std::println(make("hello"));
+  return 0;
+}
