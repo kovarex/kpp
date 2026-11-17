@@ -1,0 +1,37 @@
+// spec: `T x;` (a local, a global, an array of T, a static member defined outside its class) of a class without a default constructor is the checker's error naming why, as `new T` is (language/new_of_a_class_without_a_default_constructor_is_error): a deleted one, a reference member or a const scalar member without an initializer, a member of a class without one. Codegen said it "does not support default construction" (kovarex, 2026-11-17); other constructors alone leave the implicit one (classes/implicit_default_constructor_beside_others)
+// error: default_initialized_variable_without_default_constructor_is_error.kpp:31: error: Deleted has no default constructor: its default constructor is deleted
+// error: default_initialized_variable_without_default_constructor_is_error.kpp:32: error: Holder has no default constructor: its member 'target', a reference, has no initializer
+// error: default_initialized_variable_without_default_constructor_is_error.kpp:33: error: Fixed has no default constructor: its const member 'limit' has no initializer
+// error: default_initialized_variable_without_default_constructor_is_error.kpp:34: error: Outer has no default constructor: its member 'inner' (Deleted) has none
+// error: default_initialized_variable_without_default_constructor_is_error.kpp:27: error: Deleted has no default constructor: its default constructor is deleted
+// error: default_initialized_variable_without_default_constructor_is_error.kpp:28: error: Deleted has no default constructor: its default constructor is deleted
+struct Deleted
+{
+  Deleted() = delete;
+  Deleted(i32 v) : v(v) {}
+  i32 v;
+};
+struct Holder
+{
+  i32& target;
+};
+struct Fixed
+{
+  const i32 limit;
+};
+struct Outer
+{
+  Deleted inner;
+};
+struct Statics { static Deleted shared; };
+Deleted global;
+Deleted Statics::shared;
+int main()
+{
+  Deleted local;
+  Holder h;
+  Fixed f;
+  Outer all[2];
+  (void)local, (void)h, (void)f, (void)all;
+  return 0;
+}

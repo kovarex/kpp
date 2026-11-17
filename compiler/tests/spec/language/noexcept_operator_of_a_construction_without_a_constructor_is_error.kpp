@@ -1,9 +1,10 @@
-// spec: the noexcept operator over a construction the class has no constructor for is an error, as the construction is ([except.spec] 6 asks about a well-formed operand; clang: "no matching constructor for initialization of 'NoDefault'"), never an answer: here `noexcept(new (slot) T())` with T a class whose only constructor takes an i32
+// spec: the noexcept operator over a construction the class has no constructor for is an error, as the construction is ([except.spec] 6 asks about a well-formed operand; clang: "no matching constructor for initialization of 'NoDefault'"), never an answer: here `noexcept(new (slot) T())` with T a class whose default constructor is deleted (other constructors alone leave the implicit one in kpp)
 // error: has no default constructor
 extern "C" import "stdio.h";
 
 struct NoDefault
 {
+  NoDefault() = delete;
   NoDefault(i32 v) : v(v) {}
   i32 v;
 };

@@ -1,0 +1,62 @@
+// spec: a class keeps its implicit default constructor beside the constructors it declares (kovarex, 2026-11-17: in C++ declaring any constructor drops it): `T x;`, `T x{};`, `T()`, `new T`, an array of T, a member and a base of T left out of a constructor initializer, a Vector's resize and isConstructible<T> all take it, zeroing what has no default member initializer and running the members' own ones; a class's own `T()` and `T() = delete;` still decide
+// factorio: ActionData::RemoteViewSurfaceData with its `RemoteViewSurfaceData() = default;` removed was "codegen does not support default construction" at `ActionData::RemoteViewSurfaceData params;` (GuiContext)
+struct View
+{
+  View(int surface, int zoom) : surface(surface), zoom(zoom) {}
+  View(int surface) : surface(surface) {}
+  int surface;
+  int zoom = 3;
+  std::String name;
+};
+struct Holder
+{
+  Holder(int extra) : extra(extra) {}
+  Holder(const View& v) : view(v) {}
+  View view; // built by View's implicit default constructor when the constructor leaves it out
+  int extra = 7;
+};
+struct Derived : View
+{
+  Derived(int z) { this.zoom = z; } // the base by its implicit default constructor
+};
+struct Own
+{
+  Own() : value(42) {}
+  Own(int v) : value(v) {}
+  int value;
+};
+static_assert(std::isConstructible<View>);
+static_assert(std::isConstructible<View, int>);
+static_assert(std::isConstructible<Holder>);
+static_assert(std::isConstructible<Derived>);
+struct Plain
+{
+  constexpr Plain(int surface) : surface(surface) {}
+  int surface;
+  int zoom = 3;
+};
+constexpr int atCompileTime()
+{
+  Plain v;
+  return v.zoom; // (surface is left as it is at compile time, as any default-initialized scalar member)
+}
+static_assert(atCompileTime() == 3);
+View global;
+int main()
+{
+  View a;
+  View b{};
+  View c = View();
+  View* d = new View;
+  View e[2];
+  Holder h(5);
+  Derived g(9);
+  std::Vector<View> list;
+  list.resize(2);
+  Own o;
+  std::println(a.surface, " ", a.zoom, " ", a.name.size(), " | ", b.zoom, " ", c.zoom, " ", d->zoom, " ", e[1].zoom, " | ",
+               h.view.zoom, " ", h.extra, " | ", g.surface, " ", g.zoom, " | ", list[1].zoom, " ", global.zoom, " | ", o.value,
+               " | ", View(8).surface, " ", View(8, 1).zoom);
+  delete d;
+  return 0;
+}

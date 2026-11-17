@@ -25,7 +25,7 @@ struct NoexceptCopy
   NoexceptCopy& operator=(const NoexceptCopy&) noexcept { return this; }
 };
 struct ThrowingDestructor { ~ThrowingDestructor() noexcept(false) {} };
-struct NoDefault { NoDefault(int) {} };
+struct NoDefault { NoDefault() = delete; NoDefault(int) {} };
 struct DefaultArgument { DefaultArgument(int v = 3) noexcept {} };
 struct DefaultArgumentCalls { DefaultArgumentCalls(int v = compute()) noexcept {} };
 struct DefaultedThrows { DefaultedThrows() noexcept(false) = default; };

@@ -14,6 +14,7 @@ struct Derived : Base
 };
 struct NoDefaultBase
 {
+  NoDefaultBase() = delete; // (other constructors alone leave the implicit one in kpp)
   NoDefaultBase(int v) : v(v) {}
   int v;
 };

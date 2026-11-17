@@ -3405,6 +3405,29 @@ not SanitizerCoverage), one byte per probe set to 1, conditions' outcomes record
   kpp/coverage_jobs_merges_workers, kpp/coverage_program_writes_at_exit, kpp/coverage_config_constant,
   kpp/coverage_runner_needs_coverage_build, kpp/coverage_with_sanitize_thread_is_error.
 
+### 29. The implicit default constructor stays beside other constructors (decided 2026-11-17, built)
+kovarex, 2026-11-17, option A of two (the other: C++'s rule with a clearer error), after removing
+ActionData::RemoteViewSurfaceData's `RemoteViewSurfaceData() = default;` and getting codegen's "does not support default
+construction": a class's implicit default constructor is not dropped by the other constructors it declares (C++
+[class.default.ctor] 1 drops it once any constructor is declared). It is gone only when the class declares a default
+constructor of its own (`T()`, or one whose parameters all have default arguments, which replaces it as before) or
+deletes it (`T() = delete;`, how a class says it must be built from arguments). It is still deleted by a part that
+cannot be default-initialized ([class.default.ctor] 2): a reference or const scalar member without an initializer, a
+member or base without a default constructor. It does what the implicit one of a class without constructors does:
+zeroes the object, then the bases, the default member initializers and the members' default constructors. The traits
+follow (`isConstructible<T>`, `isNothrowDefaultConstructible`, `isTriviallyDefaultConstructible`), as do `T x;`,
+`T()`, `T{}`, `new T`, arrays, a member or base a constructor leaves out, and compile-time evaluation. The rule for a
+union enum class's creators (8.5, a member of the creator's signature replaces that one) is the same idea.
+
+A class that cannot be default-constructed is the checker's error where it is asked for, naming why: `T x;` (a local,
+a global, a static member's definition, an array of T) as `new T` was already (codegen's "does not support default
+construction" before). The game builds to byte-identical IR with the rule (factorio and factorio-test, debug, kpp
+0.2.1544 with and without it); its one difference is TestMapDeserialiser's static_assert that a typed union whose first
+alternative has no default constructor is not default constructible, which deletes TestStruct1's (game PR,
+kpp-implicit-default-constructor). Specs: classes/implicit_default_constructor_beside_others,
+language/default_initialized_variable_without_default_constructor_is_error; the specs that wanted a class without a
+default constructor delete it. docs/differences-from-cpp.md, "A class keeps its implicit default constructor".
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional

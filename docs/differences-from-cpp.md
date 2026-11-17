@@ -521,6 +521,36 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 struct Celsius { implicit Celsius(double degrees); };
 ```
 
+### A class keeps its implicit default constructor beside its other constructors (built)
+
+- **C++:** declaring any constructor drops the implicit default constructor ([class.default.ctor] 1), so a
+  class that adds `T(int)` writes `T() = default;` back to keep `T x;` working.
+- **kpp:** other constructors leave it. It is gone only when the class declares its own `T()` (or one whose
+  parameters all have defaults) or deletes it with `T() = delete;`, and, as in C++, when a part cannot be
+  default-initialized (a reference or const scalar member without an initializer, a member or base without
+  one). `isConstructible<T>` and the other traits answer by it. Where a class has none, `T x;` and `new T` are
+  the checker's error naming why.
+- **Why:** kovarex (2026-11-17), after removing a `RemoteViewSurfaceData() = default;` from the game: the same
+  annoyance as with the union enum class's creators below; nothing is dropped, nothing is written back.
+- **See:** [design 29][d29]; specs `classes/implicit_default_constructor_beside_others`,
+  `language/default_initialized_variable_without_default_constructor_is_error`.
+
+```cpp
+struct View
+{
+  View(int surface) : surface(surface) {}
+  int surface;
+  int zoom = 3;
+};
+View v;               // surface 0, zoom 3: the implicit constructor, which C++ would have dropped
+struct Handle
+{
+  Handle() = delete;  // must be built from a value
+  Handle(int id) : id(id) {}
+  int id;
+};
+```
+
 ### One definition for const and non-const (later, details not decided)
 
 - **C++:** a getter is written twice, and C++23's deducing `this` helps a little.
@@ -1107,6 +1137,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d14]: design.md#14-text-output-arguments-in-sequence-text-appendto-and--decided-2026-11-01
 [d26]: design.md#26-debugvalue-what-the-debugger-shows-decided-2026-11-11
 [d27]: design.md#27-flags-a-set-of-named-bits-decided-2026-11-12
+[d29]: design.md#29-the-implicit-default-constructor-stays-beside-other-constructors-decided-2026-11-17-built
 [dbgv]: debugging.md#debugvalue
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01

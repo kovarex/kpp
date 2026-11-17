@@ -1,4 +1,4 @@
-// spec: a braced construction in a SFINAE decltype forms for a type it can build and not for one it cannot ([temp.deduct] 8): `decltype(T{}, 1)` holds for an aggregate and not for a class whose constructor takes an argument, as `decltype(T(), 1)` (clang's output)
+// spec: a braced construction in a SFINAE decltype forms for a type it can build and not for one it cannot ([temp.deduct] 8): `decltype(T{}, 1)` holds for an aggregate and not for a class whose default constructor is deleted, as `decltype(T(), 1)` (clang's output)
 // found by D's check of its own SFINAE change against clang (2026-11-10): the empty braced list, which has the type it initializes, counted as an operand that does not form, so `T{}` failed for every T
 struct Plain
 {
@@ -7,6 +7,7 @@ struct Plain
 struct Needs
 {
   int v;
+  Needs() = delete; // (a constructor taking an argument alone leaves the implicit one in kpp)
   Needs(int x) : v(x) {}
 };
 template<typename T>

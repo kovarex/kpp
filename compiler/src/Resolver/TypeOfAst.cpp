@@ -1560,12 +1560,13 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
     if (!destructibleOutside(def))
       return false;
   }
-  bool anyConstructor = false;
+  // A default constructor the class declares decides; with none (other constructors or not), the implicit one,
+  // which kpp keeps beside any other constructor (kovarex, 2026-11-17, design.md "The implicit default
+  // constructor"): it is built when its parts are, below.
   for (Decl* m : membersRead(def))
   {
     if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
       continue;
-    anyConstructor = true;
     auto* f = static_cast<FunctionDecl*>(m);
     bool takesNone = true;
     for (Decl* p : f->params)
@@ -1576,30 +1577,7 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
       return false;
     if (!(f->flags & DF_Default))
       return true; // a user-provided default constructor
-    anyConstructor = false; // `= default`: as the implicit one, below
-    break;
-  }
-  if (anyConstructor)
-  {
-    // Constructors declared, none takes no argument: no implicit one, but a default constructor inherited
-    // (`using Base::Base;`: C++17 inherits every constructor of the base, a default one too, as the game's SignalID
-    // and Vector2D have it), the class's other parts then as for the implicit one, below.
-    std::vector<const Ty*> inherited;
-    inheritedConstructorSources(def, u, inherited, 0);
-    std::optional<bool> inheritsDefault = false;
-    for (const Ty* b : inherited)
-    {
-      std::optional<bool> r = defaultConstructible(b, depth + 1);
-      if (r && *r)
-      {
-        inheritsDefault = true;
-        break;
-      }
-      if (!r)
-        inheritsDefault = std::nullopt;
-    }
-    if (!inheritsDefault || !*inheritsDefault)
-      return inheritsDefault;
+    break; // `= default`: as the implicit one, below
   }
   Subst s = substFor(u);
   // A typed union builds its first alternative, then its own members by their initializers, as a class's
@@ -1654,26 +1632,21 @@ auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) ->
   ClassDecl* def = classDefinition(s.cls);
   if (!def)
     return std::nullopt;
-  bool anyConstructor = false, defaultConstructor = false;
   for (Decl* m : membersRead(def))
   {
     if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && static_cast<VariableDecl*>(m)->init)
       return false; // `int count = 0;`: the implicit constructor runs it
     if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
       continue;
-    anyConstructor = true;
     auto* f = static_cast<FunctionDecl*>(m);
     bool takesNone = true;
     for (Decl* p : f->params)
       takesNone = takesNone && static_cast<ParamDecl*>(p)->defaultValue;
     if (!takesNone)
-      continue;
+      continue; // (other constructors leave the implicit default one, kovarex 2026-11-17)
     if ((f->flags & DF_Delete) || !(f->flags & DF_Default))
       return false;
-    defaultConstructor = true;
   }
-  if (anyConstructor && !defaultConstructor)
-    return false; // a declared constructor and no default one: none is implicit
   for (const ClassDecl::Base& b : def->bases)
     if (b.isVirtual)
       return false;

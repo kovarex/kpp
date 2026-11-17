@@ -1,8 +1,9 @@
 // spec: `new T()` in a class template's member, for a T without a default constructor, is that instance's error when the instance is used (beside codegen's own, which only an emitted instance reaches), and none for a member nothing calls, which C++ never instantiates (kpp walks every member of an instantiated class: Vector<T>::resize(count) for every element type the game has); language/new_of_a_class_without_a_default_constructor_is_error has the cases outside templates
-// error: new_of_a_class_without_a_default_constructor_in_an_instance_is_error.kpp:12: error: NoDefault has no default constructor: every constructor it declares takes an argument (in T = NoDefault)
-// no-warning: new_of_a_class_without_a_default_constructor_in_an_instance_is_error.kpp:13:
+// error: new_of_a_class_without_a_default_constructor_in_an_instance_is_error.kpp:13: error: NoDefault has no default constructor: its default constructor is deleted (in T = NoDefault)
+// no-warning: new_of_a_class_without_a_default_constructor_in_an_instance_is_error.kpp:14:
 struct NoDefault
 {
+  NoDefault() = delete; // (other constructors alone leave the implicit one: classes/implicit_default_constructor_beside_others)
   NoDefault(i32 v) : v(v) {}
   i32 v;
 };

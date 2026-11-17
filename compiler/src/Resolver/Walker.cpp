@@ -5291,12 +5291,12 @@ auto GlobalScope::Impl::Walker::missingDefaultConstructor(const Ty* t) -> std::s
   ClassDecl* def = impl.classDefinition(c);
   if (!def || def->isTypedUnion || def->keyword == Kw::union_)
     return {}; // (a union's variant members delete its default constructor by rules of their own: [class.default.ctor] 2)
-  bool declared = false;
+  // A default constructor the class declares decides; with none, the implicit one, which other constructors leave
+  // (kovarex, 2026-11-17: kpp keeps it beside them, where C++ drops it), built when its parts are, below.
   for (Decl* m : membersRead(def))
   {
     if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor))
       continue;
-    declared = true;
     auto* f = static_cast<FunctionDecl*>(m);
     bool takesNone = true;
     for (Decl* p : f->params)
@@ -5307,19 +5307,7 @@ auto GlobalScope::Impl::Walker::missingDefaultConstructor(const Ty* t) -> std::s
       return "its default constructor is deleted";
     if (!(f->flags & DF_Default))
       return {}; // a user-provided one
-    declared = false; // `= default`: as the implicit one, below
-    break;
-  }
-  if (declared)
-  {
-    // (a default constructor inherited from a base, `using Base::Base;`, serves: C++17 inherits it, and codegen takes it)
-    std::vector<const Ty*> inherited;
-    impl.inheritedConstructorSources(def, c, inherited, 0);
-    bool inheritsDefault = false;
-    for (const Ty* b : inherited)
-      inheritsDefault = inheritsDefault || impl.defaultConstructible(b, 1) != std::optional<bool>(false);
-    if (!inheritsDefault)
-      return "every constructor it declares takes an argument";
+    break; // `= default`: as the implicit one, below
   }
   // The implicit (or defaulted) one is deleted by a part that cannot be default-initialized ([class.default.ctor] 2).
   std::vector<const Ty*> bases;
@@ -11530,6 +11518,16 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           declared = deduced;
           deducedLocal = deduced; // the uses in this walk (a template instance's body asks under its substitution)
         }
+      }
+      // `ActionData::RemoteViewSurfaceData params;` of a class without a default constructor (its other constructors
+      // dropped the implicit one, [class.default.ctor] 1): the checker's error, as `new T` is; codegen said it "does not
+      // support default construction" (kovarex, 2026-11-17). A static member in its class is only declared there.
+      if (defaultInitialized && declared && !(v->parent && v->parent->kind == NodeKind::ClassDecl) && !probesSharedNodes())
+      {
+        const Ty* element = declared;
+        while (element->kind == TyKind::Array && element->inner)
+          element = element->inner; // `NoDefault all[4];`
+        checkDefaultConstruction(element, v->token);
       }
       if (impl.containsAuto(declared))
       {

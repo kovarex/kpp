@@ -683,9 +683,9 @@ auto codegen::Emitter::defaultConstruct(const std::string& addr, const Ty* t, No
   }
   if (hasUserConstructors(c))
   {
+    // (None declared: the implicit one, which kpp keeps beside the class's other constructors, kovarex 2026-11-17;
+    // the checker said where a part has none.)
     FunctionDecl* ctor = findConstructor(t, {}, at);
-    if (!ctor && !inheritedConstructorBase(c))
-      unsupported(at, "default construction of " + qualifiedName(c) + ", which has no default constructor");
     if (ctor && !(ctor->flags & DF_Default))
     {
       // Through callFunction: `Style(const Style* parent = nullptr)` wants its default argument.
@@ -3254,8 +3254,8 @@ auto codegen::Emitter::initializeFrom(const std::string& addr, const Ty* t, Expr
   {
     // `a?->b` when a is not set: `T()`, zeroed and then constructed.
     if (isClass(t))
-      if (ClassDecl* c = classDef(t->decl, at); hasUserConstructors(c) && !findConstructor(t, {}, at) && !inheritedConstructorBase(c))
-        fail(at, "`?->` gives a default value when its object is not set, and " + qualifiedName(c) + " has no default constructor");
+      if (FunctionDecl* f = findConstructor(t, {}, at); f && (f->flags & DF_Delete))
+        fail(at, "`?->` gives a default value when its object is not set, and " + qualifiedName(classDef(t->decl, at)) + "'s default constructor is deleted");
     storeZero(t, addr, at);
     if (isClass(t))
       constructInto(addr, t, {}, at);

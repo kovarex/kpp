@@ -161,7 +161,8 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   which builds it from its value or its constructor's arguments; an alternative of type `void` carries
   no value. A member you write with a creator's signature replaces that one creator, and any other is an
   overload beside it: unlike C++, where one constructor of your own drops the implicit default
-  constructor, nothing is dropped and nothing needs `= default` to come back.
+  constructor, nothing is dropped and nothing needs `= default` to come back. Any class keeps its
+  implicit default constructor beside its other constructors the same way; `T() = delete;` removes it.
 
   ```cpp
   union enum class Action : u8

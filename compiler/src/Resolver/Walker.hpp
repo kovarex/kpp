@@ -780,8 +780,8 @@
     // an instance too (as that instance's), where codegen said it "does not support" it, and inside the noexcept
     // operator, which answered 1 (K's spec language/noexcept_operator_of_a_construction_without_a_constructor_is_error).
     void checkDefaultConstruction(const Ty* t, uint32_t token);
-    // Why class t has no default constructor ([class.default.ctor]): constructors declared and none takes no
-    // argument, a deleted one, or an implicit or defaulted one that a part deletes (a reference or const scalar
+    // Why class t has no default constructor ([class.default.ctor]): a deleted one, or an implicit or defaulted one
+    // that a part deletes (other constructors leave the implicit one in kpp, kovarex 2026-11-17) (a reference or const scalar
     // member without an initializer, a member or base without one). Empty where it has one or that is not known
     // (its access is not judged: `new T()` in T's own members takes a private one).
     std::string missingDefaultConstructor(const Ty* t);
