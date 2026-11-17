@@ -126,6 +126,11 @@ runner reads one key at a time; from a pipe or a file (a script, `compiler/tests
 it reads bytes, Enter being `\r`. On Linux and FreeBSD a key counts once Enter is pressed, and `v`
 has no clipboard yet.
 
+Each run ends with its result as Factorio's C++ test runner said it: `Success: 4 tests passed (0.123 s)`
+or `FAILURE: 1 out of 4 tests failed (0.123 s)`, and each failed test's name follows `failed: `. On a
+terminal Success is green and FAILURE and failed red; `NO_COLOR` turns the colours off, and
+`CLICOLOR_FORCE=1` puts them in a pipe's output too.
+
 A program adds keys of its own with two functions: `std::String testsInteractiveKeys()`, the text
 added to the menu's last line, and `bool testsInteractiveKey(int key)`, true when the key was its
 (the game's `h` turns its heavy mode on and off). For `a`'s workers, `testsWorkerArguments()` adds

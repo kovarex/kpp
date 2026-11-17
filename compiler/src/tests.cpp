@@ -1748,6 +1748,29 @@ int __kppWorkerCount()
   return chosen < 1 ? 1 : chosen;
 }
 
+// -i's result in colour, as Factorio's C++ test program printed its summary (kovarex 2026-11-17): a green
+// Success or a red FAILURE, and a red failed before a failed test's name, seen at a glance. Only on a
+// terminal (__kppColorTerminal, which on Windows turns its escape codes on) and without NO_COLOR;
+// CLICOLOR_FORCE (not 0) colours a pipe's too (tests/interactive.ps1).
+int __kppColors = -1;
+std::String __kppColored(const char* text, int color) // 31 red, 32 green
+{
+  if (__kppColors < 0)
+  {
+    const char* none = std::getenv("NO_COLOR");
+    const char* force = std::getenv("CLICOLOR_FORCE");
+    if (none && none[0] != 0)
+      __kppColors = 0;
+    else if (force && force[0] != 0 && std::strcmp(force, "0") != 0)
+      __kppColors = 1;
+    else
+      __kppColors = __kppColorTerminal() ? 1 : 0;
+  }
+  if (__kppColors == 0)
+    return std::String(text);
+  return std::toString("\x1b[", color, "m", std::StringView(text), "\x1b[0m");
+}
+
 // One byte of the standard input, -1 at its end (-i's keys where they come from a pipe or a line).
 int __kppReadKey()
 {
@@ -2076,9 +2099,9 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
         {
           failed.push_back(selected[position]->fullName);
           if (!result.crashed.empty())
-            std::println("failed: ", selected[position]->fullName, " (it crashed: ", result.crashed, ")");
+            std::println(__kppColored("failed", 31), ": ", selected[position]->fullName, " (it crashed: ", result.crashed, ")");
           else
-            std::println("failed: ", selected[position]->fullName);
+            std::println(__kppColored("failed", 31), ": ", selected[position]->fullName);
         }
       });
       if (!ran)
@@ -2094,15 +2117,20 @@ int __kppInteractive(int argc, char** argv, const std::Vector<const char*>& skip
         if (!passed)
         {
           failed.push_back(test->fullName);
-          std::println("failed: ", test->fullName);
+          std::println(__kppColored("failed", 31), ": ", test->fullName);
         }
       }
     u64 ms = (__kppNanoseconds() - started) / 1000000;
-    std::String notRunText;
+    // As Factorio's C++ runner said it: "Success: 4 tests passed", "FAILURE: 1 out of 4 tests failed".
+    std::String result;
+    if (failed.empty())
+      result << __kppColored("Success", 32) << ": " << int(selected.size()) << " " << std::StringView(selected.size() == 1 ? "test" : "tests") << " passed";
+    else
+      result << __kppColored("FAILURE", 31) << ": " << int(failed.size()) << " out of " << int(selected.size()) << " "
+             << std::StringView(selected.size() == 1 ? "test" : "tests") << " failed";
     if (notRun > 0)
-      notRunText << ", " << notRun << " of them not run";
-    std::println(int(selected.size()), " ", std::StringView(selected.size() == 1 ? "test" : "tests"), ", ", int(failed.size()), " failed", notRunText, " (",
-                 ms / 1000, ".", std::StringView(ms % 1000 < 100 ? "0" : ""), std::StringView(ms % 1000 < 10 ? "0" : ""), ms % 1000, " s)");
+      result << ", " << notRun << " of them not run";
+    std::println(result, " (", ms / 1000, ".", std::StringView(ms % 1000 < 100 ? "0" : ""), std::StringView(ms % 1000 < 10 ? "0" : ""), ms % 1000, " s)");
     last = choice;
     __kppSaveInteractive(path, last, failed);
     // What ran so far in this menu, written after each run (--coverage FILE, else the build's file) so
@@ -2615,6 +2643,9 @@ namespace __kppWin32
   extern "C" int WriteFile(void* file, const void* buffer, unsigned long size, unsigned long* written, _OVERLAPPED* overlapped);
   extern "C" int _getch();
   extern "C" int _isatty(int file);
+  extern "C" void* GetStdHandle(unsigned long handle);
+  extern "C" int GetConsoleMode(void* console, unsigned long* mode);
+  extern "C" int SetConsoleMode(void* console, unsigned long mode);
   extern "C" int OpenClipboard(HWND__* owner);
   extern "C" int CloseClipboard();
   extern "C" void* GetClipboardData(unsigned int format);
@@ -2632,6 +2663,19 @@ int __kppKey()
   if (c == 0 || c == 224)
     return 1000 + __kppWin32::_getch();
   return c;
+}
+
+// -i's colours: the standard output a console, its escape codes turned on
+// (ENABLE_VIRTUAL_TERMINAL_PROCESSING, as Factorio's Util::activateVirtualTerminal).
+bool __kppColorTerminal()
+{
+  if (!__kppWin32::_isatty(1))
+    return false;
+  void* console = __kppWin32::GetStdHandle(0xfffffff5); // STD_OUTPUT_HANDLE
+  unsigned long mode = 0;
+  if (!__kppWin32::GetConsoleMode(console, &mode))
+    return false;
+  return (mode & 4) != 0 || __kppWin32::SetConsoleMode(console, mode | 4) != 0;
 }
 
 // -i's v: the clipboard's text (CF_UNICODETEXT), without the line ends and spaces around it.
@@ -2759,6 +2803,7 @@ namespace __kppPosix
   extern "C" i64 write(int file, const void* buffer, size_t size);
   extern "C" int close(int file);
   extern "C" void _exit(int code);
+  extern "C" int isatty(int file);
 }
 
 // -i's keys: the terminal gives a line at a time here (no raw mode yet), so a key counts once Enter
@@ -2766,6 +2811,13 @@ namespace __kppPosix
 int __kppKey()
 {
   return __kppReadKey();
+}
+
+// -i's colours: the standard output a terminal that has them.
+bool __kppColorTerminal()
+{
+  const char* term = std::getenv("TERM");
+  return __kppPosix::isatty(1) != 0 && !(term && std::strcmp(term, "dumb") == 0);
 }
 
 // -i's v: no clipboard here yet.
