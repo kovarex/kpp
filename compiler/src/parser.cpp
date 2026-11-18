@@ -4208,7 +4208,8 @@ namespace
           std::string name(symbols.name(static_cast<EnumeratorDecl*>(enumerators[k])->name));
           std::string source = static_cast<VariableDecl*>(alternatives[k])->voidAlternative
                                  ? "public: static " + u + " " + name + "() { return " + u + "(" + u + "::Tag::" + name + "); }"
-                                 : "public: template<typename... __KppArgs> static " + u + " " + name + "(__KppArgs&&... __kpp_args) { return " + u + "(" + u +
+                                 : "public: template<typename... __KppArgs> requires (std::isConstructible<VariantAlternative<" + u + "::Tag::" + name + ", " + u +
+                                     ">, __KppArgs&&...>) static " + u + " " + name + "(__KppArgs&&... __kpp_args) { return " + u + "(" + u +
                                      "::Tag::" + name + ", std::forward<__KppArgs>(__kpp_args)...); }"; // (std::forward: a static_cast<A&&> of an array reference is codegen's gap, language/static_cast_forwards_an_array_reference)
           std::vector<Token> one = synthesize(source, enumerators[k]->token);
           made.insert(made.end(), one.begin(), one.end());

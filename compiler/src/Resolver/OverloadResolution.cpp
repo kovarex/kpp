@@ -2980,17 +2980,32 @@ auto GlobalScope::Impl::candidateRejection(FunctionDecl* f, const std::vector<co
   bool plain = f->templateParams.empty();
   if (plain && f->isTemplate)
     return {}; // (an explicit specialization's: its template is the candidate)
+  // A function parameter pack last (`template<typename... A> make(A&&... a)`, a union enum class's creator) takes the
+  // arguments from its position on; any other pack is not this.
+  size_t packTemplateParams = 0;
   for (Decl* tp : f->templateParams)
-    if (static_cast<TemplateParamDecl*>(tp)->isPack)
-      return {};
-  size_t required = 0;
-  for (Decl* p : f->params)
+    packTemplateParams += static_cast<TemplateParamDecl*>(tp)->isPack ? 1 : 0;
+  size_t required = 0, packAt = SIZE_MAX;
+  for (size_t i = 0; i < f->params.size(); ++i)
   {
-    if (static_cast<ParamDecl*>(p)->isPack)
-      return {};
-    required += static_cast<ParamDecl*>(p)->defaultValue ? 0 : 1;
+    auto* p = static_cast<ParamDecl*>(f->params[i]);
+    if (p->isPack)
+    {
+      if (i + 1 != f->params.size())
+        return {};
+      packAt = i;
+      continue;
+    }
+    required += p->defaultValue ? 0 : 1;
   }
-  if (argTypes.size() < required || argTypes.size() > f->params.size())
+  if (packTemplateParams > (packAt == SIZE_MAX ? 0 : 1))
+    return {};
+  if (packAt != SIZE_MAX)
+  {
+    if (argTypes.size() < required)
+      return {}; // (not said here yet)
+  }
+  else if (argTypes.size() < required || argTypes.size() > f->params.size())
     return required == f->params.size() ? "it takes " + std::to_string(required) + (required == 1 ? " argument" : " arguments")
                                          : "it takes " + std::to_string(required) + " to " + std::to_string(f->params.size()) + " arguments";
   const Ty* ft = declaredTypeOf(f, classSubst, 0);
@@ -3023,14 +3038,28 @@ auto GlobalScope::Impl::candidateRejection(FunctionDecl* f, const std::vector<co
     uint32_t name = static_cast<TemplateParamDecl*>(tp)->name;
     with += (with.empty() ? "" : ", ") + std::string(name == UINT32_MAX ? "?" : symbols.name(name)) + " = " + types.toString(t, &symbols);
   }
-  for (size_t i = 0; i < argTypes.size() && i < ft->args.size(); ++i)
+  for (size_t i = 0; i < argTypes.size() && i < ft->args.size() && i < packAt; ++i)
   {
     const Ty* pt = substitute(ft->args[i], deduced);
     if (!pt || !pt->isKnown() || dependsOn(pt, f->templateParams) || conversionRank(argTypes[i], pt) >= NotViable)
       return {}; // (an argument its parameter does not take: another reason)
   }
   if (!constraintsHold(f, deduced))
+  {
+    // A union enum class's creator (design.md 8.5, its constraint the parser's): the alternative it builds named.
+    if (auto* u = f->parent && f->parent->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(f->parent) : nullptr;
+        u && u->isTypedUnion && u->tagEnum && f->templateParams.size() == 1 && static_cast<TemplateParamDecl*>(f->templateParams[0])->name != UINT32_MAX &&
+        symbols.name(static_cast<TemplateParamDecl*>(f->templateParams[0])->name) == "__KppArgs")
+    {
+      auto* tags = static_cast<EnumDecl*>(u->tagEnum);
+      for (size_t k = 0; k < tags->enumerators.size() && k < u->alternatives.size(); ++k)
+        if (static_cast<EnumeratorDecl*>(tags->enumerators[k])->name == f->name.last().symbol)
+          if (const Ty* at = declaredTypeOf(u->alternatives[k], classSubst, 0))
+            return "the creator builds the alternative " + std::string(symbols.name(f->name.last().symbol)) + " of type " + types.toString(at, &symbols) +
+                   ", and no constructor of it takes them";
+    }
     return "with " + with + ", its constraints are not satisfied";
+  }
   if (namesDependentMember(ft) || signatureHasDecltype(f))
     if (const Ty* typed = declaredTypeOf(f, &deduced, 0); typed && typed->kind == TyKind::Function)
     {

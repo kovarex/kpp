@@ -964,7 +964,13 @@ with a creator's signature takes its place, as a class's own default constructor
 (kovarex 2026-11-17): `Name()` for a void alternative, a function of one parameter pack for one with a value. Any other
 function of that name is an overload beside the creator (InputAction's `SetCircuitModeOfOperation(EnumType mode, bool
 value)` calls it); a data member or alias of that name leaves no room for one. Building from a tag and a pack of one element (`U(U::Tag::X, forward<A>(a)...)`) builds it from that
-element, which stopped on "taking the address of a" before. Specs: kpp/typed_union_creators,
+element, which stopped on "taking the address of a" before. A creator with a value is constrained on its alternative
+being constructible from the arguments (`requires (std::isConstructible<VariantAlternative<U::Tag::Name, U>, Args&&...>)`,
+2026-11-18), so a wrong argument is an error at the call naming the alternative ("no ResourcePatch takes (MapPosition,
+EntityID): the creator builds the alternative ResourcePatch of type ResourcePatchData, and no constructor of it takes
+them"), not codegen's inside the creator; isConstructible of a typed union takes its own constructors, a value of exactly
+one alternative's type (or converting to it by an operator) and a tag with an alternative's arguments, never a tag alone
+(it was an aggregate's). Spec kpp/construction_in_template_instance_without_constructor_is_error. Specs: kpp/typed_union_creators,
 kpp/typed_union_creator_declared_by_the_union.
 
 *inline(N)* (kovarex 2026-11-16, option D of the InputAction study: "without the inline, everything is

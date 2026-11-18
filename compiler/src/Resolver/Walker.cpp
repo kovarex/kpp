@@ -5349,22 +5349,42 @@ auto GlobalScope::Impl::Walker::checkDefaultConstruction(const Ty* t, uint32_t t
 auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token) -> void
 {
   checkBracedConstruction(t, args); // (before the exit below: an instance's construction too)
-  if (probing || activeSubst || !file || !t || !t->isKnown() || types.isDependent(t))
+  // (a template instance's construction too, reported as its instance's (reportCheck): `Data(forward<A>(a)...)` and a
+  // union enum class's creators were codegen's "a constructor of Data taking 1 arguments", the expansion counted once)
+  if (probing || !file || file->isImported || inGenericTemplate() || !t || !t->isKnown() || types.isDependent(t))
     return;
   const Ty* c = types.unqualified(types.stripRef(t));
   if (c->kind != TyKind::Class || c->isBraceList() || Impl::lambdaOf(c) || Impl::mentionsUnknown(c) || (c->decl && (c->decl->attributes & ATTR_Draft)))
     return;
   ClassDecl* def = impl.classDefinition(c);
-  if (!def || def->isTypedUnion || args.empty())
+  if (!def || args.empty())
     return; // (no arguments: the default constructor, or an aggregate's value-initialization)
-  std::vector<const Ty*> argTypes;
   for (Expr* a : args)
-  {
     if (!a || a->kind == NodeKind::BraceInitExpr || !a->ty || !a->ty->isKnown() || types.isDependent(a->ty) || Impl::mentionsUnknown(a->ty))
-      return; // (a brace list, a pack expansion's element, an argument not typed: left to codegen, as before)
-    if (a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis)
+      return; // (a brace list, an argument not typed: left to codegen, as before)
+    else if (a->ty->kind == TyKind::Pack && !(a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis))
+      return; // (`Token(args)` in a fold over args: one element at a time, not checked here)
+  std::vector<const Ty*> argTypes = argTypesOf(args); // (a pack expansion: its elements)
+  for (const Ty* a : argTypes)
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a))
       return;
-    argTypes.push_back(argumentType(a, a->ty, types));
+  if (def->isTypedUnion)
+  {
+    // `U(U::Tag::Patch, 1, 2)`, a creator's `U(U::Tag::Patch, forward<A>(a)...)`: the alternative the constant tag
+    // names is built from the rest (design.md 8.5), unless a constructor of the union's own takes them all.
+    Expr* first = args[0];
+    if (argTypes.empty() || first->ty->kind == TyKind::Pack || types.unqualified(types.stripRef(first->ty)) != types.unqualified(impl.tagTypeOf(def, c)))
+      return;
+    bool ambiguous = false;
+    if (impl.chooseConstructor(c, argTypes, nullptr, nullptr, false, &ambiguous) || ambiguous)
+      return;
+    std::optional<int64_t> v = impl.constEval(first, ctx());
+    if (!v || *v < 0 || size_t(*v) >= def->alternatives.size() || static_cast<VariableDecl*>(def->alternatives[size_t(*v)])->voidAlternative)
+      return;
+    Subst s = c->args.empty() ? Subst{} : impl.substFor(c);
+    const Ty* alternative = impl.declaredTypeOf(def->alternatives[size_t(*v)], s.pairs.empty() ? nullptr : &s, 0);
+    checkConstruction(alternative, Span<Expr*>{args.data + 1, uint32_t(args.size() - 1)}, token);
+    return;
   }
   bool constructors = false;
   for (Decl* m : membersRead(def))
@@ -5408,8 +5428,8 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
   std::string list;
   for (const Ty* a : argTypes)
     list += (list.empty() ? "" : ", ") + types.toString(a, &symbols);
-  impl.reportCheckerError(file, token, ambiguous ? "the construction of " + types.toString(c, &symbols) + " from (" + list + ") is ambiguous: more than one constructor takes it as well"
-                                                 : "no constructor of " + types.toString(c, &symbols) + " takes (" + list + ")");
+  reportCheck(token, ambiguous ? "the construction of " + types.toString(c, &symbols) + " from (" + list + ") is ambiguous: more than one constructor takes it as well"
+                                : "no constructor of " + types.toString(c, &symbols) + " takes (" + list + ")");
 }
 
 auto GlobalScope::Impl::Walker::checkCopiedFromVolatile(const Ty* from, const Ty* to, uint32_t token) -> void

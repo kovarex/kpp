@@ -1,0 +1,34 @@
+// spec: a construction no constructor takes is the checker's error in a template instance too, a pack expansion's elements counted each (the instance named), and in a typed union built from a tag; a union enum class's creator is constrained on its alternative being constructible from the arguments, so a wrong one is an error at the call, naming the alternative: until 2026-11-18 all these were codegen's "does not support a constructor of Data taking 1 arguments" (the expansion counted once) or "has no alternative of type Tag", at the union's definition
+// factorio: AddPinParameters::ResourcePatch(position, id) of a ResourcePatchData with a Deserialiser constructor alone, and InputAction::AddPin(AddPinParameters::Tag(n)) (kovarex 2026-11-18)
+// error: construction_in_template_instance_without_constructor_is_error.kpp:14: error: no constructor of Data takes (int32&&, int32&&) (in A = int32, int32)
+// error: construction_in_template_instance_without_constructor_is_error.kpp:15: error: no constructor of Data takes (int32&, int32&) (in A = int32)
+// error: construction_in_template_instance_without_constructor_is_error.kpp:29: error: no Patch takes (int32, int32): the creator builds the alternative Patch of type Data, and no constructor of it takes them (line 23)
+// error: construction_in_template_instance_without_constructor_is_error.kpp:30: error: no Nested takes (Tag): the creator builds the alternative Nested of type Inner, and no constructor of it takes them (line 23)
+// error: construction_in_template_instance_without_constructor_is_error.kpp:31: error: no constructor of Data takes (int32, int32)
+// error: construction_in_template_instance_without_constructor_is_error.kpp:32: error: no sum takes (const char[2]): with A = const char[2]&, its constraints are not satisfied (line 16)
+struct Data
+{
+  Data(int a, int b, int c) : a(a) {}
+  int a;
+};
+template<typename... A> Data make(A&&... a) { return Data(std::forward<A>(a)...); }
+template<typename A> Data twice(A a) { return Data(a, a); }
+template<typename... A> requires (std::isConstructible<int, A&&...>) int sum(A&&... a) { return (0 + ... + a); }
+union enum class Inner : u8
+{
+  { {None, void}, {Value, int} }
+};
+union enum class Outer : u8
+{
+  { {Position, double}, {Patch, Data}, {Nested, Inner} }
+};
+int main()
+{
+  Data d = make(1, 2);
+  Data e = twice(1);
+  Outer p = Outer::Patch(1, 2);
+  Outer n = Outer::Nested(Inner::Tag::Value);
+  Outer q(Outer::Tag::Patch, 1, 2);
+  int m = sum("x");
+  return d.a + e.a + m;
+}

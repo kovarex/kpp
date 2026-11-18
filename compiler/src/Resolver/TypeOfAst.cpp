@@ -581,6 +581,41 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
       }
       if (copy)
         return true;
+      if (static_cast<ClassDecl*>(def)->isTypedUnion)
+      {
+        // A typed union (design.md 8.5) is built by a constructor of its own, from a value of exactly one
+        // alternative's type or one converting to it by an operator, or from a tag and that alternative's
+        // arguments (any alternative's here: the tag's value is no type's). A tag alone is not a value: a
+        // creator's constraint (`InputAction::AddPin(AddPinParameters::Tag(n))`) fails at its call (until
+        // 2026-11-18 a typed union was an aggregate here, constructible from its tag).
+        auto* u = static_cast<ClassDecl*>(def);
+        bool ambiguous = false;
+        if (!ctors.empty() && chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous))
+          return true;
+        const Ty* first = types.unqualified(types.stripRef(args[0]));
+        if (args.size() == 1)
+        {
+          size_t same = 0;
+          for (Decl* alt : u->alternatives)
+            if (const Ty* at = alt->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(alt)->voidAlternative
+                                 ? declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0) : nullptr;
+                at && types.unqualified(at) == first)
+              ++same;
+          return same == 1 || (first->kind == TyKind::Class && !types.isDependent(first) && convertsByOperator(first, t, 0, 0, true));
+        }
+        if (!u->tagEnum || first->kind != TyKind::Enum || first->decl != u->tagEnum)
+          return false;
+        std::vector<const Ty*> rest(args.begin(), args.end());
+        for (Decl* alt : u->alternatives)
+          if (const Ty* at = alt->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(alt)->voidAlternative
+                               ? declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0) : nullptr)
+          {
+            rest[0] = at;
+            if (traitValue("isConstructible", rest).value_or(false))
+              return true;
+          }
+        return false;
+      }
       if (ctors.empty())
         return destructibleOutside(static_cast<ClassDecl*>(def)) && aggregateTakes(t, static_cast<ClassDecl*>(def), args);
       bool ambiguous = false;
