@@ -5365,6 +5365,8 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
     else if (a->ty->kind == TyKind::Pack && !(a->kind == NodeKind::UnaryExpr && static_cast<UnaryExpr*>(a)->postfix && P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis))
       return; // (`Token(args)` in a fold over args: one element at a time, not checked here)
   std::vector<const Ty*> argTypes = argTypesOf(args); // (a pack expansion: its elements)
+  if (argTypes.empty())
+    return; // (`T(forward<Args>(args)...)` of no arguments: a default construction, the class's implicit one too, not chosen here)
   for (const Ty* a : argTypes)
     if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a))
       return;

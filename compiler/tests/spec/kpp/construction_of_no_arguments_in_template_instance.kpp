@@ -1,0 +1,19 @@
+// spec: `T(forward<Args>(args)...)` of no arguments in a template instance is a default construction, the class's implicit default constructor (kept beside the ones it declares, design.md 29) included: Vector::emplace_back() and a union enum class's creator of a class alternative with no arguments build it (bd10ce543 took them for "no constructor of Entry takes ()", the game's full build failing where its --check passed)
+struct Entry
+{
+  Entry(int a) : a(a) {}
+  int a = 7;
+};
+union enum class U : u8
+{
+  { {None, void}, {Value, Entry} }
+};
+int main()
+{
+  std::Vector<Entry> v;
+  v.emplace_back();
+  v.emplace_back(3);
+  U u = U::Value();
+  std::println(v[0].a, " ", v[1].a, " ", u[Value].a);
+  return 0;
+}
