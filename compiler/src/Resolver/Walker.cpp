@@ -5434,11 +5434,18 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
   FunctionDecl* chosen = impl.chooseConstructor(c, argTypes, nullptr, nullptr, false, &ambiguous);
   if (chosen && !ambiguous)
     return;
+  // (no constructor it declares takes them: a struct's members do, in order, design.md 30)
+  if (!ambiguous && impl.memberwiseTakes(c, def, argTypes))
+    return;
   std::string list;
   for (const Ty* a : argTypes)
     list += (list.empty() ? "" : ", ") + types.toString(a, &symbols);
+  // (a class whose members would take them, were it a struct: say why they do not)
+  std::string memberwise = !ambiguous && def->keyword == Kw::class_ && !def->isTypedUnion && !def->isClosure && impl.aggregateTakes(c, def, argTypes, true)
+                             ? " (its members would take them in order, as a struct's do beside its constructors: a class's do not, design.md 30)"
+                             : "";
   reportCheck(token, ambiguous ? "the construction of " + types.toString(c, &symbols) + " from (" + list + ") is ambiguous: more than one constructor takes it as well"
-                                : "no constructor of " + types.toString(c, &symbols) + " takes (" + list + ")");
+                                : "no constructor of " + types.toString(c, &symbols) + " takes (" + list + ")" + memberwise);
 }
 
 auto GlobalScope::Impl::Walker::checkCopiedFromVolatile(const Ty* from, const Ty* to, uint32_t token) -> void

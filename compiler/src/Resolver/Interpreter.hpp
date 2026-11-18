@@ -592,6 +592,8 @@
   // struct or union member only when anonymousMembers (the interpreter initializes none through one;
   // brace elision counts it as a member).
   bool constIsAggregate(const Ty* t, int depth, bool anonymousMembers = false);
+  // Whether t is a struct whose members take values beside its constructors (design.md 30).
+  bool constMemberwiseStruct(const Ty* t, int depth);
 
   // Whether value (of type vt; null when not known) is the first of the values of the elements of
   // an element of type et, et's braces elided ([dcl.init.aggr] 16), rather than et's own value: et

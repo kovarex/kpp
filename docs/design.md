@@ -3473,6 +3473,48 @@ kpp-implicit-default-constructor). Specs: classes/implicit_default_constructor_b
 language/default_initialized_variable_without_default_constructor_is_error; the specs that wanted a class without a
 default constructor delete it. docs/differences-from-cpp.md, "A class keeps its implicit default constructor".
 
+### 30. A struct keeps its member-wise construction beside its constructors (decided 2026-11-18, built)
+kovarex, 2026-11-18, after a study of the game's hand-written member-wise constructors ("writing these constructors is
+pretty dumb", ActionData::OpenTrainsGuiData's `OpenTrainsGuiData(TrainsGuiParameters, PlaySound)` beside its Deserialiser
+constructor), option B, for `struct` only ("in class it would be more dangerous, but in struct, this feels alright"):
+a struct's aggregate construction is not dropped by the constructors it declares (C++ [dcl.init.aggr] 1.1 makes a class
+with any user-declared constructor no aggregate). `S(a, b)`, `S{a, b}`, `S{.b = x}`, `S s = {a, b}`, `return {a, b};`,
+`new S(a, b)`, a pack (`emplace_back(a, b)`, a union enum class's creator) and `isConstructible<S, A, B>` fill its
+bases and members in order where no constructor it declares takes the arguments. The order of choice:
+
+- A constructor the struct declares that takes the arguments is chosen first, as before (`Scaled(5)` with `Scaled(int)`
+  beside two members runs the constructor); an ambiguous choice among them stays the error it was. One with the members'
+  own signature therefore replaces the member-wise construction, as a union enum class's member replaces a creator (8.5)
+  and a class's own `T()` the implicit default constructor (29).
+- A deleted constructor that takes them turns it off for those arguments (`Pos(int, int) = delete;`).
+- Positionally, a value for every base and member: beside constructors, fewer values are no member-wise
+  construction (an aggregate's members left out take their default initializers; a struct's with constructors are
+  left out only by designated names). Without that, a lone value became a conversion: the game's
+  `DeserialiserHelper<MapDeserialiser>::load` of a `Pair<OptimizedSignalID, int32>` asked
+  `isConstructible<Pair<...>, MapDeserialiser&>`, which was true by OptimizedSignalID's loading constructor alone, and
+  built the pair from the deserialiser with its int never loaded (found by comparing the game's IR before and after).
+- Designated names (`S{.b = x}`) are always the members': no constructor takes names, and members left out take their
+  default initializers.
+- Only `struct` (the keyword: a public value type, its members and bases public, no virtual function, "struct and
+  class"). A class keeps C++'s rule, its error saying so: "no constructor of Loaded takes (int32, int32) (its members would
+  take them in order, as a struct's do beside its constructors: a class's do not, design.md 30)". A typed union and a
+  closure are no struct here.
+
+The study (Claude Doc "Member-wise construction in kpp", wube/Factorio kpp 9d72b4ac): 582 constructors that take every
+data member in order and only store them, 356 of them in classes with all data public, no virtual function and no base
+(151 structs; the 205 classes of that shape are written `class X { public: ...`), 165 of those beside a loading
+constructor. Compared with Swift's memberwise initializer (kept only when no initializer is in the struct's body),
+Kotlin's and C#'s primary constructors, Rust's and Zig's struct literals (names required) and D's struct literals
+(dropped by any constructor). Reordering a struct's members reorders its positional construction, as it always did for
+the game's 894 structs without constructors; designated names avoid it. No new function is made: the construction is
+the aggregate's, in the checker, the compile-time interpreter and codegen alike. Specs:
+classes/struct_memberwise_construction_beside_constructors, classes/struct_memberwise_construction_errors_is_error.
+docs/differences-from-cpp.md, "A struct keeps its member-wise construction beside its constructors".
+
+Found with it: a braced functional cast's designators were dropped at compile time (`constexpr int x = Point{.y = 4}.x;`
+was 4, run time 0, for any aggregate), spec expressions/designated_functional_cast_in_constant. Braced construction of a
+class with constructors that none takes (`Loaded b{3, 4};`) is still codegen's error, not the checker's, as before.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional

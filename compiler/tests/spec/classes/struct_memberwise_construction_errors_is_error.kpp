@@ -1,0 +1,27 @@
+// spec: a struct's member-wise construction beside its constructors (classes/struct_memberwise_construction_beside_constructors) takes a value for each of its bases and members, positionally (designated names may leave some out), each converting to its member; a class (the keyword) keeps C++'s rule, the error saying so
+// error: struct_memberwise_construction_errors_is_error.kpp:21: error: no constructor of Loaded takes (int32, int32) (its members would take them in order, as a struct's do beside its constructors: a class's do not, design.md 30)
+// error: struct_memberwise_construction_errors_is_error.kpp:22: error: no constructor of Pos takes (int32, int32, int32)
+// error: struct_memberwise_construction_errors_is_error.kpp:23: error: no constructor of Pos takes (std::String, int32)
+// error: struct_memberwise_construction_errors_is_error.kpp:24: error: no constructor of Pos takes (int32)
+class Loaded
+{
+public:
+  Loaded(const char* text) : x(text[0]) {}
+  int x;
+  int y;
+};
+struct Pos
+{
+  Pos(const char* text) : x(text[0]) {}
+  int x;
+  int y;
+};
+int main()
+{
+  Loaded a(1, 2);
+  Pos c(1, 2, 3);
+  Pos d(std::String("x"), 2);
+  Pos e(1);
+  (void)a, (void)c, (void)d, (void)e;
+  return 0;
+}

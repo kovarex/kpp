@@ -344,6 +344,22 @@ auto codegen::Emitter::hasUserConstructors(ClassDecl* c) -> bool
   return false;
 }
 
+auto codegen::Emitter::memberwiseBesideConstructors(ClassDecl* c) -> bool
+{
+  return c && c->keyword == Kw::struct_ && !c->isTypedUnion && !c->isClosure;
+}
+
+auto codegen::Emitter::constructorsTake(ClassDecl* c, const Ty* t, Span<Expr*> args, Node* at, bool copyInit) -> bool
+{
+  if (!hasUserConstructors(c))
+    return false;
+  if (!memberwiseBesideConstructors(c) || args.empty() || constructorFor(t, args, at, copyInit) != nullptr)
+    return true;
+  // (a value for every base and member, positionally: GlobalScope::Impl::aggregateTakes beside constructors)
+  const StructInfo& info = structFor(t, at);
+  return argTypesOf(args).size() != info.bases.size() + aggregateMembers(info, c).size();
+}
+
 auto codegen::Emitter::needsConstruction(const Ty* t, Node* at, int depth) -> bool
 {
   t = types.stripRef(t);
@@ -1643,9 +1659,9 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       });
       return;
     }
-    if (!hasUserConstructors(c))
+    if (!constructorsTake(c, t, args, at, copyInit))
     {
-      // An aggregate: the elements go to its parts as a brace list's values do, the bases first,
+      // An aggregate (or a struct no constructor of which takes them, design.md 30): the elements go to its parts as a brace list's values do, the bases first,
       // then the members, each named bit field on its own (aggregateMembers), a reference member
       // bound; the parts left over are value-initialized, as from `{}`. Until 2026-11-06 each
       // field of the layout took one element: `S{v...}` over `unsigned a : 3; unsigned b : 5; int
@@ -1704,7 +1720,11 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
   const Ty* firstTy = args.size() == 1 ? args[0]->ty : nullptr;
   // (A copy-initialization's: no explicit one, `B4 x = 11LL;` takes `implicit B4(int)` over `B4(bool)`;
   // until 2026-11-08 it took the best of all, which the checker had refused.)
-  FunctionDecl* ctor = constructorFor(t, args, at, copyInit);
+  // (`Pos{.y = 2}` of a struct with constructors: its members, which no constructor takes by name, design.md 30)
+  bool designated = false;
+  for (uint32_t d : designators)
+    designated = designated || d != UINT32_MAX;
+  FunctionDecl* ctor = designated && memberwiseBesideConstructors(c) ? nullptr : constructorFor(t, args, at, copyInit);
   if (ctor && firstTy && isClass(types.stripRef(firstTy)) && classKey(firstTy) == classKey(t) && !ctor->params.empty())
   {
     // The same class: a copy, unless the chosen constructor is a copy constructor itself (a
@@ -1862,10 +1882,11 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
       copyConstruct(addr, src.text, t, at);
     return;
   }
-  if (!hasUserConstructors(c))
+  if (!hasUserConstructors(c) || (memberwiseBesideConstructors(c) && (designated || !constructorsTake(c, t, args, at, copyInit))))
   {
     // An aggregate: the values fill the fields in order; the fields left over get their
-    // default member initializers (or default construction), as in C++.
+    // default member initializers (or default construction), as in C++. So do a struct's where no constructor it
+    // declares takes them (ctor is null here: design.md 30, kovarex 2026-11-18; in C++ any constructor makes it no aggregate).
     const StructInfo& info = structFor(t, at);
     // `Item {load, ifNoPrototype, ::forward<Args>(args)...}` with Args empty: the expansion of an
     // empty pack is no value (InstanceLoader::registerLoader).

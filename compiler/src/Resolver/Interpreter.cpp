@@ -4229,6 +4229,10 @@ auto GlobalScope::Impl::constClassCast(FunctionalCastExpr* f, const Ty* t, const
     list.kind = NodeKind::BraceInitExpr;
     list.token = f->token;
     list.args = f->args.size() == 1 && f->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(f->args[0])->args : f->args;
+    // (and its designators: `Point{.y = 4}` was {4} at compile time, x 4 where run time gave y 4, until 2026-11-18,
+    // spec expressions/designated_functional_cast_in_constant)
+    if (f->args.size() == 1 && f->args[0]->kind == NodeKind::BraceInitExpr)
+      list.designators = static_cast<BraceInitExpr*>(f->args[0])->designators;
     return std::optional<std::optional<ConstValue>>(constBraceInit(types.unqualified(t), &list, ctx, depth + 1, target));
   }
   return std::optional<std::optional<ConstValue>>(constConstructFrom(t, f->args, ctx, depth, target)); // `T b(a)` copies a by T's copy constructor
@@ -4599,6 +4603,12 @@ auto GlobalScope::Impl::constIsAggregate(const Ty* t, int depth, bool anonymousM
   return true;
 }
 
+auto GlobalScope::Impl::constMemberwiseStruct(const Ty* t, int depth) -> bool
+{
+  const ConstClassLayout* layout = constLayoutOf(t, depth);
+  return layout && memberwiseBesideConstructors(layout->decl) && !layout->anonymous && !constInheritsConstructors(*layout);
+}
+
 auto GlobalScope::Impl::constBraceInit(const Ty* t, BraceInitExpr* b, const TypeContext& ctx, int depth, const ConstPlace* target) -> std::optional<ConstValue>
 {
   bool expands = false;
@@ -4612,7 +4622,8 @@ auto GlobalScope::Impl::constBraceInit(const Ty* t, BraceInitExpr* b, const Type
     std::optional<ConstValue> list = constBraceList(b, ctx, depth, &places, &categories);
     return list ? constFromBraceList(*list, t, depth, nullptr, &places, &categories) : std::nullopt;
   }
-  if (constIsAggregate(t, depth, true))
+  // (`Point{.y = 4}` of a struct with constructors: its members, which no constructor takes by name, design.md 30)
+  if (constIsAggregate(t, depth, true) || (!b->designators.empty() && constMemberwiseStruct(t, depth)))
   {
     // `W b{a}` with a an object of the aggregate itself (as the walk typed it): a copy of a, as
     // C++ makes it ([dcl.init.list] 3.2), not its first member initialized from it.
@@ -4775,7 +4786,9 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
       return constPart(args[0], *base);
   if (layout->decl && layout->decl->isTypedUnion)
     return constTypedUnion(t, *layout, args, depth);
-  if (layout->constructors.empty() && !constInheritsConstructors(*layout))
+  // An aggregate's values fill its bases and members in order, as does a struct's where no constructor it declares
+  // takes them (design.md 30, below).
+  auto memberwise = [&]() -> std::optional<ConstValue>
   {
     if (implicitOnly && !args.empty())
       return std::nullopt;
@@ -4805,7 +4818,9 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
       return std::nullopt;
     constFitBitFields(*layout, parts);
     return ConstValue::object(t, std::move(parts));
-  }
+  };
+  if (layout->constructors.empty() && !constInheritsConstructors(*layout))
+    return memberwise();
   std::vector<const Ty*> argTypes;
   for (const ConstValue& a : args)
     argTypes.push_back(constTypeOfValue(a));
@@ -4877,6 +4892,9 @@ auto GlobalScope::Impl::constConstruct(const Ty* t, const std::vector<ConstValue
     ctor = chooseConstructor(t, all, nullptr, &inheritedFrom, implicitOnly, &ambiguous);
     chosenTypes = all;
   }
+  if (!ctor && !ambiguous && !inheritedFrom && memberwiseBesideConstructors(layout->decl) && !args.empty() &&
+      memberwiseTakes(t, layout->decl, chosenTypes))
+    return memberwise(); // a struct's members take what no constructor it declares does (design.md 30)
   if (!ctor || ambiguous || (ctor->flags & DF_Delete))
     return std::nullopt; // (a deleted one: no constant; codegen's call of it is an error)
   if (!inheritedFrom)

@@ -1,7 +1,8 @@
 // spec: `isConstructible<T, Args...>` is true when T can be built from Args (what std::is_constructible_v converts to), in `if constexpr` and in variable templates
 // found in src/Util (DeserialiserHelper: `inline constexpr bool should_construct = is_constructible_v<T, Args...> && !is_optional<T>::value`)
-struct Point
+class Point // (a class: a struct's members would take one int beside its constructor, design.md 30)
 {
+public:
   int x, y;
   Point(int x, int y) : x(x), y(y) {}
 };

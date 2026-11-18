@@ -196,7 +196,14 @@
 
   // Whether aggregate t takes args in parentheses (`Pod(1, 2.5f)`, [dcl.init] 17.6.2.2), and
   // false for a class that is no aggregate.
-  bool aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args);
+  bool aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args, bool besideConstructors = false);
+  // Whether def keeps its member-wise construction beside the constructors it declares (design.md 30, kovarex
+  // 2026-11-18): a struct (the keyword: a public value type, design.md "struct and class"), no typed union or closure.
+  // Its values fill its bases and members in order, as an aggregate's do, where no constructor it declares takes them.
+  static bool memberwiseBesideConstructors(const ClassDecl* def);
+  // Whether struct t takes args member-wise beside its constructors (memberwiseBesideConstructors): as an
+  // aggregate would, its constructors set aside.
+  bool memberwiseTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args);
 
   // Whether code outside class def can destroy one: no deleted, private or protected destructor.
   bool destructibleOutside(ClassDecl* def);

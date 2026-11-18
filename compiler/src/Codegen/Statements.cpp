@@ -335,7 +335,8 @@ auto codegen::Emitter::extendedElementsOf(Expr* init, const Ty* cls, Node* at) -
     auto* c = static_cast<FunctionalCastExpr*>(init);
     const Ty* named = init->ty ? withCurrentArgs(types.unqualified(types.stripRef(init->ty))) : nullptr;
     if (!c->braced || c->args.size() != 1 || c->args[0]->kind != NodeKind::BraceInitExpr || !cls || !named || !isClass(named) || !isClass(cls) ||
-        types.isDependent(named) || types.isDependent(cls) || canonicalClass(named, at) != canonicalClass(cls, at) || hasUserConstructors(classDef(named->decl, at)))
+        types.isDependent(named) || types.isDependent(cls) || canonicalClass(named, at) != canonicalClass(cls, at) ||
+        constructorsTake(classDef(named->decl, at), named, static_cast<BraceInitExpr*>(c->args[0])->args, at))
       return elements;
     init = c->args[0];
   }
@@ -343,7 +344,8 @@ auto codegen::Emitter::extendedElementsOf(Expr* init, const Ty* cls, Node* at) -
     return elements;
   // A class with constructors takes its list as a constructor's arguments, whose temporaries die with
   // the statement (a parameter's); an aggregate's and an array's elements initialize its parts.
-  if (cls && isClass(cls) && !types.isDependent(cls) && hasUserConstructors(classDef(cls->decl, at)))
+  // (a struct's list no constructor of which takes it: its members', design.md 30)
+  if (cls && isClass(cls) && !types.isDependent(cls) && constructorsTake(classDef(cls->decl, at), cls, static_cast<BraceInitExpr*>(init)->args, at))
     return elements;
   // The elements of its lists (`Outer o{{T(3)}, 4}`, `Holder hs[2] = {{T(1)}, {T(2)}}`) and the nested
   // lists themselves (`Holder h{{1, 2}}`: the list a reference member binds makes the temporary), not

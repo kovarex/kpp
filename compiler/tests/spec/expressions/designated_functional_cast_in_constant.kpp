@@ -1,0 +1,16 @@
+// spec: a braced functional cast with designators, `Point{.y = 4}`, fills the members its designators name at compile time as at run time (it was a positional list there: x took 4, a silent wrong constant, until 2026-11-18)
+struct Point
+{
+  int x;
+  int y = 9;
+  int z;
+};
+constexpr int x = Point{.y = 4}.x;
+constexpr int y = Point{.z = 3}.y;
+constexpr int z = Point{.x = 1, .z = 5}.z;
+static_assert(Point{.y = 4}.x == 0);
+int main()
+{
+  std::println(x, " ", y, " ", z, " | ", Point{.y = 4}.x, " ", Point{.z = 3}.y, " ", Point{.x = 1, .z = 5}.z);
+  return 0;
+}

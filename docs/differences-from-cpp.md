@@ -554,6 +554,29 @@ struct Handle
 };
 ```
 
+### A struct keeps its member-wise construction beside its constructors (built)
+
+- **C++:** declaring any constructor makes a class no aggregate ([dcl.init.aggr] 1), so a struct that adds a
+  loading constructor writes the member-wise one back by hand.
+- **kpp:** a struct's members take values in order (`S(a, b)`, `S{a, b}`, `return {a, b};`, `new S(a, b)`), a value for
+  each, wherever no constructor it declares takes them; designated names (`S{.b = x}`) may leave members out. A declared constructor that takes them is chosen first, a deleted one
+  turns the member-wise construction off for its arguments, and `isConstructible` answers by both. A class keeps C++'s
+  rule.
+- **Why:** kovarex (2026-11-18): hand-written constructors that only store their parameters, 356 of them in the game,
+  are "pretty dumb"; a struct is a public value type, so nothing it hides is bypassed.
+- **See:** [design 30][d30]; specs `classes/struct_memberwise_construction_beside_constructors`,
+  `classes/struct_memberwise_construction_errors_is_error`.
+
+```cpp
+struct OpenTrainsGuiData
+{
+  OpenTrainsGuiData(Deserialiser& input) { input >> this.trainsGuiParameters >> this.playSound; }
+  TrainsGuiParameters trainsGuiParameters;
+  PlaySound playSound;
+};
+OpenTrainsGuiData data(parameters, playSound); // member-wise: C++ needs a constructor written for it
+```
+
 ### One definition for const and non-const (later, details not decided)
 
 - **C++:** a getter is written twice, and C++23's deducing `this` helps a little.
@@ -1149,6 +1172,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d26]: design.md#26-debugvalue-what-the-debugger-shows-decided-2026-11-11
 [d27]: design.md#27-flags-a-set-of-named-bits-decided-2026-11-12
 [d29]: design.md#29-the-implicit-default-constructor-stays-beside-other-constructors-decided-2026-11-17-built
+[d30]: design.md#30-a-struct-keeps-its-member-wise-construction-beside-its-constructors-decided-2026-11-18-built
 [dbgv]: debugging.md#debugvalue
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01

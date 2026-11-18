@@ -633,7 +633,20 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
       if (ctors.empty())
         return destructibleOutside(static_cast<ClassDecl*>(def)) && aggregateTakes(t, static_cast<ClassDecl*>(def), args);
       bool ambiguous = false;
-      return chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr;
+      if (chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr)
+        return true;
+      // A struct's member-wise construction beside its constructors (design.md 30), where none of them takes the
+      // arguments: none of the declared ones, nor a deleted one (`Pos(int, int) = delete;` turns it off).
+      if (ambiguous || !memberwiseBesideConstructors(static_cast<ClassDecl*>(def)))
+        return false;
+      std::vector<FunctionDecl*> deleted;
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(def)))
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && (m->flags & DF_Delete))
+          deleted.push_back(static_cast<FunctionDecl*>(m));
+      bool deletedAmbiguous = false;
+      if (!deleted.empty() && (chooseAmong(deleted, args, s.pairs.empty() ? nullptr : &s, nullptr, deletedAmbiguous) || deletedAmbiguous))
+        return false;
+      return destructibleOutside(static_cast<ClassDecl*>(def)) && memberwiseTakes(t, static_cast<ClassDecl*>(def), args);
     }
     if (args.empty())
       return t->kind != TyKind::Void && t->kind != TyKind::Function;
@@ -1171,12 +1184,23 @@ auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm 
   return membersAllow(u, def, form, [&](const Ty* m, int d) { return constructibleFromSelf(m, move, parts, d); }, false, depth);
 }
 
-auto GlobalScope::Impl::aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args) -> bool
+auto GlobalScope::Impl::memberwiseBesideConstructors(const ClassDecl* def) -> bool
+{
+  return def && def->keyword == Kw::struct_ && !def->isTypedUnion && !def->isClosure;
+}
+
+auto GlobalScope::Impl::memberwiseTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args) -> bool
+{
+  return memberwiseBesideConstructors(def) && aggregateTakes(t, def, args, true);
+}
+
+auto GlobalScope::Impl::aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args, bool besideConstructors) -> bool
 {
   for (Decl* m : membersRead(def))
     if (((m->flags & DF_Constructor) || (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))) &&
         ((m->flags & DF_Constructor) || m->access == Access::Private || m->access == Access::Protected))
-      return false; // no aggregate: it declares a constructor (a deleted one too), or hides a member
+      if (!(besideConstructors && (m->flags & DF_Constructor)))
+        return false; // no aggregate: it declares a constructor (a deleted one too), or hides a member
   for (const ClassDecl::Base& b : def->bases)
     if (b.isVirtual || b.access == Access::Private || b.access == Access::Protected)
       return false;
@@ -1188,6 +1212,10 @@ auto GlobalScope::Impl::aggregateTakes(const Ty* t, ClassDecl* def, const std::v
   if (def->keyword == Kw::union_ && parts.size() > 1)
     parts.resize(1); // (a union's first member: the one a list initializes)
   if (args.size() > parts.size())
+    return false;
+  // (beside constructors, a value for every part: `Pair<OptimizedSignalID, int>(input)` was its first member built from
+  // the deserialiser, the second never loaded, where DeserialiserHelper asks isConstructible; design.md 30)
+  if (besideConstructors && args.size() != parts.size())
     return false;
   for (size_t i = 0; i < args.size(); ++i)
     if (!traitValue("isConvertible", {args[i], parts[i]}).value_or(false))

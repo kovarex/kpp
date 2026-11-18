@@ -1,0 +1,105 @@
+// spec: a struct keeps its member-wise construction beside the constructors it declares (kovarex, 2026-11-18: in C++ declaring any constructor makes it no aggregate): `S(a, b)`, `S{a, b}`, `S{.b = x}`, `S s = {a, b}`, `return {a, b}`, `new S(a, b)`, a Vector's emplace_back, a union enum class's creator and isConstructible<S, A, B> all fill its members in order when no constructor it declares takes the arguments, a value for each (designated names may leave members out, which take their default initializers: a lone value beside constructors is no member-wise construction, so `isConstructible<Pair<A, int>, Reader&>` stays false where A alone takes a Reader, as the game's DeserialiserHelper asks). A constructor it declares that takes them is chosen first (`Scaled(5)` below), one with the members' own signature replaces the member-wise one, a deleted one turns it off for its arguments, and a class (the keyword) keeps C++'s rule (classes/struct_memberwise_construction_errors_is_error)
+// factorio: ActionData::OpenTrainsGuiData's hand-written `OpenTrainsGuiData(TrainsGuiParameters, PlaySound)` beside its Deserialiser constructor, 356 such constructors in the game (design.md 30)
+class Reader
+{
+public:
+  int next() { return this.value++; }
+  int value = 100;
+};
+struct Counted
+{
+  Counted() {}
+  Counted(const Counted& other) : copies(other.copies + 1), moves(other.moves) {}
+  Counted(Counted&& other) : copies(other.copies), moves(other.moves + 1) {}
+  int copies = 0;
+  int moves = 0;
+};
+struct Payload
+{
+  Payload(Reader& input) : first(input.next()), second(input.next()) {}
+  int first;
+  int second = 7;
+};
+struct Moved
+{
+  Moved(Reader& input) : value(input.next()) {}
+  int value;
+  Counted counted;
+};
+struct Inner
+{
+  implicit Inner(Reader& input) : value(input.next()) {}
+  int value;
+};
+struct Holder
+{
+  Holder(int count) : count(count) {}
+  Inner inner;
+  int count;
+};
+struct Scaled
+{
+  Scaled(int a) : x(a * 10) {}
+  int x;
+  int y = 2;
+};
+struct Own
+{
+  Own(int x, int y) : x(x + 1000), y(y) {}
+  int x;
+  int y;
+};
+struct Point
+{
+  constexpr Point(const char* text) : x(text[0] - '0'), y(text[1] - '0') {}
+  int x;
+  int y;
+};
+struct Sealed
+{
+  Sealed(const char* text) : x(text[0]) {}
+  Sealed(int, int) = delete; // turns the member-wise construction of two ints off
+  int x;
+  int y;
+};
+union enum class Action
+{
+  { {Load, Payload}, {Nothing, void} }
+};
+static_assert(std::isConstructible<Payload, int, int>);
+static_assert(!std::isConstructible<Payload, int>); // (a value for every member)
+static_assert(!std::isConstructible<Holder, Reader&>);
+static_assert(std::isConstructible<Payload, Reader&>);
+static_assert(!std::isConstructible<Payload, int, int, int>);
+static_assert(!std::isConstructible<Moved, int>);
+static_assert(!std::isConstructible<Sealed, int, int>);
+static_assert(std::isConstructible<Sealed, const char*>);
+static_assert(Point(1, 2).y == 2);
+static_assert(Point{.y = 4}.x == 0);
+static_assert(Point("56").y == 6);
+Payload made(int a, int b) { return {a, b}; }
+int main()
+{
+  Reader reader;
+  Payload loaded(reader);
+  Payload a(1, 2);
+  Payload b{.first = 3};
+  Payload c{.second = 4};
+  Payload d = {5, 6};
+  Payload* e = new Payload(7, 8);
+  Payload f = made(9, 10);
+  std::Vector<Payload> list;
+  list.emplace_back(11, 12);
+  list.emplace_back(reader);
+  Action action = Action::Load(13, 14);
+  Counted counted;
+  Moved g(15, std::move(counted));
+  Holder h(4);
+  std::println(loaded.first, " ", loaded.second, " | ", a.first, " ", a.second, " | ", b.first, " ", b.second, " | ", c.first, " ",
+               c.second, " | ", d.first, " ", d.second, " | ", e->first, " ", e->second, " | ", f.first, " ", f.second);
+  std::println(list[0].first, " ", list[0].second, " ", list[1].first, " | ", action[Action::Tag::Load].second, " | ", g.counted.copies, " ",
+               g.counted.moves, " | ", h.count);
+  std::println(Scaled(5).x, " ", Scaled(5).y, " | ", Scaled(5, 6).x, " ", Scaled(5, 6).y, " | ", Own(1, 2).x, " ", Own{3, 4}.x);
+  delete e;
+  return 0;
+}

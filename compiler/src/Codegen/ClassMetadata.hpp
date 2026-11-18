@@ -101,6 +101,12 @@
 
     // Constructors written by the user (`= default` ones are the compiler's memberwise ones).
     bool hasUserConstructors(ClassDecl* c);
+    // A struct keeps its member-wise construction beside the constructors it declares (design.md 30): the keyword
+    // struct, no typed union or closure (as GlobalScope::Impl::memberwiseBesideConstructors).
+    static bool memberwiseBesideConstructors(ClassDecl* c);
+    // Whether constructors build t from args: those c declares, unless none takes them and c is a struct, whose
+    // members take them in order then (design.md 30), as an aggregate's do.
+    bool constructorsTake(ClassDecl* c, const Ty* t, Span<Expr*> args, Node* at, bool copyInit = false);
 
     // Default construction does something: user constructors, a vtable pointer, default member
     // initializers, or a base/member class that needs constructing (a zeroed global is not enough).
