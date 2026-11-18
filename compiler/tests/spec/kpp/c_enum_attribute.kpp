@@ -1,4 +1,4 @@
-// spec: `[[c]] enum` keeps C's rules for an enum written in kpp (design.md 8.4, kovarex 2026-11-18: converted C libraries and kpp-written mirrors of C APIs): its enumerators are in the scope around, convert to integers and take part in arithmetic and bit operations, as an imported C header's do; `enum [[c]] Name` alike
+// spec: `[[c]] enum` keeps C's rules for an enum written in kpp (design.md 8.4, kovarex 2026-11-18: converted C libraries and kpp-written mirrors of C APIs): its enumerators are in the scope around, convert to integers and take part in arithmetic and bit operations, as an imported C header's do; `enum [[c]] Name` alike, and in a function's body (2026-11-18: there the statement dropped the attribute)
 [[c]] enum Access { AccessRead = 1, AccessWrite = 2, AccessBoth = AccessRead | AccessWrite };
 enum [[c]] Level : u8 { LevelLow, LevelHigh };
 struct Codec
@@ -7,9 +7,10 @@ struct Codec
 };
 int main()
 {
+  [[c]] enum Local { LocalA = 4, LocalB };
   int table[2] = {10, 20};
   int bits = AccessRead | AccessWrite;
   Access a = Access(bits & AccessWrite);
-  std::println(bits, " ", int(a), " ", LevelHigh + 1, " ", table[Codec::KindZip], " ", Codec::KindZip == 1, " ", sizeof(Level));
+  std::println(bits, " ", int(a), " ", LevelHigh + 1, " ", table[Codec::KindZip], " ", Codec::KindZip == 1, " ", sizeof(Level), " ", LocalB - LocalA);
   return 0;
 }

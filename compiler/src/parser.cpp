@@ -6323,7 +6323,7 @@ namespace
       uint32_t start = pos;
       DeclStmt* s = node<DeclStmt>(start);
       size_t mark = scratch.size();
-      carriedAttributes = pendingAttributes & ATTR_MaybeUnused; // (the statement read `[[maybe_unused]] int x;`'s attribute)
+      carriedAttributes = pendingAttributes & (ATTR_MaybeUnused | ATTR_C); // (the statement read `[[maybe_unused]] int x;`'s attribute, `[[c]] enum E {...};`'s)
       parseDeclarationInner(Scope::Local, {});
       s->decls = makeSpan<Decl*>(mark);
       return s;
