@@ -3649,6 +3649,13 @@ struct_virtual_function_is_error, struct_base_not_public_is_error,
 struct_deriving_from_polymorphic_class_is_error and struct_is_a_public_value_type. Friend
 declarations of classes and functions work (classes/friends, friend_declarations).
 
+**isStruct (kovarex, 2026-11-18, for a generic save by inspection only of structs).** `std::isStruct<T>` is
+true for a class declared `struct` (through const and a reference, a class template's instance, an
+imported C struct), false for a `class`, a union, a typed union, a lambda's closure and a type that is
+no class; not a constant for a class without a definition. With the rule, a struct's members can all
+be read from outside it and it has no virtual function, so `for constexpr (auto m : members(T))`
+over it reaches everything it holds. Spec kpp/is_struct_trait.
+
 **As converted (thread C, 2026-11-02).** The converter writes the C++'s rule-breaking structs as
 classes: `class`, then `public:` first so that the members keep their access, and `public` before
 each base written without an access (a class's bases start private). The breaks are A's (a private

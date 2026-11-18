@@ -498,6 +498,20 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     const Ty* t = one() ? types.unqualified(one()) : nullptr;
     return t && t->kind == TyKind::Class && t->decl && t->decl->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(t->decl)->isTypedUnion;
   }
+  if (name == "isStruct")
+  {
+    // A class declared `struct` (design.md 9, the struct rule: its members and bases public, no virtual function), kpp's
+    // own: a generic save of its members by inspection asks it. No closure, no union, no typed union.
+    const Ty* t = one() ? types.unqualified(types.stripRef(one())) : nullptr;
+    if (!t || !t->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    if (t->kind != TyKind::Class)
+      return false;
+    ClassDecl* def = classDefinition(t);
+    if (!def)
+      return std::nullopt;
+    return def->keyword == Kw::struct_ && !def->isClosure && !def->isTypedUnion;
+  }
   if (name == "isVoid") return one() && one()->kind == TyKind::Void;
   if (name == "isReference") return one() && one()->isReference();
   if (name == "isConst") return one() && one()->isConst;
@@ -758,7 +772,7 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
 auto GlobalScope::Impl::isBoolTraitName(uint32_t symbol) -> bool
 {
   std::string_view n = symbols.name(symbol);
-  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
+  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isStruct" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
          n == "isNullPointer" || n == "isIntegral" || n == "isFloatingPoint" || n == "isArithmetic" || n == "isSigned" ||
          n == "isUnsigned" || n == "isFunction" || n == "isTriviallyCopyable" || n == "isSame" || n == "isBaseOf" || n == "isConvertible" ||
          n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||

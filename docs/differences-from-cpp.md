@@ -380,10 +380,13 @@ Container::value_type first(const Container& container) { return container[0]; }
 - **kpp:** a struct's members and bases are all public, it has no virtual functions, and it cannot
   derive from a polymorphic class: each is an error, "make it a class". Constructors, a destructor,
   methods, operators and friends are fine. `class` is as in C++, access checked.
+  `std::isStruct<T>` (built, 2026-11-18) tells the two apart in a template, so generic code can
+  read a struct's members by inspection (`for constexpr (auto m : members(T))`) and leave a class
+  to its own code; C++ has no such trait.
 - **Why:** the keyword now tells the reader something, and 96% of the game's structs already fit.
 - **See:** [struct and class][dstruct]; specs `classes/struct_private_member_is_error`,
   `classes/struct_virtual_function_is_error`, `classes/struct_base_not_public_is_error`,
-  `classes/struct_deriving_from_polymorphic_class_is_error`.
+  `classes/struct_deriving_from_polymorphic_class_is_error`, `kpp/is_struct_trait`.
 
 ### No virtual bases (built)
 
