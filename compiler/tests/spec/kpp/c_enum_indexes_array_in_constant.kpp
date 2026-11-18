@@ -1,0 +1,16 @@
+// spec: a value of a C enum indexes std::Array as its number does, in a constexpr function too: it converts to the index, and std::Array's operator[](E) for scoped enums does not take it (2026-11-18: 034272dea's operator[](E) took every enum, which the constant evaluation does not run yet, and the game's LED key tables stopped being constants)
+[[c]] enum KeyName { KeyA, KeyB, KeyC };
+constexpr std::Array<int, 3> build()
+{
+  std::Array<int, 3> result = {};
+  result[KeyName::KeyB] = 3;
+  result[KeyC] += 2;
+  return result;
+}
+constexpr std::Array<int, 3> table = build();
+static_assert(table[KeyB] == 3);
+int main()
+{
+  std::println(table[KeyB], " ", table[KeyName::KeyC]);
+  return 0;
+}

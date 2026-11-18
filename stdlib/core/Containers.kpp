@@ -34,16 +34,18 @@ struct Array
   }
 
   // An enum indexes the array as its number does (design.md 8.4, "An enum indexes an array").
-  template<typename E> requires isEnum<E>
+  template<typename E> requires (isEnum<E> && !isConvertible<E, ContainerSize>)
   T& operator[](E index)
   {
-    return this[ContainerSize(static_cast<UnderlyingType<E>>(index))];
+    assert(ContainerSize(index) < N);
+    return this.items[index];
   }
 
-  template<typename E> requires isEnum<E>
+  template<typename E> requires (isEnum<E> && !isConvertible<E, ContainerSize>)
   const T& operator[](E index) const
   {
-    return this[ContainerSize(static_cast<UnderlyingType<E>>(index))];
+    assert(ContainerSize(index) < N);
+    return this.items[index];
   }
 
   // Throws OutOfRange for an index outside [0, N).

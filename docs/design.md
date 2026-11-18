@@ -739,7 +739,9 @@ skips it. Specs kpp/c_enum_attribute, kpp/c_enum_attribute_on_enum_class_is_erro
 *An enum indexes an array* (built 2026-11-18): a value of a scoped enum indexes a built-in array (`int
 counts[Color::count]; counts[Color::Green]`), read and written, in a constant too, as its number does; a debug
 build checks it against the array's bound ("the enum index is outside the array"). std::Array takes one by its
-`operator[](E)` (any enum, through its underlying type, with Array's own assert). A pointer is not indexed by
+`operator[](E)` (a scoped enum's, with Array's own assert; a C enum converts to the index as before: 034272dea took every
+enum there, which the constant evaluation does not run yet, and the game's LED key tables stopped being constants, spec
+kpp/c_enum_indexes_array_in_constant). A pointer is not indexed by
 one, nor is any other container: a cast says what the number means there. Spec kpp/enum_indexes_an_array.
 `--plain-enum-warnings` no longer counts a typed union's `u[Name]` as an array's index nor `u == U::Name` as a
 comparison with an integer (spec language/plain_enum_warnings_skip_c_enums_and_typed_union_uses).
