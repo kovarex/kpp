@@ -514,6 +514,19 @@ name, found by token (`occurrencesIn`, one walk of the file, cached until the ne
 | `textDocument/codeAction` | below, "Quick fixes" |
 | `textDocument/semanticTokens/full` | every resolved name and declaration's own name by kind (namespace, type, class, enum, struct, typeParameter, parameter, variable, property, enumMember, function, method), `declaration` and `defaultLibrary` (the standard library's) as modifiers; kppKeyword for kpp's own words where the parser takes them (`check(`, `require(`, `fail(`, `requireThrows<`, `checkThrows<`, `assert(`, `fallthrough;`, `nameof(`, `implicit`, `This`, `super`, `when`, `test`, `suite`, `depends`, `tags`, `generate`, `caller`, `import`...; in test code skipped without `--tests`, as a check of a program without tests saw it before 2026-11-08, by their neighbours), drawn bold in a keyword's color (Visual Studio's "kpp Keyword", VS Code's `kppKeyword`), while a method `obj.check(x)` stays a method (tests/lsp/colors.jsonl). `super` (built in, design.md 23f) is a kpp word too; its hover and go to definition are its first base's, the class (tests/lsp/navigation.jsonl) |
 
+**Names in a template's own body.** The resolver leaves unresolved in a template's own tree the names that
+wait for its arguments, also ones that do not depend on them in the end (`SerialiserHelper<Serialiser>::save(this,
+value)` in the member template `Serialiser::operator<<`, `SerialiserHelper` too); each instance's copy
+(InstanceCopier) resolves them. A file's names (occurrencesIn: go to declaration and definition, hover,
+references, highlights, semantic tokens) take such a name's meaning from the copies of the file's nodes
+(GlobalScope::forEachInstanceCopy) where the original tree has none and every copy agrees (two
+instances' copies of one declaration, a local or a class template's member, are one). Where the instances call
+different overloads of one function (the game's `save`: the template for most types, the NoiseRegisterIndex one),
+go to declaration and definition list each of them, hover shows the first and says how many there are,
+and references count the call as the first's. A name meaning one thing in one instance and another in another
+(`v.describe()` for an Apple and a Pear) means none, and a template with no instance shows nothing
+(tests/lsp/templates.jsonl, 2026-11-18). On the game a file's copies cost 3-7 ms on the first query after a check.
+
 **Rename never misses a use silently.** Every identifier spelled like the old name in the program's
 own files must be accounted for: a name the compiler resolved to the declaration (or to one of its
 other declarations; a class's constructors and destructor count as the class), a qualifier naming it

@@ -281,6 +281,7 @@ namespace
     Decl* decl;
     Node* node;          // the name's node (NameExpr, MemberExpr, NamedType) or the declaration
     bool declaration;    // the declaration's own name
+    bool overloaded = false; // in a template's own body, where its instances call different overloads: decl is the first (overloadsAt)
   };
 
   bool sameIdentifier(const Token& t, uint32_t symbol) { return t.getKind() == TokenKind::Identifier && t.id == symbol; }
@@ -605,9 +606,84 @@ namespace
     }
   }
 
+  // A resolved name's occurrence, and its qualifiers'.
+  void addUse(const ParsedFile& file, GlobalScope* global, const ScopesByName* scopes, Node* n, std::vector<Occurrence>& into)
+  {
+    Decl* d = resolvedOf(n);
+    if (!d)
+      return;
+    const std::vector<Token>& tokens = *file.tokens;
+    uint32_t t = UINT32_MAX;
+    if (n->kind == NodeKind::MemberExpr)
+    {
+      auto* m = static_cast<MemberExpr*>(n);
+      uint32_t after = m->token;
+      if (m->base)
+        forEachNode(m->base, [&](Node* b) { after = std::max(after, b->token); });
+      t = nameToken(tokens, m->member, after + 1, after + 64);
+      if (t != UINT32_MAX)
+        addQualifiers(into, file, m->member, n, d, global, after + 1, t + 1, nullptr, scopes); // (`this.Base::f()`)
+    }
+    else
+    {
+      const QualifiedName& q = n->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(n)->name : static_cast<NamedType*>(n)->name;
+      t = nameToken(tokens, q, n->token, n->token + 64);
+      if (t != UINT32_MAX)
+        addQualifiers(into, file, q, n, d, global, n->token, t + 1, nullptr, scopes);
+    }
+    if (t != UINT32_MAX)
+      into.push_back({t, d, n, false});
+  }
+
+  // The names the instances' copies of a file's nodes resolve (GlobalScope::forEachInstanceCopy), by token, each
+  // token's in the copies' order.
+  std::vector<Occurrence> copiedUses(const ParsedFile& file, GlobalScope* global, const ScopesByName* scopes, const std::vector<Node*>& copies)
+  {
+    std::vector<Occurrence> out;
+    for (Node* copy : copies)
+      forEachNode(copy, [&](Node* n) { if (!isDeclarationNode(n)) addUse(file, global, scopes, n, out); });
+    std::stable_sort(out.begin(), out.end(), [](const Occurrence& a, const Occurrence& b) { return a.token < b.token; });
+    return out;
+  }
+
+  // The distinct declarations among the copies' uses of one token: two instances' copies of one declaration (a local
+  // variable, a class template's member) are one, the first in the source's order kept.
+  std::vector<Decl*> distinctMeanings(const Occurrence* from, const Occurrence* to)
+  {
+    std::vector<Decl*> out;
+    for (const Occurrence* o = from; o != to; ++o)
+    {
+      bool known = false;
+      for (const Decl* d : out)
+        if (d == o->decl || (d->kind == o->decl->kind && d->file == o->decl->file && d->token == o->decl->token))
+          known = true;
+      if (!known)
+        out.push_back(o->decl);
+    }
+    std::sort(out.begin(), out.end(), [](const Decl* a, const Decl* b)
+    {
+      std::string_view pa = a->file ? std::string_view(a->file->path) : std::string_view(), pb = b->file ? std::string_view(b->file->path) : std::string_view();
+      return pa != pb ? pa < pb : a->token < b->token;
+    });
+    return out;
+  }
+
+  // Overloads of one function: functions of one name in one scope (a class template's instances' copies of its
+  // members are in the template).
+  bool oneOverloadSet(const std::vector<Decl*>& decls)
+  {
+    for (Decl* d : decls)
+      if (d->kind != NodeKind::FunctionDecl || symbolOf(d) != symbolOf(decls[0]) || symbolOf(d) == UINT32_MAX || !d->parent != !decls[0]->parent ||
+          (d->parent && (d->parent->kind != decls[0]->parent->kind || d->parent->file != decls[0]->parent->file || d->parent->token != decls[0]->parent->token)))
+        return false;
+    return true;
+  }
+
   // Every name in a file the compiler resolved, and every declaration's own name, by token.
+  // copies: the instances' copies of the file's nodes (GlobalScope::forEachInstanceCopy), for the names a
+  // template's own body leaves unresolved.
   std::vector<Occurrence> occurrencesIn(const ParsedFile& file, GlobalScope* global, const std::unordered_map<const Decl*, Decl*>* statics,
-                                        const SymbolTable* symbols, const ScopesByName* scopes)
+                                        const SymbolTable* symbols, const ScopesByName* scopes, const std::vector<Node*>* copies)
   {
     std::vector<Occurrence> out;
     if (!file.tokens)
@@ -629,30 +705,36 @@ namespace
           memberInitializers(out, tokens, static_cast<FunctionDecl*>(d), *global);
         return;
       }
-      Decl* d = resolvedOf(n);
-      if (!d)
-        return;
-      uint32_t t = UINT32_MAX;
-      if (n->kind == NodeKind::MemberExpr)
-      {
-        auto* m = static_cast<MemberExpr*>(n);
-        uint32_t after = m->token;
-        if (m->base)
-          forEachNode(m->base, [&](Node* b) { after = std::max(after, b->token); });
-        t = nameToken(tokens, m->member, after + 1, after + 64);
-        if (t != UINT32_MAX)
-          addQualifiers(out, file, m->member, n, d, global, after + 1, t + 1, nullptr, scopes); // (`this.Base::f()`)
-      }
-      else
-      {
-        const QualifiedName& q = n->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(n)->name : static_cast<NamedType*>(n)->name;
-        t = nameToken(tokens, q, n->token, n->token + 64);
-        if (t != UINT32_MAX)
-          addQualifiers(out, file, q, n, d, global, n->token, t + 1, nullptr, scopes);
-      }
-      if (t != UINT32_MAX)
-        out.push_back({t, d, n, false});
+      addUse(file, global, scopes, n, out);
     });
+    // A template's own body leaves unresolved the names that wait for its arguments (`Helper<S>::save(...)` in
+    // a member template), which its instances' copies resolve: such a name means what every instance's copy
+    // resolves it to, where they agree; where they call different overloads of one function, the first of them,
+    // marked overloaded (go to definition lists them all); a name meaning one thing in one instance and another
+    // in another means none.
+    if (copies && !copies->empty())
+    {
+      std::vector<Occurrence> copied = copiedUses(file, global, scopes, *copies);
+      std::vector<bool> known(tokens.size());
+      for (const Occurrence& o : out)
+        known[o.token] = true;
+      for (size_t i = 0; i < copied.size();)
+      {
+        size_t j = i + 1;
+        while (j < copied.size() && copied[j].token == copied[i].token)
+          ++j;
+        if (!known[copied[i].token])
+        {
+          std::vector<Decl*> meanings = distinctMeanings(&copied[i], copied.data() + j);
+          Occurrence o = copied[i];
+          o.decl = meanings[0];
+          o.overloaded = meanings.size() > 1;
+          if (meanings.size() == 1 || oneOverloadSet(meanings))
+            out.push_back(o);
+        }
+        i = j;
+      }
+    }
     // A name the parser made (a suite's registration, a test's function) is at the place of the token
     // it was made like: its text there is not its name, so it is no occurrence (the suite's name was
     // a variable's, the registration's).
@@ -1470,7 +1552,12 @@ namespace
     {
       auto found = cache.occurrences.find(f);
       if (found == cache.occurrences.end())
-        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics(), currentProgram ? currentProgram->symbols : nullptr, &knowScopes())).first;
+      {
+        std::vector<Node*> copies;
+        if (currentGlobal)
+          currentGlobal->forEachInstanceCopy(*f, [&](Node* copy, const Decl*) { copies.push_back(copy); });
+        found = cache.occurrences.emplace(f, occurrencesIn(*f, currentGlobal, &knowStatics(), currentProgram ? currentProgram->symbols : nullptr, &knowScopes(), &copies)).first;
+      }
       return found->second;
     }
 
@@ -1900,6 +1987,9 @@ namespace
           if (const Ty* ty = static_cast<Expr*>(o->node)->ty)
             where += ", here of type " + code(program.global->types().toString(ty, program.symbols));
         value += where;
+        if (o->overloaded)
+          value += "\n\none of " + std::to_string(overloadsAt(program, file, o->token).size()) +
+                   " overloads the template's instances call (go to definition lists them)";
         if (qualified.rfind("config::", 0) == 0 && !activeCell.empty())
           value += "\n\n" + configNote(qualified.substr(8));
         value += super;
@@ -1912,25 +2002,48 @@ namespace
       return result;
     }
 
+    // The overloads an overloaded occurrence's instances call (Occurrence::overloaded), in the source's order.
+    std::vector<Decl*> overloadsAt(const KeptProgram& program, const ParsedFile* f, uint32_t token)
+    {
+      std::vector<Node*> copies;
+      program.global->forEachInstanceCopy(*f, [&](Node* copy, const Decl*) { copies.push_back(copy); });
+      std::vector<Occurrence> copied = copiedUses(*f, program.global, &knowScopes(), copies);
+      auto from = std::lower_bound(copied.begin(), copied.end(), token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
+      auto to = std::upper_bound(from, copied.end(), token, [](uint32_t t, const Occurrence& x) { return t < x.token; });
+      return distinctMeanings(copied.data() + (from - copied.begin()), copied.data() + (to - copied.begin()));
+    }
+
     // definition: a class's definition, a member function's out-of-line definition, else the
-    // declaration itself; declaration: a definition's in-class declaration.
+    // declaration itself; declaration: a definition's in-class declaration. In a template's own body, where
+    // its instances call different overloads, each of them.
     Json definition(const Json& params, bool declaration)
     {
       Json result;
       onProgram([&](const KeptProgram& program)
       {
-        const Occurrence* o = occurrenceAt(program, params);
+        const ParsedFile* file = nullptr;
+        const Occurrence* o = occurrenceAt(program, params, &file);
         if (!o)
           return;
+        auto targetOf = [&](Decl* d)
+        {
+          if (declaration)
+            return canonical(*program.global, d);
+          Decl* defined = program.global->definitionOf(d);
+          return defined ? defined : d;
+        };
+        if (o->overloaded)
+        {
+          result = Json::array();
+          for (Decl* d : overloadsAt(program, file, o->token))
+            if (Json at = locationOf(targetOf(d)); at.kind != Json::Null)
+              result.push(std::move(at));
+          return;
+        }
         Decl* d = o->decl;
         if (Decl* base = superBase(program, d)) // (`super` is its first base: go to that class)
           d = base;
-        Decl* target = d;
-        if (declaration)
-          target = canonical(*program.global, d);
-        else if (Decl* defined = program.global->definitionOf(d))
-          target = defined;
-        result = locationOf(target);
+        result = locationOf(targetOf(d));
       });
       return result;
     }
@@ -1949,8 +2062,17 @@ namespace
       std::vector<std::thread> threads;
       const std::unordered_map<const Decl*, Decl*>* statics = &knowStatics();
       const ScopesByName* scopes = &knowScopes();
+      std::unordered_map<const ParsedFile*, std::vector<Node*>> copies;
+      program.global->forEachInstanceCopy([&](Node* copy, const Decl*, const ParsedFile& f) { copies[&f].push_back(copy); });
       for (unsigned t = 0; t < std::max(1u, std::thread::hardware_concurrency()); ++t)
-        threads.emplace_back([&] { for (size_t i; (i = next++) < files.size();) found[i] = occurrencesIn(*files[i], program.global, statics, program.symbols, scopes); });
+        threads.emplace_back([&]
+        {
+          for (size_t i; (i = next++) < files.size();)
+          {
+            auto c = copies.find(files[i]);
+            found[i] = occurrencesIn(*files[i], program.global, statics, program.symbols, scopes, c == copies.end() ? nullptr : &c->second);
+          }
+        });
       for (std::thread& t : threads)
         t.join();
       for (size_t i = 0; i < files.size(); ++i)

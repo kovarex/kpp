@@ -1,0 +1,45 @@
+// Names in a template's own body, which only its instances resolve (tests\lsp\templates.jsonl).
+template<class S>
+class Helper
+{
+public:
+  template<class T>
+  static void save(S& s, const T& v) { s.count += sizeof(v); }
+  static void plain(S& s) { s.count += 1; }
+  static void save(S& s, const Apple& a) { s.count += sizeof(a) + 1; }
+};
+
+class Writer
+{
+public:
+  template<class T>
+  Writer& operator<<(const T& v)
+  {
+    Helper<Writer>::save(this, v);
+    return this;
+  }
+  template<class T>
+  void describe(const T& v) { v.describe(); }
+  int count = 0;
+};
+
+struct Apple { void describe() const {} };
+struct Pear { void describe() const {} };
+
+template<class T>
+class Box
+{
+public:
+  T get(Writer& w) const { Helper<Writer>::plain(w); return this.value; }
+  T value;
+};
+
+int main()
+{
+  Writer w;
+  w << 1 << 2.5 << Apple();
+  w.describe(Apple());
+  w.describe(Pear());
+  Box<int> box;
+  return box.get(w) + w.count;
+}

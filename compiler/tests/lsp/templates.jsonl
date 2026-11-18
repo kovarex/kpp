@@ -1,0 +1,24 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\templates: the names in a template's own body that
+// wait for its arguments, which the compiler resolves in its instances' copies only (a member template's
+// `Helper<Writer>::save(this, v)`, as the game's Serialiser::operator<< calls SerialiserHelper): go to declaration
+// and definition, hover and references through them; a name the instances resolve differently is none.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+// save and Helper in Writer::operator<<'s `Helper<Writer>::save(this, v)`: its instances call two overloads of save (for an int
+// and a double the template, for an Apple the Apple one), so its declaration and definition are both, its hover the first's.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/declaration","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":17,"character":21}}}
+{"jsonrpc":"2.0","id":3,"method":"textDocument/declaration","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":17,"character":6}}}
+{"jsonrpc":"2.0","id":4,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":17,"character":21}}}
+{"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":17,"character":21}}}
+{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":17,"character":6}}}
+// The template save's references from its declaration: the declaration and the call in the member template (where it is the first overload).
+{"jsonrpc":"2.0","id":7,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":6,"character":15},"context":{"includeDeclaration":true}}}
+// `v.describe()` in Writer::describe means Apple::describe in one instance and Pear::describe in the other: none.
+{"jsonrpc":"2.0","id":8,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":21,"character":33}}}
+// In a class template's member, Box<T>::get: Helper, plain and the member value.
+{"jsonrpc":"2.0","id":9,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":32,"character":28}}}
+{"jsonrpc":"2.0","id":10,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":32,"character":44}}}
+{"jsonrpc":"2.0","id":11,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/writer.kpp"},"position":{"line":32,"character":66}}}
+{"jsonrpc":"2.0","id":12,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$ROOT/writer.kpp"}}}
+{"jsonrpc":"2.0","id":13,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}
