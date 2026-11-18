@@ -1,0 +1,22 @@
+// tests\lsp.ps1's queue session: `kpp --lsp --read-input-first`, without --check-each-change, so every message below is
+// queued before the first is handled, as messages pile up behind a long check (docs/ide.md, "Errors as you type";
+// kovarex, 2026-11-18: "apply all changes queued, always only process the last state").
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{"textDocument":{"hover":{"contentFormat":["plaintext"]}}}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"int main()\n{\n  std::Vector<Shape> shapes;\n  Shape square;\n  square.width = 3;\n  square.height = 3;\n  shapes.push_back(square);\n  std::println(\"{}\", totalArea(shapes));\n  return 0;\n}\n"}}}
+// The first check, of the text as opened, for a hover on totalArea. A save stops the changes taken ahead of it.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":7,"character":22}}}
+{"jsonrpc":"2.0","method":"textDocument/didSave","params":{"textDocument":{"uri":"$ROOT/main.kpp"}}}
+// totalArea typed as totalAreaX, then totalAreaY, then totalAreaZ: only the last is checked, and only its error published.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":7,"character":30},"end":{"line":7,"character":30}},"text":"X"}]}}
+// A caret request: answered from the first check's program (square's uses), not the reason for a check.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/documentHighlight","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":4,"character":3}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":3},"contentChanges":[{"range":{"start":{"line":7,"character":30},"end":{"line":7,"character":31}},"text":"Y"}]}}
+// Completion needs the text as it is: the change queued behind it (Z) is taken first, one check of totalAreaZ.
+{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":4,"character":9},"context":{"triggerKind":2,"triggerCharacter":"."}}}
+// A hover the editor cancels before it is handled: answered as cancelled (-32800), with no check.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":9}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":4},"contentChanges":[{"range":{"start":{"line":7,"character":30},"end":{"line":7,"character":31}},"text":"Z"}]}}
+{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":5}}
+{"jsonrpc":"2.0","id":6,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

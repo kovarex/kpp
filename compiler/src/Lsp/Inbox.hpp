@@ -31,6 +31,36 @@ struct Inbox
     std::lock_guard lock(mutex);
     return messages.empty();
   }
+  // The queued messages pick chooses, taken out in order; the scan stops at the first one stop chooses
+  // (the others stay queued in their order).
+  template<typename Pick, typename Stop>
+  std::vector<Json> takeQueued(Pick pick, Stop stop)
+  {
+    std::lock_guard lock(mutex);
+    std::vector<Json> taken;
+    for (auto it = messages.begin(); it != messages.end() && !stop(*it);)
+      if (pick(*it))
+      {
+        taken.push_back(std::move(*it));
+        it = messages.erase(it);
+      }
+      else
+        ++it;
+    return taken;
+  }
+  // Whether a queued message pick chooses is waiting.
+  template<typename Pick>
+  bool anyQueued(Pick pick)
+  {
+    std::lock_guard lock(mutex);
+    return std::any_of(messages.begin(), messages.end(), pick);
+  }
+  // Waits until the whole input has been read (--read-input-first).
+  void waitForEnd()
+  {
+    std::unique_lock lock(mutex);
+    ready.wait(lock, [&] { return ended; });
+  }
 
   std::mutex mutex;
   std::condition_variable ready;

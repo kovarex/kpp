@@ -1245,7 +1245,9 @@ namespace
           showMessage(1, "kpp: the check failed with no diagnostic: " + failure);
         shownFailure = failure;
       }
-      log("check %zu: %.3f s, exit %d, %zu diagnostics in %zu files", checks, seconds, code, count, published.size());
+      log("check %zu: %.3f s, exit %d, %zu diagnostics in %zu files; since the last: %zu changes, %zu requests answered from it, %zu cancelled",
+          checks, seconds, code, count, published.size(), changesSinceCheck, answeredFromLast, cancelledRequests);
+      changesSinceCheck = answeredFromLast = cancelledRequests = 0;
       for (const std::string& note : notes)
         log("  %s", note.c_str());
       sendInactiveRegions();
@@ -3881,6 +3883,64 @@ namespace
         check();
     }
 
+    // ---- messages queued behind a check (kovarex, 2026-11-18: "apply all changes queued, always only process the
+    // last state"; docs/ide.md, "Errors as you type") ----
+
+    // A request answered from the program, which waits for a check when a document changed since the last one.
+    // The others need none: initialize, shutdown, the cells, a code action (its quick fixes read the diagnostics
+    // and the document), the legend, and what the server does not support.
+    static bool readsProgram(const std::string& method)
+    {
+      static const std::set<std::string> reading = {
+        "textDocument/hover", "textDocument/definition", "textDocument/declaration", "textDocument/references",
+        "textDocument/implementation", "textDocument/typeDefinition", "textDocument/documentHighlight", "textDocument/documentSymbol",
+        "textDocument/foldingRange", "textDocument/semanticTokens/full", "textDocument/completion", "textDocument/signatureHelp",
+        "textDocument/prepareRename", "textDocument/rename", "workspace/symbol"};
+      return reading.count(method) != 0;
+    }
+
+    // A request an editor sends as the caret moves or after each check (Visual Studio's highlights, outline and
+    // folding, its extension's colors): answered from the last checked program while newer text waits for its
+    // check, never the reason for one. The answer is of that program's text; the next caret move, or the request
+    // after the next check (kpp/semanticTokensChanged, workspace/semanticTokens/refresh), brings the newer one.
+    static bool answeredFromLastCheck(const std::string& method)
+    {
+      return method == "textDocument/documentHighlight" || method == "textDocument/semanticTokens/full" ||
+             method == "textDocument/foldingRange" || method == "textDocument/documentSymbol";
+    }
+
+    bool haveProgram() { return withKeptProgram([](const KeptProgram&) {}); }
+
+    // The didChange notifications queued behind the message being handled, applied now, so that the check about
+    // to run is of the newest text and not of each state on the way to it. The requests and cancellations between
+    // them stay queued, answered from that check's program. The scan stops at what changes the open documents,
+    // the cell or the session: a didOpen, didClose or didSave, a configuration change, kpp/selectCell, shutdown.
+    void takeQueuedChanges(const char* self)
+    {
+      auto isChange = [](const Json& q) { return q["method"].text == "textDocument/didChange"; };
+      auto stops = [](const Json& q)
+      {
+        const std::string& m = q["method"].text;
+        return m == "textDocument/didOpen" || m == "textDocument/didClose" || m == "textDocument/didSave" ||
+               m == "workspace/didChangeConfiguration" || m == "kpp/selectCell" || m == "shutdown" || m == "exit" ||
+               m == "initialize" || m == "initialized";
+      };
+      for (const Json& c : inbox.takeQueued(isChange, stops))
+        handle(c, self);
+    }
+
+    // Whether the editor cancelled request id: its $/cancelRequest is queued behind it.
+    static bool cancelQueued(const Json& id)
+    {
+      return inbox.anyQueued([&](const Json& q)
+      {
+        if (q["method"].text != "$/cancelRequest")
+          return false;
+        const Json& c = q["params"]["id"];
+        return c.kind == id.kind && (id.kind == Json::Number ? c.number == id.number : c.text == id.text);
+      });
+    }
+
     void open(const Json& params)
     {
       const Json& item = params["textDocument"];
@@ -3920,6 +3980,7 @@ namespace
       d.version = params["textDocument"]["version"].integer();
       setFileOverlay(d.path, &d.text);
       dirty = true;
+      ++changesSinceCheck;
     }
 
     void close(const Json& params)
@@ -4205,6 +4266,10 @@ namespace
     std::map<std::string, std::string> inactiveSent; // the regions last sent per open document (overlayKey -> JSON)
     size_t keptCells = 4, cellClock = 0;
     bool checkEachChange = false;
+    bool readInputFirst = false;                // --read-input-first: the whole input queued before the first message is handled (tests)
+    size_t changesSinceCheck = 0;               // didChange notifications since the last check (its log line)
+    size_t answeredFromLast = 0;                // requests answered from the last checked program since (answeredFromLastCheck)
+    size_t cancelledRequests = 0;               // requests answered as cancelled since
     bool initialized = false, shutdownRequested = false;
     bool dirty = false;                         // a document changed since the last check
     size_t checks = 0;
@@ -4237,6 +4302,8 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
     }
     if (arg == "--check-each-change")
       server.checkEachChange = true;
+    else if (arg == "--read-input-first")
+      server.readInputFirst = true;
     else if (arg == "--lsp-log" && i + 1 < argc)
     {
       logFile = host::createLog(argv[++i]);
@@ -4269,16 +4336,37 @@ int runLanguageServer(int argc, char** argv, CompileFunction compile)
     inbox.end();
   }).detach();
 
+  if (server.readInputFirst)
+    inbox.waitForEnd(); // (tests\lsp\queue: every message queued before the first is handled, as behind a long check)
   Json m;
   while (inbox.take(m))
   {
     bool request = m["id"].kind != Json::Null && !m["method"].text.empty();
     const std::string& method = m["method"].text;
-    // A request is answered from the program as the documents are now.
-    if (request && method != "initialize" && method != "shutdown")
-      server.ensureChecked();
-    if (!server.handle(m, argv[0]))
-      break;
+    // A request the editor has cancelled (its $/cancelRequest queued behind it) is answered so, with no check.
+    if (request && server.initialized && method != "shutdown" && Server::cancelQueued(m["id"]))
+    {
+      server.respondError(m["id"], -32800, "cancelled"); // RequestCancelled
+      ++server.cancelledRequests;
+    }
+    else
+    {
+      // A request is answered from the program as the documents are now: the changes queued behind it are taken
+      // first, so that one check covers them all. A caret request is answered from the last checked program instead.
+      if (request && server.dirty && Server::readsProgram(method))
+      {
+        if (!server.checkEachChange && Server::answeredFromLastCheck(method) && server.haveProgram())
+          ++server.answeredFromLast;
+        else
+        {
+          if (!server.checkEachChange)
+            server.takeQueuedChanges(argv[0]);
+          server.ensureChecked();
+        }
+      }
+      if (!server.handle(m, argv[0]))
+        break;
+    }
     // Changes that came together are checked together; a check runs once no message waits.
     if (server.dirty && (server.checkEachChange || inbox.empty()))
       server.check();

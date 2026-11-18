@@ -15,6 +15,8 @@ class GlobalScope;
 // and answers from what that build resolved. Without sources it checks the project of the editor's
 // workspace (build.kpp, found from the workspace folder up), or the workspace folder itself.
 // --check-each-change: a check after every change (tests: the transcript does not depend on timing).
+// --read-input-first: the whole input read before the first message is handled, every message queued as behind a
+// long check (tests\lsp\queue: changes taken ahead of a check, caret requests, cancellations).
 int runLanguageServer(int argc, char** argv, CompileFunction compile);
 
 // The program the last build kept (main.cpp), for queries: f runs with it locked, so no build

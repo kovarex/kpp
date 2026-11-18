@@ -535,7 +535,10 @@ void reportResolve(Build& build)
          (unsigned long long)project, (unsigned long long)total.typesBuiltinByName);
   uint64_t members = total.membersBound + total.membersDependent + total.membersUnknownBase + total.membersNotFound;
   uint64_t exprs = total.exprsTyped + total.exprsDependent + total.exprsUnknown;
-  report("check:   %zu distinct types\n", global.typeCountWithoutUnknown());
+  // (The count walks every type, 0.3 s on the game: counted only when printed, not for each `--quiet` build or
+  // language-server check, kovarex 2026-11-18.)
+  if (!quietOutput)
+    report("check:   %zu distinct types\n", global.typeCountWithoutUnknown());
   report("  member accesses: %llu  (%.1f%% bound to a declaration, %.1f%% dependent, %.1f%% object type unknown, %.1f%% no such member)\n",
          (unsigned long long)members, 100.0 * total.membersBound / std::max<uint64_t>(1, members),
          100.0 * total.membersDependent / std::max<uint64_t>(1, members), 100.0 * total.membersUnknownBase / std::max<uint64_t>(1, members),

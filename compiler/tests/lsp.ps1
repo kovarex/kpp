@@ -20,6 +20,9 @@
 # And a virtual function's: its own, what it overrides and what overrides it, no sibling's and no overload's.
 # And a flags declaration's set and flags (design.md 27), from their declarations, which the parser rewrites, and their rename.
 # merge: tests\lsp\merge, a rename onto a member the class already has: merged with the same signature, else refused.
+# queue: tests\lsp\program with every message queued before the first is handled (--read-input-first, no
+# --check-each-change), as behind a long check: the changes queued behind a request taken ahead of its check (one
+# check of the last state), a caret request answered from the last checked program, a cancelled request answered so.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -39,7 +42,8 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'enums'; Program = 'enums'; Args = '--stdio' },
                       @{ Name = 'constructors'; Program = 'constructors'; Args = '--stdio' },
                       @{ Name = 'references'; Program = 'references'; Args = '--stdio' },
-                      @{ Name = 'merge'; Program = 'merge'; Args = '--stdio' }))
+                      @{ Name = 'merge'; Program = 'merge'; Args = '--stdio' },
+                      @{ Name = 'queue'; Program = 'program'; Args = '--stdio --read-input-first'; Queued = $true }))
 {
   $name = $session.Name
   $program = Join-Path $work $session.Program
@@ -65,7 +69,9 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
   [IO.File]::WriteAllBytes($inPath, $request.ToArray())
   Push-Location $work
   $ErrorActionPreference = 'Continue'
-  cmd /c "`"$KppExe`" --lsp $($session.Args) --check-each-change < `"$inPath`" > `"$outPath`" 2> `"$logPath`""
+  # (queue: no --check-each-change, its messages all queued before the first is handled: --read-input-first)
+  $eachChange = if ($session.Queued) { '' } else { '--check-each-change' }
+  cmd /c "`"$KppExe`" --lsp $($session.Args) $eachChange < `"$inPath`" > `"$outPath`" 2> `"$logPath`""
   $exitCode = $LASTEXITCODE
   $ErrorActionPreference = 'Stop'
   Pop-Location

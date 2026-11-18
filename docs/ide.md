@@ -447,6 +447,27 @@ cleared when gone. `--diagnostic-columns` (new) adds the column where the error'
 token: parse errors and the resolver's checker errors (`path:line:column`); their range is the
 token. Codegen's errors carry the line only (its range is the line's text): a gap.
 
+**Messages queued behind a check** (kovarex, 2026-11-18: "apply all changes queued, always only process the last
+state"). A check runs on the message thread, so what the editor sends meanwhile waits in the inbox. Until then
+every request waited for a check of the text as it was when the request was read, and Visual Studio sends
+requests after each key (codeAction and documentHighlight as the caret moves, its extension's semanticTokens after
+each check): the server checked every state of the text, one check of 0.6 to 1.2 s per key on the game, and fell
+behind by about 0.5 s a key (a replay of `InputAction::Tag::Build(` typed at 150 ms a key: 24 checks, the last
+ending 13.7 s after the last key, completion after `Tag::` 10.4 s late). Now (lsp.cpp, the main loop):
+- A request that reads the program, when a document changed since the last check, first takes every didChange
+  queued behind it (`takeQueuedChanges`, up to the first didOpen, didClose, didSave, configuration change,
+  kpp/selectCell or shutdown), so that one check covers them: the last state is checked, not each one on the way.
+  The requests in between stay queued and are answered from that check's program.
+- A caret request (documentHighlight, semanticTokens, foldingRange, documentSymbol: `answeredFromLastCheck`) is
+  answered from the last checked program while newer text waits, and is never the reason for a check; the next
+  caret move, or the request after the next check, brings the newer answer.
+- A request whose `$/cancelRequest` is queued behind it is answered as cancelled (-32800) without a check.
+- A request that does not read the program (a code action, the cells, what the server does not support) never
+  waits for a check.
+The check's log line says how many changes it covered and how many requests were answered from the last check or
+cancelled since. tests\lsp\queue runs with `--read-input-first`, every message queued before the first is
+handled, which makes this deterministic in a transcript.
+
 **Queries** read the kept program: every name's `resolved` declaration and every declaration's own
 name, found by token (`occurrencesIn`, one walk of the file, cached until the next check).
 
