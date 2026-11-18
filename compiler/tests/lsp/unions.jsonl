@@ -1,0 +1,13 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\unions: a class's references include the calls of the
+// creators a union enum class makes for the alternatives that hold it (`Unit::Action::Walk(3, 4)` builds a Pos), not
+// those of a function of that name the union declares itself; and a name the parser copies into what it writes (an
+// anonymous struct alternative's member type into its creator's parameters) is listed once.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+// Pos: its declaration, the alternatives' types, Pos(...), and the calls of Move and Walk's creators (the one in the
+// union's own Walk too), not of that Walk.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/actions.kpp"},"position":{"line":5,"character":10},"context":{"includeDeclaration":true}}}
+// Browsing: its declaration, the anonymous struct's member (once) and Browsing::Yes.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{"textDocument":{"uri":"$ROOT/actions.kpp"},"position":{"line":1,"character":12},"context":{"includeDeclaration":true}}}
+{"jsonrpc":"2.0","id":4,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

@@ -1,0 +1,31 @@
+// A union enum class's creators build its alternatives' classes (tests\lsp\unions.jsonl).
+enum class Browsing : u8 { No, Yes };
+
+namespace Unit
+{
+  struct Pos
+  {
+    int x = 0;
+    int y = 0;
+  };
+
+  union enum class Action : u8
+  {
+    {
+      {Nothing, void},
+      {Move, ::Unit::Pos},
+      {Walk, Pos},
+      {Close, struct { Browsing browsing; int delay = 0; }}
+    }
+    static Action Walk(int x, int y, int z) { return Action::Walk(Pos(x, y + z)); }
+  };
+}
+
+int main()
+{
+  Unit::Action move = Unit::Action::Move(Unit::Pos(1, 2));
+  Unit::Action walk = Unit::Action::Walk(3, 4);
+  Unit::Action far = Unit::Action::Walk(1, 2, 3);
+  Unit::Action close = Unit::Action::Close(Browsing::Yes);
+  return move[Unit::Action::Tag::Move].x + walk[Unit::Action::Tag::Walk].y + far[Unit::Action::Tag::Walk].x - (close.tag() == Unit::Action::Tag::Close ? 4 : 0);
+}

@@ -22,6 +22,7 @@
 # merge: tests\lsp\merge, a rename onto a member the class already has: merged with the same signature, else refused.
 # templates: tests\lsp\templates, the names in a template's own body that only its instances resolve (a member
 # template's `Helper<Writer>::save(this, v)`): declaration, definition, hover, references, colors.
+# unions: tests\lsp\unions, a class's references through the creators of the union enum class alternatives holding it.
 # queue: tests\lsp\program with every message queued before the first is handled (--read-input-first, no
 # --check-each-change), as behind a long check: the changes queued behind a request taken ahead of its check (one
 # check of the last state), a caret request answered from the last checked program, a cancelled request answered so.
@@ -46,6 +47,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'references'; Program = 'references'; Args = '--stdio' },
                       @{ Name = 'merge'; Program = 'merge'; Args = '--stdio' },
                       @{ Name = 'templates'; Program = 'templates'; Args = '--stdio' },
+                      @{ Name = 'unions'; Program = 'unions'; Args = '--stdio' },
                       @{ Name = 'queue'; Program = 'program'; Args = '--stdio --read-input-first'; Queued = $true }))
 {
   $name = $session.Name

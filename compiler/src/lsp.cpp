@@ -2092,6 +2092,40 @@ namespace
       cache.referencesKnown = true;
     }
 
+    // The creators a union enum class makes for the alternatives whose type is `type` (design.md 8.5: `{Move, Pos}`
+    // gives `U::Move(args...)`, which builds a Pos): the functions the parser wrote at the alternative's name, not a
+    // function of that name the union declares itself.
+    std::vector<Decl*> creatorsOf(const KeptProgram& program, Decl* type)
+    {
+      std::vector<Decl*> out;
+      for (const auto& [symbol, scopes] : knowScopes())
+        for (Decl* scope : scopes)
+        {
+          if (scope->kind != NodeKind::ClassDecl || !static_cast<ClassDecl*>(scope)->isTypedUnion || !scope->file || !scope->file->tokens)
+            continue;
+          auto* u = static_cast<ClassDecl*>(scope);
+          if (!u->tagEnum || u->tagEnum->kind != NodeKind::EnumDecl)
+            continue;
+          Span<Decl*> tags = static_cast<EnumDecl*>(u->tagEnum)->enumerators;
+          const std::vector<Token>& tokens = *u->file->tokens;
+          for (size_t k = 0; k < u->alternatives.size() && k < tags.size(); ++k)
+          {
+            auto* alternative = static_cast<VariableDecl*>(u->alternatives[k]);
+            if (!alternative->type || alternative->type->kind != NodeKind::NamedType)
+              continue;
+            Decl* named = static_cast<NamedType*>(alternative->type)->resolved;
+            if (!named || canonical(*program.global, named) != type)
+              continue;
+            uint32_t tagSymbol = symbolOf(tags[k]);
+            for (Decl* m : u->members)
+              if (m->kind == NodeKind::FunctionDecl && symbolOf(m) == tagSymbol && m->token < tokens.size() && tags[k]->token < tokens.size() &&
+                  tokens[m->token].offset == tokens[tags[k]->token].offset)
+                out.push_back(canonical(*program.global, m));
+          }
+        }
+      return out;
+    }
+
     Json references(const Json& params)
     {
       Json result = Json::array();
@@ -2103,22 +2137,37 @@ namespace
         Decl* d = canonical(*program.global, o->decl);
         knowReferences(program);
         bool withDeclarations = params["context"]["includeDeclaration"].boolean;
+        // (by place: the parser copies a written token into what it writes itself, an anonymous struct alternative's
+        // member types into its creator's parameters, at the same place)
         std::set<std::pair<const ParsedFile*, uint32_t>> listed;
         // A virtual function's are also those of what it overrides and of what overrides it (overrideFamily).
         std::vector<Decl*> family = overrideFamily(program, d);
         std::vector<std::pair<const ParsedFile*, uint32_t>> named;
-        for (Decl* member : family)
+        auto add = [&](Decl* member, bool declarations)
+        {
           if (auto found = cache.references.find(member); found != cache.references.end())
             for (const auto& [f, token] : found->second)
             {
               const std::vector<Occurrence>& list = cache.occurrences[f];
               auto it = std::lower_bound(list.begin(), list.end(), token, [](const Occurrence& x, uint32_t t) { return x.token < t; });
-              if (!withDeclarations && it != list.end() && it->token == token && it->declaration)
+              if (!declarations && it != list.end() && it->token == token && it->declaration)
                 continue;
-              if (listed.insert({f, token}).second)
+              if (listed.insert({f, (*f->tokens)[token].offset}).second)
                 named.push_back({f, token});
             }
-        if (family.size() > 1)
+        };
+        for (Decl* member : family)
+          add(member, withDeclarations);
+        // A class or enum a union enum class's alternative holds is also used where that alternative's creator is
+        // called (`Action::Move(1, 2)` builds a Pos, as `Pos(1, 2)` would): the creator's calls.
+        bool creators = false;
+        if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl)
+          for (Decl* creator : creatorsOf(program, d))
+          {
+            add(creator, false);
+            creators = true;
+          }
+        if (family.size() > 1 || creators)
           std::sort(named.begin(), named.end(), [](const auto& a, const auto& b) { return a.first->path != b.first->path ? a.first->path < b.first->path : a.second < b.second; });
         for (const auto& [f, token] : named)
           result.push(Json::object().set("uri", uriOf(overlayKey(f->path), f->path)).set("range", tokenRange(f, token)));
