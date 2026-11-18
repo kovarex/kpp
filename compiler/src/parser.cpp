@@ -4351,8 +4351,8 @@ namespace
           {
             // An anonymous struct's creator takes its members, in order, as parameters written as the members are
             // (kovarex 2026-11-18, option 2D): those whose initializers end the list are default arguments, so that
-            // `U::Close(Browsing::Yes)` leaves `Sound sound = Sound::Off` out. The struct itself is built member-wise,
-            // a value for every member, as any struct's (design.md 30).
+            // `U::Close(Browsing::Yes)` leaves `Sound sound = Sound::Off` out; `U::Close()` default-constructs it. The
+            // struct itself is built member-wise, a value for every member, as any struct's (design.md 30).
             const std::vector<CreatorParameter>& parameters = anonymous->second;
             size_t defaultsFrom = parameters.size();
             while (defaultsFrom > 0 && parameters[defaultsFrom - 1].initStart != UINT32_MAX)
@@ -4384,6 +4384,13 @@ namespace
               arguments += ", " + (toks[parameter.nameToken - 1].is(P::Amp) ? parameterName : "std::move(" + parameterName + ")");
             }
             append(") { return " + u + "(" + u + "::Tag::" + name + arguments + "); }");
+            // And with no arguments, where some member has no default: the alternative default-constructed, as the
+            // forwarding creator of a named struct gives it (kovarex 2026-11-18: `InputAction::OpenLogisticsGui()`
+            // stays as it was written). A template, so that a struct that cannot be default-constructed is an error
+            // only where it is asked for (no number in it: a synthesized token's spelling is its place's).
+            if (defaultsFrom > 0 && !noParameters.count(symbol))
+              append("public: template<typename __KppNoArguments = void> static " + u + " " + name + "() { return " + u + "(" + u + "::Tag::" + name + ", VariantAlternative<" + u +
+                     "::Tag::" + name + ", " + u + ">()); }");
             continue;
           }
           std::string source = static_cast<VariableDecl*>(alternatives[k])->voidAlternative

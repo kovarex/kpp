@@ -741,7 +741,7 @@ Action a = Action::Move(3), b = Action::Move(10, 4), c = Action::Stop();
   it is used. The struct has no name to write (`const auto& data = u[U::Tag::Close]`), and messages and
   the debugger show it as `U::Close`. It holds data members alone, one per declaration. A union enum
   class's creator takes them as parameters, in order, and the members whose initializers end the list
-  may be left out: `U::Close(Browsing::Yes)`. Built from a tag, it takes a value for every member, as any
+  may be left out: `U::Close(Browsing::Yes)`; `U::Close()` builds it default-constructed. Built from a tag, it takes a value for every member, as any
   struct's member-wise construction does.
 - **Why:** kovarex (2026-11-18): the game's InputAction names about a hundred payload shells such as
   `ActionData::CloseGuiData` only as an alternative's type, "completely encapsulated".

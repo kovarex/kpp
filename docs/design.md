@@ -1014,8 +1014,9 @@ only as `{CloseRemoteView, ActionData::CloseGuiData}`): an alternative's type ma
   `std::isStruct` holds and `members(T)` reads every member.
 - *Its creator takes the members as parameters* (2D): in a `union enum class`, `U::Close` is a function (not the
   forwarding template) whose parameters are the members as written, in order, those whose initializers end the list
-  with them as default arguments (`= x` as written, `{x}` as `= T{x}`): `U::Close(Browsing::Yes)`. The struct itself
-  keeps member-wise construction's rule, a value for every member (design.md 30), so `U(U::Tag::Close, a, b)` and
+  with them as default arguments (`= x` as written, `{x}` as `= T{x}`): `U::Close(Browsing::Yes)`. With no arguments,
+  where some member has no default, it builds the struct default-constructed, as a named struct's forwarding creator
+  does (kovarex 2026-11-18: `InputAction::OpenLogisticsGui()` keeps working as written). The struct itself keeps member-wise construction's rule, a value for every member (design.md 30), so `U(U::Tag::Close, a, b)` and
   `isConstructible` never build it from fewer: the Deserialiser case that rule prevents cannot come back through it.
 - *Save and load* are the program's: the game reads such a struct by inspection (`std::isStruct`, `members(T)`), and
   its bytes are a named shell's with the same members in the same order.

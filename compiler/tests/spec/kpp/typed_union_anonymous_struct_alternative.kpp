@@ -4,7 +4,8 @@
 // `a.type`); messages, the debugger and the language server show it as `Action::Close`. It is a struct of data members:
 // built member-wise, a value for every member (`Action(Action::Tag::Close, a, b)`), read through `members(T)`, and
 // `std::isStruct` holds. A union enum class's creator for it takes the members as parameters, in order, and those
-// whose initializers end the list may be left out: `Action::Close(Browsing::Yes)`. Two alternatives' anonymous structs
+// whose initializers end the list may be left out: `Action::Close(Browsing::Yes)`; with no arguments it builds the
+// struct default-constructed, as a named struct's creator does (`Action::Move()`). Two alternatives' anonymous structs
 // are two types. design.md 8.5
 enum class Browsing : u8 { No, Yes };
 enum class Sound : u8 { Off, On };
@@ -36,11 +37,13 @@ int main()
   Action move = Action::Move(1, 2);
   Action moved = Action::Move(3, 4, "running");
   Action count = Action::Count();
+  Action standing = Action::Move();
   Action built(Action::Tag::Close, Browsing::No, Sound::On);
   const auto& c = close[Action::Tag::Close];
   std::println(close.tag(), " ", int(c.browsing), int(c.sound), " ", view.tag(), " ", int(view[Action::Tag::CloseView].sound));
   std::println(move[Action::Tag::Move].x, move[Action::Tag::Move].y, " ", move[Action::Tag::Move].why, " ", moved[Action::Tag::Move].why);
-  std::println(count[Action::Tag::Count].count, " ", int(built[Action::Tag::Close].sound), " ", sum(c));
+  std::println(count[Action::Tag::Count].count, " ", int(built[Action::Tag::Close].sound), " ", sum(c), " ", standing[Action::Tag::Move].x,
+               standing[Action::Tag::Move].y, standing[Action::Tag::Move].why);
   std::println(std::isStruct<VariantAlternative<Action::Tag::Close, Action>>, " ",
                std::isSame<VariantAlternative<Action::Tag::Close, Action>, VariantAlternative<Action::Tag::CloseView, Action>>);
   close[Action::Tag::Close].sound = Sound::On;
