@@ -86,6 +86,11 @@
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
+    // A probe's errors that C++ makes ill-formed (reportCheck, reportHere: a member function that is not const called on a
+    // const object, a const object assigned or bound to a non-const reference, ...), counted, not reported: a requirement
+    // whose walk adds one is not met, as C++'s overload resolution finds no candidate for it (until 2026-11-18 the
+    // requirement was met, `requires { value.f(); }` true for a const value).
+    uint32_t probeErrors = 0;
     bool inSpecializationPattern = false; // a class specialization's arguments, which no instance walks again
     // A probe's names that nothing declares, kept for the walker that made it (a requires-expression in a template's own
     // walk or in a function that is no template), which reports them: in a requirement that depends on nothing they are

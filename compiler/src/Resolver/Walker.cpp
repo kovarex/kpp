@@ -1286,7 +1286,7 @@ auto GlobalScope::Impl::Walker::checkConstModification(uint32_t token, const Ty*
 
 auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
 {
-  if (probing || !declared || !declared->isReference() || !declared->inner || !given || !given->isReference() || !given->inner || !given->isKnown() ||
+  if (!declared || !declared->isReference() || !declared->inner || !given || !given->isReference() || !given->inner || !given->isKnown() ||
       types.isDependent(given) || types.isDependent(declared) || Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared))
     return;
   bool dropsConst = Impl::isConstObject(given->inner) && !Impl::isConstObject(declared->inner);
@@ -1307,7 +1307,7 @@ auto GlobalScope::Impl::Walker::checkConstDropped(uint32_t token, const std::str
 
 auto GlobalScope::Impl::Walker::checkTemporaryBound(uint32_t token, const std::string& what, const Ty* declared, const Ty* given) -> void
 {
-  if (probing || !declared || declared->kind != TyKind::LRef || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
+  if (!declared || declared->kind != TyKind::LRef || !declared->inner || Impl::isConstObject(declared->inner) || !given ||
       !given->isKnown() || given->kind == TyKind::LRef || given->kind == TyKind::Pack || given->isBraceList() || types.isDependent(given) ||
       types.isDependent(declared) || Impl::mentionsUnknown(given) || Impl::mentionsUnknown(declared))
     return;
@@ -1326,7 +1326,7 @@ auto GlobalScope::Impl::Walker::checkTemporaryBound(uint32_t token, const std::s
 
 auto GlobalScope::Impl::Walker::checkAssignable(uint32_t token, const char* what, const Expr* operand, const Ty* type) -> void
 {
-  if (probing || !operand || !type || !type->isKnown() || types.isDependent(type) || Impl::mentionsUnknown(type) || type->kind == TyKind::LRef ||
+  if (!operand || !type || !type->isKnown() || types.isDependent(type) || Impl::mentionsUnknown(type) || type->kind == TyKind::LRef ||
       isLvalueExpression(operand))
     return;
   const Ty* s = types.unqualified(types.stripRef(type));
@@ -1347,7 +1347,7 @@ auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from,
                      : c->castKind == Kw::reinterpret_cast_ ? "reinterpret_cast"
                      : c->castKind == Kw::dynamic_cast_     ? "dynamic_cast"
                                                             : nullptr;
-  if (probing || !cast || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
+  if (!cast || !from || !to || !from->isKnown() || !to->isKnown() || types.isDependent(from) || types.isDependent(to) ||
       Impl::mentionsUnknown(from) || Impl::mentionsUnknown(to))
     return;
   // [expr.static.cast]: a conversion's inverse, and noexcept only goes by a conversion, never comes.
@@ -1384,6 +1384,8 @@ auto GlobalScope::Impl::Walker::checkCastConst(NamedCastExpr* c, const Ty* from,
 
 auto GlobalScope::Impl::Walker::reportCheck(uint32_t token, const std::string& message) -> void
 {
+  if (probing && (activeSubst || !inGenericTemplate()))
+    ++probeErrors;
   if (!file || file->isImported || probing)
     return;
   if (activeSubst)
@@ -4843,6 +4845,8 @@ auto GlobalScope::Impl::Walker::addArgumentDependentCandidates(Lookup& l, uint32
 
 auto GlobalScope::Impl::Walker::reportHere(uint32_t token, const std::string& message) -> void
 {
+  if (probing && (activeSubst || !inGenericTemplate()))
+    ++probeErrors;
   if (!file || file->isImported || probing)
     return;
   if (activeSubst)
@@ -13298,8 +13302,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       for (Type* t : r->typeRequirements)
       {
         Type* copy = copier.typeAlone(t);
+        uint32_t errorsBefore = probe.probeErrors;
         probe.walkType(copy); // (its names resolved, for their access)
-        if (const Ty* ty = probe.typeOf(copy); !ty || !ty->isKnown() || (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
+        if (const Ty* ty = probe.typeOf(copy); !ty || !ty->isKnown() || probe.probeErrors != errorsBefore || (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
           satisfied = false;
       }
       std::vector<const Ty*> resultTypes;
@@ -13307,8 +13312,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       for (size_t i = 0; i < r->requirements.size(); ++i)
       {
         Expr* copy = copier.expression(r->requirements[i]);
+        uint32_t errorsBefore = probe.probeErrors;
         const Ty* ty = probe.walkExpr(copy);
-        if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy) ||
+        if (!ty || !ty->isKnown() || probe.probeErrors != errorsBefore || probe.namesFunctionsWithoutTarget(copy) ||
             (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
           satisfied = false;
         else if (i < r->noexceptRequired.size() && r->noexceptRequired[i] && !impl.types.isDependent(ty) && !probe.inGenericTemplate())

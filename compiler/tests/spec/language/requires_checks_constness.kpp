@@ -1,0 +1,62 @@
+// spec: a requires-expression's requirement is not met when it changes or binds a const object as if it were not const, as C++'s, whose overload resolution finds no candidate for it: a member function that is not const called on a const object (in a function template's stored bool, in a concept, and in `if constexpr`), a const object's member assigned or incremented, a const object bound to a non-const reference, a temporary bound to a non-const reference, an rvalue assigned to, a static_cast that casts away a reference's or a pointer's const; the const overload where there is one meets it, and so does a const_cast: `2 2 2 0 0 0 0 0 0 0 1 1 1`, clang's
+// found by the serialisation design thread (2026-11-18): kpp 0.2.1551 gave `1` for the first, the stored bool true where C++'s is false (in `if constexpr` the branch taken then failed to compile)
+extern "C" int printf(const char* format, ...);
+struct A
+{
+  int x = 0;
+  void f() {}
+  void g() const {}
+  void h() {}
+  void h() const {}
+};
+void takesRef(A& a) {}
+void takesIntRef(int& i) {}
+template<class T>
+int stored(const T& value)
+{
+  constexpr bool callable = requires { value.f(); };
+  return callable ? 1 : 2;
+}
+template<class T>
+concept CallsF = requires(const T& v) { v.f(); };
+template<class T>
+int conceptHolds() { return CallsF<T> ? 1 : 2; }
+template<class T>
+int branch(const T& value)
+{
+  if constexpr (requires { value.f(); })
+  {
+    value.f();
+    return 1;
+  }
+  else
+    return 2;
+}
+template<class T>
+bool assignsMember(const T& value) { return requires { value.x = 1; }; }
+template<class T>
+bool incrementsMember(const T& value) { return requires { ++value.x; }; }
+template<class T>
+bool bindsReference(const T& value) { return requires { takesRef(value); }; }
+template<class T>
+bool bindsTemporary(T) { return requires { takesIntRef(T(1)); }; }
+template<class T>
+bool assignsRvalue(T) { return requires { T(1) = 1; }; }
+template<class T>
+bool castsAwayConst(const T& value) { return requires { static_cast<T&>(value); }; }
+template<class T>
+bool pointerCastsAwayConst(const T* value) { return requires { static_cast<T*>(value); }; }
+template<class T>
+bool constCast(const T& value) { return requires { const_cast<T&>(value); }; }
+template<class T>
+bool constMember(const T& value) { return requires { value.g(); }; }
+template<class T>
+bool constOverload(const T& value) { return requires { value.h(); }; }
+int main()
+{
+  A a;
+  printf("%d %d %d %d %d %d %d %d %d %d %d %d %d\n", stored(a), conceptHolds<A>(), branch(a), (int)assignsMember(a), (int)incrementsMember(a),
+         (int)bindsReference(a), (int)bindsTemporary(0), (int)assignsRvalue(0), (int)castsAwayConst(a),
+         (int)pointerCastsAwayConst(&a), (int)constCast(a), (int)constMember(a), (int)constOverload(a));
+  return 0;
+}

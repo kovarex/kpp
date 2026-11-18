@@ -2045,9 +2045,10 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
   for (Type* t : r->typeRequirements)
   {
     Type* copy = copier.typeAlone(t);
+    uint32_t errorsBefore = probe.probeErrors;
     probe.walkType(copy); // (its names resolved, for their access)
     const Ty* ty = probe.typeOf(copy);
-    if (!ty || !ty->isKnown())
+    if (!ty || !ty->isKnown() || probe.probeErrors != errorsBefore)
       return false;
     if (types.isDependent(ty))
       dependent = true;
@@ -2059,8 +2060,9 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
   for (size_t i = 0; i < r->requirements.size(); ++i)
   {
     Expr* copy = copier.expression(r->requirements[i]);
+    uint32_t errorsBefore = probe.probeErrors; // (an error C++ makes ill-formed: the requirement not met)
     const Ty* ty = probe.walkExpr(copy);
-    if (!ty || !ty->isKnown() || probe.namesFunctionsWithoutTarget(copy))
+    if (!ty || !ty->isKnown() || probe.probeErrors != errorsBefore || probe.namesFunctionsWithoutTarget(copy))
       return false;
     if (types.isDependent(ty))
       dependent = true;
