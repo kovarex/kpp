@@ -3,7 +3,7 @@
 class Result
 {
 public:
-  enum class Enum
+  enum Enum
   {
     Success, Ignorable, Fail
   };

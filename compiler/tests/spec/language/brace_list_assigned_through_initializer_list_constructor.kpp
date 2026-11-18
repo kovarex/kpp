@@ -3,7 +3,7 @@
 class Mode
 {
 public:
-  enum class Enum
+  enum Enum
   {
     MinLinear, MagLinear, MipLinear
   };

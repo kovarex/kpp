@@ -651,9 +651,6 @@ void runCodegen(Build& build)
   if (options.thisReferenceWarnings)
     for (const std::string& w : takeThisReferenceWarnings())
       fprintf(stderr, "%s\n", w.c_str());
-  if (options.plainEnumWarnings)
-    for (const std::string& w : takePlainEnumWarnings())
-      fprintf(stderr, "%s\n", w.c_str());
   if (!options.implicitUses.empty())
   {
     std::vector<ParsedFile*> files;

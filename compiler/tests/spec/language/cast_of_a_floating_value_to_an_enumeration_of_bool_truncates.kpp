@@ -1,6 +1,6 @@
 // spec: a floating value cast to an enumeration converts it to the underlying type by [conv.fpint] (truncation) and then to the enumeration ([expr.static.cast] 10): `(B)0.5` with `enum class B : bool` is B(0), as clang and MSVC's STL target both give (`0 1`); 1.5 truncates to 1; the same at compile time
 extern "C" int printf(const char* format, ...);
-enum class B : bool
+enum B : bool
 {
   no,
   yes

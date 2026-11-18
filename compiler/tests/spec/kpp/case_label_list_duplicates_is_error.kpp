@@ -2,7 +2,7 @@
 // error: case_label_list_duplicates_is_error.kpp:13: error: the case value 2 is a label of this switch already, at
 // error: case_label_list_duplicates_is_error.kpp:15: error: the case value 3 is a label of this switch already, at
 // error: case_label_list_duplicates_is_error.kpp:29: error: the case value 1 is a label of this switch already, at
-enum class Mode { Off, On, Auto };
+enum Mode { Off, On, Auto };
 int f(int x)
 {
   switch (x)

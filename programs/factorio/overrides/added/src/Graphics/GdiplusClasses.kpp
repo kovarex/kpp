@@ -16,7 +16,7 @@ namespace GDIPlus
 namespace Gdiplus
 {
   // gdiplustypes.h
-  enum Status
+  [[c]] enum Status
   {
     Ok = 0,
     GenericError = 1,
@@ -54,7 +54,7 @@ namespace Gdiplus
   };
 
   // gdiplusinit.h
-  enum DebugEventLevel
+  [[c]] enum DebugEventLevel
   {
     DebugEventLevelFatal,
     DebugEventLevelWarning
@@ -102,7 +102,7 @@ namespace Gdiplus
   inline UINT GetPixelFormatSize(PixelFormat pixfmt) { return (pixfmt >> 8) & 0xff; }
 
   // gdiplusimaging.h
-  enum ImageLockMode
+  [[c]] enum ImageLockMode
   {
     ImageLockModeRead = 0x0001,
     ImageLockModeWrite = 0x0002,
@@ -139,7 +139,7 @@ namespace Gdiplus
     const BYTE* SigMask;
   };
 
-  enum EncoderParameterValueType
+  [[c]] enum EncoderParameterValueType
   {
     EncoderParameterValueTypeByte = 1,
     EncoderParameterValueTypeASCII = 2,

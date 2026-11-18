@@ -2,7 +2,7 @@
 // found in src/Util (MathExpressions/Tokenizer: `static const FlatMap<char, Token::Type> first = {{'+', Type::Plus}, ...}`)
 struct Token
 {
-  enum class Type : uint8_t { None, Plus, Minus };
+  enum Type : uint8_t { None, Plus, Minus };
   static Type classify(char c)
   {
     static const std::Map<char, Type> table = {{'+', Type::Plus}, {'-', Type::Minus}};

@@ -19,10 +19,10 @@ union enum Action : u16
 void show(std::StringView what, const Action& a)
 {
   std::print(what, ": tick ", a.tick, " name ", a.name, " tracked ", a.tracked.id, " ");
-  if (a == Action::Count)
-    std::println("count ", a[Action::Count]);
+  if (a == Action::Tag::Count)
+    std::println("count ", a[Action::Tag::Count]);
   else
-    std::println("text ", a[Action::Text]);
+    std::println("text ", a[Action::Tag::Text]);
 }
 int main()
 {
@@ -33,10 +33,10 @@ int main()
     a.tick = 5;
     a.name = "five";
     a.tracked.id = 2;
-    a[Action::Text] = "hello";
+    a[Action::Tag::Text] = "hello";
     Action b = a;
     show("copy", b);
-    Action c = Action(Action::Count, 3);
+    Action c = Action(Action::Tag::Count, 3);
     show("from a tag", c);
     c = b;
     show("assigned", c);

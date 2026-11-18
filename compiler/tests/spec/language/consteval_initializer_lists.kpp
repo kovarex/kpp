@@ -1,6 +1,6 @@
 // spec: brace lists at compile time: given to an InitializerList parameter or constructor (a flags class's toBits(InitializerList<Enum>)), nested in an aggregate's initializer, iterated by range-for; range-for over an array (by value, by reference to const, by reference written through) and over a class with begin and end
 // factorio: the BITFIELD flags (SpriteFlags, DrawingFlags) given as {A, B} in the constant SpriteOption tables
-enum class Flag { A, B, C, D };
+enum Flag { A, B, C, D };
 struct Flags
 {
   constexpr Flags(std::InitializerList<Flag> values) : bits(This::toBits(values)) {}

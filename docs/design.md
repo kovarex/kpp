@@ -660,7 +660,7 @@ yet: `enumerators(E)`, comparing types with `==` in `if constexpr`.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```
-enum class Direction : u8
+enum Direction : u8
 {
   { North, East, South, West, None }
   bool isVertical() const { return this == North || this == South; }
@@ -709,8 +709,8 @@ the built-in `+` added the two values, silently): binary, compound (`a += b` cha
 They rank with the free ones as a class's do (Walker::operatorFunction). Spec kpp/enum_member_operator.
 Done 2026-10-24: the brace block, methods with `this` as the value, `count`, `values`, the
 generated or hand-written `str()`, `switch` without `default` that must name every value (a
-compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. A plain C++
-`enum class` without the inner block keeps the C++ rules. Done 2026-10-25: `fromStr(const char*
+compile error otherwise) and aborts on a value outside them; `nameof(x)` from 8.3. An enum
+without the inner block keeps C++'s enum class rules (every kpp enum is scoped since 2026-11-18, below). Done 2026-10-25: `fromStr(const char*
 text)` returns `Optional<E>`; the compiler declares it on every kpp enum and lowers it to the
 library's `enumFromStr<E>(text)` (stdlib/core/Optional.kpp), which walks `E::values` comparing
 `str()`; a `String` passes its `c_str()`, and a hand-written `fromStr` replaces the generated one.
@@ -723,20 +723,38 @@ the error "'North' is not declared (...): write `Direction::North`, not `North`"
 language/scoped_enumerator_needs_its_enum;
 the game has none, as kpp never accepted one).
 
-**Every enum is scoped** (kovarex, 2026-11-18: "Ok, lets do it", the end state of "No plain enums" below; being built):
+**Every enum is scoped** (kovarex, 2026-11-18: "Ok, lets do it", the end state of "No plain enums" below; built 2026-11-18):
 kpp has `enum` and `union enum` only, with today's class rules: an enumerator is `E::X` (in a case label too), a
 union's alternatives `U::Tag::X` outside its subscript, no implicit conversion to an integer, no arithmetic and no
 comparison with one. `enum class` and `union enum class` become errors (no alias). C's rules stay for imported C
 headers and for an enum marked `[[c]]` (converted C libraries, kpp-written mirrors of C APIs). An enum indexes an
 array, `E::count` sizes one; a bitmask enum becomes `flags` (27); a class holding only an enum
 (`class X { enum Enum {...}; }`) becomes the enum. Underlying types stay exactly as they were (enums are saved).
-In steps: the prerequisites below (built), then the switch with the stdlib, tests, converter and the game's
-branches (wube/Factorio kpp, kpp-2.1.24, kpp-2.1.25) rewritten in lockstep.
+In steps: the prerequisites below, then the switch with the stdlib, tests, converter and the game's branches
+(wube/Factorio kpp, kpp-2.1.24, kpp-2.1.25) rewritten in lockstep.
+- *The switch.* In kpp source `enum E` (and `enum struct`'s old meaning) is scoped: the parser marks every enum
+  written in kpp scoped unless it is `[[c]]`. `enum class E` is the error "kpp's enums are all scoped: write
+  `enum Name`, not `enum class Name`", `union enum class U` its union form; `union enum U` is what `union enum
+  class U` was (its tags `U::Tag::X`, its creators `U::X(...)`, 8.5). A nameless enum written in kpp is an
+  error ("a nameless enum is scoped as every kpp enum is, so its enumerators could never be named: name it,
+  write constants or mark it [[c]]"). The flags declaration (27) and config's Platform and Arch are written so.
+  Messages say "enum" where they said "enum class". `--plain-enum-warnings` went with the plain enums. Specs
+  kpp/every_enum_is_scoped, kpp/every_enum_is_scoped_errors, kpp/union_enum_class_is_error,
+  kpp/nameless_enum_is_error, kpp/c_enum_attribute_on_enum_class_is_error.
+- *The converter* writes C++'s `enum class E` as `enum E`, and a plain C or C++ `enum E` as `[[c]] enum E`
+  (C's rules kept); a std::variant's tags as `U::Tag::X`.
+- *The game* (wube/Factorio kpp and the release branches): the converted C libraries (Lua, zstd, trio, stb,
+  fontstash, zlib, StackWalker, Agui) and the mirrors of C APIs (ImGui.kpp, GdiplusClasses.kpp, a D3D11 enum, the
+  LED SDKs' includes) are `[[c]]`; every other enumerator was qualified by a scratch kpp that listed each
+  reference to a plain enum's enumerator with its place, as resolved (4,095 references written `E::X`, `C::E::X`
+  for `C::X`), then the tree checked and built; the bitmask enums became `flags` (CollisionMask's, FireFlame's,
+  FluidStream's, LogisticCellOptions, a test's Locations), the enums used as numbers alone named constants
+  (SelectionPriorities, TransportBeltAnimationSet's FourDir, Turning and BandType), and the rest of the integer
+  uses casts (LuaEventType's ids, about 30).
 
 *`[[c]]`* (built 2026-11-18): `[[c]] enum Mode {...}` or `enum [[c]] Mode {...}` written in kpp keeps C's rules, as
-an imported C header's enum does: its enumerators in the scope around, converting to integers. On an `enum class`
-it is an error ("[[c]] gives an enum C's rules, which an enum class does not have"). `--plain-enum-warnings`
-skips it. Specs kpp/c_enum_attribute, kpp/c_enum_attribute_on_enum_class_is_error.
+an imported C header's enum does: its enumerators in the scope around, converting to integers. `[[c]] enum class` is
+an error as every enum class is. Specs kpp/c_enum_attribute, kpp/c_enum_attribute_on_enum_class_is_error.
 
 *An enum indexes an array* (built 2026-11-18): a value of a scoped enum indexes a built-in array (`int
 counts[Color::count]; counts[Color::Green]`), read and written, in a constant too, as its number does; a debug
@@ -745,10 +763,8 @@ build checks it against the array's bound ("the enum index is outside the array"
 enum there, which the constant evaluation does not run yet, and the game's LED key tables stopped being constants, spec
 kpp/c_enum_indexes_array_in_constant). A pointer is not indexed by
 one, nor is any other container: a cast says what the number means there. Spec kpp/enum_indexes_an_array.
-`--plain-enum-warnings` no longer counts a typed union's `u[Name]` as an array's index nor `u == U::Name` as a
-comparison with an integer (spec language/plain_enum_warnings_skip_c_enums_and_typed_union_uses).
 
-**No plain enums** (kovarex, 2026-11-07: "plain enums are not nice"; decided, not built): kpp code has only
+**No plain enums** (kovarex, 2026-11-07: "plain enums are not nice"; built 2026-11-18 as "Every enum is scoped" above): kpp code has only
 `enum class`; imported C and C++ headers keep theirs. As with the other rules, the error comes behind a flag
 first, counted, then the converter's rewrite, then the error by default. `--plain-enum-warnings` (built) lists
 each plain enum in kpp code and each use of its enumerators by kind ("Solid of Flags used in a bit operation
@@ -782,8 +798,8 @@ union enum Property : u8
 };
 Property p;
 p[Integer] = 5;                        // sets the tag, constructs the value (destroying the old one)
-if (p == Property::Integer) use(p[Integer]);   // p[Integer] on another tag: release_assert
-switch (p) { case Integer: return std::format("{}", p[Integer]); case Text: return p[Text]; ... }
+if (p == Property::Tag::Integer) use(p[Integer]);   // p[Integer] on another tag: release_assert
+switch (p) { case Property::Tag::Integer: return std::format("{}", p[Integer]); case Property::Tag::Text: return p[Text]; ... }
 ```
 An alternative is written `{Name, type}`, the tag first as an enum's enumerator is (kovarex 2026-11-17, with no
 transition period: until then it was `{type, Name}`, now an error, "expected the name of the alternative: an alternative
@@ -961,7 +977,7 @@ another type converts to the union by its own converting constructors or the val
 (`implicit operator InputAction()`) when no alternative has its type. Specs:
 kpp/typed_union_assignable_with_alternative_without_assignment, kpp/typed_union_from_conversion_operator.
 
-*`union enum class U`* (2026-11-16, for InputAction, whose 358 named constructors `InputAction::Build(...)`
+*`union enum class U`*, every `union enum U` since 2026-11-18 (8.4, "Every enum is scoped"; `union enum class` is an error) (2026-11-16, for InputAction, whose 358 named constructors `InputAction::Build(...)`
 have the names of its actions): the alternatives' names are in `U::Tag` alone, as an enum class's
 enumerators, so U's own members may take them. `U::Tag::Count` is the tag (`u[U::Tag::Count]`,
 `u == U::Tag::Count`, `case U::Tag::Count:`, `U(U::Tag::Count, 3)`), and an alias (`using InputActionType =
@@ -981,8 +997,8 @@ alternative of its number, silently (`p[Side::Left]`). Case labels and `U(Tag, .
 class's tag is written `U::Tag::Name` there, as an enum class's enumerator is. Specs:
 kpp/typed_union_subscript_names_its_alternative_first, kpp/typed_union_subscript_errors.
 
-*Creators* (kovarex 2026-11-17, for InputAction's 657 hand-written `InputAction::CloseGui(data)`): a `union enum class
-U` makes a static creator per alternative, `U::Name(args...)`, which builds that alternative from the arguments as
+*Creators* (kovarex 2026-11-17, for InputAction's 657 hand-written `InputAction::CloseGui(data)`): a `union enum
+U` (written `union enum class U` until 2026-11-18) makes a static creator per alternative, `U::Name(args...)`, which builds that alternative from the arguments as
 `U(U::Tag::Name, args...)` does (a value of its type, by copy or move, or its constructor's arguments, in place), and
 `U::Name()` for a void alternative. A plain `union enum` makes none: its alternatives' names are its own. The parser
 writes them at the body's end (a member template forwarding its arguments, std::forward: a static_cast of an array

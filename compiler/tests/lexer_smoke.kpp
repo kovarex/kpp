@@ -7,7 +7,7 @@
 namespace kpp
 {
   struct Vec2 { float x = 1.5f, y = .5e-3; };
-  enum class Dir : uint8_t { North, South };
+  enum Dir : uint8_t { North, South };
   int main(int argc, char** argv)
   {
     [[maybe_unused]] auto s = "str\"ing" + u8"utf" + R"x(raw ")" )x" + L'c';

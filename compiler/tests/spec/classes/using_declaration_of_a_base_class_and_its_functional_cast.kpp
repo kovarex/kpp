@@ -10,7 +10,7 @@ struct Base
     int v;
     Nested(int x) : v(x) {}
   };
-  enum Kind
+  [[c]] enum Kind
   {
     zero,
     one,

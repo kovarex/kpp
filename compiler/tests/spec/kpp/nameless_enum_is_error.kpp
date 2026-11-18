@@ -1,0 +1,8 @@
+// spec: a nameless enum would be scoped as every kpp enum is, its enumerators never named: an error naming what to write instead (design.md 8.4); a [[c]] one keeps C's rules
+// error: nameless_enum_is_error.kpp:3: error: a nameless enum is scoped as every kpp enum is, so its enumerators could never be named
+enum { Size = 4 };
+[[c]] enum { Count = 2 };
+int main()
+{
+  return Count;
+}

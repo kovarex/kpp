@@ -1,8 +1,8 @@
 // spec: an unscoped enumeration with a fixed underlying type promotes as that type does ([conv.prom]/4): an `enum : long long` stays 64 bits in arithmetic (`SM + 1` is a long long, `SM ^ 100u` a long long -97, not an unsigned int), an `enum : unsigned char` becomes an int (`U200 << 1` is 400, not 144); one without a fixed type is an int (MSVC's underlying type); clang 19 prints `8 -97 400 4 8`
 // factorio: found by the templates thread comparing values against clang 19 on generated expressions: the resolver promoted every enumeration to int, codegen an `enum : uint8_t` to its uint8_t unpromoted (silent: other values)
-enum S64 : long long { SM = -5 };
-enum U8 : unsigned char { U0, U200 = 200 };
-enum E { E0, E7 = 7 };
+[[c]] enum S64 : long long { SM = -5 };
+[[c]] enum U8 : unsigned char { U0, U200 = 200 };
+[[c]] enum E { E0, E7 = 7 };
 int main()
 {
   S64 s = SM;

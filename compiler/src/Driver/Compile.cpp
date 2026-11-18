@@ -100,8 +100,6 @@ int compile(int argc, char** argv)
       ; // the default since the flip (design.md "Explicit by default"): accepted until convert.cmd and build.kpp drop it
     else if (arg == "--this-reference-warnings")
       options.thisReferenceWarnings = true;
-    else if (arg == "--plain-enum-warnings")
-      options.plainEnumWarnings = true;
     else if (arg == "--no-implicit-fallthrough")
       ; // the default since the flip (design.md "No implicit fallthrough"): accepted until scripts drop it
     else if (arg == "--struct-rule")

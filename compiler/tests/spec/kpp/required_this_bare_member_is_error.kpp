@@ -13,7 +13,7 @@ public:
   static int made;
   int wheels() const { return 3; }
   int helper(int x) const { return x; }
-  enum class State { Moving, Stopped };
+  enum State { Moving, Stopped };
   using Speed = int;
   class Wheel
   {

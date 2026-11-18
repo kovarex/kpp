@@ -222,7 +222,7 @@ struct ImColor
   static ImColor HSV(float h, float s, float v, float a = 1.0f) { float r, g, b; ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b); return ImColor(r, g, b, a); }
 };
 
-enum ImGuiWindowFlags_
+[[c]] enum ImGuiWindowFlags_
 {
   ImGuiWindowFlags_NoTitleBar = 1 << 0,
   ImGuiWindowFlags_NoResize = 1 << 1,
@@ -248,7 +248,7 @@ enum ImGuiWindowFlags_
   ImGuiWindowFlags_ChildMenu = 1 << 28
 };
 
-enum ImGuiInputTextFlags_
+[[c]] enum ImGuiInputTextFlags_
 {
   ImGuiInputTextFlags_CharsDecimal = 1 << 0,
   ImGuiInputTextFlags_CharsHexadecimal = 1 << 1,
@@ -270,7 +270,7 @@ enum ImGuiInputTextFlags_
   ImGuiInputTextFlags_Multiline = 1 << 20
 };
 
-enum ImGuiTreeNodeFlags_
+[[c]] enum ImGuiTreeNodeFlags_
 {
   ImGuiTreeNodeFlags_Selected = 1 << 0,
   ImGuiTreeNodeFlags_Framed = 1 << 1,
@@ -287,14 +287,14 @@ enum ImGuiTreeNodeFlags_
   ImGuiTreeNodeFlags_AllowOverlapMode = ImGuiTreeNodeFlags_AllowItemOverlap
 };
 
-enum ImGuiSelectableFlags_
+[[c]] enum ImGuiSelectableFlags_
 {
   ImGuiSelectableFlags_DontClosePopups = 1 << 0,
   ImGuiSelectableFlags_SpanAllColumns = 1 << 1,
   ImGuiSelectableFlags_AllowDoubleClick = 1 << 2
 };
 
-enum ImGuiComboFlags_
+[[c]] enum ImGuiComboFlags_
 {
   ImGuiComboFlags_PopupAlignLeft = 1 << 0,
   ImGuiComboFlags_HeightSmall = 1 << 1,
@@ -304,14 +304,14 @@ enum ImGuiComboFlags_
   ImGuiComboFlags_HeightMask_ = ImGuiComboFlags_HeightSmall | ImGuiComboFlags_HeightRegular | ImGuiComboFlags_HeightLarge | ImGuiComboFlags_HeightLargest
 };
 
-enum ImGuiFocusedFlags_
+[[c]] enum ImGuiFocusedFlags_
 {
   ImGuiFocusedFlags_ChildWindows = 1 << 0,
   ImGuiFocusedFlags_RootWindow = 1 << 1,
   ImGuiFocusedFlags_RootAndChildWindows = ImGuiFocusedFlags_RootWindow | ImGuiFocusedFlags_ChildWindows
 };
 
-enum ImGuiHoveredFlags_
+[[c]] enum ImGuiHoveredFlags_
 {
   ImGuiHoveredFlags_Default = 0,
   ImGuiHoveredFlags_ChildWindows = 1 << 0,
@@ -323,7 +323,7 @@ enum ImGuiHoveredFlags_
   ImGuiHoveredFlags_RootAndChildWindows = ImGuiHoveredFlags_RootWindow | ImGuiHoveredFlags_ChildWindows
 };
 
-enum ImGuiDragDropFlags_
+[[c]] enum ImGuiDragDropFlags_
 {
   ImGuiDragDropFlags_SourceNoPreviewTooltip = 1 << 0,
   ImGuiDragDropFlags_SourceNoDisableHover = 1 << 1,
@@ -335,7 +335,7 @@ enum ImGuiDragDropFlags_
   ImGuiDragDropFlags_AcceptPeekOnly = ImGuiDragDropFlags_AcceptBeforeDelivery | ImGuiDragDropFlags_AcceptNoDrawDefaultRect
 };
 
-enum ImGuiKey_
+[[c]] enum ImGuiKey_
 {
   ImGuiKey_Tab,
   ImGuiKey_LeftArrow,
@@ -359,7 +359,7 @@ enum ImGuiKey_
   ImGuiKey_COUNT
 };
 
-enum ImGuiCol_
+[[c]] enum ImGuiCol_
 {
   ImGuiCol_Text,
   ImGuiCol_TextDisabled,
@@ -411,7 +411,7 @@ enum ImGuiCol_
   ImGuiCol_ColumnActive = ImGuiCol_SeparatorActive
 };
 
-enum ImGuiStyleVar_
+[[c]] enum ImGuiStyleVar_
 {
   ImGuiStyleVar_Alpha,
   ImGuiStyleVar_WindowPadding,
@@ -434,7 +434,7 @@ enum ImGuiStyleVar_
   ImGuiStyleVar_ChildWindowRounding = ImGuiStyleVar_ChildRounding
 };
 
-enum ImGuiColorEditFlags_
+[[c]] enum ImGuiColorEditFlags_
 {
   ImGuiColorEditFlags_NoAlpha = 1 << 1,
   ImGuiColorEditFlags_NoPicker = 1 << 2,
@@ -461,7 +461,7 @@ enum ImGuiColorEditFlags_
   ImGuiColorEditFlags__OptionsDefault = ImGuiColorEditFlags_Uint8|ImGuiColorEditFlags_RGB|ImGuiColorEditFlags_PickerHueBar
 };
 
-enum ImGuiMouseCursor_
+[[c]] enum ImGuiMouseCursor_
 {
   ImGuiMouseCursor_None = -1,
   ImGuiMouseCursor_Arrow = 0,
@@ -474,7 +474,7 @@ enum ImGuiMouseCursor_
   ImGuiMouseCursor_Count_
 };
 
-enum ImGuiCond_
+[[c]] enum ImGuiCond_
 {
   ImGuiCond_Always = 1 << 0,
   ImGuiCond_Once = 1 << 1,
@@ -486,7 +486,7 @@ enum ImGuiCond_
   ImGuiSetCond_Appearing = ImGuiCond_Appearing
 };
 
-enum ImDrawCornerFlags_
+[[c]] enum ImDrawCornerFlags_
 {
   ImDrawCornerFlags_TopLeft = 1 << 0,
   ImDrawCornerFlags_TopRight = 1 << 1,
@@ -499,7 +499,7 @@ enum ImDrawCornerFlags_
   ImDrawCornerFlags_All = 0xF
 };
 
-enum ImDrawListFlags_
+[[c]] enum ImDrawListFlags_
 {
   ImDrawListFlags_AntiAliasedLines = 1 << 0,
   ImDrawListFlags_AntiAliasedFill = 1 << 1

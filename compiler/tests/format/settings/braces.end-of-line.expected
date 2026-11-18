@@ -1,11 +1,11 @@
 // format: braces (own-line, end-of-line): every kind of expanded body; one-liners stay one-liners
 namespace game {
-  enum class Mode {
+  enum Mode {
     Off,
     On
   };
 
-  enum class Small { A, B };
+  enum Small { A, B };
 
   struct Counter {
     i32 value = 0;

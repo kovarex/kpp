@@ -2,7 +2,7 @@
 // factorio: tests/TestLocalisation.cpp's `using enum UndoActionDescription::Type; for (UndoActionDescription::Type type : { BUILD_ENTITY, REMOVE_ENTITY, ... })`
 struct Desc
 {
-  enum class Type { Build, Remove, Rotate };
+  enum Type { Build, Remove, Rotate };
 };
 int main()
 {

@@ -4,7 +4,7 @@
 // error: pointer_plus_pointer_is_error.kpp:18: error: Plain has no member 'str'
 // no-warning: codegen does not support
 // no-warning: does not convert
-enum class Plain
+enum Plain
 {
   A, B
 };

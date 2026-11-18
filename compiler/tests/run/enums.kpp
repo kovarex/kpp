@@ -1,7 +1,7 @@
 // Real enums: values in their own block, methods with `this` as the value, generated count,
 // values and str(), exhaustive switch, and nameof.
 
-enum class Direction : uint8_t
+enum Direction : uint8_t
 {
   { North, East, South, West, None }
   bool isVertical() const { return this == North || this == South; }
@@ -18,7 +18,7 @@ enum class Direction : uint8_t
   }
 };
 
-enum class Answer
+enum Answer
 {
   { No = 0, Yes = 1, Maybe = 7 }
   const char* str() const { return this == Yes ? "yes!" : "not yes"; }

@@ -6,7 +6,7 @@ struct Stream
 };
 int checksum(int n) { return n * 3 + level; }
 const int level = 1;
-enum class Mode { fast, best };
+enum Mode { fast, best };
 template<typename T> T twice(T v) { return v + v; }
 int compress(int n)
 {

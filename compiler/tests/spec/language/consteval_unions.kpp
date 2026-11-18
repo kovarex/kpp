@@ -45,9 +45,9 @@ constexpr int stored()
 static constexpr Navigation navigation = { { .closest = Zoom(Zoom::Scale(2)), .furthest = Zoom(Zoom::Distance(4, 8)) }, true };
 static_assert(Small().chars[15] == 3 && Small(9).length == 9 && Small(9).capacity == 5);
 static_assert(stored() == 7);
-static_assert(navigation.zooms.closest.data.tag() == Zoom::Data::ByScale && navigation.zooms.furthest.data.tag() == Zoom::Data::ByDistance);
+static_assert(navigation.zooms.closest.data.tag() == Zoom::Data::Tag::ByScale && navigation.zooms.furthest.data.tag() == Zoom::Data::Tag::ByDistance);
 int main()
 {
-  std::println(int(Small().chars[15]), " ", Small(9).length, " ", Small(9).capacity, " ", stored(), " ", navigation.zooms.closest.data[Zoom::Data::ByScale].s, " ", navigation.zooms.furthest.data[Zoom::Data::ByDistance].near);
+  std::println(int(Small().chars[15]), " ", Small(9).length, " ", Small(9).capacity, " ", stored(), " ", navigation.zooms.closest.data[Zoom::Data::Tag::ByScale].s, " ", navigation.zooms.furthest.data[Zoom::Data::Tag::ByDistance].near);
   return 0;
 }

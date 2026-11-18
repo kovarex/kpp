@@ -1,6 +1,6 @@
 // spec: a user-defined operator on a scoped enum (`bool operator&(Flags, Flags)`); C++ has no built-in one
 // factorio: NotificationData::Flags (PostTransferNotifiable.hpp) and other flag enums with their own | and &
-enum class Flags { None = 0, A = 1, B = 2 };
+enum Flags { None = 0, A = 1, B = 2 };
 Flags operator|(Flags a, Flags b) { return Flags(int(a) | int(b)); }
 bool operator&(Flags a, Flags b) { return (int(a) & int(b)) != 0; }
 int main()

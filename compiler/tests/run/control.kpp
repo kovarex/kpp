@@ -1,7 +1,7 @@
 // Control flow: while, do, for with break/continue, switch with fallthrough, enums, logic.
 extern "C" int printf(const char* format, ...);
 
-enum class Color { Red, Green = 5, Blue };
+enum Color { Red, Green = 5, Blue };
 
 int classify(int n)
 {

@@ -9,7 +9,7 @@ public:
   int limit;
   static int made;
   int helper(int x) const { return x; }
-  enum class Mode { Low, High };
+  enum Mode { Low, High };
   using Reading = int;
   class Needle
   {

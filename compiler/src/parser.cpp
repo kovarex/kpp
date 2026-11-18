@@ -3988,6 +3988,14 @@ namespace
       // `union enum class U`: the alternatives' names in U::Tag alone, as an enum class's, so that U's
       // own members may take them (InputAction's named constructors `InputAction::Build(...)`).
       bool scopedTag = accept(Kw::class_) || accept(Kw::struct_);
+      // kpp has only scoped enums (design.md 8.4, kovarex 2026-11-18): `union enum U` is what `union enum class U` was,
+      // which is an error now.
+      if (isKpp())
+      {
+        if (scopedTag)
+          error("kpp's enums are all scoped: write `union enum Name`, not `union enum class Name` (design.md 8.4)");
+        scopedTag = true;
+      }
       skipAttributes();
       ClassDecl* c = decl<ClassDecl>(start);
       c->keyword = Kw::struct_;
@@ -4689,7 +4697,7 @@ namespace
       std::string body = "public: using Storage = " + storage + "; ";
       if (last >= 0)
       {
-        body += "enum class __KppBit : u8 { ";
+        body += "enum __KppBit : u8 { ";
         for (int b = 0; b <= last; ++b)
           body += "b" + std::to_string(b) + ", ";
         body += "}; static constexpr Storage __kpp_bit(__KppBit at) { return Storage(Storage(true) << u8(at)); } ";
@@ -5561,11 +5569,21 @@ namespace
       EnumDecl* e = decl<EnumDecl>(start);
       e->flags |= flags;
       e->templateParams = templ.params;
-      if (accept(Kw::class_) || accept(Kw::struct_))
+      bool classWritten = accept(Kw::class_) || accept(Kw::struct_);
+      if (classWritten)
         e->isClass = true;
       skipAttributes();
-      e->attributes |= pendingAttributes & (ATTR_NoDiscard | ATTR_Deprecated | ATTR_C); // `enum class [[nodiscard]] Status`, `[[c]] enum Mode`
-      if ((e->attributes & ATTR_C) && e->isClass)
+      e->attributes |= pendingAttributes & (ATTR_NoDiscard | ATTR_Deprecated | ATTR_C); // `enum [[nodiscard]] Status`, `[[c]] enum Mode`
+      // kpp has only scoped enums (design.md 8.4, kovarex 2026-11-18): `enum E` is what `enum class E` was, which is an
+      // error now; `[[c]] enum E` keeps C's rules (converted C, mirrors of C APIs).
+      if (isKpp())
+      {
+        if (classWritten)
+          error("kpp's enums are all scoped: write `enum Name`, not `enum class Name` (design.md 8.4)");
+        else if (!(e->attributes & ATTR_C))
+          e->isClass = true;
+      }
+      else if ((e->attributes & ATTR_C) && e->isClass)
         error("[[c]] gives an enum C's rules, which an enum class does not have: write `[[c]] enum` or drop [[c]] (design.md 8.4)");
       noteDeprecation(e);
       skipMacroSpecifier();
@@ -5600,6 +5618,8 @@ namespace
       }
       advance();
       e->isDefinition = true;
+      if (isKpp() && e->isClass && e->name.empty())
+        error("a nameless enum is scoped as every kpp enum is, so its enumerators could never be named: name it, write constants (`constexpr int Size = 4;`) or mark it [[c]] for C's rules (design.md 8.4)");
       Decl* savedParent = currentParent;
       currentParent = e;
       std::vector<Decl*> enumerators;

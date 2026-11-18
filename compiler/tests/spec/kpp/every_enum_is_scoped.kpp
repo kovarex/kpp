@@ -1,0 +1,26 @@
+// spec: every kpp enum is scoped (design.md 8.4, kovarex 2026-11-18): `enum E` is what `enum class E` was, its enumerators named `E::X` (a case label too), compared with its own values, cast to and from numbers; `union enum U` names its tags `U::Tag::X` and makes the creators `U::X(...)`
+enum Color : u8 { Red, Green, Blue };
+enum Shape { { Circle, Square } };
+union enum Event : u8
+{
+  { {Click, int}, {Key, char} }
+};
+const char* name(Color c)
+{
+  switch (c)
+  {
+    case Color::Red: return "red";
+    case Color::Green: return "green";
+    case Color::Blue: return "blue";
+  }
+  return "?";
+}
+int main()
+{
+  Color c = Color::Green;
+  Event e = Event::Key('k');
+  Event f(Event::Tag::Click, 3);
+  std::println(name(c), " ", int(c), " ", Color(2) == Color::Blue, " ", c < Color::Blue, " ", Shape::count, " ", Shape::Square.str(), " ",
+               e == Event::Tag::Key, " ", e[Key], " ", f[Event::Tag::Click], " ", sizeof(Color));
+  return 0;
+}

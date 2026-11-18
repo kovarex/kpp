@@ -5,7 +5,7 @@
 // error: explicit_by_default_conversion_operator_operands_is_error.kpp:30: error: the built-in [] takes Index only by its conversion operator to int32, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
 // error: explicit_by_default_conversion_operator_operands_is_error.kpp:31: error: the built-in [] takes Index only by its conversion operator to int32, which converts only when marked implicit (design.md "Explicit by default"): int32(...) takes it
 // error: explicit_by_default_conversion_operator_operands_is_error.kpp:32: error: the call of an object of Caller takes it only by its conversion operator to int32(int32)*, which converts only when marked implicit (design.md "Explicit by default")
-enum class Kind { A, B };
+enum Kind { A, B };
 struct Value
 {
   operator double() const { return 2.5; }

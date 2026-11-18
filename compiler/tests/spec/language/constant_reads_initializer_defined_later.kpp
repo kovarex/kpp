@@ -10,7 +10,7 @@ constexpr int pick(double) { return 100; }
 constexpr int pick(int x) { return x + 1; }
 constexpr int k = pick(3);
 constexpr int viaLambda = [](int v) { return pick(v) * 2; }(3);
-enum class Size : int { Small = pick(5) };
+enum Size : int { Small = pick(5) };
 int main()
 {
   std::println(int(sizeof(sized) / sizeof(int)), " ", k, " ", int(sizeof(doubled) / sizeof(int)), " ", viaLambda, " ", int(sizeof(heldSized) / sizeof(int)), " ", int(sizeof(enumSized) / sizeof(int)));

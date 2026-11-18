@@ -1,6 +1,6 @@
 // spec: Limits<T> (std::numeric_limits) for integer, character, bool and floating-point types: min, max, lowest, epsilon, digits, digits10, is_signed in constant expressions and through a template's parameters, infinity and NaN; unsigned 64-bit values print in full
 // factorio: 604 numeric_limits uses (max 502, min 77, infinity 23, lowest 18, digits 3, is_signed 2 in cxxopts' integer parser)
-enum class Color { Red };
+enum Color { Red };
 template<typename T>
 void parse([[maybe_unused]] const char* text)
 {

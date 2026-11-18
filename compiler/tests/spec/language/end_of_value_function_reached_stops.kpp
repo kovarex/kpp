@@ -4,7 +4,7 @@ extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, i32 line, i
   std::println("stopped at line ", line, ", column ", column, ": ", std::StringView(text));
 }
 
-enum class Mode { Slow, Fast };
+enum Mode { Slow, Fast };
 
 int speedOf(Mode m)
 {

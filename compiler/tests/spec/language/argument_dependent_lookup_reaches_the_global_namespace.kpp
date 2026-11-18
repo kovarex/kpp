@@ -16,10 +16,10 @@ struct Key
 int hashOf(const Key& k) { return k.v * 10; }
 constexpr int constantOf(const Key& k) { return k.v * 10; }
 
-enum Color { Red = 3, Green = 5 };
+[[c]] enum Color { Red = 3, Green = 5 };
 int hashOf(Color c) { return c == Red ? 300 : 500; }
 
-enum class Scoped { One };
+enum Scoped { One };
 int hashOf(Scoped) { return 111; }
 
 struct Wrapped

@@ -2,7 +2,7 @@
 extern "C" int printf(const char* format, ...);
 struct Clickable
 {
-  enum class ClickState { DEFAULT, HOVERED, CLICKED };
+  enum ClickState { DEFAULT, HOVERED, CLICKED };
   int state = 0;
   void setMouseLeaveState(ClickState s) { this.state = s == ClickState::CLICKED ? 2 : 1; }
 };

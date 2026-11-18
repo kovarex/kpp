@@ -1,5 +1,5 @@
 // spec: a call of a trivial constructor (empty body, member initializers of scalar members over its parameters, a class of scalar members with no base or virtual function, as NamedBool's and ID's) behaves exactly as the call: the arguments are evaluated once and in order, a member initializer reads the members initialized before it, a default member initializer sees `this` as the object, a reference parameter is the object referred to, the values convert to the members' types, and it holds for a class template, a member of another class, a global, an array, `new` and a constructor that does not inline beside one that does
-enum class Answer : uint8_t {No, Yes};
+enum Answer : uint8_t {No, Yes};
 class Flag
 {
 public:

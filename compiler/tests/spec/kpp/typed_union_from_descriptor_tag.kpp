@@ -9,7 +9,7 @@ V load(int index)
   for constexpr (auto a : alternatives(V))
     if (index == int(a.tag))
       return V(a.tag, a.type());
-  return V(V::Number, -1);
+  return V(V::Tag::Number, -1);
 }
 int main()
 {
@@ -17,6 +17,6 @@ int main()
   V text = load(1);
   V comment = load(2);
   V none = load(7);
-  std::println(number == V::Number, " ", text == V::Text, " ", comment == V::Comment, " ", none[V::Number]);
+  std::println(number == V::Tag::Number, " ", text == V::Tag::Text, " ", comment == V::Tag::Comment, " ", none[V::Tag::Number]);
   return 0;
 }

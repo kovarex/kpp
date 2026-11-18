@@ -3,7 +3,7 @@
 struct Point { int x, y; bool operator==(const Point& o) const { return this.x == o.x && this.y == o.y; } };
 struct PointHash { size_t operator()(const Point& p) const { return (size_t)(p.x * 1000 + p.y); } };
 struct SameX { bool operator()(const Point& a, const Point& b) const { return a.x == b.x; } };
-enum class Color { Red, Green };
+enum Color { Red, Green };
 int main()
 {
   std::HashMap<Point, int, PointHash> grid;

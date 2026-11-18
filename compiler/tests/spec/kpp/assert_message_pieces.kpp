@@ -4,7 +4,7 @@ extern "C" void kpp_assert_failed([[maybe_unused]] const char* file, [[maybe_unu
   std::println("assertion failed: ", text);
   throw 1;
 }
-enum class Kind : u8
+enum Kind : u8
 {
   { Alpha, Beta }
 };

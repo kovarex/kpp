@@ -1,7 +1,7 @@
 // spec: a for constexpr among other statements: the locals declared before it, nested in an if, a loop and a switch,
 // and the statements after it, each element's body typed for its element
 // (codegen types each element's copy of the statements down to the loop, not the whole function: 2026-11-17)
-union enum class Value : u8
+union enum Value : u8
 {
   {
     {Number, int},

@@ -7,9 +7,9 @@
 // and of the globals (a static member's storage is one) against values.expected.
 namespace game
 {
-  enum class Mode : unsigned char { Off, On, Broken = 7 };
+  enum Mode : unsigned char { Off, On, Broken = 7 };
   // (an unsigned enumerator whose value is negative as an int64: LLVM rejects it printed signed)
-  enum class Mask : uint64_t { None = 0, All = ~0ull };
+  enum Mask : uint64_t { None = 0, All = ~0ull };
 
   int counter = 5;
 
@@ -114,8 +114,8 @@ int inspect(const game::Point& point, int scale, game::Mode mode, std::StringVie
     flags.level = 2;
     game::Square square;
     Value value;
-    value[Value::Real] = half;
-    sum += (int)half + (int)flags.level + square.area() + square.sideBy(1) * 0 + (int)mode + (value == Value::Real ? 1 : 0) + (mask == game::Mask::All ? 0 : 1);
+    value[Value::Tag::Real] = half;
+    sum += (int)half + (int)flags.level + square.area() + square.sideBy(1) * 0 + (int)mode + (value == Value::Tag::Real ? 1 : 0) + (mask == game::Mask::All ? 0 : 1);
   }
   return sum + (int)values.size();
 }

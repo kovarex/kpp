@@ -5,9 +5,9 @@ class SpacePlatformHub
 public:
   int x = 0;
 };
-enum Side { Left, Right, Position };
+[[c]] enum Side { Left, Right, Position };
 int Player() { return 7; }
-union enum class Pin : u8
+union enum Pin : u8
 {
   { {Position, int}, {SpacePlatformHub, i64}, {Player, std::String} }
 };

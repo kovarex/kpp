@@ -78,7 +78,7 @@ int enums()
   int total = 0;
   for constexpr (int v : {1, 2})
   {
-    enum Kind { first = v, second = v + 10 };
+    [[c]] enum Kind { first = v, second = v + 10 };
     total = total * 100 + second;
   }
   return total;

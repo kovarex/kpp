@@ -1,6 +1,6 @@
 // spec: a value of a class with a conversion operator to a typed union converts to it as to any class (design.md 8.5: a value of an alternative's type makes that alternative, any other converts by the union's own constructors or the value's conversion operators), for a parameter, an initializer and a return
 // factorio: the game's tests' CustomTestInputHandler, `implicit operator InputAction() const`, passed to TestScenario::perform(InputAction&& action): "no overload of TestScenario::perform takes (CustomTestInputHandler)"
-union enum class Action : u16
+union enum Action : u16
 {
   { {Count, int}, {Text, std::String} }
 };

@@ -4,7 +4,7 @@ struct Order
   int total() const;
 };
 int Order::total() const { return this.lines; }
-enum class OrderState { Open, Paid };
+enum OrderState { Open, Paid };
 using OrderId = int;
 const int maxOrders = 10;
 int orderCount() { return 2; }

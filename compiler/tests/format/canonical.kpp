@@ -5,7 +5,7 @@ config bool fast = false;
 
 namespace game
 {
-  enum class Direction : u8
+  enum Direction : u8
   {
     North,
     East,
@@ -13,10 +13,10 @@ namespace game
     West
   };
 
-  enum class Small { A, B };
+  enum Small { A, B };
 
   // A kpp enum: its values in a block of their own, members after it, as a class's.
-  enum class Turn : u8
+  enum Turn : u8
   {
     { Left, Right }
     Turn flipped() const { return this == Turn::Left ? Turn::Right : Turn::Left; }

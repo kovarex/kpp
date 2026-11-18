@@ -1756,7 +1756,7 @@ namespace
       {
         auto* tag = static_cast<const EnumDecl*>(static_cast<const ClassDecl*>(d->parent)->tagEnum);
         if (d == tag)
-          return std::string(tag->isClass ? "enum class Tag" : "enum Tag") + (tag->underlying ? " : " + underlyingText(d) : std::string());
+          return std::string("enum Tag") + (tag->underlying ? " : " + underlyingText(d) : std::string());
         if (d->kind == NodeKind::FunctionDecl && program.symbols->name(static_cast<const FunctionDecl*>(d)->name.last().symbol) == "tag")
           return "Tag tag() const";
         return {};

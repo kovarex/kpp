@@ -1,6 +1,6 @@
 // spec: the enumeration conversions C++ allows stay: an unscoped enumeration to an integer and in arithmetic, the same enumeration compared and assigned, an enum class compared with its own values and switched on, and casts both ways
-enum Color { Red, Green = 5 };
-enum class Mode { Off, On };
+[[c]] enum Color { Red, Green = 5 };
+enum Mode { Off, On };
 int main()
 {
   int x = Green;

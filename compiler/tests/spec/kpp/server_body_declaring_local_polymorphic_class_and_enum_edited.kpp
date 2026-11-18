@@ -2,7 +2,7 @@
 //--- step: the program
 int run(int x)
 {
-  enum class Mode { Add, Twice };
+  enum Mode { Add, Twice };
   class Base
   {
   public:
@@ -29,7 +29,7 @@ int main()
 //--- step: the override edited
 int run(int x)
 {
-  enum class Mode { Add, Twice };
+  enum Mode { Add, Twice };
   class Base
   {
   public:
@@ -56,7 +56,7 @@ int main()
 //--- step: the enumeration's use edited
 int run(int x)
 {
-  enum class Mode { Add, Twice };
+  enum Mode { Add, Twice };
   class Base
   {
   public:

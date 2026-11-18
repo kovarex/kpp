@@ -4,15 +4,15 @@ class RenderLayer
 {
 public:
   using LayerType = uint8_t;
-  enum Enum : LayerType { Ground, Object, Air, LAST };
+  [[c]] enum Enum : LayerType { Ground, Object, Air, LAST };
 };
 class TileBatch
 {
 public:
-  enum class TileRenderGroup { Background, UnderWater, Foreground, Last = Foreground };
+  enum TileRenderGroup { Background, UnderWater, Foreground, Last = Foreground };
   std::Array<uint32_t, size_t(TileRenderGroup::Last) + 1> renderGroupSizes;
 };
-enum class AlertType : uint8_t { EntityDestroyed, NoMaterial, NoPower, ALERTS_COUNT };
+enum AlertType : uint8_t { EntityDestroyed, NoMaterial, NoPower, ALERTS_COUNT };
 int main()
 {
   std::Array<int, RenderLayer::LayerType(RenderLayer::LAST)> sprites;

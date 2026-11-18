@@ -2,7 +2,7 @@
 // factorio: from D's value corpus: an enumerator reached through `using N::E;` and `using namespace N;` was "ambiguous: the one declared at :3 and the one at :3"
 namespace Colors
 {
-  enum Color { Red, Green };
+  [[c]] enum Color { Red, Green };
   int shade = 7;
   struct Pen { int width = 2; };
   int mix(int a) { return a + 1; }

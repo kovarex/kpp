@@ -1,6 +1,6 @@
 // spec: what the likely slips' errors leave alone, under --slip-checks: an assignment in its own parentheses as a condition, an assignment compared, a called function, an empty block, a switch with a default or naming every enumerator's value (`LastValidType = Text` by `case Message::Text:`, thread C's rule), a floating division, an exact division of constants (`3600 / 2`), an integer division said to truncate (`double(x / 2)`), an `else` indented as its own if's, `return std::move` of a member or of a parameter
 // kpp: --slip-checks
-enum class Color { Red, Green, Blue };
+enum Color { Red, Green, Blue };
 bool ready() { return true; }
 int* find(int* p) { return p; }
 int next(int& left) { return left > 0 ? left-- : 0; }
@@ -10,7 +10,7 @@ struct Holder
   std::String take() { return std::move(this.text); }
 };
 std::String passOn(std::String s) { return std::move(s); }
-enum class Message { Empty, Text, LastValidType = Text };
+enum Message { Empty, Text, LastValidType = Text };
 int messages(Message m)
 {
   switch (m)

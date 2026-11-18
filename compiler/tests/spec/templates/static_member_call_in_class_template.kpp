@@ -13,7 +13,7 @@ struct Item : Base<E>
   Item(E value, E after) : Base<E>(This::listOptions(after)) {}
   static std::String listOptions(std::Optional<E> endAfter = std::nullopt) { return endAfter ? std::String("bounded") : std::String("all"); }
 };
-enum class Mode { A, B };
+enum Mode { A, B };
 int main()
 {
   Item<Mode> a(Mode::A);

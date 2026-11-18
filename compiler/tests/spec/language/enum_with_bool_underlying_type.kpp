@@ -1,8 +1,8 @@
 // spec: an enumeration of underlying type bool converts as a bool does: `(int)B::yes` is 1, never -1, and an integer cast to it is true when it is nonzero, as clang gives it ([expr.static.cast] 10). Before, the value was sign-extended from its one bit: a silent wrong answer; `(B)2` truncated to false
 // found comparing kpp with clang and g++ (thread I's battery en1)
 extern "C" int printf(const char* format, ...);
-enum class B : bool { no, yes };
-enum Bp : bool { pf, pt };
+enum B : bool { no, yes };
+[[c]] enum Bp : bool { pf, pt };
 int main()
 {
   printf("%d %d %d %d\n", (int)B::yes, (int)B::no, (int)Bp::pt, (int)pt);

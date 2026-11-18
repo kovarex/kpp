@@ -15,10 +15,10 @@ class Vec2D : public Vec2<double, Vec2D>
 public:
   using Vec2<double, Vec2D>::Vec2;
 };
-enum Key { A = 1, B = 2, INVALID = 9 };
+[[c]] enum Key { A = 1, B = 2, INVALID = 9 };
 namespace Codes
 {
-  enum Code { First = 3, Last = 10 };
+  [[c]] enum Code { First = 3, Last = 10 };
 }
 constexpr int codeCount()
 {

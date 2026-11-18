@@ -85,7 +85,7 @@ int boxes()
 }
 
 // A switch over a typed union's alternatives, as the game's InputAction load: both branches are taken.
-union enum class Action : u8
+union enum Action : u8
 {
   { {Move, int}, {Stop, void} }
 

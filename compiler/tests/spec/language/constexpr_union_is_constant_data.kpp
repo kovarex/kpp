@@ -38,11 +38,11 @@ struct Packed
 };
 
 int zero = 0; // (no constant: the globals that read it are built at startup, in this file's order)
-int earlyNumber = zero + number[Value::Number];
-double earlyRatio = zero + ratio[Value::Ratio];
-int earlyBothA = zero + both[Value::Both].a;
-float earlyBothB = zero + both[Value::Both].b;
-int earlyNested = zero + nested[Value::Nested][Inner::Small];
+int earlyNumber = zero + number[Value::Tag::Number];
+double earlyRatio = zero + ratio[Value::Tag::Ratio];
+int earlyBothA = zero + both[Value::Tag::Both].a;
+float earlyBothB = zero + both[Value::Tag::Both].b;
+int earlyNested = zero + nested[Value::Tag::Nested][Inner::Tag::Small];
 int earlyTag = zero + int(both.tag());
 float earlyPlain = zero + plain.f;
 int earlyAligned = zero + aligned.wide.b + aligned.wide.d;
@@ -61,7 +61,7 @@ int main()
 {
   std::println(earlyNumber, " ", earlyRatio, " ", earlyBothA, " ", earlyBothB, " ", earlyNested, " ", earlyTag, " ", earlyPlain, " ", earlyAligned, " ",
           earlyLength, " ", earlyBits);
-  std::println(number[Value::Number], " ", ratio[Value::Ratio], " ", both[Value::Both].a, " ", both[Value::Both].b, " ", nested[Value::Nested][Inner::Small], " ",
+  std::println(number[Value::Tag::Number], " ", ratio[Value::Tag::Ratio], " ", both[Value::Tag::Both].a, " ", both[Value::Tag::Both].b, " ", nested[Value::Tag::Nested][Inner::Tag::Small], " ",
           int(both.tag()), " ", plain.f, " ", aligned.wide.b + aligned.wide.d, " ", packed.length, " ", packed.capacity * 10 + packed.flag);
   return 0;
 }

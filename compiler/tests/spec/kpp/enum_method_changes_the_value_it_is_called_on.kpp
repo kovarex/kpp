@@ -1,5 +1,5 @@
 // spec: a method of a kpp enum that is not const changes the value it is called on, as a class's method changes its object (design.md 8.4): its `this` is the place it was called on, a variable, an array's element, a member, a reference's object, a pointer's target (`p->turn()`), and a method it calls on `this` changes it too; a const method gets a copy (until 2026-11-11 every call passed a copy and the assignment wrote a copy of that: `d.turn()` left d as it was, silently)
-enum class Dir : u8
+enum Dir : u8
 {
   { North, East, South, West }
   void turn() { this = Dir((u8(this) + 1) & 3); }

@@ -2,7 +2,7 @@
 // design.md 8.3, 8.5; InputActionTestMaker wrote std::StringView(a.name) until 2026-11-17 ("a template parameter whose
 // value is not known here")
 struct Settings { int width = 640; bool fullscreen = false; };
-union enum class Shape : u8
+union enum Shape : u8
 {
   {
     {Empty, void},

@@ -40,7 +40,7 @@ template<class U>
 void load(U& target, int input)
 {
   for constexpr (auto a : alternatives(U))
-    if (a.tag == U::Full)
+    if (a.tag == U::Tag::Full)
     {
       target.~U();
       new (&target) U(a.tag, a.type(input));
@@ -50,33 +50,33 @@ int main()
 {
   Slot slot;
   load(slot, 7);
-  std::println(slot == Slot::Full, " ", slot[Slot::Full].value);
+  std::println(slot == Slot::Tag::Full, " ", slot[Slot::Tag::Full].value);
   std::println("-- again, the same alternative: destroyed and built");
   load(slot, 8);
-  std::println(slot[Slot::Full].value);
+  std::println(slot[Slot::Tag::Full].value);
   std::println("-- from the constructor's arguments");
   slot.~Slot();
-  new (&slot) Slot(Slot::Full, 4, 5);
-  std::println(slot[Slot::Full].value);
+  new (&slot) Slot(Slot::Tag::Full, 4, 5);
+  std::println(slot[Slot::Tag::Full].value);
   std::println("-- through a generated emplace");
   slot.emplace<Loaded>(1, 2);
-  std::println(slot[Slot::Full].value);
+  std::println(slot[Slot::Tag::Full].value);
   std::println("-- a constructor that throws leaves it holding none");
   try
   {
     slot.~Slot();
-    new (&slot) Slot(Slot::Full, 1, -2);
+    new (&slot) Slot(Slot::Tag::Full, 1, -2);
   }
   catch (const std::RuntimeError& e)
   {
-    std::println(std::StringView(e.what()), " ", slot.tag() == Slot::Tag::count);
+    std::println(std::StringView(e.what()), " ", int(slot.tag()) == Slot::Tag::count);
   }
   std::println("-- assigned: the value first, then moved to its place");
-  slot[Slot::Full] = Loaded(9);
-  std::println(slot[Slot::Full].value);
+  slot[Slot::Tag::Full] = Loaded(9);
+  std::println(slot[Slot::Tag::Full].value);
   std::println("-- assigned the alternative held");
-  slot[Slot::Full] = Loaded(10);
-  std::println(slot[Slot::Full].value);
+  slot[Slot::Tag::Full] = Loaded(10);
+  std::println(slot[Slot::Tag::Full].value);
   std::println("-- end");
   return 0;
 }

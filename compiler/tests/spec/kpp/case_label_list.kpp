@@ -1,5 +1,5 @@
 // spec: `case A, B, C:` is one label of several values, its statements theirs, as Go's and C#'s (kovarex, 2026-11-08; design.md "No implicit fallthrough"): integers, characters, a kpp enum's values (its exhaustive switch, without default, names every value through lists), default beside a list, and in a constant evaluation; a list's statements end with an implicit break, `fallthrough;` running on into default, as any label's (no implicit fallthrough, kpp's rule since its flip; kpp/case_label_list_under_no_implicit_fallthrough was the flag's)
-enum class Direction : uint8_t
+enum Direction : uint8_t
 {
   { North, East, South, West }
   bool isVertical() const

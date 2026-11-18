@@ -1,5 +1,5 @@
-// spec: [[c]] gives an enum C's rules: on an enum class, which has its own, it is an error (design.md 8.4)
-// error: c_enum_attribute_on_enum_class_is_error.kpp:3: error: [[c]] gives an enum C's rules, which an enum class does not have
+// spec: `enum class` is no kpp (every kpp enum is scoped, design.md 8.4, kovarex 2026-11-18), [[c]] or not: the error names what to write
+// error: c_enum_attribute_on_enum_class_is_error.kpp:3: error: kpp's enums are all scoped: write `enum Name`, not `enum class Name`
 [[c]] enum class Mode { Read, Write };
 int main()
 {

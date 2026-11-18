@@ -1,7 +1,7 @@
 // spec: a floating value whose truncation is neither 0 nor 1, cast to an enumeration of bool, is undefined ([conv.fpint], [expr.static.cast] 10), so it is no constant: `(B)2.5` and `(B)-1.0` in a constexpr variable are errors (language/cast_of_a_floating_value_to_an_enumeration_of_bool_truncates: the values that are; --sanitize undefined checks it at run time)
 // error: constant_floating_value_out_of_an_enumeration_of_bool_is_error.kpp:9: error: the constexpr variable twoAndAHalf is no constant: a floating value out of the range of bool
 // error: constant_floating_value_out_of_an_enumeration_of_bool_is_error.kpp:10: error: the constexpr variable minusOne is no constant: a floating value out of the range of bool
-enum class B : bool
+enum B : bool
 {
   no,
   yes

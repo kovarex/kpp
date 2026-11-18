@@ -2,7 +2,7 @@
 // factorio: 4603 nested classes in 2847 files
 struct Machine
 {
-  enum class State { Off, On };
+  enum State { Off, On };
   struct Stats { int cycles = 0; int errors = 0; };
   State state = State::Off;
   Stats stats;

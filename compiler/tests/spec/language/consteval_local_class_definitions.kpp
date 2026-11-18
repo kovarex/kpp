@@ -11,8 +11,8 @@ constexpr int build()
 
 constexpr int enumerators()
 {
-  enum Color { Red = 2, Green = 5 };
-  enum class Mode : char { A = 3, B };
+  [[c]] enum Color { Red = 2, Green = 5 };
+  enum Mode : char { A = 3, B };
   return Red * 100 + Green * 10 + int(Mode::B);
 }
 

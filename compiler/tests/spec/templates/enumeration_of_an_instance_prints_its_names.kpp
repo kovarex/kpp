@@ -2,13 +2,13 @@
 // found by thread A (2026-11-06): 846b9a44 made it a compile error (the enumerator with no instance to evaluate it), and it had printed E<3>(4), the instance's values never matched
 template<int N> struct S
 {
-  enum class E { A = N, B };
+  enum E { A = N, B };
 };
 template<int N> struct T
 {
-  enum class F { A, B };
+  enum F { A, B };
 };
-enum class Plain { X = 3 };
+enum Plain { X = 3 };
 int main()
 {
   S<3>::E e = S<3>::E::B;

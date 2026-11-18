@@ -7,7 +7,7 @@ struct Box : public Base
 {
   T value;
   static int count;
-  enum class Kind { Small, Large };
+  enum Kind { Small, Large };
   struct Inner { int depth = 2; };
   Box(T v) : value(v) {}
   ~Box() {}

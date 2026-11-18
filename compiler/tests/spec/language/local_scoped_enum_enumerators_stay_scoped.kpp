@@ -8,7 +8,7 @@ struct MapVersion
 };
 int load(MapVersion input)
 {
-  enum class Reason { None, MapVersion, Mods };
+  enum Reason { None, MapVersion, Mods };
   Reason reason = Reason::None;
   if (input < MapVersion(2, 31))
     reason = Reason::MapVersion;

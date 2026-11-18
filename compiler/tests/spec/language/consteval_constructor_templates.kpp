@@ -9,7 +9,7 @@ struct Entry
   K first;
   V second;
 };
-enum class Flag : uint32_t { A = 1, B = 2 };
+enum Flag : uint32_t { A = 1, B = 2 };
 using FlagName = Entry<uint32_t, std::StringView>;
 constexpr auto names = std::Array {
   FlagName { uint32_t(Flag::A), "a-flag" },

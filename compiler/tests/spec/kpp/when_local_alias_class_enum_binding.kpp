@@ -20,7 +20,7 @@ int main()
     int v = 9;
   };
   when (config::debug) Probe probe;
-  when (config::debug) enum class Level { low, high };
+  when (config::debug) enum Level { low, high };
   when (config::debug) auto [x, y] = make();
   if constexpr (config::debug)
     std::println(extra, " ", probe.v, " ", x + y, " ", (int)Level::high);

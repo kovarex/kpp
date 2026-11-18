@@ -5,7 +5,7 @@ struct Layer
   int total = 0;
   Layer(int base)
   {
-    enum class Row : uint8_t { Straight = 0, Curved = 1, Ending = 2 };
+    enum Row : uint8_t { Straight = 0, Curved = 1, Ending = 2 };
     auto loadRow = [&this](int scale, Row row) { this.total += scale * (int(row) + 1); };
     loadRow(base, Row::Curved);
     loadRow(base, Row::Ending);

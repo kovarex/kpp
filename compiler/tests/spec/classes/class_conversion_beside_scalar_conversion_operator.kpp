@@ -4,7 +4,7 @@ class RealOrientation;
 class Direction
 {
 public:
-  enum class Enum : uint8_t { North = 0, East = 4, South = 8, West = 12, None = 16 };
+  enum Enum : uint8_t { North = 0, East = 4, South = 8, West = 12, None = 16 };
   using enum Enum;
   constexpr Direction() : value(uint8_t(Direction::None)) {}
   implicit Direction(const RealOrientation& orientation) = delete;

@@ -7,9 +7,9 @@ union enum Property : uint8_t
 int main()
 {
   Property p;
-  p[Property::Integer] = 5;
-  bool wasInt = p == Property::Integer;
-  p[Property::Text] = std::String("t");
-  std::println(wasInt, " ", p == Property::Text, " ", p[Property::Text]);
+  p[Property::Tag::Integer] = 5;
+  bool wasInt = p == Property::Tag::Integer;
+  p[Property::Tag::Text] = std::String("t");
+  std::println(wasInt, " ", p == Property::Tag::Text, " ", p[Property::Tag::Text]);
   return 0;
 }

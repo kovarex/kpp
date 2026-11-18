@@ -3,7 +3,7 @@
 struct Mask
 {
   Mask(bool entity) : type(entity ? Type::Entity : Type::Tile) {}
-  const enum class Type { Entity, Tile } type;
+  const enum Type { Entity, Tile } type;
 };
 int main()
 {

@@ -1,5 +1,5 @@
 // spec: the constant evaluation runs a kpp enum's methods, as it runs a class's: a const method of a constant (`Dir::East.turned()`), a method that changes the value it is called on (`d.turnTwice()` in a function evaluated at compile time), one that calls another on `this`, and a const one that reads `this` (thread B, 2026-11-12: each was "no constant")
-enum class Dir : u8
+enum Dir : u8
 {
   { North, East, South, West }
   void turn() { this = Dir((u8(this) + 1) & 3); }

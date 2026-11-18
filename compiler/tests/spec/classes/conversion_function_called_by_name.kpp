@@ -3,7 +3,7 @@
 class AllowedCommands
 {
 public:
-  enum class Enum : uint8_t
+  enum Enum : uint8_t
   {
     True = 1,
     False = 2,

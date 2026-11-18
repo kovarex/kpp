@@ -1,7 +1,7 @@
 // spec: a non-type template parameter of a class type (C++20 [temp.param] 6, [temp.arg.nontype]): its argument a constant of the class, a named constexpr object or a brace list (`scaled<Fixed{3, 14}>()`), the parameter in the template an lvalue of that value (its members, its constexpr member functions, its address), usable in constant expressions; two arguments of equal parts are one instance and one object, other parts another; parts of a base, a nested class, an enum, bool and char; an `auto` parameter takes one too
 // factorio: thread J's constexpr battery against clang (2026-11-06): a brace list there did not parse, and a named constant's instance was not emitted; clang's output
 extern "C" int printf(const char* format, ...);
-enum class Mode { Off, On, Auto };
+enum Mode { Off, On, Auto };
 struct Inner
 {
   short a;

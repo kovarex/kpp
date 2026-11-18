@@ -1,6 +1,6 @@
 // spec: real enums: value block, methods with this as the value, count, values, str, exhaustive switch, nameof
 // design.md 8.4; replaces Factorio's enum macros
-enum class Direction : uint8_t
+enum Direction : uint8_t
 {
   { North, East, South, West }
   bool isVertical() const { return this == North || this == South; }

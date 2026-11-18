@@ -1,6 +1,6 @@
 // spec: a switch whose condition declares a variable (`switch (const int type = table.get<uint32_t>("type"))`): the variable is in scope in the cases and holds the value switched on
 // found in the converted game: LuaSegmentedUnit's parseAIState and SegmentedUnitPrototype::shouldCreateAsFullyExtended ("a switch on a declaration")
-enum class Extended : uint8_t { No, Yes, Default };
+enum Extended : uint8_t { No, Yes, Default };
 int kindOf(int value)
 {
   switch (const int doubled = value * 2)

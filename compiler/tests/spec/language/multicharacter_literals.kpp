@@ -1,6 +1,6 @@
 // spec: a character literal of several characters is an int, its first character the highest byte (clang and g++): a constant, an enumerator, a case label, with escapes (clang's and g++'s output)
 extern "C" int printf(const char* format, ...);
-enum { Tag = 'ABCD' };
+[[c]] enum { Tag = 'ABCD' };
 const int inConstant = 'ab' + 1;
 int main()
 {

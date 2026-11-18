@@ -15,6 +15,6 @@ union enum U : u8
 int main()
 {
   U u;
-  u[U::Fixed] = Pinned(1);
-  return u[U::Fixed].value;
+  u[U::Tag::Fixed] = Pinned(1);
+  return u[U::Tag::Fixed].value;
 }

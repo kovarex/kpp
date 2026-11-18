@@ -3,7 +3,7 @@
 int value(int)
 {
   struct Local { int v = 1; int get() const { return this.v; } };
-  enum Mode { A = 3 };
+  [[c]] enum Mode { A = 3 };
   static int count = 10;
   ++count;
   return Local().get() + int(A) + count;
@@ -12,7 +12,7 @@ int value(int)
 int value(double)
 {
   struct Local { long long v = 2; char c = 'x'; int get() const { return int(sizeof(Local)) + int(this.v); } };
-  enum Mode { A = 5 };
+  [[c]] enum Mode { A = 5 };
   static int count = 20;
   ++count;
   return Local().get() + int(A) + count;

@@ -31,7 +31,7 @@ int main()
     T z = 2;
     try
     {
-      z[T::C] = -1;
+      z[T::Tag::C] = -1;
     }
     catch (int)
     {

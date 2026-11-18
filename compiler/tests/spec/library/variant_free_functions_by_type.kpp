@@ -25,7 +25,7 @@ union enum AIState
 int main()
 {
   AIState state;
-  state[AIState::Attacking] = Attacking{7};
+  state[AIState::Tag::Attacking] = Attacking{7};
   const AIState& constState = state;
   std::println(std::holdsAlternative<Attacking>(state), " ", std::holdsAlternative<Patrolling>(state));
   std::get<Attacking>(state).target = 9;

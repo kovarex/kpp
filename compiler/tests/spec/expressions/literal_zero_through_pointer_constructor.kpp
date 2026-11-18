@@ -5,7 +5,7 @@ struct FromText
   int isNull;
   implicit FromText(const char* p) : isNull(p == nullptr ? 1 : 0) {}
 };
-enum E { E0, E1 };
+[[c]] enum E { E0, E1 };
 int f([[maybe_unused]] E e) { return 1; }
 int f([[maybe_unused]] FromText t) { return 2; }
 int g(FromText t) { return t.isNull; }

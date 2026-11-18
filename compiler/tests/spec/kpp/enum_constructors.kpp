@@ -1,5 +1,5 @@
 // spec: a kpp enum may declare constructors, as a class does (kovarex, 2026-11-11): its default constructor makes a value declared without an initializer (a local, a global, a member, an array's elements, `E()`, a container's new elements, a member of a constant global), one with parameters makes `E(args)`, `E x(args);` and a member initializer's `m(args)`; `this` is the value being made, as in its methods. `E(x)` of one number stays the conversion (until then a constructor in an enum was a parse error, and a value declared without an initializer was zero)
-enum class Dir : u8
+enum Dir : u8
 {
   { North, East, South, West, None }
   Dir() { this = None; }

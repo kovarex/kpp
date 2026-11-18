@@ -1,5 +1,5 @@
 // What a part of a template is: its own text, or a hole and how its value is written.
-enum class HtmlHole : u8
+enum HtmlHole : u8
 {
   literal,   // the template's text, as it is
   text,      // in an element's text: escaped, or a SafeHtml as it is

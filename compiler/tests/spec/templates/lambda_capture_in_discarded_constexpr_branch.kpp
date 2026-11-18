@@ -8,7 +8,7 @@ struct BlueprintSurface
 {
   int entities = 7;
 };
-enum class CandidateType { Distant, Blocked, Fine };
+enum CandidateType { Distant, Blocked, Fine };
 class FluidBox
 {
 public:

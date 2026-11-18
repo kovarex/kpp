@@ -1,5 +1,5 @@
 // spec: of enumerators with one value, the first names it when a value prints; the enumeration's names still compile
-enum class Kind : u8
+enum Kind : u8
 {
   first,
   second,

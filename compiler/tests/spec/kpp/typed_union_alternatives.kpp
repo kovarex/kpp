@@ -29,11 +29,11 @@ U defaultAt(int index)
 int main()
 {
   Value v;
-  v[Value::Ratio] = 0.5;
+  v[Value::Tag::Ratio] = 0.5;
   describe(v);
   std::println(int(v.tag()), " ", int(Value::Tag::count));
   Value w = defaultAt<Value>(2);
-  std::println(w == Value::Text, " ", w[Value::Text].size());
+  std::println(w == Value::Tag::Text, " ", w[Value::Tag::Text].size());
   for constexpr (auto a : alternatives(Value))
     std::println(std::StringView(a.name));
   return 0;

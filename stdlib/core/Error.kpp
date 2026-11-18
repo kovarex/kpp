@@ -57,7 +57,7 @@ ErrorCategory systemCategory() { return ErrorCategory{true}; }
 
 // Portable error conditions (std::errc), with the C library's errno values: the same on every target
 // but those platform:: gives (the UCRT's, glibc's and FreeBSD's differ).
-enum class Errc
+enum Errc
 {
   operation_not_permitted = 1,
   no_such_file_or_directory = 2,

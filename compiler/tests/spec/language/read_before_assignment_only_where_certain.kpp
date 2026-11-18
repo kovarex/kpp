@@ -82,7 +82,7 @@ int voided()
   (void)v;
   return 0;
 }
-enum class Light : u8
+enum Light : u8
 {
   { Off, On }
   void switchOn() { this = On; }

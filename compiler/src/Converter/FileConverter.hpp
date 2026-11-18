@@ -1112,7 +1112,7 @@
           std::vector<std::string> args;
           for (auto [b, e] : use.args)
             args.push_back(applyEdits(edits, b, e));
-          std::string u = info->qualified + "::";
+          std::string u = info->qualified + "::Tag::"; // (kpp's enums are scoped: a union's tags are U::Tag::Name, design.md 8.4)
           std::string replacement;
           if (use.kind == "holds_alternative")
             replacement = "((" + args[0] + ") == " + u + alternative->name + ")";

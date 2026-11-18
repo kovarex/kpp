@@ -1,6 +1,6 @@
 // The language server's rename onto a member the class already has (tests/lsp.ps1, merge.jsonl): with the
 // same signature the uses name it and the renamed function's declarations go; another signature is refused.
-union enum class Action : u8
+union enum Action : u8
 {
   { {Move, i32}, {Stop, void} }
 

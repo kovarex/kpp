@@ -1,13 +1,13 @@
 // Futures and promises: the async/await primitives (what std::future, std::promise, std::async
 // and std::shared_future convert to). Built on Windows threads and condition variables.
 
-enum class FutureStatus { ready, timeout, deferred };
+enum FutureStatus { ready, timeout, deferred };
 
 // How async runs its callable (std::launch): on a new thread now, or on the first get() or wait().
-enum class Launch { async = 1, deferred = 2 };
+enum Launch { async = 1, deferred = 2 };
 
 // Why a Future is ready without a value (std::future_errc): its Promise was destroyed first.
-enum class FutureErrc { brokenPromise = 1, futureAlreadyRetrieved = 2, promiseAlreadySatisfied = 3, noState = 4 };
+enum FutureErrc { brokenPromise = 1, futureAlreadyRetrieved = 2, promiseAlreadySatisfied = 3, noState = 4 };
 
 // The error a Future's get() throws when it has none of its own (std::future_error).
 class FutureError : public LogicError

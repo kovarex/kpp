@@ -1,6 +1,6 @@
 // spec: `a || b` and `a && b` of a scoped enumeration with its own operator|| and operator&& call those functions (both operands evaluated, the function's result), not the built-in short-circuit operators
 // factorio: agui::Style's `PropertyStatus operator||(PropertyStatus, PropertyStatus)` (Style.kpp's addChangedValues), found by codegen's cross-check against the checker's recorded operator choices (design.md 24)
-enum class Status : uint8_t { Defines, Overwritten, Same };
+enum Status : uint8_t { Defines, Overwritten, Same };
 int calls = 0;
 Status operator||(Status a, Status b)
 {

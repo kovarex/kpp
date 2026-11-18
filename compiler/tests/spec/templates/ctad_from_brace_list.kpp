@@ -1,6 +1,6 @@
 // spec: class template argument deduction from a brace list: `Pair{name, value}` in an expression (from Pair's constructors), and `Array table = {a, b, c}` (an aggregate: the array member takes the elements and N is their count, as std::array's deduction guide has it)
 // factorio: GroupAttackAchievementPrototype's `static constexpr Array mapping = { Pair { "autonomous", AttackType::Autonomous }, ... }`, PerformanceLogger's `Array cpuTimeValuePointers = { Pair { "update", &CpuDataRecord::update }, ... }`
-enum class AttackType { Autonomous, Distraction, Scripted };
+enum AttackType { Autonomous, Distraction, Scripted };
 
 struct Record { int update = 3; int render = 4; };
 

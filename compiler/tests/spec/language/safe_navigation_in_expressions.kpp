@@ -6,7 +6,7 @@ public:
   int value = 7;
   int items[3] = {1, 2, 3};
   static constexpr int fixed = 11;
-  enum class Kind { Small, Big };
+  enum Kind { Small, Big };
   Kind kind = Kind::Big;
   bool ok() const { return this.value > 0; }
   int add(int x) const { return this.value + x; }

@@ -8,7 +8,7 @@ struct Rect
 };
 struct Flag
 {
-  enum class Enum : uint8_t { False, True };
+  enum Enum : uint8_t { False, True };
   static constexpr Enum True = Enum::True;
   static constexpr Enum False = Enum::False;
   bool value = false;
@@ -42,7 +42,7 @@ struct Derived : Base
   void setCaret([[maybe_unused]] const char* text) { this.caret = -1; }
   void position(int p) { this.setCaret(Rect{p, 1, false}); }
 };
-enum class Kind { A, B, C };
+enum Kind { A, B, C };
 template<typename... Args>
 int sum(Args&&... args) { return (int(args) + ...); }
 int main()

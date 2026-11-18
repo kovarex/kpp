@@ -3,7 +3,7 @@
 // diagnostics name.
 struct Shape
 {
-  enum Kind { Round, Square };
+  [[c]] enum Kind { Round, Square };
   struct Corner { i32 x = 0; };
   static i32 count;
   static i32 made() { return Shape::count; }

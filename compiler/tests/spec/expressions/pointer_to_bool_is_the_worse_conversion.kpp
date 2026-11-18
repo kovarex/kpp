@@ -2,7 +2,7 @@
 // factorio: found by the templates thread comparing overload choices against clang 19 on generated calls: each was ambiguous or no call (loud)
 struct Base { int x = 1; };
 struct Derived : Base { int y = 2; };
-enum E { E0, E1 };
+[[c]] enum E { E0, E1 };
 int toVoid([[maybe_unused]] bool b) { return 1; }
 int toVoid([[maybe_unused]] const void* p) { return 2; }
 int fromArray([[maybe_unused]] void* p) { return 1; }

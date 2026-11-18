@@ -1,15 +1,15 @@
 // The language server's enums test (tests/lsp.ps1, enums.jsonl): completion of a kpp enum's
 // built-ins after `E::` and after a value's `.`, for an enum, an enum class and a typed union's
 // Tag, and of a typed union's own members (a union enum class's creators among them, as their declarations).
-enum Color
+[[c]] enum Color
 {
   { Red, Green }
 };
-enum class Mode : u8
+enum Mode : u8
 {
   { Off, On }
 };
-union enum class Action : u16
+union enum Action : u16
 {
   { {Move, int}, {Stop, bool} }
 };

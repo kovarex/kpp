@@ -9,15 +9,15 @@ constexpr int read()
   V n = 3;
   V r = 2.5;
   V s = std::String("abc");
-  return n[V::Number] * 100 + int(r[V::Ratio] * 2) * 10 + int(s[V::Name].size());
+  return n[V::Tag::Number] * 100 + int(r[V::Tag::Ratio] * 2) * 10 + int(s[V::Tag::Name].size());
 }
 constexpr int write()
 {
   V n = 3;
-  n[V::Number] += 4;
+  n[V::Tag::Number] += 4;
   V s = std::String("ab");
-  s[V::Name].append("c");
-  return n[V::Number] * 10 + int(s[V::Name].size());
+  s[V::Tag::Name].append("c");
+  return n[V::Tag::Number] * 10 + int(s[V::Tag::Name].size());
 }
 constexpr int r = read();
 constexpr int w = write();

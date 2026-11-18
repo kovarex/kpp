@@ -3,9 +3,9 @@
 extern "C" int printf(const char* format, ...);
 template<int N> struct Tm
 {
-  enum { value = N * 2, next = value + 1 };
-  enum class C { v = N, w };
-  enum Named { x = N + 1, y };
+  [[c]] enum { value = N * 2, next = value + 1 };
+  enum C { v = N, w };
+  [[c]] enum Named { x = N + 1, y };
   static const int k = value;
   int arr[value];
   int get() const { return value + y; }
@@ -13,16 +13,16 @@ template<int N> struct Tm
   Named named() const { return y; }
   int sw(int i) const { switch (i) { case value: return 1; case next: return 2; default: return 0; } }
 };
-template<class T> struct Sz { enum { size = sizeof(T), twice = size * 2 }; };
-template<int N> struct Fact { enum { value = N * Fact<N - 1>::value }; };
-template<> struct Fact<0> { enum { value = 1 }; };
-template<class T> struct Und { enum : T { big = (T)-1, low = 1 }; enum class E : T { a = 2 }; };
+template<class T> struct Sz { [[c]] enum { size = sizeof(T), twice = size * 2 }; };
+template<int N> struct Fact { [[c]] enum { value = N * Fact<N - 1>::value }; };
+template<> struct Fact<0> { [[c]] enum { value = 1 }; };
+template<class T> struct Und { [[c]] enum : T { big = (T)-1, low = 1 }; enum E : T { a = 2 }; };
 template<int N> int useIt() { return Tm<N>::value + 1; }
-template<class T, int M> struct Two { enum { r = sizeof(T) * M }; static constexpr int s = r + 1; };
-template<int N> struct Outer { template<int M> struct In { enum { sum = N + M }; }; struct Plain { enum { twice = N * 2 }; }; };
-template<int N> struct Derived : Tm<N> { enum { more = Tm<N>::value + 1 }; int m() const { return Tm<N>::next + more; } };
-template<int N> constexpr int fn() { enum { local = N * 3 }; return local; }
-template<int N> constexpr int fn2() { enum class L { a = N, b }; return (int)L::b; }
+template<class T, int M> struct Two { [[c]] enum { r = sizeof(T) * M }; static constexpr int s = r + 1; };
+template<int N> struct Outer { template<int M> struct In { [[c]] enum { sum = N + M }; }; struct Plain { [[c]] enum { twice = N * 2 }; }; };
+template<int N> struct Derived : Tm<N> { [[c]] enum { more = Tm<N>::value + 1 }; int m() const { return Tm<N>::next + more; } };
+template<int N> constexpr int fn() { [[c]] enum { local = N * 3 }; return local; }
+template<int N> constexpr int fn2() { enum L { a = N, b }; return (int)L::b; }
 int main()
 {
   printf("%d %d\n", Tm<3>::value, Tm<3>::next);

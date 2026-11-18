@@ -1,6 +1,6 @@
 // spec: a char pointer is a piece of a Text, C text to its first zero, as a string literal is (kovarex, 2026-11-16; design.md 14): a const char* and a char* variable, a function's result, an enumeration's str(), in a call, a constructor, `<<` into a String and a constant (`tag=a name=Beta mutable=xyz <<x>> 3`)
 extern "C" import "stdio.h";
-enum class Kind : u8
+enum Kind : u8
 {
   { Alpha, Beta }
 };

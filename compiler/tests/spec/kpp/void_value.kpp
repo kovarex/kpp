@@ -25,7 +25,7 @@ Out& operator<<(Out& out, int value) { out.text << value << ";"; return out; }
 Out& operator<<(Out& out, const std::String& value) { out.text << "'" << value << "';"; return out; }
 Out& operator<<(Out& out, void) { out.text << "-;"; return out; }
 
-union enum class Action : u8
+union enum Action : u8
 {
   { {Nothing, void}, {Count, int}, {Stop, void}, {Say, std::String} }
 };

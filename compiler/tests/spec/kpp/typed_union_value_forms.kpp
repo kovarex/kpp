@@ -17,7 +17,7 @@ union enum Maybe : uint8_t
 };
 struct S { int x = 1; double y = 2.5; };
 
-int take(AIState s) { return s == AIState::Attack ? s[AIState::Attack].target : -1; }
+int take(AIState s) { return s == AIState::Tag::Attack ? s[AIState::Tag::Attack].target : -1; }
 int pick([[maybe_unused]] const AIState& s) { return 1; }
 int pick([[maybe_unused]] int x) { return 2; }
 
@@ -26,19 +26,19 @@ int main()
   std::println(take(Attacking{2}), " ", take(Patrolling{1}));
   std::println(pick(Attacking{2}), " ", pick(3));
   Value v = 5;
-  std::println(v == Value::Number, " ", v[Value::Number]);
+  std::println(v == Value::Tag::Number, " ", v[Value::Tag::Number]);
   v = 2.5;
-  std::println(v == Value::Ratio, " ", v[Value::Ratio]);
+  std::println(v == Value::Tag::Ratio, " ", v[Value::Tag::Ratio]);
   v = std::String("text");
-  std::println(v == Value::Text, " ", v[Value::Text]);
+  std::println(v == Value::Tag::Text, " ", v[Value::Tag::Text]);
   std::String s = "lvalue";
   v = s;
   const std::String& cs = s;
   Value w = cs;
-  std::println(v[Value::Text], " ", w == Value::Text, " ", int(w.tag()));
+  std::println(v[Value::Tag::Text], " ", w == Value::Tag::Text, " ", int(w.tag()));
   Maybe<float> m = 2.5f;
   Maybe<float> n = 3;
-  std::println(m == Maybe<float>::Some, " ", m[Maybe<float>::Some], " ", n == Maybe<float>::None);
+  std::println(m == Maybe<float>::Tag::Some, " ", m[Maybe<float>::Tag::Some], " ", n == Maybe<float>::Tag::None);
   for constexpr (auto a : alternatives(Maybe<float>))
   {
     std::Vector<a.type> list;

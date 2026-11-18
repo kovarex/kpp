@@ -1,5 +1,5 @@
 // spec: a kpp enum's default constructor makes every value of it that has no initializer, wherever kpp would make it zero (kovarex, 2026-11-11): new and new[], `{}` (a variable's, a return's, an argument's, an assignment's, a default argument's), an aggregate's and an array's members the braces leave out, a static local, a container's new elements, an Optional's emplace, `T()` in a template, a lambda's capture, a member initializer `m()`; constant globals never take the zero (the constant evaluation runs the constructor: enum_constructor_in_constant_evaluation); `E(x)` of a class value is a constructor, of an enumeration value a copy
-enum class Dir : u8
+enum Dir : u8
 {
   { North, East, South, West, None }
   Dir() { this = None; }

@@ -1,7 +1,7 @@
 // spec: an unscoped enumeration with a fixed underlying type promotes to that type (C++ [conv.prom] 4), which beats a conversion to another integer type: push(const int32&) beside push(const uint32&) given an `enum LuaEventType : uint32_t` takes the uint32 one; one without a fixed type promotes to int32
-enum Wide : uint32_t { WideValue = 1 };
-enum Small : uint8_t { SmallValue = 2 };
-enum Plain { PlainValue = 3 };
+[[c]] enum Wide : uint32_t { WideValue = 1 };
+[[c]] enum Small : uint8_t { SmallValue = 2 };
+[[c]] enum Plain { PlainValue = 3 };
 const char* push([[maybe_unused]] const int32_t& value) { return "signed"; }
 const char* push([[maybe_unused]] const uint32_t& value) { return "unsigned"; }
 const char* take([[maybe_unused]] int32_t value) { return "int32"; }

@@ -1,9 +1,9 @@
 // spec: a value of a scoped enum indexes a built-in array and std::Array as its number does, read and written, in a constant too (design.md 8.4, "An enum indexes an array"; kovarex, 2026-11-18: the enums all become scoped, and a table indexed by one needs no cast); `E::count` sizes the array
-enum class Color : u8
+enum Color : u8
 {
   { Red, Green, Blue }
 };
-enum class Side : i16 { Left = 1, Right = 2 };
+enum Side : i16 { Left = 1, Right = 2 };
 constexpr int weights[Color::count] = {10, 20, 30};
 static_assert(weights[Color::Blue] == 30);
 struct Palette

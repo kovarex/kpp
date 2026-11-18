@@ -8,7 +8,7 @@ struct Vector2
   Vector2() = default;
   Vector2(T x, T y) : x(x), y(y) {}
 };
-enum class Direction { North, East };
+enum Direction { North, East };
 class Vec : public Vector2<double, Vec>
 {
 public:

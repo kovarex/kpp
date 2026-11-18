@@ -3,7 +3,7 @@
 // error: pointer_to_scalar_argument_is_error.kpp:16: error: a pointer (int32*) does not convert to int64 without a cast
 // error: pointer_to_scalar_argument_is_error.kpp:17: error: a pointer (void(int32)*) does not convert to double without a cast
 // error: pointer_to_scalar_argument_is_error.kpp:18: error: a pointer (int32*) does not convert to Mode without a cast
-enum class Mode { On, Off };
+enum Mode { On, Off };
 int wide([[maybe_unused]] i64 v) { return 1; }
 int real([[maybe_unused]] double v) { return 2; }
 int mode([[maybe_unused]] Mode m) { return 3; }

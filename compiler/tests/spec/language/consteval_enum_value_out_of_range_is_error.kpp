@@ -4,12 +4,12 @@
 // error: consteval_enum_value_out_of_range_is_error.kpp:16: error: the constexpr variable below is no constant: a value of -9 out of its enumeration's range of values [-8, 7]
 // error: consteval_enum_value_out_of_range_is_error.kpp:17: error: the constexpr variable flags is no constant: a value of 8 out of its enumeration's range of values [0, 7]
 // error: consteval_enum_value_out_of_range_is_error.kpp:18: error: static assertion whose condition is no constant: a value of 2 out of its enumeration's range of values [0, 1]
-enum Duo { First, Second };
-enum Signed { Low = -3, High = 5 };
-enum Flags { One = 1, Five = One | 4 };
-enum class Scoped { Only };
-enum Small : unsigned char { Zero };
-enum Empty {};
+[[c]] enum Duo { First, Second };
+[[c]] enum Signed { Low = -3, High = 5 };
+[[c]] enum Flags { One = 1, Five = One | 4 };
+enum Scoped { Only };
+[[c]] enum Small : unsigned char { Zero };
+[[c]] enum Empty {};
 constexpr Duo one = (Duo)1;
 constexpr Duo two = (Duo)2;
 constexpr Signed eight = (Signed)8;

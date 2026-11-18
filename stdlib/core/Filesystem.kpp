@@ -620,7 +620,7 @@ namespace filesystem
 
   // --- what a file is ---
 
-  enum class file_type
+  enum file_type
   {
     none = 0,
     not_found = -1,
@@ -637,7 +637,7 @@ namespace filesystem
 
   // POSIX permission bits; Windows has only the read-only attribute, which status reports as
   // 0555 (others 0777) and permissions sets when the result has no write bit.
-  enum class perms : u32
+  enum perms : u32
   {
     none = 0,
     owner_read = 0400,
@@ -668,7 +668,7 @@ namespace filesystem
   perms& operator&=(perms& a, perms b) { return a = a & b; }
   perms& operator^=(perms& a, perms b) { return a = a ^ b; }
 
-  enum class perm_options : u32
+  enum perm_options : u32
   {
     replace = 1,
     add = 2,
@@ -679,7 +679,7 @@ namespace filesystem
   perm_options operator|(perm_options a, perm_options b) { return perm_options((u32)a | (u32)b); }
   perm_options operator&(perm_options a, perm_options b) { return perm_options((u32)a & (u32)b); }
 
-  enum class copy_options : u32
+  enum copy_options : u32
   {
     none = 0,
     skip_existing = 1,
@@ -697,7 +697,7 @@ namespace filesystem
   copy_options operator|(copy_options a, copy_options b) { return copy_options((u32)a | (u32)b); }
   copy_options operator&(copy_options a, copy_options b) { return copy_options((u32)a & (u32)b); }
 
-  enum class directory_options : u32
+  enum directory_options : u32
   {
     none = 0,
     follow_directory_symlink = 1,

@@ -5,7 +5,7 @@
 // statement on the next line a step in, an empty statement `;` kept on its statement's line. convert.cmd compares
 // the conversion with tests\convert_longlines.expected.kpp, builds it and runs it (tests\convert_longlines.expected).
 
-enum class Shape : u8
+enum Shape : u8
 {
   Nothing, SomethingWithAVeryLongName, AnotherThingWithAnEvenLongerName, YetAnotherThingWithALongName,
   TheLastOneWithoutASizeOfItsOwn,

@@ -3,7 +3,7 @@
 class Highlights
 {
 public:
-  enum Type : uint8_t { Regular, Search, Insert, Remove, Count };
+  [[c]] enum Type : uint8_t { Regular, Search, Insert, Remove, Count };
   static Type const types[];
   int countTypes() const
   {

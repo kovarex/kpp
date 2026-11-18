@@ -1,6 +1,6 @@
 // spec: an alternative's tag labelled twice in a switch, once by hand and once by a `for constexpr` over alternatives(U), is a compile error (design.md 8.5)
 // error: typed_union_switch_over_alternatives_twice_is_error.kpp:14: error: the case value 0 is a label of this switch twice
-union enum class Action : u8
+union enum Action : u8
 {
   { {Move, int}, {Jump, int} }
 };

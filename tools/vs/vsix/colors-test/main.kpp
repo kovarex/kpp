@@ -1,7 +1,7 @@
 // a comment
 namespace shapes
 {
-  enum class Side
+  enum Side
   {
     leftSide,
     rightSide
