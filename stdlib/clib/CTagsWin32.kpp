@@ -9,4 +9,4 @@ struct _BY_HANDLE_FILE_INFORMATION;
 struct _OVERLAPPED;
 union _LARGE_INTEGER;  // a 64-bit signed integer
 union _ULARGE_INTEGER; // a 64-bit unsigned integer
-enum _GET_FILEEX_INFO_LEVELS { GetFileExInfoStandard, GetFileExMaxInfoLevel };
+[[c]] enum _GET_FILEEX_INFO_LEVELS { GetFileExInfoStandard, GetFileExMaxInfoLevel };

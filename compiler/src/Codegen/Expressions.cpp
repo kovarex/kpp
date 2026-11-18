@@ -745,7 +745,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
     case NodeKind::IndexExpr:
     {
       auto* i = static_cast<IndexExpr*>(e);
-      Value written = i->indexFirst ? convert(rvalue(i->args[0]), types.intType(64), e) : Value{}; // (`2[a]`: from the left)
+      Value written = i->indexFirst ? subscriptIndex(i, e) : Value{}; // (`2[a]`: from the left)
       Value base = withCheckedConst(rvalue(i->base), i->base);
       if (ClassDecl* c = typedUnionOf(base.ty, e))
       {
@@ -757,7 +757,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       }
       if (isClass(base.ty))
         return callRvalue(operatorCall(base, operatorName(P::LBracket), i->args, e, true), e);
-      Value index = i->indexFirst ? written : convert(rvalue(i->args[0]), types.intType(64), e);
+      Value index = i->indexFirst ? written : subscriptIndex(i, e);
       if (base.ty->kind != TyKind::Pointer)
         unsupported(e, "indexing a non-pointer");
       std::string r = newTemp();

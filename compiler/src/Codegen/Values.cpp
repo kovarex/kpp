@@ -129,6 +129,29 @@ auto codegen::Emitter::zeroIsNoPointer(Node* at) -> bool
   return true;
 }
 
+auto codegen::Emitter::subscriptIndex(IndexExpr* i, Node* at) -> Value
+{
+  Value v = rvalue(i->args[0]);
+  const Ty* baseTy = i->base->ty ? types.unqualified(types.stripRef(i->base->ty)) : nullptr;
+  if (!scopedEnum(v.ty) || !baseTy || baseTy->kind != TyKind::Array)
+    return convert(v, types.intType(64), at);
+  Value index = convert(convert(v, enumUnderlying(types.unqualified(v.ty)), at, true), types.intType(64), at);
+  if (debug && baseTy->count)
+  {
+    std::string inside = newTemp(), okL = newLabel("index.ok"), failL = newLabel("index.fail");
+    fn += "  " + inside + " = icmp ult i64 " + index.text + ", " + std::to_string(baseTy->count) + "\n";
+    fn += "  br i1 " + inside + ", label %" + okL + ", label %" + failL + "\n";
+    startBlock(failL);
+    auto [line, column] = lineColumnOf(at->token);
+    emitCall("", "void @kpp_assert_failed(ptr " + cStringConstant(programPathOf(currentFile)) + ", i32 " + lineOperand(line) + ", i32 " +
+                     std::to_string(column) + ", ptr " + cStringConstant("the enum index is outside the array") + ")", false);
+    fn += "  unreachable\n";
+    usesAssert = true;
+    startBlock(okL);
+  }
+  return index;
+}
+
 auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCast, ConversionContext context) -> Value
 {
   const Ty* from = v.ty;
@@ -1021,13 +1044,13 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       auto* i = static_cast<IndexExpr*>(e);
       if (i->args.size() != 1)
         unsupported(e, "multi-argument indexing");
-      Value written = i->indexFirst ? convert(rvalue(i->args[0]), types.intType(64), e) : Value{}; // (`2[a]`: from the left)
+      Value written = i->indexFirst ? subscriptIndex(i, e) : Value{}; // (`2[a]`: from the left)
       Value base = withCheckedConst(rvalue(i->base), i->base);
       if (ClassDecl* c = typedUnionOf(base.ty, e))
         return alternativeLvalue(c, base, i, e, true); // p[Integer]: the alternative, if held
       if (isClass(base.ty))
         return resultAddress(operatorCall(base, operatorName(P::LBracket), i->args, e, true), e);
-      Value index = i->indexFirst ? written : convert(rvalue(i->args[0]), types.intType(64), e);
+      Value index = i->indexFirst ? written : subscriptIndex(i, e);
       if (base.ty->kind != TyKind::Pointer)
         unsupported(e, "indexing a non-pointer");
       std::string r = newTemp();

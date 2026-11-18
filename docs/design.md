@@ -721,6 +721,29 @@ the error "'North' is not declared (...): write `Direction::North`, not `North`"
 language/scoped_enumerator_needs_its_enum;
 the game has none, as kpp never accepted one).
 
+**Every enum is scoped** (kovarex, 2026-11-18: "Ok, lets do it", the end state of "No plain enums" below; being built):
+kpp has `enum` and `union enum` only, with today's class rules: an enumerator is `E::X` (in a case label too), a
+union's alternatives `U::Tag::X` outside its subscript, no implicit conversion to an integer, no arithmetic and no
+comparison with one. `enum class` and `union enum class` become errors (no alias). C's rules stay for imported C
+headers and for an enum marked `[[c]]` (converted C libraries, kpp-written mirrors of C APIs). An enum indexes an
+array, `E::count` sizes one; a bitmask enum becomes `flags` (27); a class holding only an enum
+(`class X { enum Enum {...}; }`) becomes the enum. Underlying types stay exactly as they were (enums are saved).
+In steps: the prerequisites below (built), then the switch with the stdlib, tests, converter and the game's
+branches (wube/Factorio kpp, kpp-2.1.24, kpp-2.1.25) rewritten in lockstep.
+
+*`[[c]]`* (built 2026-11-18): `[[c]] enum Mode {...}` or `enum [[c]] Mode {...}` written in kpp keeps C's rules, as
+an imported C header's enum does: its enumerators in the scope around, converting to integers. On an `enum class`
+it is an error ("[[c]] gives an enum C's rules, which an enum class does not have"). `--plain-enum-warnings`
+skips it. Specs kpp/c_enum_attribute, kpp/c_enum_attribute_on_enum_class_is_error.
+
+*An enum indexes an array* (built 2026-11-18): a value of a scoped enum indexes a built-in array (`int
+counts[Color::count]; counts[Color::Green]`), read and written, in a constant too, as its number does; a debug
+build checks it against the array's bound ("the enum index is outside the array"). std::Array takes one by its
+`operator[](E)` (any enum, through its underlying type, with Array's own assert). A pointer is not indexed by
+one, nor is any other container: a cast says what the number means there. Spec kpp/enum_indexes_an_array.
+`--plain-enum-warnings` no longer counts a typed union's `u[Name]` as an array's index nor `u == U::Name` as a
+comparison with an integer (spec language/plain_enum_warnings_skip_c_enums_and_typed_union_uses).
+
 **No plain enums** (kovarex, 2026-11-07: "plain enums are not nice"; decided, not built): kpp code has only
 `enum class`; imported C and C++ headers keep theirs. As with the other rules, the error comes behind a flag
 first, counted, then the converter's rewrite, then the error by default. `--plain-enum-warnings` (built) lists

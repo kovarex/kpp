@@ -56,6 +56,10 @@
       t = t ? types.unqualified(t) : nullptr;
       return t && t->kind == TyKind::Enum && t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass;
     }
+    // The index of a built-in array's or pointer's subscript as i64 (i->args[0]): an integer, or on an array a value of
+    // a scoped enum (design.md 8.4, "An enum indexes an array"), its number, checked against the array's bound in a
+    // debug build.
+    Value subscriptIndex(IndexExpr* i, Node* at);
     // context: a class's conversion to bool, a condition's or a copy's (conversionOperator).
     Value convert(Value v, const Ty* to, Node* at, bool explicitCast = false, ConversionContext context = ConversionContext::Unknown);
 

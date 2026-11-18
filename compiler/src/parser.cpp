@@ -560,6 +560,8 @@ namespace
               pendingAttributes |= ATTR_VectorCall;
             else if (a == "packed")
               pendingAttributes |= ATTR_Packed;
+            else if (a == "c" && isKpp())
+              pendingAttributes |= ATTR_C;
             else if (a == "foreign_vtable")
               pendingAttributes |= ATTR_ForeignVtable;
             else if (a == "nodiscard")
@@ -5373,7 +5375,9 @@ namespace
       if (accept(Kw::class_) || accept(Kw::struct_))
         e->isClass = true;
       skipAttributes();
-      e->attributes |= pendingAttributes & (ATTR_NoDiscard | ATTR_Deprecated); // `enum class [[nodiscard]] Status`
+      e->attributes |= pendingAttributes & (ATTR_NoDiscard | ATTR_Deprecated | ATTR_C); // `enum class [[nodiscard]] Status`, `[[c]] enum Mode`
+      if ((e->attributes & ATTR_C) && e->isClass)
+        error("[[c]] gives an enum C's rules, which an enum class does not have: write `[[c]] enum` or drop [[c]] (design.md 8.4)");
       noteDeprecation(e);
       skipMacroSpecifier();
       if (atIdent() || at(P::ColonColon))

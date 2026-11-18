@@ -3473,7 +3473,7 @@ auto GlobalScope::Impl::Walker::noteThisUse(Expr* e) -> void
 
 auto GlobalScope::Impl::Walker::notePlainEnumDecl(EnumDecl* e) -> void
 {
-  if (e->isClass || !e->isDefinition || activeSubst)
+  if (e->isClass || (e->attributes & ATTR_C) || !e->isDefinition || activeSubst)
     return;
   if (e->name.empty())
     notePlainEnumWarning(Impl::locationOf(file, e->token) + ": warning: a nameless plain enum: kpp has only enum class (design.md 8.4)");
@@ -3495,7 +3495,7 @@ auto GlobalScope::Impl::Walker::notePlainEnumUse(const Expr* operand, const char
   if (!d || d->kind != NodeKind::EnumeratorDecl || !d->parent || d->parent->kind != NodeKind::EnumDecl)
     return;
   auto* en = static_cast<const EnumDecl*>(d->parent);
-  if (en->isClass || !en->file || en->file->isImported)
+  if (en->isClass || (en->attributes & ATTR_C) || !en->file || en->file->isImported)
     return;
   std::string name = en->name.empty() ? std::string("a nameless plain enum") : impl.debugName(en->name.last().symbol);
   notePlainEnumWarning(Impl::locationOf(file, operand->token) + ": warning: " + impl.debugName(static_cast<const EnumeratorDecl*>(d)->name) +
@@ -3532,7 +3532,9 @@ auto GlobalScope::Impl::Walker::notePlainEnumUses(Expr* e) -> void
             const Ty* b2 = y && y->ty ? types.unqualified(types.stripRef(y->ty)) : nullptr;
             return a && b2 && a == b2 && a->kind == TyKind::Enum;
           };
-          if (!sameEnum(b->lhs, b->rhs))
+          // (a typed union against its tag compares the alternative held: design.md 8.5)
+          auto typedUnion = [&](const Expr* x) { return x && x->ty && typedUnionOf(types.unqualified(types.stripRef(x->ty))); };
+          if (!sameEnum(b->lhs, b->rhs) && !typedUnion(b->lhs) && !typedUnion(b->rhs))
           {
             notePlainEnumUse(b->lhs, "a comparison with an integer");
             notePlainEnumUse(b->rhs, "a comparison with an integer");
@@ -3556,8 +3558,9 @@ auto GlobalScope::Impl::Walker::notePlainEnumUses(Expr* e) -> void
       break;
     }
     case NodeKind::IndexExpr:
-      for (Expr* a : static_cast<IndexExpr*>(e)->args)
-        notePlainEnumUse(a, "an array's index");
+      if (auto* i = static_cast<IndexExpr*>(e); !(i->base && i->base->ty && typedUnionOf(types.unqualified(types.stripRef(i->base->ty))))) // (`u[Name]` names an alternative)
+        for (Expr* a : i->args)
+          notePlainEnumUse(a, "an array's index");
       break;
     case NodeKind::CastExpr:
       if (auto* c = static_cast<CastExpr*>(e); e->ty && types.unqualified(types.stripRef(e->ty))->isArithmetic() &&

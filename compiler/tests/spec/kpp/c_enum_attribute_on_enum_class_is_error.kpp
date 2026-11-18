@@ -1,0 +1,7 @@
+// spec: [[c]] gives an enum C's rules: on an enum class, which has its own, it is an error (design.md 8.4)
+// error: c_enum_attribute_on_enum_class_is_error.kpp:3: error: [[c]] gives an enum C's rules, which an enum class does not have
+[[c]] enum class Mode { Read, Write };
+int main()
+{
+  return 0;
+}

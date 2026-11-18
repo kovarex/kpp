@@ -586,8 +586,12 @@ function that runs every level of a hierarchy. See the readme's Planned.
   no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`
   and `This::North` all name it. A bare one outside is an error naming the fix (spec
   `language/scoped_enumerator_needs_its_enum`).
-- **No plain enums** (decided, not built): kpp code has only `enum class` (kovarex, 2026-11-07); imported
-  headers keep theirs. `--plain-enum-warnings` lists them; the game has 208 ([design 8.4](design.md)).
+- **No plain enums** (this stage): kpp has `enum` with `enum class`'s rules, and `enum class` goes (kovarex,
+  2026-11-07, 2026-11-18); imported headers keep theirs, and `[[c]] enum` (built) keeps C's rules for an enum
+  written in kpp. `--plain-enum-warnings` lists the plain ones; the game has 208 ([design 8.4](design.md)).
+- **An enum indexes an array** (built): `counts[Color::Green]` on a built-in array or std::Array, with no cast,
+  checked against the bound in a debug build; C++ needs `counts[size_t(Color::Green)]` for an enum class (spec
+  `kpp/enum_indexes_an_array`).
 - **See:** [design 8.4][d8]; specs `kpp/enum_from_str`, `kpp/enum_constructors`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp
