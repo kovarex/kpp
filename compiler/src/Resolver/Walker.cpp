@@ -8747,6 +8747,76 @@ auto GlobalScope::Impl::Walker::implicitEquality(const Ty* lhs, const Ty* rhs, u
   return impl.conversionRank(rhs, types.lref(types.qualified(cls, true, false))) < Impl::NotViable;
 }
 
+auto GlobalScope::Impl::Walker::deletedDefaultedEquality(const Ty* cls, uint32_t token, int level, const std::string& prefix) -> std::string
+{
+  cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+  ClassDecl* def = cls && cls->kind == TyKind::Class && cls->isKnown() && !types.isDependent(cls) && !Impl::mentionsUnknown(cls) && !Impl::lambdaOf(cls)
+                     ? impl.classDefinition(cls)
+                     : nullptr;
+  if (!def || level > 8 || def->isTypedUnion || (def->attributes & ATTR_Draft))
+    return {};
+  Subst s = impl.substFor(cls);
+  const Subst* sp = s.pairs.empty() ? nullptr : &s;
+  // How a subobject of type t (an array's elements) compares: nothing when C++ compares it, else why not.
+  auto compares = [&](const Ty* t, const std::string& name, bool base) -> std::string
+  {
+    t = types.unqualified(t);
+    while (t->kind == TyKind::Array && t->inner)
+      t = types.unqualified(t->inner);
+    if (t->kind != TyKind::Class || typedUnionOf(t))
+      return {}; // (a scalar's built-in ==; a typed union's, design.md 8.5)
+    const Ty* operand = types.lref(types.qualified(t, true, false));
+    Subst subst;
+    bool isMember = false;
+    FunctionDecl* f = nullptr;
+    {
+      bool wasProbing = probing;
+      probing = true;
+      f = operatorFunction(P::EqEq, operand, operand, token, 2, subst, isMember);
+      bool implied = !f && threeWayDefaulted(operand, operand, token);
+      probing = wasProbing;
+      if (implied)
+        return deletedDefaultedEquality(t, token, level + 1, name); // (the == its defaulted <=> implies)
+    }
+    if (f && (f->flags & DF_Delete))
+      return "its " + name + " has a deleted operator==";
+    if (f && (f->flags & DF_Default) && f->parent == impl.classDefinition(t))
+      return deletedDefaultedEquality(t, token, level + 1, name);
+    if (f)
+      return {};
+    // The built-in == on the operands' conversions (a class converting to bool).
+    if (builtinOperand(operand))
+      return {};
+    const Ty* lc = nullptr, *rc = nullptr;
+    if (impl.builtinOperands(P::EqEq, impl.conversionObject(operand), impl.conversionObject(operand), &lc, &rc, nullptr))
+      return {};
+    return "its " + name + (base ? std::string() : ", a " + types.toString(t, &impl.symbols) + ",") + " has no operator==";
+  };
+  std::vector<const Ty*> bases;
+  if (impl.directBases(cls, def, bases))
+    for (const Ty* b : bases)
+    {
+      const Ty* base = types.unqualified(types.stripRef(b));
+      std::string name = (level > 0 ? prefix + "'s base " : "base ") + types.toString(base, &impl.symbols);
+      if (std::string why = compares(base, name, true); !why.empty())
+        return why;
+    }
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef)) || static_cast<VariableDecl*>(m)->name.empty())
+      continue;
+    const Ty* t = impl.declaredTypeOf(m, sp, 0);
+    if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t))
+      continue;
+    std::string name = (level > 0 ? prefix + "'s member " : "member ") + std::string(symbols.name(static_cast<VariableDecl*>(m)->name.last().symbol));
+    if (t->isReference())
+      return "its " + name + " is a reference";
+    if (std::string why = compares(t, name, false); !why.empty())
+      return why;
+  }
+  return {};
+}
+
 auto GlobalScope::Impl::Walker::rewrittenBeats(P op, FunctionDecl* f, const Subst& subst, bool member, const Ty* lhs, const Ty* rhs, uint32_t token) -> bool
 {
   std::vector<int> mine = impl.binaryOperatorRanks(f, subst, member, lhs, rhs);
@@ -9499,6 +9569,29 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
           reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) +
                                     " is assigned by its defaulted operator=, which C++ defines as deleted: " + why + " ([class.copy.assign] 7)");
         }
+      // `a == b` (or `a != b`) of one class by its defaulted operator== (its own, or the one its defaulted <=> implies):
+      // one C++ defines as deleted is an error, and a requirement's probe of it is not met (codegen compared a
+      // reference member's addresses, a union's first member, a member class's members where it declares no ==).
+      if ((op == P::EqEq || op == P::NotEq) && ls->kind == TyKind::Class && types.unqualified(ls) == types.unqualified(rs) &&
+          (!operatorChosen || ((operatorChosen->flags & DF_Default) && operatorChosen->parent == impl.classDefinition(types.unqualified(ls)))))
+      {
+        const Ty* operand = types.lref(types.qualified(types.unqualified(ls), true, false));
+        Subst own;
+        bool ownMember = false;
+        bool wasProbing = probing;
+        probing = true;
+        FunctionDecl* eq = operatorChosen ? operatorChosen : operatorFunction(P::EqEq, operand, operand, b->token, 2, own, ownMember);
+        bool defaulted = eq ? (eq->flags & DF_Default) && eq->parent == impl.classDefinition(types.unqualified(ls)) : threeWayDefaulted(operand, operand, b->token);
+        probing = wasProbing;
+        if (defaulted)
+          if (std::string why = deletedDefaultedEquality(ls, b->token); !why.empty())
+          {
+            if (probing)
+              return unknown(Why::Overload);
+            reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) +
+                                      " is compared by its defaulted operator==, which C++ defines as deleted: " + why + " ([class.compare.default] 2)");
+          }
+      }
       call = operatorCall;
       callee = operatorChosen;
       member = operatorIsMember;

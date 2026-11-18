@@ -1,0 +1,77 @@
+// spec: a defaulted == that C++ defines as deleted ([class.compare.default] 2, [class.eq] 2: a reference member, a member or base whose type has no usable ==, a union among them) is an error where a comparison calls it, naming the member, never a comparison of addresses, of a union's first member or of the members of a class that declares no ==; declaring one that nothing calls is no error, and a member whose class has a defaulted <=> compares by the == it implies
+// found by the defaulted comparison study (2026-11-18): kpp compared a reference member's addresses, a union member's first member and the private members of a class with no ==
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:68: error: Bound is compared by its defaulted operator==, which C++ defines as deleted: its member r is a reference ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:69: error: WithUnion is compared by its defaulted operator==, which C++ defines as deleted: its member u, a Bits, has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:70: error: Holder is compared by its defaulted operator==, which C++ defines as deleted: its member s, a Secret, has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:71: error: Derived is compared by its defaulted operator==, which C++ defines as deleted: its base Plain has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:72: error: Nested is compared by its defaulted operator==, which C++ defines as deleted: its member h's member s, a Secret, has no operator== ([class.compare.default] 2)
+struct Bound
+{
+  i32& r;
+  bool operator==(const Bound&) const = default;
+};
+union Bits
+{
+  i32 i;
+  f32 f;
+};
+struct WithUnion
+{
+  Bits u;
+  bool operator==(const WithUnion&) const = default;
+};
+class Secret
+{
+public:
+  Secret(i32 v) : hidden(v) {}
+  i32 get() const { return this.hidden; }
+private:
+  i32 hidden;
+};
+struct Holder
+{
+  Secret s;
+  bool operator==(const Holder&) const = default;
+};
+struct Plain
+{
+  i32 x;
+};
+struct Derived : Plain
+{
+  i32 y;
+  bool operator==(const Derived&) const = default;
+};
+struct Nested
+{
+  Holder h;
+  bool operator==(const Nested&) const = default;
+};
+struct Ordered
+{
+  i32 v;
+  auto operator<=>(const Ordered&) const = default;
+};
+struct HoldsOrdered
+{
+  Ordered o;
+  bool operator==(const HoldsOrdered&) const = default;
+};
+int main()
+{
+  i32 x = 5, y = 5;
+  Bound r1{x}, r2{y};
+  WithUnion u1, u2;
+  Holder h1{Secret(1)}, h2{Secret(1)};
+  Derived d1{{1}, 2}, d2{{1}, 2};
+  Nested n1{h1}, n2{h2};
+  bool same = r1 == r2;
+  same = u1 == u2;
+  same = h1 != h2;
+  same = d1 == d2;
+  same = n1 == n2;
+  HoldsOrdered o1{{1}}, o2{{1}};
+  same = o1 == o2;
+  (void)same;
+  return 0;
+}

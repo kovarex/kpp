@@ -1072,6 +1072,13 @@
     // also has for it): whether lhs's class has it and rhs converts to the class.
     bool implicitEquality(const Ty* lhs, const Ty* rhs, uint32_t token);
 
+    // Why C++ defines the defaulted operator== that compares two objects of class cls (its own `= default`, or the one
+    // a defaulted operator<=> implies) as deleted ([class.compare.default] 2, [class.eq] 2), or nothing: a reference
+    // member, or a base or member whose type has no usable `==` (no operator== of its own or a free one, no defaulted
+    // one that C++ keeps, no built-in == on a conversion: a union, a class that declares no ==). level 0 is the
+    // compared class; above it, prefix names the member whose class is compared by its own defaulted ==.
+    std::string deletedDefaultedEquality(const Ty* cls, uint32_t token, int level = 0, const std::string& prefix = {});
+
     // Whether `lhs op rhs`, a comparison, is a rewritten candidate over operator f, which the lookup
     // found: `(lhs <=> rhs) op 0` or the reversed `0 op (rhs <=> lhs)` for a relational operator,
     // `!(lhs == rhs)` or `!(rhs == lhs)` for `!=`, `rhs == lhs` for `==`. One wins where it takes

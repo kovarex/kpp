@@ -1,0 +1,41 @@
+// spec: a defaulted == compares a member whose type has no operator== as C++ does, by the built-in == on the member's conversion (a WithCount's `operator bool`, a Level's `operator int`), an array member element by element and a member compared by its own defaulted == the same way; never byte by byte, member by member inside the member's class
+// found by the defaulted comparison study (2026-11-18): the game's ResearchCondition, a defaulted == over a TechnologyWithCount that converts to bool, compared its id and count where C++ compares the two bools; clang prints the same
+class WithCount
+{
+public:
+  WithCount(int id, int count) : id(id), count(count) {}
+  implicit operator bool() const { return this.id != 0; }
+  int id;
+  int count;
+};
+struct Level
+{
+  int value;
+  implicit operator int() const { return this.value / 10; }
+};
+struct Condition
+{
+  WithCount w;
+  int extra;
+  bool operator==(const Condition&) const = default;
+};
+struct Levels
+{
+  Level levels[2];
+  bool operator==(const Levels&) const = default;
+};
+struct Outer
+{
+  Condition c;
+  bool operator==(const Outer&) const = default;
+};
+int main()
+{
+  Condition a{WithCount(1, 1), 5}, b{WithCount(2, 7), 5}, z{WithCount(0, 1), 5}, d{WithCount(1, 1), 6};
+  std::println(a == b, " ", a == z, " ", a != b, " ", a == d);
+  Levels l1{{{11}, {25}}}, l2{{{19}, {21}}}, l3{{{11}, {35}}};
+  std::println(l1 == l2, " ", l1 == l3);
+  Outer o1{a}, o2{b};
+  std::println(o1 == o2, " ", o1 != o2);
+  return 0;
+}

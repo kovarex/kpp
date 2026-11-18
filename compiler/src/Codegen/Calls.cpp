@@ -1489,7 +1489,18 @@ auto codegen::Emitter::objectsEqual(const std::string& a, const std::string& b, 
       return convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at, false, ConversionContext::Direct); // SHA1Digest's `operator==(const SHA1Digest&, const SHA1Digest&)`
   if (ClassDecl* u = typedUnionOf(t, at))
     return typedUnionEqual(u, a, b, t, at); // the alternative held, then its values (design.md 8.5)
-  return memberwiseEqual(a, b, t, at);
+  const Ty* orderIn = nullptr;
+  FunctionDecl* order = op ? nullptr : findMemberFunction(t, "operator<=>", argTypes, t, at, &orderIn, true);
+  if (op || (order && (order->flags & DF_Default)))
+    return memberwiseEqual(a, b, t, at); // its defaulted == (its own, or the one its defaulted <=> implies)
+  // A union enum's alternative written as an anonymous struct (`{Close, struct { Browsing browsing; }}`), which can
+  // declare no == of its own, compares member-wise as a defaulted == would (design.md 8.5).
+  if (ClassDecl* def = classDef(t->decl, at); def && !def->name.empty() && !alternativeStructShown(def, symbols.name(def->name.last().symbol)).empty())
+    return memberwiseEqual(a, b, t, at);
+  // A class with no == compares as `a == b` does in C++: by the built-in == on its conversion (the game's
+  // TechnologyWithCount, by its operator bool, in ResearchCondition's defaulted ==), never member by member (the
+  // checker refuses a defaulted == over a class that has neither: Walker::deletedDefaultedEquality).
+  return convert(comparedAt(P::EqEq, a, b, t, at), types.boolType(), at, false, ConversionContext::Direct);
 }
 
 auto codegen::Emitter::braceScalar(BraceInitExpr* list, const Ty* t, Node* at) -> Value
