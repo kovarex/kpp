@@ -222,11 +222,8 @@ auto GlobalScope::Impl::Walker::alternativeNamed(ClassDecl* u, Expr* index) -> E
   if (!index || index->kind != NodeKind::NameExpr || !u->tagEnum)
     return nullptr;
   auto* n = static_cast<NameExpr*>(index);
-  if (n->name.parts.size() != 1 || n->name.parts[0].hasTemplateArgs ||
-      (n->resolved && n->resolved->kind != NodeKind::EnumeratorDecl))
+  if (n->name.parts.size() != 1 || n->name.parts[0].hasTemplateArgs)
     return nullptr;
-  if (n->resolved)
-    return nullptr; // already an enumerator: the qualified spelling, or one in scope
   for (Decl* d : static_cast<EnumDecl*>(u->tagEnum)->enumerators)
     if (d->kind == NodeKind::EnumeratorDecl && static_cast<EnumeratorDecl*>(d)->name == n->name.parts[0].symbol)
       return static_cast<EnumeratorDecl*>(d);
@@ -12480,9 +12477,36 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
               i->args.size() == 1 && i->args[0]->kind == NodeKind::NameExpr && static_cast<NameExpr*>(i->args[0])->name.parts.size() == 1
                 ? static_cast<NameExpr*>(i->args[0]) : nullptr,
               undeclaredLater};
+      // `pin[Hub]` with a class Hub in scope: a lone name that is one of the typed union's alternatives
+      // names it before any other lookup (design.md 8.5), as a case label names a switched enum's
+      // enumerator; a variable of that name too is an error, never one silently chosen over the other.
+      EnumeratorDecl* tagFirst = nullptr;
+      if (const Ty* bb = later.tag && base ? types.stripRef(base) : nullptr; bb && bb->kind == TyKind::Class)
+        if (ClassDecl* u = typedUnionOf(bb))
+          tagFirst = alternativeNamed(u, later.tag);
+      if (tagFirst)
+      {
+        Lookup l = lookupHere(later.tag->name);
+        if (l.decl && l.decl != tagFirst &&
+            (l.decl->kind == NodeKind::ParamDecl || (l.decl->kind == NodeKind::VariableDecl && !(l.decl->flags & DF_Typedef))))
+        {
+          later.tag = nullptr; // (reported here)
+          if (!probing)
+          {
+            std::string name(symbols.name(tagFirst->name)), unionName(symbols.name(typedUnionOf(types.stripRef(base))->name.last().symbol));
+            reportHere(i->token, "'" + name + "' in the subscript of the typed union " + unionName + " names its alternative " + name +
+                                     " and also a variable in scope: write `" + unionName + "::Tag::" + name + "` for the alternative, or rename the variable");
+          }
+          return record(e, unknown(Why::Operator));
+        }
+        later.tag->resolved = tagFirst;
+        firstIndex = record(later.tag, impl.tagTypeOf(typedUnionOf(types.stripRef(base)), types.stripRef(base)));
+      }
       undeclaredLater = later.tag;
       for (Expr* a : i->args)
       {
+        if (tagFirst)
+          break;
         const Ty* at = walkExpr(a);
         if (a == i->args[0])
           firstIndex = at;
@@ -12539,13 +12563,21 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           }
           else if (firstIndex && types.isDependent(firstIndex))
             return record(e, types.unknown()); // `u[a]` before the loop binds a
-          else if (EnumeratorDecl* en = alternativeNamed(u, i->args[0]))
+          else if (tagFirst)
+            v = impl.constOfDecl(tagFirst, ctx(), 0); // `p[Integer]`: an alternative's name as written in the union (design.md 8.5)
+          else if (const Ty* it = firstIndex ? types.unqualified(types.stripRef(firstIndex)) : nullptr;
+                   it && it->isKnown() && it != types.unqualified(impl.tagTypeOf(u, b)))
           {
-            // `p[Integer]`: an alternative's name as written in the union (design.md 8.5).
-            auto* n = static_cast<NameExpr*>(i->args[0]);
-            n->resolved = en;
-            record(n, impl.tagTypeOf(u, b));
-            v = impl.constOfDecl(en, ctx(), 0);
+            // `p[1]`, `p[Side::Left]`: only a tag of the union's own names an alternative (until 2026-11-18 any
+            // integer constant chose one by its number, so another enum's enumerator silently chose the wrong one).
+            if (!probing)
+            {
+              std::string unionName(symbols.name(u->name.last().symbol));
+              reportHere(i->token, "the typed union " + unionName + " is indexed with a value of type " + types.toString(it, &symbols) +
+                                       ": its subscript takes one of its alternatives (`" + unionName + "::Tag::Name`, the name alone, or `a` of `alternatives(" +
+                                       unionName + ")`)");
+            }
+            return record(e, unknown(Why::Operator));
           }
           else
             v = impl.constEval(i->args[0], ctx());

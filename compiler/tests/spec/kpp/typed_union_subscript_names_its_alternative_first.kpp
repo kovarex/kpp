@@ -1,0 +1,39 @@
+// spec: in `u[Name]` a lone name that is one of the typed union's alternatives names it before any other lookup (design.md 8.5), so a class, a function or another enum's enumerator of that name in scope does not take it: `pin[SpacePlatformHub]` beside the class SpacePlatformHub, in a union enum class and a plain union enum, read and written, in a function template
+// factorio: AddPinParameters as a union enum class has an alternative SpacePlatformHub, and the game has a class SpacePlatformHub (kovarex 2026-11-18)
+class SpacePlatformHub
+{
+public:
+  int x = 0;
+};
+enum Side { Left, Right, Position };
+int Player() { return 7; }
+union enum class Pin : u8
+{
+  { {Position, int}, {SpacePlatformHub, i64}, {Player, std::String} }
+};
+union enum Plain : u8
+{
+  { {Right, int}, {SpacePlatformHub, double} }
+};
+template<typename U>
+i64 hub(const U& u)
+{
+  return i64(u[SpacePlatformHub]);
+}
+int main()
+{
+  Pin pin = Pin::SpacePlatformHub(5);
+  std::println(pin[SpacePlatformHub], " ", hub(pin));
+  pin[Position] = 3; // (Side's Position is 2: no alternative chosen by its number)
+  std::println(pin[Position], " ", pin == Pin::Tag::Position);
+  pin[Player] = "kovarex";
+  std::println(pin[Player], " ", Player());
+  Plain plain;
+  plain[Right] = 4;
+  std::println(plain[Right]);
+  plain[SpacePlatformHub] = 2.5;
+  std::println(plain[SpacePlatformHub], " ", hub(plain), " ", int(Right));
+  SpacePlatformHub h;
+  std::println(h.x);
+  return 0;
+}

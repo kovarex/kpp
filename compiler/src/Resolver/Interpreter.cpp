@@ -1424,6 +1424,14 @@ auto GlobalScope::Impl::constName(NameExpr* n, const TypeContext& ctx) -> std::o
   if (!n->resolved && !n->name.requiresThis && constThis(ctx)) // (a name required `this.` covers is never a member by its bare name)
     if (std::optional<ConstPlace> place = constPlaceOf(n, ctx, 0))
       return constRead(*place);
+  // `pin[Hub]`: a lone name the walk took for the typed union's alternative before any lookup (design.md 8.5),
+  // which a lookup by name here would take for whatever else is called Hub in scope (a class, another enum's).
+  if (Decl* d = n->resolved; d && d->kind == NodeKind::EnumeratorDecl && n->name.parts.size() == 1 && d->parent && d->parent->parent &&
+                             d->parent->parent->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d->parent->parent)->tagEnum == d->parent)
+  {
+    std::optional<int64_t> v = constOfDecl(d, ctx, 1);
+    return v && n->ty && n->ty->isKnown() ? std::optional<ConstValue>(ConstValue::integer(*v, n->ty)) : std::nullopt;
+  }
   NameEvaluation nested; // the calls below start at depth 0 (see nameEvaluations)
   if (!nested.ok)
     return std::nullopt;

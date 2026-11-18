@@ -940,6 +940,20 @@ enumerators, so U's own members may take them. `U::Tag::Count` is the tag (`u[U:
 `u == U::Tag::Count`, `case U::Tag::Count:`, `U(U::Tag::Count, 3)`), and an alias (`using InputActionType =
 InputAction::Tag;`) names it as the game did. Spec: kpp/typed_union_scoped_tag.
 
+*The subscript names its alternatives first* (2026-11-18, kovarex's AddPinParameters as a union enum class, whose
+alternative SpacePlatformHub is also a class of the game's): in `u[Name]` a lone name that is one of u's alternatives
+names that alternative before any other lookup, in a `union enum` and a `union enum class` alike, as a case label of a
+switched plain enum names its enumerator. A class, function or another enum's enumerator of that name in scope does not
+take it; a variable or parameter of that name is an error ("'Hub' in the subscript of the typed union Pin names its
+alternative Hub and also a variable in scope: write `Pin::Tag::Hub` ..."), never one silently chosen. The subscript
+takes a tag of the union's own (`U::Tag::Name`, the name alone, `a` of `alternatives(U)`, a constant of type U::Tag) and
+anything else is an error ("the typed union Pin is indexed with a value of type int32 ..."). Until then the name was
+looked up first and the alternative tried only when nothing was found: a class of that name was codegen's "indexed with
+something other than one of its alternatives", and an integer constant or another enum's enumerator chose the
+alternative of its number, silently (`p[Side::Left]`). Case labels and `U(Tag, ...)` keep the scoped rule: a union enum
+class's tag is written `U::Tag::Name` there, as an enum class's enumerator is. Specs:
+kpp/typed_union_subscript_names_its_alternative_first, kpp/typed_union_subscript_errors.
+
 *Creators* (kovarex 2026-11-17, for InputAction's 657 hand-written `InputAction::CloseGui(data)`): a `union enum class
 U` makes a static creator per alternative, `U::Name(args...)`, which builds that alternative from the arguments as
 `U(U::Tag::Name, args...)` does (a value of its type, by copy or move, or its constructor's arguments, in place), and
