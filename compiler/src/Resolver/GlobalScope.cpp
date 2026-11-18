@@ -450,7 +450,11 @@ std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
 size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
 {
   // The static_asserts in the bodies of class templates, once per instance the program names (a
-  // template's own walk leaves them to its instances).
+  // template's own walk leaves them to its instances). Those checked by an earlier build whose answers stand
+  // (Impl::instanceChecksStanding: a compile server's edit that cannot change them) are not checked again: what
+  // they reported stands too, outside any walk (kovarex, 2026-11-18: each language-server check checked all of the
+  // game's again, 0.15 s).
+  from = std::max(from, impl->instanceChecksStanding.load());
   std::vector<const Ty*> instances = impl->types.classInstances(from);
   auto checkOne = [&](const Ty* cls)
   {
@@ -539,8 +543,11 @@ size_t GlobalScope::checkInstanceStaticAsserts(size_t from)
   worker();
   for (std::thread& t : pool)
     t.join();
+  impl->instanceChecksStanding = from + instances.size();
   return from + instances.size();
 }
+
+void GlobalScope::forgetInstanceChecks() { impl->instanceChecksStanding = 0; }
 
 std::vector<std::string> GlobalScope::checkerErrors(size_t instancesChecked)
 {
@@ -2284,6 +2291,11 @@ size_t GlobalScope::typeCountWithoutUnknown() const { return impl->types.sizeWit
 
 void GlobalScope::recordDependencies(bool on) { recordingDependencies = on; }
 
+bool GlobalScope::unusedFieldsStand() const
+{
+  return !impl->fieldNamesChanged && impl->fieldErrorsReported == 0 && impl->fieldChecksWereOn == unusedFieldChecksOn();
+}
+
 void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFile>>& files)
 {
   Impl& impl = *this->impl;
@@ -2292,6 +2304,9 @@ void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFil
     std::lock_guard lock(impl.fieldCheckUnit.mutex);
     impl.fieldCheckUnit.list = DependencyList{};
   }
+  impl.fieldNamesChanged = false; // (read below: unusedFieldsStand)
+  impl.fieldErrorsReported = 0;
+  impl.fieldChecksWereOn = unusedFieldChecksOn();
   if (!unusedFieldChecksOn())
     return;
   // What the walk units named, by class (Walker::recordFieldNames).
@@ -2386,6 +2401,7 @@ void GlobalScope::reportUnusedFields(const std::vector<std::unique_ptr<ParsedFil
       const Ty* t = impl.declaredTypeOf(v, nullptr, 0);
       if (!t || !t->isKnown() || types.isDependent(t) || Impl::mentionsUnknown(t) || impl.containsAuto(t) || !plain(t, 0))
         continue;
+      ++impl.fieldErrorsReported;
       impl.reportCheckerError(v->file ? v->file : c->file, v->token,
                               "the private field " + std::string(impl.symbols.name(v->name.parts[0].symbol)) + " of " +
                                   std::string(impl.symbols.name(c->name.last().symbol)) +
@@ -2455,9 +2471,13 @@ void GlobalScope::forgetWalks(const ParsedFile& file)
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)
   {
     std::lock_guard lock(shard.mutex);
-    for (auto& [key, deps] : shard.map)
-      if (walkUnitDecl(key)->file == &file)
+    auto keys = shard.byFile.find(&file); // (the file's walks, DeclDependencyShard::byFile)
+    if (keys == shard.byFile.end())
+      continue;
+    for (uintptr_t key : keys->second)
+      if (auto it = shard.map.find(key); it != shard.map.end() && walkUnitDecl(key)->file == &file)
       {
+        std::unique_ptr<Dependencies>& deps = it->second;
         std::lock_guard l(deps->mutex);
         deps->list = DependencyList{};
         deps->tidied = true;
@@ -2487,9 +2507,13 @@ std::vector<const void*> GlobalScope::instancesWalksUse(const ParsedFile& file)
   for (Impl::DeclDependencyShard& shard : impl->declDependencies)
   {
     std::lock_guard lock(shard.mutex);
-    for (auto& [key, deps] : shard.map)
-      if (walkUnitDecl(key)->file == &file)
+    auto keys = shard.byFile.find(&file); // (the file's walks, DeclDependencyShard::byFile)
+    if (keys == shard.byFile.end())
+      continue;
+    for (uintptr_t key : keys->second)
+      if (auto it = shard.map.find(key); it != shard.map.end() && walkUnitDecl(key)->file == &file)
       {
+        std::unique_ptr<Dependencies>& deps = it->second;
         std::lock_guard l(deps->mutex);
         for (auto& [kind, what] : deps->list.uses)
           if (kind == USE_Instance || kind == USE_ClassInstance)
@@ -2537,14 +2561,31 @@ namespace
       if (symbols.empty() && members.empty() && anyClass.empty())
         return false; // (no name changed: a body edit's; a list of millions is not walked for nothing)
       for (RecordedName n : l.names)
-        if (!isMemberName(n) ? symbols.count(recordedSymbol(n)) != 0 : members.count(n) || anyClass.count(recordedSymbol(n)))
-          return true;
+        if (uint32_t symbol = recordedSymbol(n); (mask >> maskBit(symbol)) & 1)
+          if (!isMemberName(n) ? symbols.count(symbol) != 0 : members.count(n) || anyClass.count(symbol))
+            return true;
       return false;
     }
+    // The sets filled: the mask of their symbols, which every name a set holds has.
+    void masked()
+    {
+      mask = 0;
+      for (uint32_t s : symbols)
+        mask |= uint64_t(1) << maskBit(s);
+      for (RecordedName n : members)
+        mask |= uint64_t(1) << maskBit(recordedSymbol(n));
+      for (uint32_t s : anyClass)
+        mask |= uint64_t(1) << maskBit(s);
+    }
+    static unsigned maskBit(uint32_t symbol) { return (symbol * 0x9E3779B1u) >> 26; }
 
     std::unordered_set<uint32_t> symbols;
     std::unordered_set<RecordedName> members;
     std::unordered_set<uint32_t> anyClass;
+    // A bit per symbol of the names (maskBit): a name whose bit is not set is in none of the sets, which the scans of every
+    // unit's names (millions in the game) test first (kovarex, 2026-11-18: a language server's check read every walk's
+    // names for an edited function's readers, 38 ms on 32 threads).
+    uint64_t mask = ~uint64_t(0);
   };
 
   // byClassOnly: a member's name is read only through its class or a class derived from it: a lookup
@@ -2607,6 +2648,7 @@ namespace
         }
       }
     }
+    out.masked();
     return out;
   }
 }
@@ -3060,8 +3102,11 @@ namespace
   Scope* containerScope(Decl* container, Scope& root) { return container && container->ownScope ? container->ownScope : &root; }
 }
 
+uint64_t GlobalScope::indexVersion() const { return impl->indexVersion; }
+
 void GlobalScope::unindexFunction(FunctionDecl* f)
 {
+  ++impl->indexVersion;
   auto attachedTo = impl->outOfLineScope.find(f);
   if (attachedTo != impl->outOfLineScope.end())
   {
@@ -3090,6 +3135,7 @@ void GlobalScope::unindexFunction(FunctionDecl* f)
 
 void GlobalScope::unindexMember(VariableDecl* v)
 {
+  ++impl->indexVersion;
   if (v->name.parts.size() == 1)
   {
     uint32_t symbol = v->name.parts[0].symbol;
@@ -3110,6 +3156,7 @@ void GlobalScope::unindexMember(VariableDecl* v)
 
 void GlobalScope::indexMembers(const std::vector<VariableDecl*>& added)
 {
+  ++impl->indexVersion;
   for (VariableDecl* v : added)
     impl->indexDecl(v, containerScope(v->parent, impl->root));
   std::unordered_set<Scope*> seen;
@@ -3125,6 +3172,7 @@ bool GlobalScope::membersReadOutsideUnits(const Decl* cls)
 
 bool GlobalScope::indexFunctions(const std::vector<FunctionDecl*>& added)
 {
+  ++impl->indexVersion;
   for (FunctionDecl* f : added)
     impl->indexDecl(f, containerScope(f->parent, impl->root));
   std::vector<FunctionDecl*> attached;
@@ -3391,21 +3439,29 @@ void GlobalScope::dropUnusedInstances(const std::vector<const void*>& instances,
   {
     std::lock_guard lock(impl->typeDependenciesMutex);
     for (auto& [owner, deps] : impl->typeDependencyOwners)
-    {
-      bool stale = owner->file == &file && !current.count(owner);
-      std::lock_guard l(deps->mutex);
-      for (auto& [kind, what] : deps->list.uses)
-        if (isInstance(kind))
-          (stale ? staleUses : rootParts.back()).push_back(what); // (a removed local's: `Boxed extra(2.5)`'s Boxed<double>)
-      if (stale)
+      if (owner->file == &file && !current.count(owner))
       {
+        std::lock_guard l(deps->mutex);
+        for (auto& [kind, what] : deps->list.uses)
+          if (isInstance(kind))
+            staleUses.push_back(what); // (a removed local's: `Boxed extra(2.5)`'s Boxed<double>)
         deps->list = DependencyList{}; // (taken now: its declaration is gone, a later edit has nothing to find in it)
         deps->tidied = true;
       }
-    }
   }
   if (staleUses.empty())
-    return; // nothing the old walks or their declarations asked for is gone
+    return; // nothing the old walks or their declarations asked for is gone (and no pass over every unit's uses: kovarex, 2026-11-18)
+  {
+    // (the stale ones' lists are empty now: what is left are the roots)
+    std::lock_guard lock(impl->typeDependenciesMutex);
+    for (auto& [owner, deps] : impl->typeDependencyOwners)
+    {
+      std::lock_guard l(deps->mutex);
+      for (auto& [kind, what] : deps->list.uses)
+        if (isInstance(kind))
+          rootParts.back().push_back(what);
+    }
+  }
   forEachParallel(std::size(impl->declDependencies), [&](size_t s)
   {
     Impl::DeclDependencyShard& shard = impl->declDependencies[s];

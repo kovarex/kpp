@@ -389,7 +389,7 @@ void runCodegen(Build& build)
   if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == outputModules)
   {
     cg = rebuildLLVM(*build.codegen, build.changedBodies, build.movedLines, build.movedPositions, build.replacedBodies, build.addedFunctions, build.removedFunctions,
-                     build.changedLayouts, build.instancesOf, build.changedGlobals, build.droppedClasses, rebuilt);
+                     build.changedLayouts, build.instancesOf, build.changedGlobals, build.droppedClasses, rebuilt, !options.check);
     logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
                  : cg.failed()        ? "codegen: the session kept across " + std::to_string(cg.errors.size() + cg.hiddenErrors) + " error(s), " +
                                             std::to_string(cg.emittedAgain) + " function(s) emitted again"
@@ -597,16 +597,17 @@ void runCodegen(Build& build)
                                   .coverage = options.coverage,
                                   .debugInfo = options.debugInfo,
                                   .target = &options.target,
-                                  .optimize = options.optimize != 0}; // (resolved to 0 or 1 by now)
+                                  .optimize = options.optimize != 0, // (resolved to 0 or 1 by now)
+                                  .assemble = !options.check}; // (a check writes nothing: no module text, CodegenOptions::assemble)
     cg = generateLLVM(parsed, global, symbols, codegenOptions, servingBuild() ? &build.codegen : nullptr, backEnd ? &stream : nullptr);
     cg.changedModules.clear();
     if (backEnd)
       backEnd->raise(); // (codegen ended: the back end has every core)
   }
   double t = seconds(Clock::now() - start);
-  // Errors assemble no module; a session kept across them keeps the sizes of the modules the last
+  // Errors assemble no module, nor does a check; a session kept across them keeps the sizes of the modules the last
   // build without errors assembled (it assembles the others once the errors are gone).
-  if (cg.modules.empty() && cg.failed() && build.codegen)
+  if (cg.modules.empty() && (cg.failed() || options.check) && build.codegen)
   {
     if (build.moduleBytes.size() != outputModules)
       build.moduleBytes.assign(outputModules, 0);

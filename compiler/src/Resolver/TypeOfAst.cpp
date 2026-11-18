@@ -2382,6 +2382,8 @@ auto GlobalScope::Impl::forgetUnitsOf(const Decl* d) -> void
     {
       walk = std::move(it->second);
       shard.map.erase(it);
+      if (auto byFile = shard.byFile.find(d->file); byFile != shard.byFile.end())
+        std::erase(byFile->second, key);
     }
   }
   if (walk)
@@ -2392,7 +2394,8 @@ auto GlobalScope::Impl::forgetUnitsOf(const Decl* d) -> void
   {
     FieldNamesShard& shard = fieldNamesShard(d); // (what its walk named of the private fields: --unused-field-checks)
     std::lock_guard lock(shard.mutex);
-    shard.map.erase(d);
+    if (shard.map.erase(d))
+      fieldNamesChanged = true;
   }
 }
 

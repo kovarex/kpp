@@ -140,5 +140,7 @@
   // bodies only: those bodies parsed and checked again and nothing else, then the reports and
   // codegen as a build from scratch runs them. False when the request is no such build: it is built
   // from scratch then (keptChanged: the kept build was changed on the way, and is dropped).
-  // headersSame: the C import's headers are as the kept build read them (lastImportStamps).
-  bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collectTime, bool headersSame, bool& keptChanged);
+  // headersSame: the C import's headers are as the kept build read them (lastImportStamps). textsKept: the files whose texts
+  // (and paths) are the kept build's as they were (Build::textsKept), not compared again.
+  bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::vector<uint8_t>& textsKept, double collectTime, bool headersSame,
+                        bool& keptChanged);

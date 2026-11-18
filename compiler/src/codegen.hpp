@@ -130,6 +130,10 @@ struct CodegenOptions
   bool debugInfo = false;
   const Target* target = nullptr; // the platform the IR is for (--target; null: Windows x64)
   bool optimize = false; // --optimize: the modules are optimized (ThinLTO), and not split (codegenOutputModules)
+  // false: a build that writes nothing (--check, the language server's): the functions are emitted, for their
+  // errors, and no module's text is assembled; a kept session leaves them to the first build that writes them, as
+  // a build with errors does (kovarex, 2026-11-18: an edit's check re-assembled two modules of 7 MB, 0.38 s).
+  bool assemble = true;
 };
 
 // keep: hand the session back (a build of several modules) instead of freeing it: one with errors only
@@ -190,8 +194,9 @@ struct MovedPositions
   bool all = false;
 };
 
+// assembleModules false: a build that writes nothing (CodegenOptions::assemble): the changed modules are left unassembled.
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
                           const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
                           const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed, const std::vector<const Decl*>& changedLayouts,
                           const std::vector<const Decl*>& instancesOf, const std::vector<const Decl*>& changedGlobals,
-                          const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
+                          const std::vector<const Ty*>& droppedClasses, bool& rebuilt, bool assembleModules = true);

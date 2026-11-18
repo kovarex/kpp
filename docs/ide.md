@@ -468,6 +468,35 @@ The check's log line says how many changes it covered and how many requests were
 cancelled since. tests\lsp\queue runs with `--read-input-first`, every message queued before the first is
 handled, which makes this deterministic in a transcript.
 
+**What a check of an edit costs** (kovarex, 2026-11-18: "It rebuilds the whole codebase when I change internals of one
+method?"). A check after an edit inside function bodies is the compile server's incremental build (Driver/BodyGraft.cpp):
+the edited file parsed and walked again, codegen's kept session emitting the edited functions again. What each check of
+the game still did for the whole program, and what it does now:
+- Codegen assembled the changed modules' texts (7 MB each), which a check writes nowhere: a check leaves them to the
+  first build that writes them (`CodegenOptions::assemble`, rebuildLLVM's `assembleModules`). 0.38 s.
+- Every class instance's static_asserts and overrides were checked again: an edit that changes no declaration (nor a
+  name, a layout, a body the evaluator may run, an instance) checks those made since alone (`forgetInstanceChecks`). 0.15 s.
+- The resolver's passes over every walk's records (forgetWalks, instancesWalksUse, dropUnusedInstances) read the
+  edited file's walks through an index by file (`DeclDependencyShard::byFile`). 0.05 to 0.14 s.
+- Codegen's passes over the program's 263,467 definitions took again, for each, what never changes for it: its owner's
+  hash, the function an instance is emitted from as written, what its instance is made of that a function's body
+  declares. They are kept on the definition (`Shared::Definition::Asked`; the written function while
+  `GlobalScope::indexVersion` is the same), and the test for an instance made for an old lambda's closure runs only where
+  one of those bodies was replaced or a lambda's writer is emitted again. 0.3 s.
+- The unused-field report read what every walk named and every class: it stands when no walk named other fields and it
+  reported none (`GlobalScope::unusedFieldsStand`). 16 to 34 ms.
+- The edited functions' readers (`walksReading`) tested every name every walk recorded against hash sets: a mask of the
+  changed names' symbols rejects nearly all of them first. 38 to 16 ms.
+- The unchanged files' texts were compared with the kept build's (138 MB): a text copied from it is not. 10 ms.
+
+Measured on the game (checkprof, paired runs alternating master 38c8a77b9 and this, an idle machine, 20 edits each): a
+check after a body edit 1.04 s to 0.108 s (medians), after an edit that leaves a parse error 0.38 to 0.084 s; the first
+edit after the program is open takes 0.4 to 0.6 s (the definitions' answers taken). The replay above: 26 checks of 0.07
+to 0.09 s while typing, one per key, completion after `Tag::` 0.26 s, signature help after `(` 0.27 s (master: 12 checks
+of 0.31 to 0.46 s, 0.58 s, 0.74 s). Left of the 0.1 s: reading the sources (each file's path made again, the unchanged
+texts copied, the config:: scan of every text, the replay's fingerprint) 35 ms, codegen's pass over the definitions 25 ms,
+walksReading's scan of every walk 15 ms.
+
 **Queries** read the kept program: every name's `resolved` declaration and every declaration's own
 name, found by token (`occurrencesIn`, one walk of the file, cached until the next check).
 

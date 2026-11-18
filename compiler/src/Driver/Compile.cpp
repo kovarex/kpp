@@ -506,6 +506,7 @@ int compile(int argc, char** argv)
   // (--verify-incremental's build from scratch reads every file.)
   const Build* last = servingBuild() && !replayDisabled() && options.convertDir.empty() && keptBuild ? keptBuild.get() : nullptr;
   std::vector<uint64_t> hashes(paths.size());
+  build->textsKept.assign(paths.size(), 0);
   parallelFor(paths.size(), options.threads, [&](size_t i)
   {
     files[i].path = paths[i];
@@ -516,6 +517,7 @@ int compile(int argc, char** argv)
     {
       files[i].text = last->files[i].text;
       hashes[i] = last->textHashes[i];
+      build->textsKept[i] = 1;
     }
     else
     {
@@ -914,7 +916,7 @@ int compile(int argc, char** argv)
     if (keptBuild && !replayDisabled() && options.repeat == 1 && !options.dumpTokens && options.parse && !options.packages) // (--verify-incremental's build is from scratch)
     {
       bool keptChanged = false;
-      if (incrementalBuild(*keptBuild, files, seconds(Clock::now() - startCollect), headersSame, keptChanged))
+      if (incrementalBuild(*keptBuild, files, build->textsKept, seconds(Clock::now() - startCollect), headersSame, keptChanged))
       {
         keptBuild->stamps = std::move(build->stamps); // (its texts are this build's now)
         keptBuild->textHashes = std::move(build->textHashes);

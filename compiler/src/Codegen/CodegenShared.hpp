@@ -109,6 +109,8 @@ namespace codegen
     const Ty* enclosingClass = nullptr; // what `this` in its body points to
     std::string writtenIn;              // the function it is written in (its call operator's requester in diagnostics)
     std::string writtenInContext;       // and as diagnostics show it (`a lambda in main(), line 12`)
+    size_t writtenInHash = 0;           // writtenIn's hash, taken once it is known by an incremental build (rebuildLLVM)
+    bool writtenInHashed = false;
   };
 
   struct Instantiation
@@ -223,6 +225,23 @@ namespace codegen
       // closure and call types, to emit it again on its own once its writer's edit dropped it.
       const Ty* closure = nullptr;
       const Ty* callType = nullptr;
+      // What an incremental build's passes over every definition ask of it (rebuildLLVM), each taken once and kept: its owner's
+      // hash (a set of owners tests it before the name), whether it is its own owner, the function an instance is emitted from as
+      // written (GlobalScope::definitionOf, while the index is the one it was taken in: GlobalScope::indexVersion), whether its
+      // own function is declared in a function's body, and what its instance is made of that a function's body declares (a
+      // lambda's closure, a local class or enumeration: the functions whose bodies declare them). Taking them for each of the
+      // game's 263,467 definitions at every edit was most of a language server's check of a body edit (kovarex, 2026-11-18: 0.3 s).
+      struct Asked
+      {
+        size_t ownerHash = 0;
+        const FunctionDecl* written = nullptr;
+        uint64_t writtenAt = 0; // GlobalScope::indexVersion() + 1 when written was taken, 0 before
+        std::vector<const Decl*> localScopes; // the functions whose bodies declare what its instance is made of, sorted
+        bool ownerHashed = false;
+        bool hasLambda = false; // its instance is made of a lambda's closure
+        int8_t ownsItself = -1, inFunction = -1, madeOfLocals = -1; // -1: not taken yet
+      };
+      mutable Asked asked;
     };
     static Definition definitionOf(std::string text);
     bool programOwned(const std::string& owner) const { return programFunctions.count(owner) != 0; }
@@ -264,6 +283,8 @@ namespace codegen
     {
       std::string owner;
       std::string text;
+      mutable size_t ownerHash = 0; // its owner's hash, taken once (Definition::Asked)
+      mutable bool ownerHashed = false;
     };
     struct TypeLine
     {

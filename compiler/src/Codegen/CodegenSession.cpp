@@ -1246,12 +1246,14 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
-  if (failed && !despiteErrors)
+  // A check (options.assemble false) whose session is kept the same: prepared as for assembly, no module assembled.
+  // (Without a kept session it assembles them as before: what it reports is a build's, the assembly's own checks too.)
+  if ((failed && !despiteErrors) || (!options.assemble && keepTexts))
   {
     if (keepTexts)
     {
-      // Kept across the errors: placed and prepared as for assembly, and no module assembled (the
-      // build that has no errors assembles them all).
+      // Kept across the errors, or a build that writes nothing (a check): placed and prepared as for assembly,
+      // and no module assembled (the first build without errors that writes them assembles them all).
       e.placeShortDefinitions(threads);
       e.prepareModuleTexts();
       session->prefix = prefix;
@@ -1604,16 +1606,18 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
                                     const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
                                     const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
                                     const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
-                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt);
+                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
+                                    bool assembleModules);
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
                           const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
                           const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
                           const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
-                          const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+                          const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
+                          bool assembleModules)
 {
   CodegenResult out = rebuildModules(session, changedBodies, movedLines, movedPositions, replaced, added, removed, changedLayouts, instancesOf,
-                                     changedGlobals, droppedClasses, rebuilt);
+                                     changedGlobals, droppedClasses, rebuilt, assembleModules);
   // The classes every module defines (the session's, made again by homeDebugClasses when this
   // build named a class), whatever path the rebuild took: one place, so that no return of it
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
@@ -1638,11 +1642,47 @@ void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedM
       sh.unassembled[k] = true;
 }
 
+namespace
+{
+  // A set of names with each one's hash (rebuildModules' owners): the passes over every definition test the hash a definition
+  // keeps for its owner (Shared::Definition::Asked) before the name, which they hashed for each definition at every edit
+  // (kovarex, 2026-11-18: 0.12 s of a language server's check of the game).
+  struct HashedNames
+  {
+    std::pair<std::unordered_set<std::string>::iterator, bool> insert(const std::string& name)
+    {
+      auto inserted = names.insert(name);
+      if (inserted.second)
+        hashes.insert(std::hash<std::string>()(name));
+      return inserted;
+    }
+    size_t count(const std::string& name) const { return names.count(name); }
+    // Whether it holds name, whose hash is kept in hash once taken (hashed; an empty name, one not known yet, is hashed again).
+    bool holds(const std::string& name, size_t& hash, bool& hashed) const
+    {
+      if (names.empty())
+        return false;
+      if (!hashed)
+      {
+        hash = std::hash<std::string>()(name);
+        hashed = !name.empty();
+      }
+      return hashes.count(hash) != 0 && names.count(name) != 0;
+    }
+    bool holdsOwnerOf(const Shared::Definition& d) const { return holds(d.owner, d.asked.ownerHash, d.asked.ownerHashed); }
+    bool holdsOwnerOf(const Shared::OwnedEntry& o) const { return holds(o.owner, o.ownerHash, o.ownerHashed); }
+
+    std::unordered_set<std::string> names;
+    std::unordered_set<size_t> hashes;
+  };
+}
+
 static CodegenResult rebuildModules(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
                                     const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
                                     const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
                                     const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
-                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt)
+                                    const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
+                                    bool assembleModules)
 {
   rebuilt = false;
   CodegenResult out;
@@ -1681,7 +1721,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // each in its file's module as a program function is. A template's function (or a local class's)
   // among them, a caller the server passes, is no program function: what it is in the program are
   // its instances, emitted again below when they hold a changed body.
-  std::unordered_set<std::string> owners;
+  HashedNames owners;
   std::vector<Instantiation> level;
   auto programFunction = [&](FunctionDecl* f) -> Instantiation
   {
@@ -1785,13 +1825,13 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     }
     return false;
   };
-  std::unordered_set<std::string> positionsMovedIn; // (the owners emitted again for their positions alone: by the definitions' pass)
+  HashedNames positionsMovedIn; // (the owners emitted again for their positions alone: by the definitions' pass)
   if (!movedPositions.empty())
     for (unsigned k = 0; k < sh.moduleCount; ++k)
       for (const Shared::Definition& d : sh.definitions[k])
       {
-        if (d.positions.empty() || !std::any_of(d.positions.begin(), d.positions.end(), positionMoved) || owners.count(d.owner) ||
-            positionsMovedIn.count(d.owner))
+        if (d.positions.empty() || !std::any_of(d.positions.begin(), d.positions.end(), positionMoved) || owners.holdsOwnerOf(d) ||
+            positionsMovedIn.holdsOwnerOf(d))
           continue;
         if (d.emitted)
           positionsMovedIn.insert(d.owner);
@@ -1846,21 +1886,50 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // function that inlined one (its body as written is the template's).
   std::unordered_set<const Decl*> rechecked(instancesOf.begin(), instancesOf.end());
   std::unordered_set<const FunctionDecl*> linesMoved(movedLines.begin(), movedLines.end()); // (a template's: its instances again, for their lines)
+  // (the three in one: an instance's written function and its own are each looked up once)
+  std::unordered_set<const Decl*> editedOrRechecked(rechecked.begin(), rechecked.end());
+  editedOrRechecked.insert(edited.begin(), edited.end());
+  editedOrRechecked.insert(linesMoved.begin(), linesMoved.end());
+  // What the passes over every definition ask of one, taken once and kept on it (Shared::Definition::Asked): whether it is its
+  // own owner, the function an instance is emitted from as written (an out-of-line definition, an explicit specialisation; its
+  // own otherwise; taken again once an edit indexed declarations anew, GlobalScope::indexVersion), whether its own function is
+  // declared in a function's body.
+  auto ownsItself = [](const Shared::Definition& d)
+  {
+    if (d.asked.ownsItself < 0)
+      d.asked.ownsItself = d.name == d.owner;
+    return d.asked.ownsItself != 0;
+  };
+  const uint64_t indexNow = e.global.indexVersion() + 1;
+  auto writtenOf = [&](const Shared::Definition& d)
+  {
+    if (d.asked.writtenAt != indexNow)
+    {
+      Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
+      d.asked.written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
+      d.asked.writtenAt = indexNow;
+    }
+    return d.asked.written;
+  };
+  auto inFunction = [](const Shared::Definition& d)
+  {
+    if (d.asked.inFunction < 0)
+      d.asked.inFunction = Emitter::declaredInFunction(d.emitted->f);
+    return d.asked.inFunction != 0;
+  };
   auto instanceOfEdited = [&](const Shared::Definition& d)
   {
-    if (d.name != d.owner || (d.emitted->args.empty() && !d.emitted->classTy))
+    if ((d.emitted->args.empty() && !d.emitted->classTy) || !ownsItself(d))
       return false;
-    Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
-    const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
-    if (edited.count(written) != 0 || edited.count(d.emitted->f) != 0 || rechecked.count(written) != 0 || rechecked.count(d.emitted->f) != 0 ||
-        linesMoved.count(written) != 0 || linesMoved.count(d.emitted->f) != 0)
+    if (!editedOrRechecked.empty() && (editedOrRechecked.count(writtenOf(d)) != 0 || editedOrRechecked.count(d.emitted->f) != 0))
       return true;
     // A member function of a class declared in a function: its walk is that function's (the server names the function when the
     // member read an edited name: one that became trivial is inlined now), and its lines are in that function's.
-    for (const Decl* p = d.emitted->f->parent; p; p = p->parent)
-      if (p->kind == NodeKind::FunctionDecl &&
-          (edited.count(static_cast<const FunctionDecl*>(p)) != 0 || linesMoved.count(static_cast<const FunctionDecl*>(p)) != 0))
-        return true;
+    if (inFunction(d))
+      for (const Decl* p = d.emitted->f->parent; p; p = p->parent)
+        if (p->kind == NodeKind::FunctionDecl &&
+            (edited.count(static_cast<const FunctionDecl*>(p)) != 0 || linesMoved.count(static_cast<const FunctionDecl*>(p)) != 0))
+          return true;
     return false;
   };
   // Changed class layouts (the resolver's changedLayouts: data members of non-template classes
@@ -2087,6 +2156,85 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         return true;
     return false;
   };
+  // What a definition's instance is made of that a function's body declares (a lambda's closure, a local class or enumeration, a
+  // function of one: the functions whose bodies declare them, and whether one is a lambda's closure), kept on it
+  // (Shared::Definition::Asked): only such an instance can be one made for an old closure or a moved one (forOldClosure,
+  // forMovedClosure), and an old closure's only once one of those functions is a gone body or a lambda's writer is emitted again
+  // (oldWriters, below). (Every type the instance is made of, each once, as oldClosure walks them.)
+  auto madeOfLocals = [&](const Shared::Definition& d)
+  {
+    if (d.asked.madeOfLocals < 0)
+    {
+      const Instantiation& inst = *d.emitted;
+      std::vector<const Decl*>& scopes = d.asked.localScopes;
+      auto scopesOf = [&](const Decl* decl)
+      {
+        for (const Decl* p = decl ? decl->parent : nullptr; p; p = p->parent)
+          if (p->kind == NodeKind::FunctionDecl)
+            scopes.push_back(p);
+      };
+      std::vector<const Ty*> seen, stack{inst.classTy};
+      std::unordered_set<const Ty*> seenMany; // (past 32 types: a linear search before)
+      auto first = [&](const Ty* t)
+      {
+        if (seen.size() == 32)
+          return seenMany.insert(t).second;
+        if (std::find(seen.begin(), seen.end(), t) != seen.end())
+          return false;
+        seen.push_back(t);
+        if (seen.size() == 32)
+          seenMany.insert(seen.begin(), seen.end());
+        return true;
+      };
+      for (const auto& pair : inst.args.pairs)
+        stack.push_back(pair.second);
+      while (!stack.empty())
+      {
+        const Ty* t = stack.back();
+        stack.pop_back();
+        if (!t || !first(t))
+          continue;
+        d.asked.hasLambda = d.asked.hasLambda || Emitter::isLambda(t);
+        scopesOf(t->decl);
+        stack.push_back(t->inner);
+        stack.insert(stack.end(), t->args.begin(), t->args.end());
+      }
+      scopesOf(inst.f);
+      std::sort(scopes.begin(), scopes.end());
+      scopes.erase(std::unique(scopes.begin(), scopes.end()), scopes.end());
+      scopes.shrink_to_fit();
+      d.asked.madeOfLocals = d.asked.hasLambda || !scopes.empty();
+    }
+    return d.asked.madeOfLocals != 0;
+  };
+  auto goneIn = [&](const Shared::Definition& d)
+  {
+    for (const Decl* s : d.asked.localScopes)
+      if (goneBodies.count(s))
+        return true;
+    return false;
+  };
+  // Whether a lambda's writer is among the owners (its texts go, its body is emitted again; not one emitted again with the body it
+  // had, sameClosures): until one is, no instance made for a lambda's closure is made for an old one (forOldClosure). The writers
+  // by their names' hashes (ClosureWriter::writtenInHash); each owner the definitions' pass adds is tested against them.
+  std::vector<size_t> writerHashes;
+  writerHashes.reserve(sh.closureWriters.size());
+  for (auto& [t, writer] : sh.closureWriters)
+    if (!writer.writtenIn.empty())
+    {
+      if (!writer.writtenInHashed)
+      {
+        writer.writtenInHash = std::hash<std::string>()(writer.writtenIn);
+        writer.writtenInHashed = true;
+      }
+      writerHashes.push_back(writer.writtenInHash);
+    }
+  std::sort(writerHashes.begin(), writerHashes.end());
+  auto writesLambdas = [&](const std::string& name)
+  {
+    return !sameClosures.count(name) && std::binary_search(writerHashes.begin(), writerHashes.end(), std::hash<std::string>()(name));
+  };
+  bool oldWriters = std::any_of(owners.names.begin(), owners.names.end(), writesLambdas);
   // The classes of the members dropped for an old closure whose layouts are polymorphic: a vtable, in the modules that used it,
   // names those members (checked below: a layout kept is a vtable no one asks for its members again).
   std::vector<std::pair<const Ty*, std::string>> polymorphicDropped;
@@ -2096,19 +2244,21 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   for (unsigned k = 0; k < sh.moduleCount; ++k)
     for (const Shared::Definition& d : sh.definitions[k])
     {
-      if (!d.emitted || owners.count(d.owner))
+      if (!d.emitted || owners.holdsOwnerOf(d))
         continue;
-      bool forOld = forOldClosure(*d.emitted);
+      bool local = madeOfLocals(d);
+      bool forOld = local && ((oldWriters && d.asked.hasLambda) || goneIn(d)) && forOldClosure(*d.emitted);
       bool inlinesEdited = std::any_of(d.inlined.begin(), d.inlined.end(), [&](const FunctionDecl* body) { return edited.count(body) != 0 || rechecked.count(body) != 0; });
       bool layoutDropped = !droppedLayouts.empty() && usesDropped(d);
-      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped || forMovedClosure(*d.emitted) || positionsMovedIn.count(d.owner))
+      if (forOld || inlinesEdited || instanceOfEdited(d) || layoutDropped || (local && d.asked.hasLambda && forMovedClosure(*d.emitted)) ||
+          positionsMovedIn.holdsOwnerOf(d))
       {
-        owners.insert(d.owner);
+        if (owners.insert(d.owner).second && !oldWriters)
+          oldWriters = writesLambdas(d.owner);
         bool ownBodyEdited = false;
-        if (!forOld && !inlinesEdited && !layoutDropped && d.name == d.owner && (!d.emitted->args.empty() || d.emitted->classTy))
+        if (!forOld && !inlinesEdited && !layoutDropped && ownsItself(d) && (!d.emitted->args.empty() || d.emitted->classTy))
         {
-          Decl* defined = e.global.definitionOf(d.emitted->f, d.emitted->args);
-          const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d.emitted->f;
+          const FunctionDecl* written = writtenOf(d);
           ownBodyEdited = edited.count(written) != 0 || edited.count(d.emitted->f) != 0;
         }
         if (ownBodyEdited)
@@ -2129,7 +2279,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     // again: declined.
     for (unsigned k = 0; k < sh.moduleCount; ++k)
       for (const Shared::Definition& d : sh.definitions[k])
-        if (!d.emitted && !owners.count(d.owner) && usesDropped(d))
+        if (!d.emitted && !owners.holdsOwnerOf(d) && usesDropped(d))
         {
           out.declined = "a changed layout that " + d.name + " used, with no record of its emission";
           return out;
@@ -2196,8 +2346,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
             madeTrivial.push_back({e.functionName(f, {}, nullptr), nullptr});
     for (const Shared::Definition* d : editedInstances)
     {
-      Decl* defined = e.global.definitionOf(d->emitted->f, d->emitted->args);
-      const FunctionDecl* written = defined && defined->kind == NodeKind::FunctionDecl ? static_cast<const FunctionDecl*>(defined) : d->emitted->f;
+      const FunctionDecl* written = writtenOf(*d);
       if (!(d->emitted->f->flags & DF_Virtual) && !wasInlined(written) && trivialNow(d->emitted->f, d->emitted->args, d->emitted->classTy))
         madeTrivial.push_back({d->name, d});
       else
@@ -2211,7 +2360,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       for (unsigned k = 0; k < sh.moduleCount; ++k)
         for (const Shared::Definition& d : sh.definitions[k])
         {
-          if (owners.count(d.owner))
+          if (owners.holdsOwnerOf(d))
             continue;
           for (auto [at, length] : d.names)
             if (auto it = byName.find(std::string_view(d.text).substr(at, length)); it != byName.end())
@@ -2265,7 +2414,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     size_t keptDefinitions = 0, keptOwned = 0;
   };
   std::vector<Dropped> dropped(sh.moduleCount);
-  std::unordered_set<std::string> droppedNames;
+  HashedNames droppedNames;
   std::vector<const Ty*> droppedUses; // the layouts the dropped definitions used (unusedLayouts, below)
   size_t droppedFunctions = 0;
   // The call operators emitted on demand whose writer is emitted again: emitted again on their own
@@ -2287,7 +2436,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     size_t kept = 0;
     for (size_t i = 0; i < defs.size(); ++i)
     {
-      if (owners.count(defs[i].owner))
+      if (owners.holdsOwnerOf(defs[i]))
       {
         droppedNames.insert(defs[i].name);
         droppedUses.insert(droppedUses.end(), defs[i].layouts.begin(), defs[i].layouts.end());
@@ -2314,7 +2463,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     kept = 0;
     for (size_t i = 0; i < owned.size(); ++i)
     {
-      if (owners.count(owned[i].owner))
+      if (owners.holdsOwnerOf(owned[i]))
       {
         was.owned.push_back(std::move(owned[i].text));
         continue;
@@ -2342,7 +2491,8 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   std::unordered_set<const Ty*> droppedTypes;
   for (auto& [t, info] : sh.closures)
     if (auto writer = sh.closureWriters.find(t);
-        droppedNames.count(info.functionName) || (writer != sh.closureWriters.end() && owners.count(writer->second.writtenIn))) // (a generic lambda's operators are instances: by its writer)
+        droppedNames.count(info.functionName) ||
+        (writer != sh.closureWriters.end() && owners.holds(writer->second.writtenIn, writer->second.writtenInHash, writer->second.writtenInHashed))) // (a generic lambda's operators are instances: by its writer)
     {
       sh.closuresEmitted.erase(t);
       if (writer == sh.closureWriters.end() || !sameClosures.count(writer->second.writtenIn))
@@ -2406,7 +2556,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       sh.finalDestruction.clear();
     }
   }
-  for (const std::string& name : droppedNames)
+  for (const std::string& name : droppedNames.names)
   {
     sh.lambdaInstances.erase(name);
     sh.definedIn.erase(name);
@@ -2579,9 +2729,15 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     for (const Ty* t : droppedUses)
       if (sh.structs.count(t))
         unusedLayouts.insert(t);
+    // (the definitions emitted now first, after each module's kept ones: an edited function's emission mostly uses what its old
+    // one did; the others' only while some layout is left)
     for (unsigned k = 0; k < sh.moduleCount && !unusedLayouts.empty(); ++k)
-      for (const Shared::Definition& d : sh.definitions[k])
-        for (const Ty* t : d.layouts)
+      for (size_t i = dropped[k].keptDefinitions; i < sh.definitions[k].size(); ++i)
+        for (const Ty* t : sh.definitions[k][i].layouts)
+          unusedLayouts.erase(t);
+    for (unsigned k = 0; k < sh.moduleCount && !unusedLayouts.empty(); ++k)
+      for (size_t i = 0; i < std::min(dropped[k].keptDefinitions, sh.definitions[k].size()); ++i)
+        for (const Ty* t : sh.definitions[k][i].layouts)
           unusedLayouts.erase(t);
     // (a field's class, also one held in an array: `RowCell cells[2]`)
     auto held = [&](const Ty* f)
@@ -2591,12 +2747,14 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       if (f)
         unusedLayouts.erase(e.types.unqualified(f));
     };
-    for (auto& [key, info] : sh.structs)
-      for (const Ty* f : info.fieldTypes)
-        held(f);
-    for (auto& [t, info] : sh.closures)
-      for (const Ty* f : info.fieldTypes)
-        held(f);
+    if (!unusedLayouts.empty())
+      for (auto& [key, info] : sh.structs)
+        for (const Ty* f : info.fieldTypes)
+          held(f);
+    if (!unusedLayouts.empty())
+      for (auto& [t, info] : sh.closures)
+        for (const Ty* f : info.fieldTypes)
+          held(f);
     if (!unusedLayouts.empty())
     {
       std::unordered_set<const StructInfo*> gone;
@@ -2803,10 +2961,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   }
   sh.erroring = std::move(erroring);
   sh.unassembled.resize(sh.moduleCount);
-  if (errors)
+  if (errors || !assembleModules)
   {
-    // Nothing assembled (a build with errors writes no module): the modules that changed are
-    // assembled by the first build without errors.
+    // Nothing assembled (a build with errors writes no module, nor does a check: assembleModules false): the modules
+    // that changed are assembled by the first build without errors that writes them.
     for (unsigned k : which)
       sh.unassembled[k] = true;
     for (auto& em : emitters)

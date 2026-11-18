@@ -784,6 +784,10 @@
   {
     std::mutex mutex;
     std::unordered_map<uintptr_t, std::unique_ptr<Dependencies>> map;
+    // The keys by their declaration's file: a compile server's edit reads and forgets the walks of the files it walks
+    // again (forgetWalks, instancesWalksUse) without a pass over the whole program's (kovarex, 2026-11-18: those passes
+    // were 0.05 to 0.14 s of each language-server check, where the walk of the edited file was 1.5 ms).
+    std::unordered_map<const ParsedFile*, std::vector<uintptr_t>> byFile;
   };
   DeclDependencyShard declDependencies[64];
   Dependencies* dependenciesOf(const Decl* d, uint8_t unit)
@@ -793,9 +797,18 @@
     std::lock_guard lock(shard.mutex);
     std::unique_ptr<Dependencies>& slot = shard.map[key];
     if (!slot)
+    {
       slot = std::make_unique<Dependencies>();
+      shard.byFile[d->file].push_back(key);
+    }
     return slot.get();
   }
+  // How many class instances (TypeTable::classInstances, in the order made) have had their static_asserts and overrides
+  // checked (checkInstanceStaticAsserts) with the answers still standing: a compile server's edit that cannot change
+  // them keeps the count, any other forgets it (GlobalScope::forgetInstanceChecks), and those made since are checked.
+  std::atomic<size_t> instanceChecksStanding{0};
+  // GlobalScope::indexVersion: one more for each edit's indexing or unindexing of declarations.
+  uint64_t indexVersion = 0;
   // A declaration's declared type's: on the declaration, made once (asked for constantly).
   std::mutex typeDependenciesMutex;
   std::vector<std::unique_ptr<Dependencies>> typeDependencies;
@@ -830,12 +843,25 @@
   {
     FieldNamesShard& shard = fieldNamesShard(unit);
     std::lock_guard lock(shard.mutex);
+    auto it = shard.map.find(unit);
+    if (named.empty() ? it != shard.map.end() : it == shard.map.end() || it->second != named)
+      fieldNamesChanged = true;
     if (named.empty())
-      shard.map.erase(unit);
+    {
+      if (it != shard.map.end())
+        shard.map.erase(it);
+    }
+    else if (it != shard.map.end())
+      it->second = std::move(named);
     else
-      shard.map[unit] = std::move(named);
+      shard.map.emplace(unit, std::move(named));
   }
   Dependencies fieldCheckUnit;
+  // What the last report read (GlobalScope::unusedFieldsStand): whether a unit's record changed since (a walk again that named
+  // other fields, a declaration taken out with its record), how many fields it reported, whether the checks were on.
+  std::atomic<bool> fieldNamesChanged{true};
+  size_t fieldErrorsReported = 0;
+  bool fieldChecksWereOn = false;
   // The bodies the checker's evaluator ran outside any unit while recording (nothing records that
   // it did): an edit of one is built from scratch.
   std::mutex ranOutsideMutex;

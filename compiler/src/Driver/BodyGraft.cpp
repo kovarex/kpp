@@ -911,7 +911,8 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
   return true;
 }
 
-bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collectTime, bool headersSame, bool& keptChanged)
+bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::vector<uint8_t>& textsKept, double collectTime, bool headersSame,
+                      bool& keptChanged)
 {
   using Clock = std::chrono::steady_clock;
   keptChanged = false;
@@ -923,8 +924,9 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     sources += !p->isImported;
   if (files.size() != sources)
     return false;
+  auto textKept = [&](size_t i) { return i < textsKept.size() && textsKept[i]; };
   for (size_t i = 0; i < files.size(); ++i)
-    if (files[i].path != kept.files[i].path)
+    if (!textKept(i) && files[i].path != kept.files[i].path)
       return false;
   auto start = Clock::now();
   // (Deques: each one's parse points at its own tokens and text, ParsedFile::tokens and ::text, so a file's must stay where
@@ -934,7 +936,7 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
   std::deque<ChangedFile> changed;         // bodies only (3b)
   std::deque<FunctionChange> functionEdits; // whole functions (step 4)
   for (size_t i = 0; i < files.size(); ++i)
-    if (files[i].text != kept.files[i].text)
+    if (!textKept(i) && files[i].text != kept.files[i].text)
     {
       // A config:: value changed (a default declared in source: design.md, "config:: defaults in
       // source"): every file's parse-time choices read it.
@@ -1226,7 +1228,19 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, double collec
     logBuildNote("not incremental: " + why);
     return false;
   }
-  global.reportUnusedFields(kept.parsed); // (the walked files' units named the fields anew, the others' as before)
+  // The class instances' static_asserts and overrides checked by the builds before (GlobalScope::checkInstanceStaticAsserts) keep
+  // their answers unless the edit could change them: a declaration changed, added or removed, a name read anew, a body the
+  // evaluator may have run (a constexpr one, a template's, one with a copy in an instance record), a layout, an instance checked
+  // again or dropped, a declaration typed by its walk. A plain function's body edit changes none: the instances made since are
+  // checked alone (kovarex, 2026-11-18: every language-server check checked all of the game's again, 0.15 s).
+  const bool declarationsSame = functionEdits.empty() && names.empty() && constantBodies.empty() && templateBodies.empty() &&
+                                readingInstances.empty() && kept.changedLayouts.empty() && !droppedInstances && droppedTemplates.empty() &&
+                                typedByWalk.empty() && kept.instancesOf.empty();
+  if (!declarationsSame)
+    global.forgetInstanceChecks();
+  // So does the unused-field report, unless a walk named other fields, or it reported one (GlobalScope::unusedFieldsStand).
+  if (!declarationsSame || !global.unusedFieldsStand())
+    global.reportUnusedFields(kept.parsed); // (the walked files' units named the fields anew, the others' as before)
   kept.resolveTime = seconds(Clock::now() - start);
   // The reports a build from scratch prints. The lexer's counts come from lexing every file again
   // into a table of its own (the kept table holds the old texts' identifiers too); with --quiet

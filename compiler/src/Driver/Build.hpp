@@ -83,6 +83,9 @@
     // server's next build does not read a file whose stamp is the same again (compile).
     std::vector<FileStamp> stamps;
     std::vector<uint64_t> textHashes;
+    // A compile server's build: the files whose texts are the kept build's, copied as they were (their stamps the same), which
+    // its incremental build does not compare again (the game's 138 MB at each language-server check, kovarex 2026-11-18).
+    std::vector<uint8_t> textsKept;
     // An incremental build renumbered a kept lambda's closure or a kept class or enumeration (one added or removed above it in
     // its file): the names in the code carry the numbers (`f::Local@6c1f0e2a_3`), so codegen runs in full (its session keeps
     // the types' names). See remapKeptFile.

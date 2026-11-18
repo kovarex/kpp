@@ -346,6 +346,15 @@ public:
   // own), before it checks the asserts on layouts. From the from-th instance made on (those before
   // it checked by an earlier call of the same build); returns how many there are now.
   size_t checkInstanceStaticAsserts(size_t from = 0);
+  // A compile server's edit that may change what the class instances' static_asserts and overrides say (a changed
+  // declaration, layout or name, a body the evaluator may have run, an instance checked again or dropped): every
+  // instance is checked again by the next checkInstanceStaticAsserts. Without it, those checked keep their answers.
+  void forgetInstanceChecks();
+  // Whether the last reportUnusedFields' answer stands, so that a compile server's edit that changed no declaration need not
+  // report again: no walk unit's record of the private fields it names changed since, and it reported none (a field's place
+  // may have moved). Every report reads what every unit named and every class of the program (kovarex, 2026-11-18: 16 to 34 ms
+  // of each language-server check of the game).
+  bool unusedFieldsStand() const;
   // The static_asserts whose condition needs a class's size or alignment, which only the code
   // generator's layout knows: each with the arguments of the instance it is in (none outside
   // templates) and that instance for messages. The checker leaves them to the code generator.
@@ -490,6 +499,10 @@ public:
   // The same for a member of a class template instantiation (classArgs: the class's arguments):
   // the explicit specialisation written for it (`template<> R Button<RecipeID>::f()`), if any.
   Decl* definitionOf(Decl* d, const TemplateArgs& classArgs);
+  // A count that changes whenever a compile server's edit indexes or unindexes declarations (unindexFunction, indexFunctions,
+  // unindexMember, indexMembers): what definitionOf answers for a function stands while it is the same, a body's edit
+  // keeping it (codegen keeps its answers for the instances it emitted between builds, Shared::Definition::Asked).
+  uint64_t indexVersion() const;
   Decl* initializerListDecl();                   // The library's InitializerList class, or null.
   const Ty* textType();                          // The library's Text class (design.md 14), or null.
   // Which of the library's compiler intrinsics f is (Text.kpp: 1 kppEnumeratorName, 2
