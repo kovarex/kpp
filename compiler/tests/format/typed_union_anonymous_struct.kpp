@@ -1,0 +1,16 @@
+// A typed union's alternative written as an anonymous struct (design.md 8.5) in kpp's style: on its alternative's line,
+// with a one-line body's spaces; kpp format leaves it as it is (tests\format.ps1).
+enum class Sound : u8
+{
+  Off,
+  On
+};
+
+union enum class Action : u8
+{
+  {
+    {Nothing, void},
+    {Close, struct { int browsing; Sound sound = Sound::Off; }},
+    {Move, struct { int x; int y; }}
+  }
+};

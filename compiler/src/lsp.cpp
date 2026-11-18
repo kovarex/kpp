@@ -392,7 +392,10 @@ namespace
         else if (part.special == 2 || part.special == 3)
           out += "operator";
         else if (part.symbol != UINT32_MAX)
-          out += symbols.name(part.symbol);
+        {
+          std::string_view shown = alternativeStructShown(d, symbols.name(part.symbol)); // (an anonymous struct alternative's)
+          out += shown.empty() ? symbols.name(part.symbol) : shown;
+        }
       }
       return out.empty() ? "(anonymous)" : out;
     }
@@ -3140,7 +3143,10 @@ namespace
           std::string name = declarationName(d, *program.symbols);
           size_t colons = name.rfind("::");
           std::string own = colons == std::string::npos ? name : name.substr(colons + 2);
-          // (`__tag`, a typed union's: the compiler's own names are not written.)
+          // (`__tag`, a typed union's, and an anonymous struct alternative's: the compiler's own names are not written.)
+          if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->name.parts.size() == 1 && static_cast<ClassDecl*>(d)->name.parts[0].symbol != UINT32_MAX &&
+              !alternativeStructShown(d, program.symbols->name(static_cast<ClassDecl*>(d)->name.parts[0].symbol)).empty())
+            return;
           if (own.empty() || own == "(anonymous)" || !matches(own) || own.compare(0, 8, "operator") == 0 || own[0] == '~' || own.compare(0, 2, "__") == 0)
             return;
           if (d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->returnType && !static_cast<FunctionDecl*>(d)->name.empty() &&

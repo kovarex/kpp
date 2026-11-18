@@ -1504,7 +1504,11 @@ std::string GlobalScope::qualifiedName(Decl* d)
       case NodeKind::ClassDecl: case NodeKind::EnumDecl:
       {
         const QualifiedName& q = x->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(x)->name : static_cast<EnumDecl*>(x)->name;
-        return q.empty() || q.last().symbol == UINT32_MAX ? std::string("(anonymous)") : std::string(impl->symbols.name(q.last().symbol));
+        if (q.empty() || q.last().symbol == UINT32_MAX)
+          return std::string("(anonymous)");
+        std::string_view name = impl->symbols.name(q.last().symbol);
+        std::string_view shown = alternativeStructShown(x, name); // (an anonymous struct alternative: the alternative's name)
+        return std::string(shown.empty() ? name : shown);
       }
       case NodeKind::FunctionDecl:
       {

@@ -738,7 +738,14 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     }
     if (!name || name->empty() || name->last().symbol == UINT32_MAX)
       return "?";
-    return std::string(symbols->name(name->last().symbol));
+    std::string_view own = symbols->name(name->last().symbol);
+    if (std::string_view shown = alternativeStructShown(d, own); !shown.empty())
+    {
+      // An anonymous struct alternative: the alternative's name, after the union's outside a qualified name.
+      const QualifiedName& u = static_cast<ClassDecl*>(d->parent)->name;
+      return qualified || u.empty() || u.last().symbol == UINT32_MAX ? std::string(shown) : std::string(symbols->name(u.last().symbol)) + "::" + std::string(shown);
+    }
+    return std::string(own);
   };
   // Which element of a `for constexpr` a class's copy of the body is for: each element's is a type of its own.
   auto elementOf = [](Decl* d) -> std::string { return d->elementMark ? "#e" + std::to_string(d->elementMark) : std::string(); };

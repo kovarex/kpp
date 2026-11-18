@@ -126,6 +126,18 @@ struct ClassDecl : Decl
   struct Flag { uint32_t name; uint8_t bit; bool alias; };
   Span<Flag> flagBits;
 };
+// A union enum's alternative written as an anonymous struct (`{Close, struct { Browsing browsing; }}`, design.md 8.5):
+// the parser declares it in the union as the struct `__Alt_Close`, a name nobody writes, which messages, the IR and the
+// debugger show as the alternative's (`U::Close`). Returns that alternative's name for such a struct's own name, else
+// an empty view.
+constexpr std::string_view alternativeStructPrefix = "__Alt_";
+inline std::string_view alternativeStructShown(const Decl* d, std::string_view name)
+{
+  if (!d || d->kind != NodeKind::ClassDecl || !d->parent || d->parent->kind != NodeKind::ClassDecl ||
+      !static_cast<const ClassDecl*>(d->parent)->isTypedUnion || !name.starts_with(alternativeStructPrefix))
+    return std::string_view();
+  return name.substr(alternativeStructPrefix.size());
+}
 struct EnumeratorDecl : Decl { uint32_t name; Expr* value = nullptr; };
 struct EnumDecl : Decl
 {

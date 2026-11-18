@@ -733,6 +733,29 @@ union enum class Action : u8
 Action a = Action::Move(3), b = Action::Move(10, 4), c = Action::Stop();
 ```
 
+### An alternative may be an anonymous struct written in place (built)
+
+- **C++:** a `std::variant`'s alternatives are named types; a payload used by one alternative alone is
+  still a struct of its own, with its constructors and its save and load written beside it.
+- **kpp:** `{Close, struct { Browsing browsing; Sound sound = Sound::Off; }}` declares the payload where
+  it is used. The struct has no name to write (`const auto& data = u[U::Tag::Close]`), and messages and
+  the debugger show it as `U::Close`. It holds data members alone, one per declaration. A union enum
+  class's creator takes them as parameters, in order, and the members whose initializers end the list
+  may be left out: `U::Close(Browsing::Yes)`. Built from a tag, it takes a value for every member, as any
+  struct's member-wise construction does.
+- **Why:** kovarex (2026-11-18): the game's InputAction names about a hundred payload shells such as
+  `ActionData::CloseGuiData` only as an alternative's type, "completely encapsulated".
+- **See:** [design 8.5][d8]; specs `kpp/typed_union_anonymous_struct_alternative`,
+  `kpp/typed_union_anonymous_struct_alternative_errors`.
+
+```cpp
+union enum class Action : u8
+{
+  { {Close, struct { Browsing browsing; Sound sound = Sound::Off; }}, {Stop, void} }
+};
+Action a = Action::Close(Browsing::Yes), b = Action::Close(Browsing::No, Sound::On);
+```
+
 ## Expressions
 
 ### Falling off the end of a function that returns a value (built)

@@ -1,0 +1,53 @@
+// spec: an alternative's type may be an anonymous struct written in place, `{Close, struct { Browsing browsing; Sound
+// sound = Sound::Off; }}` (kovarex 2026-11-18, for InputAction's payload shells such as ActionData::CloseGuiData, named
+// only as an alternative's type). Its type has no name to write (`const auto&`, `VariantAlternative`, `alternatives(U)`'s
+// `a.type`); messages, the debugger and the language server show it as `Action::Close`. It is a struct of data members:
+// built member-wise, a value for every member (`Action(Action::Tag::Close, a, b)`), read through `members(T)`, and
+// `std::isStruct` holds. A union enum class's creator for it takes the members as parameters, in order, and those
+// whose initializers end the list may be left out: `Action::Close(Browsing::Yes)`. Two alternatives' anonymous structs
+// are two types. design.md 8.5
+enum class Browsing : u8 { No, Yes };
+enum class Sound : u8 { Off, On };
+
+union enum class Action : u8
+{
+  {
+    {Nothing, void},
+    {Close, struct { Browsing browsing; Sound sound = Sound::Off; }},
+    {CloseView, struct { Browsing browsing; Sound sound = Sound::Off; }},
+    {Move, struct { int x; int y; std::String why = "walking"; }},
+    {Count, struct { u32 count = 7; }}
+  }
+};
+
+template<class T>
+int sum(const T& value)
+{
+  int total = 0;
+  for constexpr (auto m : members(T))
+    total += int(value.[m]);
+  return total;
+}
+
+int main()
+{
+  Action close = Action::Close(Browsing::Yes);
+  Action view = Action::CloseView(Browsing::No, Sound::On);
+  Action move = Action::Move(1, 2);
+  Action moved = Action::Move(3, 4, "running");
+  Action count = Action::Count();
+  Action built(Action::Tag::Close, Browsing::No, Sound::On);
+  const auto& c = close[Action::Tag::Close];
+  std::println(close.tag(), " ", int(c.browsing), int(c.sound), " ", view.tag(), " ", int(view[Action::Tag::CloseView].sound));
+  std::println(move[Action::Tag::Move].x, move[Action::Tag::Move].y, " ", move[Action::Tag::Move].why, " ", moved[Action::Tag::Move].why);
+  std::println(count[Action::Tag::Count].count, " ", int(built[Action::Tag::Close].sound), " ", sum(c));
+  std::println(std::isStruct<VariantAlternative<Action::Tag::Close, Action>>, " ",
+               std::isSame<VariantAlternative<Action::Tag::Close, Action>, VariantAlternative<Action::Tag::CloseView, Action>>);
+  close[Action::Tag::Close].sound = Sound::On;
+  Action copy = close;
+  std::println(copy == close, " ", int(copy[Action::Tag::Close].sound));
+  for constexpr (auto a : alternatives(Action))
+    if constexpr (!std::isSame<a.type, void>)
+      std::println(a.name, " ", sizeof(a.type));
+  return 0;
+}

@@ -998,6 +998,31 @@ one alternative's type (or converting to it by an operator) and a tag with an al
 (it was an aggregate's). Spec kpp/construction_in_template_instance_without_constructor_is_error. Specs: kpp/typed_union_creators,
 kpp/typed_union_creator_declared_by_the_union.
 
+*An anonymous struct alternative* (kovarex 2026-11-18, for InputAction's payload shells, `ActionData::CloseGuiData` named
+only as `{CloseRemoteView, ActionData::CloseGuiData}`): an alternative's type may be a struct written in place,
+`{Close, struct { Browsing browsing; Sound sound = Sound::Off; }}`. Decided with kovarex's options (1A, then 2D, 3A,
+4A as recommended):
+- *No name to write* (1A, "it is not really called"): code reads it as `const auto& data = u[U::Tag::Close]`,
+  `VariantAlternative<U::Tag::Close, U>` or `a.type`. The parser declares it in the union as the struct `__Alt_Close`
+  from the body's tokens, and every printed name (messages, the IR, debug info, the language server's hover and
+  outline) shows it as the alternative's: `U::Close` (alternativeStructShown). Completion leaves it out. Two
+  alternatives' anonymous structs are two types, even when written alike.
+- *Data members alone, one per declaration* (3A): a function, constructor, static member, nested type, alias,
+  friend or bit-field in it is an error ("the anonymous struct of the alternative Sized holds data members alone: a
+  function is not one (name the struct to give it one)"), as are `int x, y;` and a member its creator could not take
+  as written (an array: std::Array). A payload that needs more stays a named struct. It is a struct, so
+  `std::isStruct` holds and `members(T)` reads every member.
+- *Its creator takes the members as parameters* (2D): in a `union enum class`, `U::Close` is a function (not the
+  forwarding template) whose parameters are the members as written, in order, those whose initializers end the list
+  with them as default arguments (`= x` as written, `{x}` as `= T{x}`): `U::Close(Browsing::Yes)`. The struct itself
+  keeps member-wise construction's rule, a value for every member (design.md 30), so `U(U::Tag::Close, a, b)` and
+  `isConstructible` never build it from fewer: the Deserialiser case that rule prevents cannot come back through it.
+- *Save and load* are the program's: the game reads such a struct by inspection (`std::isStruct`, `members(T)`), and
+  its bytes are a named shell's with the same members in the same order.
+- *Format*: on the alternative's line with a one-line body's spaces; a body written over lines is kept as written.
+Specs: kpp/typed_union_anonymous_struct_alternative, kpp/typed_union_anonymous_struct_alternative_errors,
+kpp/typed_union_anonymous_struct_alternative_named_in_errors; tests/format/typed_union_anonymous_struct.kpp.
+
 *inline(N)* (kovarex 2026-11-16, option D of the InputAction study: "without the inline, everything is
 directly in the object, the inline creates the limit"). `union enum InputAction : u16 inline(112)` keeps an
 alternative of at most N bytes in the union and one larger on the heap, its storage holding the address;

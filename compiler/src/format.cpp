@@ -1115,6 +1115,12 @@ namespace
     if (ia.colon == Colon::Label || ia.colon == Colon::Access)
       return {1, Rule::SpaceLabelColon};
     // braces
+    // (an anonymous struct alternative of a typed union, `{Close, struct { Browsing browsing; }}` (design.md 8.5), inside its
+    // list: a one-line body's spaces)
+    if (A.is(P::LBrace) && ia.brace == Brace::List && a > 0 && tok(a - 1).is(Kw::struct_))
+      return {B.is(P::RBrace) ? 0 : 1, Rule::SpaceOneLiner};
+    if (B.is(P::RBrace) && ib.brace == Brace::List && ib.match > 0 && tok(ib.match - 1).is(Kw::struct_))
+      return {A.is(P::LBrace) ? 0 : 1, Rule::SpaceOneLiner};
     if (B.is(P::LBrace))
     {
       if (isBody(ib.brace))

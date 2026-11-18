@@ -4047,6 +4047,9 @@ namespace
       storage->isDefinition = true;
       std::vector<Decl*> enumerators, alternatives;
       ClassDecl* voidClass = nullptr; // (the storage of void alternatives)
+      // An alternative written as an anonymous struct: its index, name, name token and body's tokens ('{' to after '}').
+      struct AnonymousAlternative { uint32_t index, name, nameToken, bodyStart, bodyEnd; };
+      std::vector<AnonymousAlternative> anonymousAlternatives;
       if (expect(P::LBrace, "expected '{' before the alternatives of the union enum"))
       {
         bool failed = false; // (inside an alternative: skipped to the list's '}', one error for it)
@@ -4070,14 +4073,33 @@ namespace
             failed = true;
             break;
           }
-          Type* type = parseType();
-          if (!type)
+          Type* type = nullptr;
+          if (at(Kw::struct_) && at(P::LBrace, 1))
           {
-            error("expected the type of the alternative");
-            failed = true;
-            break;
+            // `{Close, struct { Browsing browsing; Sound sound = Sound::Off; }}` (kovarex 2026-11-18, design.md 8.5): an
+            // anonymous struct of data members, declared in the union as the struct `__Alt_Close` from the body's
+            // tokens (below, before the union's own members), whose name messages show as `U::Close`.
+            advance(); // struct
+            uint32_t bodyStart = pos;
+            skipBalanced();
+            anonymousAlternatives.push_back({uint32_t(alternatives.size()), name, nameToken, bodyStart, pos});
+            NamedType* named = node<NamedType>(nameToken);
+            NamePart part;
+            part.symbol = symbols.intern(std::string(alternativeStructPrefix) + std::string(symbols.name(name)));
+            named->name.parts = makeSpanOf(std::vector<NamePart>{part});
+            type = named;
           }
-          type = parseTypeSuffixes(type);
+          else
+          {
+            type = parseType();
+            if (!type)
+            {
+              error("expected the type of the alternative");
+              failed = true;
+              break;
+            }
+            type = parseTypeSuffixes(type);
+          }
           expect(P::RBrace, "expected '}' after the alternative");
           currentParent = tag;
           EnumeratorDecl* en = decl<EnumeratorDecl>(nameToken);
@@ -4175,7 +4197,124 @@ namespace
             break;
         }
       };
+      // The anonymous structs' declarations, from their bodies' tokens, first in the union's body.
+      {
+        std::vector<Token> made;
+        for (const AnonymousAlternative& a : anonymousAlternatives)
+        {
+          std::vector<Token> head = synthesize("struct " + std::string(alternativeStructPrefix) + std::string(symbols.name(a.name)), a.nameToken);
+          made.insert(made.end(), head.begin(), head.end());
+          made.insert(made.end(), toks.begin() + a.bodyStart, toks.begin() + a.bodyEnd);
+          std::vector<Token> tail = synthesize(";", a.bodyEnd - 1);
+          made.insert(made.end(), tail.begin(), tail.end());
+        }
+        toks.insert(toks.begin() + pos, made.begin(), made.end());
+      }
       parseBody();
+      // Each anonymous struct's members as its creator's parameters (below): the tokens of the type, the name, and a
+      // default argument from its initializer. Data members alone, one per declaration (kovarex 2026-11-18, option 3A).
+      struct CreatorParameter { uint32_t typeStart, nameToken, initStart, initEnd; bool braced; };
+      std::unordered_map<uint32_t, std::vector<CreatorParameter>> anonymousParameters; // by the alternative's index
+      std::vector<std::pair<uint32_t, std::string>> anonymousProblems;
+      for (const AnonymousAlternative& a : anonymousAlternatives)
+      {
+        std::string alternative(symbols.name(a.name));
+        uint32_t structSymbol = symbols.intern(std::string(alternativeStructPrefix) + alternative);
+        ClassDecl* anonymous = nullptr;
+        for (size_t i = mark; i < scratch.size() && !anonymous; ++i)
+          if (scratch[i]->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(scratch[i])->name.parts.size() == 1 &&
+              static_cast<ClassDecl*>(scratch[i])->name.parts[0].symbol == structSymbol)
+            anonymous = static_cast<ClassDecl*>(scratch[i]);
+        if (!anonymous)
+          continue; // (an error in its body)
+        auto problem = [&](uint32_t token, const std::string& what)
+        {
+          anonymousProblems.push_back({token, "the anonymous struct of the alternative " + alternative + " holds data members alone: " + what +
+                                                " is not one (name the struct to give it one)"});
+        };
+        std::vector<VariableDecl*> fields;
+        bool good = true;
+        for (Decl* m : anonymous->members)
+        {
+          if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(m)->bitfield)
+          {
+            fields.push_back(static_cast<VariableDecl*>(m));
+            continue;
+          }
+          good = false;
+          if (m->kind == NodeKind::FunctionDecl)
+            problem(m->token, (m->flags & (DF_Constructor | DF_Destructor))
+                                ? "a constructor or destructor" : "a function");
+          else if (m->kind == NodeKind::VariableDecl)
+            problem(m->token, (m->flags & DF_Static) ? "a static member" : (m->flags & DF_Typedef) ? "a type" : "a bit-field");
+          else
+            problem(m->token, "a declaration of a type, alias or friend");
+        }
+        if (!good)
+          continue;
+        // The body's declarations, split at its ';'s (bodyStart is its '{').
+        std::vector<std::pair<uint32_t, uint32_t>> pieces;
+        int depth = 0;
+        uint32_t from = a.bodyStart + 1;
+        for (uint32_t i = a.bodyStart + 1; i + 1 < a.bodyEnd; ++i)
+        {
+          const Token& t = toks[i];
+          if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::LBrace))
+            ++depth;
+          else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::RBrace))
+            --depth;
+          else if (depth == 0 && t.is(P::Semi))
+          {
+            if (i > from)
+              pieces.push_back({from, i});
+            from = i + 1;
+          }
+        }
+        if (pieces.size() != fields.size())
+        {
+          anonymousProblems.push_back({a.nameToken, "the anonymous struct of the alternative " + alternative +
+                                                      " declares one member per declaration (its creator takes them as parameters)"});
+          continue;
+        }
+        std::vector<CreatorParameter> parameters;
+        for (size_t k = 0; k < fields.size() && good; ++k)
+        {
+          uint32_t symbol = fields[k]->name.empty() ? UINT32_MAX : fields[k]->name.last().symbol;
+          CreatorParameter parameter{pieces[k].first, UINT32_MAX, UINT32_MAX, pieces[k].second, false};
+          int level = 0;
+          for (uint32_t i = pieces[k].first; i < pieces[k].second; ++i)
+          {
+            const Token& t = toks[i];
+            if (level == 0 && (t.is(P::Assign) || t.is(P::LBrace)))
+            {
+              parameter.initStart = i;
+              parameter.braced = t.is(P::LBrace);
+              break;
+            }
+            if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::Less))
+              ++level;
+            else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::Greater))
+              --level;
+            else if (t.is(P::Shr))
+              level -= 2;
+            else if (level == 0 && t.getKind() == TokenKind::Identifier && t.id == symbol)
+              parameter.nameToken = i;
+          }
+          uint32_t declaratorEnd = parameter.initStart != UINT32_MAX ? parameter.initStart : pieces[k].second;
+          if (parameter.nameToken == UINT32_MAX || parameter.nameToken == parameter.typeStart || parameter.nameToken + 1 != declaratorEnd)
+          {
+            // (an array, a function pointer's declarator: not a parameter as written)
+            anonymousProblems.push_back({pieces[k].first, "the anonymous struct of the alternative " + alternative +
+                                                            " has a member its creator cannot take as written: write its type before its name "
+                                                            "(std::Array for an array)"});
+            good = false;
+            break;
+          }
+          parameters.push_back(parameter);
+        }
+        if (good)
+          anonymousParameters[a.index] = std::move(parameters);
+      }
       if (scopedTag && !inRecovery && !c->name.empty() && at(P::RBrace))
       {
         // A member the union declares itself with a creator's signature takes its place, as a class's own default
@@ -4208,6 +4347,45 @@ namespace
           if (notFunctions.count(symbol) || (static_cast<VariableDecl*>(alternatives[k])->voidAlternative ? noParameters : onePack).count(symbol))
             continue;
           std::string name(symbols.name(static_cast<EnumeratorDecl*>(enumerators[k])->name));
+          if (auto anonymous = anonymousParameters.find(uint32_t(k)); anonymous != anonymousParameters.end())
+          {
+            // An anonymous struct's creator takes its members, in order, as parameters written as the members are
+            // (kovarex 2026-11-18, option 2D): those whose initializers end the list are default arguments, so that
+            // `U::Close(Browsing::Yes)` leaves `Sound sound = Sound::Off` out. The struct itself is built member-wise,
+            // a value for every member, as any struct's (design.md 30).
+            const std::vector<CreatorParameter>& parameters = anonymous->second;
+            size_t defaultsFrom = parameters.size();
+            while (defaultsFrom > 0 && parameters[defaultsFrom - 1].initStart != UINT32_MAX)
+              --defaultsFrom;
+            uint32_t at = enumerators[k]->token;
+            auto append = [&](const std::string& source)
+            {
+              std::vector<Token> one = synthesize(source, at);
+              made.insert(made.end(), one.begin(), one.end());
+            };
+            append("public: static " + u + " " + name + "(");
+            std::string arguments;
+            for (size_t p = 0; p < parameters.size(); ++p)
+            {
+              const CreatorParameter& parameter = parameters[p];
+              if (p)
+                append(",");
+              made.insert(made.end(), toks.begin() + parameter.typeStart, toks.begin() + parameter.nameToken + 1);
+              if (p >= defaultsFrom)
+              {
+                if (parameter.braced)
+                {
+                  append("=");
+                  made.insert(made.end(), toks.begin() + parameter.typeStart, toks.begin() + parameter.nameToken);
+                }
+                made.insert(made.end(), toks.begin() + parameter.initStart, toks.begin() + parameter.initEnd);
+              }
+              std::string parameterName(symbols.name(toks[parameter.nameToken].id));
+              arguments += ", " + (toks[parameter.nameToken - 1].is(P::Amp) ? parameterName : "std::move(" + parameterName + ")");
+            }
+            append(") { return " + u + "(" + u + "::Tag::" + name + arguments + "); }");
+            continue;
+          }
           std::string source = static_cast<VariableDecl*>(alternatives[k])->voidAlternative
                                  ? "public: static " + u + " " + name + "() { return " + u + "(" + u + "::Tag::" + name + "); }"
                                  : "public: template<typename... __KppArgs> requires (std::isConstructible<VariantAlternative<" + u + "::Tag::" + name + ", " + u +
@@ -4225,6 +4403,12 @@ namespace
       pushDecl(tagField);
       pushDecl(storage);
       tagField->endToken = storage->endToken = alternativesEnd; // (where they were written, not the union's end)
+      for (const auto& [token, message] : anonymousProblems)
+      {
+        char* kept = static_cast<char*>(out.arena.allocate(message.size() + 1, 1));
+        memcpy(kept, message.c_str(), message.size() + 1);
+        errorAt(token, kept);
+      }
       c->members = makeSpan<Decl*>(mark);
       checkWhenClash(c);
       currentParent = savedParent;

@@ -1,0 +1,23 @@
+// spec: an anonymous struct alternative holds data members alone (kovarex 2026-11-18, option 3A), one per declaration,
+// each written as its creator's parameter is: a function, a static member, a type or a bit-field in it is an error (name
+// the struct to give it one), as are `int x, y;` and an array. design.md 8.5
+// error: typed_union_anonymous_struct_alternative_errors.kpp:13: error: the anonymous struct of the alternative Sized holds data members alone: a function is not one (name the struct to give it one)
+// error: typed_union_anonymous_struct_alternative_errors.kpp:14: error: the anonymous struct of the alternative Counted holds data members alone: a static member is not one (name the struct to give it one)
+// error: typed_union_anonymous_struct_alternative_errors.kpp:15: error: the anonymous struct of the alternative Bits holds data members alone: a bit-field is not one (name the struct to give it one)
+// error: typed_union_anonymous_struct_alternative_errors.kpp:16: error: the anonymous struct of the alternative Pair declares one member per declaration (its creator takes them as parameters)
+// error: typed_union_anonymous_struct_alternative_errors.kpp:17: error: the anonymous struct of the alternative Listed has a member its creator cannot take as written: write its type before its name (std::Array for an array)
+union enum class Action : u8
+{
+  {
+    {Close, struct { int a; }},
+    {Sized, struct { int b; int size() const { return this.b; } }},
+    {Counted, struct { static int count; int c; }},
+    {Bits, struct { u8 low : 4; }},
+    {Pair, struct { int x, y; }},
+    {Listed, struct { int values[3]; }}
+  }
+};
+int main()
+{
+  return 0;
+}
