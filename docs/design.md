@@ -3724,6 +3724,18 @@ no class; not a constant for a class without a definition. With the rule, a stru
 be read from outside it and it has no virtual function, so `for constexpr (auto m : members(T))`
 over it reaches everything it holds. Spec kpp/is_struct_trait.
 
+**isInstanceOf (kovarex, 2026-11-19, for the game's serialiser: one `if constexpr` chain in its save and load instead of
+34 loadValue and 26 saveValue overloads matched by template, whose order beside the chain let a new struct case take
+std::Array before its own overload).** `std::isInstanceOf<T, Template>` is true when T, through const and a reference, is
+an instance of the class template Template, written without arguments (`std::isInstanceOf<T, std::Vector>`) or a
+template template parameter bound to one. An instance of a partial or explicit specialization is the primary
+template's, as the deduction of a template template parameter takes it; a template of several parameters, a pack or a
+constant parameter counts the same. False for another template's instance, a class that is no instance and a type that
+is no class; not a constant (an error where a constant is needed) when the second argument is no class template. A
+compiler trait beside isStruct (TypeOfAst.cpp traitValue; traitArgs reads its second argument as the template, as a
+template template argument is read). C++ has none (std::is_specialization_of is a proposal). Spec
+kpp/is_instance_of_trait.
+
 **As converted (thread C, 2026-11-02).** The converter writes the C++'s rule-breaking structs as
 classes: `class`, then `public:` first so that the members keep their access, and `public` before
 each base written without an access (a class's bases start private). The breaks are A's (a private

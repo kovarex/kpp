@@ -204,10 +204,24 @@ auto GlobalScope::Impl::isTypeNode(Node* n) -> bool
 auto GlobalScope::Impl::traitArgs(const NamePart& part, const TypeContext& ctx, int depth) -> std::vector<const Ty*>
 {
   std::vector<const Ty*> args;
+  bool instanceOf = part.symbol != UINT32_MAX && symbols.name(part.symbol) == "isInstanceOf";
   for (Node* a : part.templateArgs)
   {
     if (!isTypeNode(a))
       return {};
+    if (instanceOf && args.size() == 1 && a->kind == NodeKind::NamedType && !static_cast<NamedType*>(a)->name.last().hasTemplateArgs)
+    {
+      // `isInstanceOf<T, std::Vector>`: a class template named without arguments is the template itself, its class
+      // without arguments, as a template template parameter binds it (deduce). A template template parameter is
+      // converted as any name, to what it is bound to.
+      const QualifiedName& name = static_cast<NamedType*>(a)->name;
+      Lookup l = lookupQualified(name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
+      if (l.decl && l.decl->kind == NodeKind::ClassDecl && !l.decl->templateParams.empty())
+      {
+        args.push_back(types.classType(l.scope && l.scope->owner ? l.scope->owner : l.decl, {}));
+        continue;
+      }
+    }
     const Ty* t = convertType(static_cast<Type*>(a), ctx, depth);
     if (t && t->kind == TyKind::Pack)
     {
@@ -512,6 +526,41 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
       return std::nullopt;
     return def->keyword == Kw::struct_ && !def->isClosure && !def->isTypedUnion;
   }
+  if (name == "isInstanceOf")
+  {
+    // `isInstanceOf<T, Template>` (kovarex 2026-11-19, a serialiser's one `if constexpr` chain over containers): T,
+    // through const and a reference, is an instance of the class template, an instance of one of its partial or explicit
+    // specializations counting as the primary's (as deduction of a template template parameter takes it).
+    if (a.size() != 2 || !a[0] || !a[1])
+      return std::nullopt;
+    const Ty* given = a[1];
+    if (given->kind != TyKind::Class || !given->decl || !given->args.empty() || given->decl->templateParams.empty())
+      return std::nullopt; // (no class template: not a constant, an error where it is asked)
+    const Ty* t = types.unqualified(types.stripRef(a[0]));
+    if (!t->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    if (t->kind != TyKind::Class || !t->decl || t->decl->kind != NodeKind::ClassDecl)
+      return false;
+    Decl* of = t->decl;
+    if ((of->flags & DF_Specialization) && !static_cast<ClassDecl*>(of)->name.empty())
+    {
+      Lookup l;
+      if (lookupInScope(lexicalScopeOf(of), static_cast<ClassDecl*>(of)->name.last().symbol, l, 0) && l.overloads)
+        if (Decl* primary = primaryOf(*l.overloads))
+          of = primary;
+    }
+    else if (t->args.empty())
+      return false; // (a class that is no instance)
+    auto canonical = [&](Decl* d) -> Decl*
+    {
+      Lookup l;
+      if (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->name.empty() &&
+          lookupInScope(lexicalScopeOf(d), static_cast<ClassDecl*>(d)->name.last().symbol, l, 0) && l.scope && l.scope->owner)
+        return l.scope->owner;
+      return d;
+    };
+    return canonical(of) == canonical(given->decl);
+  }
   if (name == "isVoid") return one() && one()->kind == TyKind::Void;
   if (name == "isReference") return one() && one()->isReference();
   if (name == "isConst") return one() && one()->isConst;
@@ -785,7 +834,7 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
 auto GlobalScope::Impl::isBoolTraitName(uint32_t symbol) -> bool
 {
   std::string_view n = symbols.name(symbol);
-  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isStruct" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
+  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isStruct" || n == "isInstanceOf" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
          n == "isNullPointer" || n == "isIntegral" || n == "isFloatingPoint" || n == "isArithmetic" || n == "isSigned" ||
          n == "isUnsigned" || n == "isFunction" || n == "isTriviallyCopyable" || n == "isSame" || n == "isBaseOf" || n == "isConvertible" ||
          n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||

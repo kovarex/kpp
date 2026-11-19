@@ -1,0 +1,58 @@
+// spec: isInstanceOf<T, Template> is true when T is an instance of the class template Template (kovarex, 2026-11-19, for the
+// game's serialiser: one `if constexpr` chain instead of 34 loadValue overloads, `if constexpr (std::isInstanceOf<T,
+// std::Vector>)`): through const and a reference, an instance of a partial or explicit specialization counting as its
+// primary template's, a template of several parameters, a parameter pack or a constant parameter; false for another
+// template's instance, a class that is no instance and a type that is no class (seven true, four false); the template
+// given to a template template parameter works as well, and in a template it chooses (`321`). design.md 9, isInstanceOf
+template<class T>
+struct Box
+{
+  T value;
+};
+template<class T>
+struct Box<T*>
+{
+  T* pointer;
+};
+template<>
+struct Box<bool>
+{
+  bool flag;
+};
+template<class K, class V>
+struct Entry
+{
+  K key;
+  V value;
+};
+template<class... Ts>
+struct List
+{
+  int count = sizeof...(Ts);
+};
+struct Plain
+{
+  int x = 0;
+};
+template<class T, template<class> class Template>
+constexpr bool isOf = std::isInstanceOf<T, Template>;
+template<class T>
+int kind(const T&)
+{
+  if constexpr (std::isInstanceOf<T, Box>)
+    return 3;
+  else if constexpr (std::isInstanceOf<T, std::Vector>)
+    return 2;
+  else
+    return 1;
+}
+int main()
+{
+  std::println(std::isInstanceOf<Box<int>, Box>, " ", std::isInstanceOf<const Box<int>&, Box>, " ", std::isInstanceOf<Box<int*>, Box>, " ",
+               std::isInstanceOf<Box<bool>, Box>, " ", std::isInstanceOf<Entry<int, float>, Entry>, " ", std::isInstanceOf<List<int, char>, List>, " ",
+               std::isInstanceOf<std::Array<int, 3>, std::Array>, " ", std::isInstanceOf<Entry<int, int>, Box>, " ",
+               std::isInstanceOf<Plain, Box>, " ", std::isInstanceOf<int, Box>, " ", std::isInstanceOf<std::Vector<int>, std::Array>);
+  std::Vector<int> numbers;
+  std::println(isOf<Box<char>, Box> && !isOf<Plain, Box>, " ", kind(Box<int>()), kind(numbers), kind(Plain()));
+  return 0;
+}

@@ -77,6 +77,7 @@ using BoolConstant = IntegralConstant<bool, B>;
 
 // The type predicates are the compiler's (resolver.cpp, traitValue), not declared here: a
 // declaration of the same name would hide them. isClass, isStruct (kpp's: declared `struct`),
+// isInstanceOf<T, Template> (kpp's: T an instance of the class template),
 // isAbstract, isPolymorphic, isFinal, isSame, isBaseOf, isConvertible, isConstructible, isMoveConstructible, isCopyConstructible,
 // isMoveAssignable, isCopyAssignable and their Trivially/Nothrow forms, isInvocable, isInvocableR,
 // isMemberPointer, ... take types and are constants as C++'s std::is_*_v are; where a predicate

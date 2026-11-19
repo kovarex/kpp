@@ -932,6 +932,18 @@ static_assert(twice(4) == 8);
   what happened to be made first would make an answer depend on which thread asked first.
 - **See:** [compile-time evaluation][dconst].
 
+### `std::isInstanceOf<T, Template>` asks whether T is an instance of a class template (built)
+
+- **C++:** no trait (std::is_specialization_of is a proposal); code asks by overloads or partial
+  specializations matched by template (`void load(Vector<T>&)`), whose order beside an `if constexpr`
+  chain is the reader's to work out.
+- **kpp:** `if constexpr (std::isInstanceOf<T, std::Vector>)`, through const and a reference, an
+  instance of a partial or explicit specialization counting as its primary template's; the template
+  is written without arguments or is a template template parameter.
+- **Why:** kovarex (2026-11-19): the game's serialiser mixed an `if constexpr` chain with 60 overloads,
+  and a new struct case in the chain took std::Array before its overload.
+- **See:** [design 9, isInstanceOf][dstruct]; spec `kpp/is_instance_of_trait`.
+
 ### Compile-time loops and reflection (built)
 
 - **C++:** recursion over packs, macros, or C++26's reflection.
