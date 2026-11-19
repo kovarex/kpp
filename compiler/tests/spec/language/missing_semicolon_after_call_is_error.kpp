@@ -1,0 +1,41 @@
+// spec: a call statement ends with ';' whatever names the function and whatever follows it. C++'s parser takes a call
+// without ';' before a name, a keyword or a brace as a macro statement, and a name in capitals before a declaration as
+// a macro specifier; kpp has no macros: `Helper<Out>::save(this, value)` before `return` was accepted, and
+// `ADD_ONE(out)` before `int more = 2;` was dropped, the program running without the call
+// error: missing_semicolon_after_call_is_error.kpp:17: error: expected ';' after expression (at 'return')
+// error: missing_semicolon_after_call_is_error.kpp:23: error: expected ';' after expression (at 'ADD_ONE')
+// error: missing_semicolon_after_call_is_error.kpp:28: error: expected ';' after expression (at 'int')
+// error: missing_semicolon_after_call_is_error.kpp:34: error: expected ';' after expression (at '}')
+template<class S> struct Helper
+{
+  static void save(S& s, int v) { s.total += v; }
+};
+struct Out
+{
+  int total = 0;
+  Out& add(int value) { Helper<Out>::save(this, value)
+    return this; }
+};
+void ADD_ONE(Out& out) { out.total += 1; }
+void twice(Out& out)
+{
+  ADD_ONE(out)
+  ADD_ONE(out);
+}
+int three(Out& out)
+{
+  ADD_ONE(out)
+  int more = 2;
+  return more;
+}
+void four(Out& out)
+{
+  Helper<Out>::save(out, 4)
+}
+int main()
+{
+  Out out;
+  out.add(3);
+  twice(out);
+  return three(out) + out.total;
+}

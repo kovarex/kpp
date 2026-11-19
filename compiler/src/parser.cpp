@@ -703,14 +703,12 @@ namespace
     // `KPP_API(dll) class X`. Returns true if something was skipped.
     bool skipMacroSpecifier()
     {
-      if (isC())
-        return false; // preprocessed C: there are no macros left to guess at
+      if (isC() || isKpp())
+        return false; // preprocessed C and kpp: there are no macros to guess at (in kpp, `F(x) int y = 2;` is a call without its ';')
       if (!atMacroName())
         return false;
-      // Never the class's own name, nor in kpp, which has no macros, a name before `operator`: the
-      // return type of `RGB operator+(RGB o) const` and of a free `ID operator-(ID a, ID b)`, which
-      // skipped as a macro left the operator without its type (classes/all_caps_class_operator_returning_itself).
-      if (tok().id == currentClassName || (isKpp() && at(Kw::operator_, 1)))
+      // Never the class's own name.
+      if (tok().id == currentClassName)
         return false;
       // MACRO(...) followed by something that starts a declaration.
       if (at(P::LParen, 1))
@@ -3240,14 +3238,14 @@ namespace
           else if (at(Kw::delete_, 1)) { advance(); advance(); d.flags |= DF_Delete; }
           else return;
         }
-        else if (atMacroName() && !at(P::LBrace, 1) && !at(P::Semi, 1) && !at(P::Colon, 1))
+        else if (!isKpp() && atMacroName() && !at(P::LBrace, 1) && !at(P::Semi, 1) && !at(P::Colon, 1))
         {
-          // e.g. `void f() KPP_NORETURN;`
+          // e.g. `void f() KPP_NORETURN;` (C++ alone: in kpp, `F(x) F(x);` is two calls, the first without its ';')
           advance();
           if (at(P::LParen))
             skipBalanced();
         }
-        else if (atMacroName() && (at(P::LBrace, 1) || at(P::Semi, 1) || at(P::Colon, 1)))
+        else if (!isKpp() && atMacroName() && (at(P::LBrace, 1) || at(P::Semi, 1) || at(P::Colon, 1)))
         {
           advance();
         }
@@ -6102,7 +6100,8 @@ namespace
         advance();
         return s;
       }
-      if (atMacroName() && at(P::LParen, 1))
+      // A macro statement, C and C++ only: kpp has no macros, a call in capitals is a call and ends with ';'.
+      if (!isKpp() && atMacroName() && at(P::LParen, 1))
       {
         uint32_t save = pos;
         size_t mark = scratch.size();
@@ -6131,7 +6130,7 @@ namespace
         return parseDeclStmt();
       ExprStmt* s = node<ExprStmt>(start);
       s->expr = parseExpression();
-      if (!at(P::Semi) && !inRecovery && s->expr->kind == NodeKind::CallExpr &&
+      if (!isKpp() && !at(P::Semi) && !inRecovery && s->expr->kind == NodeKind::CallExpr &&
           static_cast<CallExpr*>(s->expr)->callee->kind == NodeKind::NameExpr &&
           (at(P::LBrace) || at(P::RBrace) || atIdent() || at(TokenKind::Keyword)))
         return s; // Function-like macro expanding to a statement, used without ';'.

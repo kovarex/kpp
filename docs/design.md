@@ -74,6 +74,8 @@ that differ from C++, for a reader who knows it, are in
 - No macros and no preprocessor (decided 2026-10-23 after the Factorio survey in
   [macro-survey.md](macro-survey.md)): build configuration is a set of typed `config` constants,
   and every use of macros is covered by the features in section 7.
+  The parser guesses at no macro in kpp source either (2026-11-19): a name in capitals is a name, so a call
+  statement ends with `;` whatever follows it (C++ source keeps the guesses: macro statements, specifiers).
 
 - **Inlining across chunks** (decided 2026-10-28, to be done later): kpp hands clang the program
   in chunks (IR modules) compiled in parallel, and a non-template function's body is in one chunk
