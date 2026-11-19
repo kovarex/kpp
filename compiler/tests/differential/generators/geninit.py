@@ -16,7 +16,7 @@ PRELUDE = r'''extern "C" int printf(const char* format, ...);
 struct T
 {
   int id;
-  T(int i = 0) : id(i) { printf("+%d ", id); }
+  IMPLICIT T(int i = 0) : id(i) { printf("+%d ", id); } // (an aggregate member copy-initialised from an int: `Arr{T(1), 2}`)
   T(const T& o) : id(o.id + 100) { printf("c%d ", id); }
   T(T&& o) : id(o.id + 200) { o.id = -o.id; printf("m%d ", id); }
   T& operator=(const T& o) { printf("=%d/%d ", id, o.id); id = o.id; return *this; }
