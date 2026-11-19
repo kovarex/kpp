@@ -76,7 +76,12 @@ Status (2026-11-03):
 - **Capabilities:**
   - incremental text sync;
   - pushed diagnostics (`textDocument/publishDiagnostics`, source `kpp`), also for files the
-    editor has not opened;
+    editor has not opened. A file the editor has not opened goes by a URI in the editor's style,
+    taken from the first file URI it sends: VS Code's `file:///c%3A/dir`, Visual Studio's
+    `file:///C:/dir` (.NET Framework reads the first as the path `/c:/dir`, another document than
+    `C:\dir`). A file's diagnostics are cleared under the URI they were published under, also when
+    it goes by another one since (opened by the editor's own spelling): Visual Studio kept listing
+    errors fixed half an hour before (2026-11-19). tests\lsp\reopened covers it;
   - hover, go to definition, references, document symbols, workspace symbols; also on the names
     in a declaration's `when (...)` condition, which the resolver resolves where the parser
     decided it too (A's 5ed6e1f0). A config constant has no definition in the sources (the

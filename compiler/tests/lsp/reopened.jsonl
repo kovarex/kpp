@@ -1,0 +1,12 @@
+// A file's diagnostics published while it was not open are cleared when it is opened by another URI (kovarex, 2026-11-19:
+// Visual Studio kept listing errors fixed half an hour before). For tests\lsp.ps1 on a copy of tests\lsp\reopened. $VSROOT
+// is the copy's URI as Visual Studio writes it (file:///C:/dir), $ROOT as VS Code does (file:///c%3A/dir).
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$VSROOT","capabilities":{}}}
+// The first check: helpers.kpp's error, a file not open, by a URI in the style of the client's (Visual Studio's).
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+// helpers.kpp opened by another URI: the error goes from the URI it was published under, and comes by the document's.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/helpers.kpp","languageId":"kpp","version":1,"text":"// The language server's test program for tests\\lsp\\reopened.jsonl: an error in a file not open.\nint twice(int x)\n{\n  int unused = 1;\n  return x * 2;\n}\n"}}}
+// Fixed: cleared by the document's URI.
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/helpers.kpp","version":2},"contentChanges":[{"text":"// The language server's test program for tests\\lsp\\reopened.jsonl: an error in a file not open.\nint twice(int x)\n{\n  return x * 2;\n}\n"}]}}
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

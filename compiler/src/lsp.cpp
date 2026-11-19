@@ -181,12 +181,27 @@ namespace
     return out;
   }
 
+  // How the client writes a drive in a file URI, taken from the first one it sends: VS Code escapes the colon
+  // (file:///c%3A/x, the server's own form), Visual Studio does not (file:///C:/x). The server's URIs follow it,
+  // since .NET Framework reads file:///c%3A/x as the path /c:/x: in Visual Studio the diagnostics of a file
+  // published before it was opened were another document's than the file opened, and never cleared (kovarex,
+  // 2026-11-19: errors fixed half an hour before were still listed).
+  enum class DriveStyle : uint8_t { Unknown, Escaped, Plain };
+  DriveStyle driveStyle = DriveStyle::Unknown;
+
   fs::path uriToPath(const std::string& uri)
   {
     std::string_view s = uri;
     if (s.substr(0, 7) != "file://")
       return {};
     s.remove_prefix(7);
+    if (driveStyle == DriveStyle::Unknown && s.size() >= 4 && s[0] == '/' && isalpha((unsigned char)s[1]))
+    {
+      if (s[2] == ':')
+        driveStyle = DriveStyle::Plain;
+      else if (s.substr(2, 3) == "%3A" || s.substr(2, 3) == "%3a")
+        driveStyle = DriveStyle::Escaped;
+    }
     std::string path = percentDecode(s);
     if (path.size() >= 3 && path[0] == '/' && path[2] == ':')
       path.erase(0, 1); // /c:/x -> c:/x
@@ -201,9 +216,15 @@ namespace
     std::string text;
     std::u8string u8 = fs::absolute(path, ec).lexically_normal().generic_u8string();
     text.assign(u8.begin(), u8.end());
-    if (text.size() >= 2 && text[1] == ':')
-      text[0] = char(tolower((unsigned char)text[0]));
     std::string out = "file:///";
+    if (text.size() >= 2 && text[1] == ':' && driveStyle == DriveStyle::Plain)
+    {
+      out += char(toupper((unsigned char)text[0]));
+      out += ':';
+      text.erase(0, 2);
+    }
+    else if (text.size() >= 2 && text[1] == ':')
+      text[0] = char(tolower((unsigned char)text[0]));
     for (unsigned char c : text)
       if (isalnum(c) || strchr("/-._~", c))
         out += char(c);
@@ -851,12 +872,11 @@ namespace
     };
 
 
+    // An open document's URI as the client sent it, another file's in the client's style (driveStyle).
     std::string uriOf(const std::string& key, const fs::path& path)
     {
       if (auto d = documents.find(key); d != documents.end())
         return d->second.uri;
-      if (auto u = uris.find(key); u != uris.end())
-        return u->second;
       return pathToUri(path);
     }
 
@@ -1281,7 +1301,7 @@ namespace
       }
       auto found = diagnosticsOf(err + out);
       size_t count = 0;
-      std::map<std::string, std::string> now;
+      std::map<std::string, Published> now;
       for (auto& [key, entry] : found)
       {
         std::string text;
@@ -1295,22 +1315,24 @@ namespace
           list.push(diagnosticJson(text, starts, d));
         count += entry.second.size();
         std::string uri = uriOf(key, entry.first);
-        uris[key] = uri;
         Json params = Json::object().set("uri", uri).set("diagnostics", std::move(list));
         std::string body;
         write(params, body);
-        now[key] = body;
+        now[key] = {uri, body};
       }
-      for (const auto& [key, body] : published)
-        if (!now.count(key))
+      // Cleared under the URI they were published under: a file's that has none now, and a file's whose
+      // diagnostics go by another URI now (opened since, by the client's URI), which to the client may be
+      // another document's.
+      for (const auto& [key, last] : published)
+        if (auto n = now.find(key); n == now.end() || n->second.uri != last.uri)
         {
-          Json params = Json::object().set("uri", uriOf(key, key)).set("diagnostics", Json::array());
+          Json params = Json::object().set("uri", last.uri).set("diagnostics", Json::array());
           notify("textDocument/publishDiagnostics", std::move(params));
         }
-      for (const auto& [key, body] : now)
-        if (published[key] != body)
+      for (const auto& [key, next] : now)
+        if (auto last = published.find(key); last == published.end() || last->second.body != next.body)
         {
-          JsonParser p{body};
+          JsonParser p{next.body};
           notify("textDocument/publishDiagnostics", p.value());
         }
       published = std::move(now);
@@ -4451,8 +4473,12 @@ namespace
     bool dirty = false;                         // a document changed since the last check
     size_t checks = 0;
     std::map<std::string, Document> documents;  // the open documents, by overlayKey
-    std::map<std::string, std::string> published; // what was last published per file (overlayKey -> the message's JSON)
-    std::map<std::string, std::string> uris;      // the URI each published file goes by
+    struct Published
+    {
+      std::string uri;  // the URI it went by
+      std::string body; // the message's JSON
+    };
+    std::map<std::string, Published> published; // what was last published per file (overlayKey), its diagnostics not empty
     Cache cache;
     GlobalScope* currentGlobal = nullptr; // the kept program's, while a query runs on it
     const KeptProgram* currentProgram = nullptr;

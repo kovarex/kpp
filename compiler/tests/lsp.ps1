@@ -26,6 +26,8 @@
 # queue: tests\lsp\program with every message queued before the first is handled (--read-input-first, no
 # --check-each-change), as behind a long check: the changes queued behind a request taken ahead of its check (one
 # check of the last state), a caret request answered from the last checked program, a cancelled request answered so.
+# reopened: tests\lsp\reopened, a closed file's error published in the client's URI style ($VSROOT, Visual Studio's
+# file:///C:/dir), then cleared from that URI when the file is opened by another one.
 # -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
 param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
 $ErrorActionPreference = 'Stop'
@@ -48,6 +50,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'merge'; Program = 'merge'; Args = '--stdio' },
                       @{ Name = 'templates'; Program = 'templates'; Args = '--stdio' },
                       @{ Name = 'unions'; Program = 'unions'; Args = '--stdio' },
+                      @{ Name = 'reopened'; Program = 'reopened'; Args = '--stdio' },
                       @{ Name = 'queue'; Program = 'program'; Args = '--stdio --read-input-first'; Queued = $true }))
 {
   $name = $session.Name
@@ -57,12 +60,14 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
 
   # The URI as the server writes it (lsp.cpp, pathToUri): file:///c%3A/dir/dir, the drive lowercase.
   $root = 'file:///' + $program.Substring(0, 1).ToLower() + '%3A' + ($program.Substring(2) -replace '\\', '/' -replace ' ', '%20')
+  # Visual Studio's (file:///C:/dir/dir), which the server writes too once the client has sent one.
+  $vsRoot = 'file:///' + $program.Substring(0, 1).ToUpper() + ':' + ($program.Substring(2) -replace '\\', '/' -replace ' ', '%20')
 
   $request = New-Object System.IO.MemoryStream
   foreach ($line in Get-Content "$PSScriptRoot\lsp\$name.jsonl")
   {
     if ($line.Trim() -eq '' -or $line.StartsWith('//')) { continue }
-    $body = [Text.Encoding]::UTF8.GetBytes($line.Replace('$ROOT', $root))
+    $body = [Text.Encoding]::UTF8.GetBytes($line.Replace('$VSROOT', $vsRoot).Replace('$ROOT', $root))
     $head = [Text.Encoding]::ASCII.GetBytes("Content-Length: $($body.Length)`r`n`r`n")
     $request.Write($head, 0, $head.Length)
     $request.Write($body, 0, $body.Length)
@@ -81,7 +86,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
   $ErrorActionPreference = 'Stop'
   Pop-Location
 
-  # The messages it sent, one per line, the root's URI as $ROOT.
+  # The messages it sent, one per line, the root's URI as $ROOT (or $VSROOT).
   $raw = [IO.File]::ReadAllBytes($outPath)
   $got = @()
   $at = 0
@@ -91,7 +96,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
     if ($text -notmatch '^Content-Length: ([0-9]+)\r\n\r\n') { throw "lsp.ps1: $($name): no message header at byte $at" }
     $at += $Matches[0].Length
     $length = [int]$Matches[1]
-    $got += [Text.Encoding]::UTF8.GetString($raw, $at, $length).Replace($root, '$ROOT')
+    $got += [Text.Encoding]::UTF8.GetString($raw, $at, $length).Replace($root, '$ROOT').Replace($vsRoot, '$VSROOT')
     $at += $length
   }
   $gotPath = Join-Path $work "$name.txt"

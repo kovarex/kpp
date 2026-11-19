@@ -1,0 +1,5 @@
+int main()
+{
+  std::println(twice(3));
+  return 0;
+}

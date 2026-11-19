@@ -1,0 +1,6 @@
+// The language server's test program for tests\lsp\reopened.jsonl: an error in a file not open.
+int twice(int x)
+{
+  int unused = 1;
+  return x * 2;
+}
