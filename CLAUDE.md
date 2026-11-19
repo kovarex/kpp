@@ -43,6 +43,9 @@ simple templates, own standard library, C-only interop.
 
 ## Rules
 Decided by kovarex; every thread follows them.
+- The game in kpp lives in wube/kpp-factorio (kovarex, 2026-11-19): its kpp branch and the snapshot branches
+  (kpp-2.1.25, ...) get every push, branch and PR there, never in wube/Factorio. Check `git remote -v` before any
+  push or PR. Only the newest snapshot branch is kept compiling with the newest kpp (not 2.1.24 once 2.1.25 is used).
 - Factorio source: always the latest pull. Convert from C:\Factorio's current HEAD, never a pinned
   commit; when kovarex pulls, the next conversion moves to the new HEAD. Name the converted commit
   in every factorio-in-kpp commit message and measurement. Push a new-source conversion only once
