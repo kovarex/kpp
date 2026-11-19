@@ -4,7 +4,7 @@ extern "C" int printf(const char* format, ...);
 int made = 0;
 struct S
 {
-  [[c]] enum { E = 4 };
+  enum { E = 4 };
   static int count;
 };
 int S::count = 2;

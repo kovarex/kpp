@@ -11,7 +11,7 @@ public:
   Behavior(Input& in, Machine& m, const Params& p) : sum(in.pos * 100 + m.id * 10 + p.flags) {}
   virtual ~Behavior() {}
 };
-enum ZeroHandling { KeepZeros, SkipZeros };
+enum class ZeroHandling { KeepZeros, SkipZeros };
 template<class T, class... A>
 constexpr bool shouldConstruct = std::isConstructible<T, A...>;
 template<class DeserialiserType>

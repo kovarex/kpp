@@ -16,9 +16,9 @@ union enum Holder : u8
 int main()
 {
   {
-    Holder<Tracked> h(Holder<Tracked>::Tag::Value, 4);
-    Holder<Tracked> small(Holder<Tracked>::Tag::Small, 9);
-    std::println("built ", live, " ", h[Holder<Tracked>::Tag::Value].id, " ", small[Holder<Tracked>::Tag::Small]);
+    Holder<Tracked> h(Holder<Tracked>::Value, 4);
+    Holder<Tracked> small(Holder<Tracked>::Small, 9);
+    std::println("built ", live, " ", h[Holder<Tracked>::Value].id, " ", small[Holder<Tracked>::Small]);
   }
   std::println("live ", live);
   return 0;

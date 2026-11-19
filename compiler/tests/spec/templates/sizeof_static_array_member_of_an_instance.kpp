@@ -3,7 +3,7 @@
 extern "C" int printf(const char* format, ...);
 template<class T> struct S
 {
-  [[c]] enum { n = sizeof(T) };
+  enum { n = sizeof(T) };
   static int a[n];
   static int b[sizeof(T)];
 };

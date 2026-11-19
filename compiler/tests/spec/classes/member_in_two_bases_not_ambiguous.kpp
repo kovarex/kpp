@@ -3,7 +3,7 @@ struct Root
 {
   static int count() { return 3; }
   using Id = int;
-  [[c]] enum Kind { First = 5 };
+  enum Kind { First = 5 };
   int value = 1;
 };
 struct Left : Root { int left = 10; int both() { return 1; } };

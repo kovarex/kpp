@@ -1,7 +1,7 @@
 // spec: an alternative of type void is set with `u[Name] = void()` and takes no value; `void()` sets no alternative that has one (design.md 8.5)
 // error: typed_union_void_alternative_set_with_value_is_error.kpp:12: error: a void alternative is set with `= void()`, not with a value of type int32
 // error: typed_union_void_alternative_set_with_value_is_error.kpp:13: error: `void()` sets only an alternative of type void; this one's is int32
-union enum Action : u8
+union enum class Action : u8
 {
   { {Move, int}, {Stop, void} }
 };

@@ -2,7 +2,7 @@
 extern "C" int printf(const char* format, ...);
 template<class T> int fixedLocal()
 {
-  [[c]] enum L : T { a = 1, b = (T)-1 };
+  enum L : T { a = 1, b = (T)-1 };
   L x = b;
   return (int)sizeof(L) * 1000 + (int)x;
 }
@@ -10,24 +10,24 @@ template<class T> struct InMember
 {
   int f()
   {
-    enum L : T { a = 5 };
+    enum class L : T { a = 5 };
     return (int)sizeof(L) * 10 + (int)L::a;
   }
   static int inClass()
   {
-    struct In { [[c]] enum : T { a = 9 }; enum G : T { b = 1 }; };
+    struct In { enum : T { a = 9 }; enum class G : T { b = 1 }; };
     return (int)sizeof(typename In::G) * 100 + (int)In::a;
   }
 };
 template<class T> int chained()
 {
-  [[c]] enum L { a = sizeof(T), b = a + 1 };
+  enum L { a = sizeof(T), b = a + 1 };
   L x = b;
   return (int)x;
 }
 template<class T> int inLambda()
 {
-  enum L : T { a = 3 };
+  enum class L : T { a = 3 };
   auto f = [](L x) { return (int)sizeof(x) * 10 + (int)x; };
   return f(L::a);
 }

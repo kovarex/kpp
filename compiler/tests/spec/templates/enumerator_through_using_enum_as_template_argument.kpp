@@ -3,7 +3,7 @@
 class Direction
 {
 public:
-  enum Enum : uint8_t { North = 0, East = 4, South = 8, West = 12 };
+  enum class Enum : uint8_t { North = 0, East = 4, South = 8, West = 12 };
   using enum Enum;
 };
 struct Position { int x, y; };
@@ -12,7 +12,7 @@ class Belt
 {
 public:
   static const PositionFunction functions[2][2];
-  enum AlignTo { Begin = 0, End = 1 };
+  enum class AlignTo { Begin = 0, End = 1 };
 };
 namespace BeltHelper
 {

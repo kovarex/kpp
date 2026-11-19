@@ -12,7 +12,7 @@ union enum Action : u8
   u32 tick = 0;
   u16 player = 0;
 
-  bool moves() const { return this == Action::Tag::Move; }
+  bool moves() const { return this == Action::Move; }
 };
 
 union enum Input : u8
@@ -33,6 +33,6 @@ union enum Small
 int main()
 {
   Action action;
-  action[Action::Tag::Move] = Pos{1, 2};
+  action[Action::Move] = Pos{1, 2};
   return action.moves() ? 0 : 1;
 }

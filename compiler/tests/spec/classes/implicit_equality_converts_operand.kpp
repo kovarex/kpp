@@ -3,7 +3,7 @@
 class Kind
 {
 public:
-  enum Enum : uint8_t { A, B, COUNT };
+  enum class Enum : uint8_t { A, B, COUNT };
   using enum Enum;
   constexpr Kind() : value(COUNT) {}
   implicit constexpr Kind(Enum value) : value(value) {}

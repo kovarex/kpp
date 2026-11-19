@@ -2,8 +2,8 @@
 // error: typed_union_subscript_errors.kpp:13: error: the typed union Pin is indexed with a value of type Side: its subscript takes one of its alternatives (`Pin::Tag::Name`, the name alone, or `a` of `alternatives(Pin)`)
 // error: typed_union_subscript_errors.kpp:14: error: the typed union Pin is indexed with a value of type int32: its subscript takes one of its alternatives (`Pin::Tag::Name`, the name alone, or `a` of `alternatives(Pin)`)
 // error: typed_union_subscript_errors.kpp:16: error: 'Hub' in the subscript of the typed union Pin names its alternative Hub and also a variable in scope: write `Pin::Tag::Hub` for the alternative, or rename the variable
-[[c]] enum Side { Left, Right };
-union enum Pin : u8
+enum Side { Left, Right };
+union enum class Pin : u8
 {
   { {Position, int}, {Hub, i64} }
 };

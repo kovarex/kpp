@@ -1,15 +1,15 @@
 // spec: an unscoped enumeration whose underlying type is narrower than int, given to a C function's `...`, is promoted to int ([expr.call] 12, [conv.prom] 4), as a bool, a char and a short are: printf("%d") of `Small sm = S` (`enum Small : unsigned char { S = 200 }`) prints 200, and of a `signed char`-based one -5
 // found by the differential tests (compiler/tests/differential, codegen/p12), 2026-11-16: until then the argument was passed as an i8 without its promotion (`call i32 (ptr, ...) @printf(ptr @..., i8 %t2)`), so printf read the register's other bytes, 261624264 for 200, a silent wrong answer in debug and release
 extern "C" int printf(const char* format, ...);
-[[c]] enum Small : unsigned char
+enum Small : unsigned char
 {
   S = 200
 };
-[[c]] enum Signed : signed char
+enum Signed : signed char
 {
   T = -5
 };
-[[c]] enum Wide : unsigned short
+enum Wide : unsigned short
 {
   W = 60000
 };

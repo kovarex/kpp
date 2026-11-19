@@ -6,7 +6,7 @@ int positionHelper() { return 1; }
 int withLocals()
 {
   struct Local { int v = 2; int get() const { return this.v + positionHelper(); } };
-  [[c]] enum Mode { First, Second };
+  enum Mode { First, Second };
   static int calls = 0;
   calls = calls + 1;
   Local l;

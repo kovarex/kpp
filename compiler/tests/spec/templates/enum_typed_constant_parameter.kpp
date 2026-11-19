@@ -1,6 +1,6 @@
 // spec: a constant template parameter of a named type (`template<Kind K>`) is a value of that type: it picks overloads and deduces as one (the parser cannot tell it from a constrained type parameter `template<Concept T>`, the names decide)
 // found in the game's GameNotifications (`template<GameNotificationType NotificationType, ...>` with `typeRequiresEntity(NotificationType)`: 137 overload failures) and every template over an enum constant
-enum Kind { A, B, C };
+enum class Kind { A, B, C };
 
 template<class T>
 concept Small = sizeof(T) <= 4;

@@ -7,7 +7,7 @@ struct DragInfo
   Drag drag;
   int start;
 };
-enum Mode : uint8_t { Normal, Forced };
+enum class Mode : uint8_t { Normal, Forced };
 struct Parameters
 {
   template<typename... Args>

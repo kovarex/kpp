@@ -1,7 +1,7 @@
 // spec: a type trait used as a functional cast in an expression, `Conditional<isSigned<UnderlyingType<T>>, int64_t, uint64_t>(value)`: the built-in trait's type (as in a declaration), not the library's Conditional struct
 // factorio: ValueToWidget's str for enums (`ItemToString::enumToString(typeid(T), Conditional<isSigned<UnderlyingType<T>>, int64_t, uint64_t>(value))`), 31 lines, and PrototypeExplorerWidgets.kpp:42
-enum Small : int8_t { A = -3, B = 4 };
-enum Big : uint32_t { C = 4000000000u };
+enum class Small : int8_t { A = -3, B = 4 };
+enum class Big : uint32_t { C = 4000000000u };
 
 template<class T>
 auto widen(const T& value) { return std::Conditional<std::isSigned<std::UnderlyingType<T>>, int64_t, uint64_t>(value); }

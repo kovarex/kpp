@@ -2,7 +2,7 @@
 // error: enumerator_of_a_template_overflow_is_error.kpp:5: error: the enumerator value of an unnamed enumeration of Product<4000000000000000000, 3> is no constant the compiler could evaluate: signed overflow in int64 (multiplication)
 template <i64 A, i64 B> struct Product
 {
-  [[c]] enum : i64 { value = A * B };
+  enum : i64 { value = A * B };
 };
 int main()
 {

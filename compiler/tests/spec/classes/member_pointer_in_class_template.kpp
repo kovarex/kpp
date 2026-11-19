@@ -1,6 +1,6 @@
 // spec: `&Proto::read` and `&Proto::count` written in a member of the class template Proto point to the members of the instance the member belongs to (the injected class name is this instance)
 // factorio: LuaPrototypeTemplate's `MyBinder::registerRead("type", &LuaPrototypeTemplate::luaReadType);` in its static registerPrototypeBase
-enum Kind : uint8_t { A, B };
+enum class Kind : uint8_t { A, B };
 template<typename T, Kind K>
 struct Base { int base = 7; };
 template<typename T, Kind K, typename ID>

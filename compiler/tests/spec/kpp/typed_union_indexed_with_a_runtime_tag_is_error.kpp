@@ -1,6 +1,6 @@
 // spec: a typed union's alternative is named by a constant tag (design.md 8.5): `u[type]` with a tag read at run time is a compile error that names the switch to write
 // error: typed_union_indexed_with_a_runtime_tag_is_error.kpp:10: error: the typed union Action is indexed with a tag known only at run time: its alternative is chosen by a constant tag; switch on the tag over `for constexpr (auto a : alternatives(Action)) case a.tag:` and use `u[a]`
-union enum Action : u8
+union enum class Action : u8
 {
   { {Move, int}, {Stop, void} }
 };

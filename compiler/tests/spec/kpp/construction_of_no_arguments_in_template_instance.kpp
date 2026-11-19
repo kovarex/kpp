@@ -4,7 +4,7 @@ struct Entry
   Entry(int a) : a(a) {}
   int a = 7;
 };
-union enum U : u8
+union enum class U : u8
 {
   { {None, void}, {Value, Entry} }
 };

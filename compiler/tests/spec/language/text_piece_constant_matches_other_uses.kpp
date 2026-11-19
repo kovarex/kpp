@@ -2,12 +2,12 @@
 // kpp: --config zlib::debug=true --config zlib::level=7
 extern "C" import "stdio.h";
 struct Plain { int a; };
-enum Shade { light, dark };
-enum Direction : uint8_t
+enum class Shade { light, dark };
+enum class Direction : uint8_t
 {
   { North, East, South, West, None }
 };
-enum Letter
+enum class Letter
 {
   { A, B, C }
 };

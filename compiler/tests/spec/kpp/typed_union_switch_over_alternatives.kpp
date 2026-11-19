@@ -5,7 +5,7 @@
 struct NoData {};
 struct Pos { int x = 0; int y = 0; };
 
-union enum Action : u8
+union enum class Action : u8
 {
   { {Nothing, NoData}, {Move, Pos}, {Jump, Pos}, {Say, std::String}, {Count, int} }
   u32 tick = 0;

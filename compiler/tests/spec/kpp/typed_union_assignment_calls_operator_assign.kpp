@@ -66,7 +66,7 @@ int main()
   }
   catch (const std::RuntimeError& e)
   {
-    std::println(std::StringView(e.what()), " ", picky == Held::Tag::Picky);
+    std::println(std::StringView(e.what()), " ", picky == Held::Picky);
   }
   std::println("-- end");
   return 0;

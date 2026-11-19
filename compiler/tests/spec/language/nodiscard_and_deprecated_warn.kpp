@@ -8,7 +8,7 @@
 // warning: nodiscard_and_deprecated_warn.kpp:29: warning: the result of 'fetch', which is [[nodiscard]], is discarded
 [[nodiscard]] int compute() { return 42; }
 struct [[nodiscard]] Result { int code; };
-enum [[nodiscard]] Status { Ok, Failed };
+enum class [[nodiscard]] Status { Ok, Failed };
 Result make() { return Result{1}; }
 Status check() { return Status::Ok; }
 [[deprecated("use compute instead")]] int legacy() { return 7; }

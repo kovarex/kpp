@@ -2,7 +2,7 @@
 // factorio: TimeUtil's `shortNumberFormat(time, StringUtil::Compactness::Loose, StringUtil::UseDecimal::Always)`, and the other unqualified calls the converter keeps as the game writes them
 namespace StringUtil
 {
-  enum Compactness { Compact, Loose };
+  enum class Compactness { Compact, Loose };
   struct Piece
   {
     int size = 3;

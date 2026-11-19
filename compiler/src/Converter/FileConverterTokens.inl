@@ -2557,40 +2557,12 @@
       }
     }
 
-    // Whether the `enum` at toks[i] declares or defines an enumeration (`enum E {`, `enum E : u8;`, `enum {`), rather than
-    // naming one (`enum E e;`, C's elaborated type).
-    bool enumDeclarationAt(uint32_t i) const
-    {
-      uint32_t j = i + 1;
-      while (j < toks.size() && (toks[j].getKind() == TokenKind::Identifier || toks[j].is(P::ColonColon)))
-        ++j;
-      if (j < toks.size() && toks[j].is(P::Colon))
-        while (j < toks.size() && !toks[j].is(P::LBrace) && !toks[j].is(P::Semi) && !toks[j].is(P::RParen) && !toks[j].is(P::Comma))
-          ++j;
-      return j < toks.size() && (toks[j].is(P::LBrace) || toks[j].is(P::Semi));
-    }
-
     void convertTokens()
     {
       parenthesizeShiftsAfterLess();
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
-        // kpp's enums are all scoped (design.md 8.4, kovarex 2026-11-18): C++'s `enum class E` is kpp's `enum E`, and a
-        // plain `enum E` of C or C++ keeps C's rules as `[[c]] enum E`.
-        if (t.is(Kw::enum_) && !(i > 0 && (toks[i - 1].is(Kw::using_) || toks[i - 1].is(Kw::union_))))
-        {
-          if (toks[i + 1].is(Kw::class_) || toks[i + 1].is(Kw::struct_))
-          {
-            remove(t.offset + t.length, toks[i + 1].offset + toks[i + 1].length - (t.offset + t.length));
-            counts.add("enum classes written as enum");
-          }
-          else if (enumDeclarationAt(i))
-          {
-            insert(t.offset, "[[c]] ");
-            counts.add("plain enums marked [[c]] (C's rules)");
-          }
-        }
         if (in.c && t.getKind() == TokenKind::Keyword && spelling(i) != keywordSpelling(Kw(t.id)))
         {
           // A C macro of one keyword (zutil.h's `local`, static): the keyword.

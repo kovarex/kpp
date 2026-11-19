@@ -38,7 +38,7 @@ int main()
   U safe = Safe(5);
   std::println("-- through a copy");
   a = safe;
-  std::println(a[U::Tag::First].value);
+  std::println(a[U::First].value);
 
   U b = 2;
   U bad = Safe(-5);
@@ -49,14 +49,14 @@ int main()
   }
   catch (int e)
   {
-    std::println("caught ", e, " ", b == U::Tag::Number);
+    std::println("caught ", e, " ", b == U::Number);
   }
 
   U c = 3;
   U risky = Risky(6);
   std::println("-- straight to the place");
   c = risky;
-  std::println(c[U::Tag::Second].value);
+  std::println(c[U::Second].value);
 
   U d = 4;
   U worse = Risky(-6);
@@ -67,7 +67,7 @@ int main()
   }
   catch (int e)
   {
-    std::println("caught ", e, " ", int(d.tag()) == U::Tag::count);
+    std::println("caught ", e, " ", d.tag() == U::Tag::count);
   }
   return 0;
 }

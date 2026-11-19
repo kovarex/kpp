@@ -2,15 +2,15 @@
 extern "C" int printf(const char* format, ...);
 template<class T> struct Und
 {
-  [[c]] enum : T { big = (T)-1, low = 1 };
-  enum E : T { a = 2, b = 3 };
+  enum : T { big = (T)-1, low = 1 };
+  enum class E : T { a = 2, b = 3 };
   E field = E::b;
   static long long viaMember() { return (long long)big + (long long)sizeof(E); }
   static E make(int v) { return E(v); }
   static T raw(E e) { return (T)e; }
 };
 template<class T> struct Tr { using type = T; };
-template<class T> struct Via { enum F : typename Tr<T>::type { x = 7 }; };
+template<class T> struct Via { enum class F : typename Tr<T>::type { x = 7 }; };
 int a1[sizeof(Und<short>::E)];
 static_assert(sizeof(Und<long long>::big) == 8 && (int)Und<unsigned char>::big == 255, "in a constant");
 int which(int) { return 1; }

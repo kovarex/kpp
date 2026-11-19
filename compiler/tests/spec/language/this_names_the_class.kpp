@@ -4,7 +4,7 @@ class Train
 public:
   static int count;
   int speed = 3;
-  [[c]] enum State { Moving, Stopped };
+  enum State { Moving, Stopped };
   State state = Moving;
   This& faster()
   {
@@ -45,7 +45,7 @@ public:
   int z = 0;
   int ownSize() const { return int(sizeof(This)); }
 };
-enum Direction
+enum class Direction
 {
   { North, East }
   Direction turned() const { return this == This::North ? This::East : Direction::North; }

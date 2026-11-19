@@ -22,4 +22,4 @@ private:
   f64 speed = 0;
 };
 
-enum Mode : u8 { Off, On };
+enum class Mode : u8 { Off, On };

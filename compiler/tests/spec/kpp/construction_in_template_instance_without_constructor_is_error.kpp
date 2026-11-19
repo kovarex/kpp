@@ -14,11 +14,11 @@ struct Data
 template<typename... A> Data make(A&&... a) { return Data(std::forward<A>(a)...); }
 template<typename A> Data twice(A a) { return Data(a, a); }
 template<typename... A> requires (std::isConstructible<int, A&&...>) int sum(A&&... a) { return (0 + ... + a); }
-union enum Inner : u8
+union enum class Inner : u8
 {
   { {None, void}, {Value, int} }
 };
-union enum Outer : u8
+union enum class Outer : u8
 {
   { {Position, double}, {Patch, Data}, {Nested, Inner} }
 };

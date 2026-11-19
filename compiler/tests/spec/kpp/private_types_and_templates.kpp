@@ -16,8 +16,8 @@ private template<typename T> struct Box
   T twice() const { return this.value + this.value; }
 };
 private template<typename T> T largest(T a, T b) { return a < b ? b : a; }
-private [[c]] enum Shade { Light = 1, Dark = 2 };
-private enum Mode { Fast = 7, Slow = 8 };
+private enum Shade { Light = 1, Dark = 2 };
+private enum class Mode { Fast = 7, Slow = 8 };
 private using Count = short;
 private constexpr int ROWS = 4;
 private int created = 0;

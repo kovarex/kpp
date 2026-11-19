@@ -32,6 +32,7 @@
     bool thisPointer = false; // --this-pointer: the program's own files keep C++'s pointer (the warnings that convert from it, convert.cmd)
     bool thisReference = false; // --this-reference: required `this.` and `this` the object (design.md 23c, 23d), not in the standard library's files
     bool thisReferenceWarnings = false; // --this-reference-warnings
+    bool plainEnumWarnings = false; // --plain-enum-warnings
     bool structRule = true;      // design.md "struct and class" (--struct-rule, the default)
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;

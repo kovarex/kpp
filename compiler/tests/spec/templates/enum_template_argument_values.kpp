@@ -1,6 +1,6 @@
 // spec: a constant template argument of enum class type whose enumerator is defined by others (`GENERIC = NOTHING`, `BOTH = ONE | TWO`), as an argument and as a parameter's default
 // found in the game's Targeter<TargetType, TargeterType Type = GENERIC, TargeterFlags Flags = TargeterFlags::GENERIC> (157 instantiations' getFlags, TargeterFlags::PERSISTENT and friends)
-enum Flags : unsigned short
+enum class Flags : unsigned short
 {
   NOTHING = 0,
   GENERIC = NOTHING,

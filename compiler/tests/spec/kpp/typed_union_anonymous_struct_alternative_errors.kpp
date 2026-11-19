@@ -6,7 +6,7 @@
 // error: typed_union_anonymous_struct_alternative_errors.kpp:15: error: the anonymous struct of the alternative Bits holds data members alone: a bit-field is not one (name the struct to give it one)
 // error: typed_union_anonymous_struct_alternative_errors.kpp:16: error: the anonymous struct of the alternative Pair declares one member per declaration (its creator takes them as parameters)
 // error: typed_union_anonymous_struct_alternative_errors.kpp:17: error: the anonymous struct of the alternative Listed has a member its creator cannot take as written: write its type before its name (std::Array for an array)
-union enum Action : u8
+union enum class Action : u8
 {
   {
     {Close, struct { int a; }},

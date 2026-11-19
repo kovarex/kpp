@@ -1,6 +1,6 @@
 // spec: a function as a constant template argument, `template<OpType type, float (*func)(float, float), uint64_t complexity = 2>` given `Functions::add` or `&Functions::mul`, called inside; two functions of one name in different namespaces are different arguments; `= nullptr` as the default
 // found in the game's noise expressions (BinaryOperation<NoiseOperationType::Add, Functions::add>, BinaryExpression<..., Folding::add>: the parameter did not parse, the argument was unknown)
-enum OpType { Add, Mul };
+enum class OpType { Add, Mul };
 namespace Functions
 {
   float add(float a, float b) { return a + b; }

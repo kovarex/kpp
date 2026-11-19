@@ -3,7 +3,7 @@
 class Notification
 {
 public:
-  enum Flags : unsigned char
+  enum class Flags : unsigned char
   {
     Standard = 1,
     Spoiling = 4

@@ -1,7 +1,7 @@
 // spec: static_asserts are checked where their condition is known: at namespace scope, in classes and functions once, in templates per instance (class template instances the program names, function template instances it calls), not in the discarded branch of an instance's `if constexpr` (`static_assert(sizeof(T) == 0, ...)` there is the idiom for "no other T")
 // factorio: 470 uses in 237 files
 static_assert(1 + 1 == 2, "arithmetic");
-enum Color { Red, Green, Blue };
+enum class Color { Red, Green, Blue };
 static_assert(static_cast<int>(Color::Blue) == 2);
 struct Pair2 { int a; int b; static constexpr int count = 2; };
 static_assert(Pair2::count == 2);

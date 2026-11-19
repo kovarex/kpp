@@ -7,10 +7,10 @@
 // whose initializers end the list may be left out: `Action::Close(Browsing::Yes)`; with no arguments it builds the
 // struct default-constructed, as a named struct's creator does (`Action::Move()`). Two alternatives' anonymous structs
 // are two types. design.md 8.5
-enum Browsing : u8 { No, Yes };
-enum Sound : u8 { Off, On };
+enum class Browsing : u8 { No, Yes };
+enum class Sound : u8 { Off, On };
 
-union enum Action : u8
+union enum class Action : u8
 {
   {
     {Nothing, void},

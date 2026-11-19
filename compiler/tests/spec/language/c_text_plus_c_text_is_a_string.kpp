@@ -1,6 +1,6 @@
 // spec: `a + b` of two C texts (string literals, char arrays, char pointers, either side) is a new String of both texts, to each one's first zero (kovarex, 2026-11-17, design.md 14; C++ adds no two pointers, so nothing C++ compiles changes meaning): a literal and an enumeration's str(), two pointers, a pointer and a literal, an array, two literals, a chain, an argument taking a String, and a constant (`names.Beta|xy|y!|yb|lit|a.b.c|key=Beta|5`)
 extern "C" import "stdio.h";
-enum Kind : u8
+enum class Kind : u8
 {
   { Alpha, Beta }
 };

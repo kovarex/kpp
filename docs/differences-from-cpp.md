@@ -534,7 +534,7 @@ struct Celsius { implicit Celsius(double degrees); };
   one). `isConstructible<T>` and the other traits answer by it. Where a class has none, `T x;` and `new T` are
   the checker's error naming why.
 - **Why:** kovarex (2026-11-17), after removing a `RemoteViewSurfaceData() = default;` from the game: the same
-  annoyance as with the union enum's creators below; nothing is dropped, nothing is written back.
+  annoyance as with the union enum class's creators below; nothing is dropped, nothing is written back.
 - **See:** [design 29][d29]; specs `classes/implicit_default_constructor_beside_others`,
   `language/default_initialized_variable_without_default_constructor_is_error`.
 
@@ -606,24 +606,22 @@ function that runs every level of a hierarchy. See the readme's Planned.
   whose default one makes each value declared without an initializer (`Direction() { this = None; }`;
   `E(x)` of one number stays the conversion), conversion operators and member operators (`Dir operator+(const
   Dir&) const`), as a class's (kovarex, 2026-11-11). The constant evaluation runs them all.
-  An enum without the inner block keeps C++'s enum class rules.
+  A plain `enum class` without the inner block keeps C++'s rules.
 - **Why:** it replaces the hand-written tables and macros beside each enum.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
   no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`
   and `This::North` all name it. A bare one outside is an error naming the fix (spec
   `language/scoped_enumerator_needs_its_enum`).
-- **Every enum is scoped** (built): kpp's `enum E` has C++'s `enum class` rules (enumerators `E::X`, no
-  conversion to a number without a cast), and `enum class` is an error (kovarex, 2026-11-07, 2026-11-18);
-  imported C headers keep C's rules, and `[[c]] enum` keeps them for an enum written in kpp (converted C, mirrors
-  of C APIs). A nameless enum is an error unless `[[c]]`. `union enum U` is scoped too: its tags are `U::Tag::X`
-  ([design 8.4](design.md)).
+- **No plain enums** (later): kpp code is to have scoped enums only (kovarex, 2026-11-07); first every enum
+  becomes `enum class`, the keyword question after (2026-11-19, the switch to scoped `enum` reverted); imported
+  headers keep theirs, and `[[c]] enum` (built) keeps C's rules for an enum written in kpp. `--plain-enum-warnings` lists the plain ones; the game has 208 ([design 8.4](design.md)).
 - **An enum indexes an array** (built): `counts[Color::Green]` on a built-in array or std::Array, with no cast,
   checked against the bound in a debug build; C++ needs `counts[size_t(Color::Green)]` for an enum class (spec
-  `kpp/enum_indexes_an_array`).
+  `kpp/enum_indexes_an_array`); std::Vector too.
 - **See:** [design 8.4][d8]; specs `kpp/enum_from_str`, `kpp/enum_constructors`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp
-enum Direction : u8
+enum class Direction : u8
 {
   { North, East, South, West }
   bool isVertical() const { return this == North || this == South; }
@@ -709,12 +707,12 @@ Property p = 5;
 p[Property::Text] = String("hello");
 ```
 
-### A union enum makes its creators, and your own of one signature replaces just that one (built)
+### A union enum class makes its creators, and your own of one signature replaces just that one (built)
 
 - **C++:** the compiler's special members follow all-or-nothing rules: declaring any constructor drops
   the implicit default constructor, and declaring a copy or move operation drops others, so a class that
   adds one constructor writes the others back with `= default`.
-- **kpp:** a `union enum U` makes a static creator per alternative, `U::Name(args...)`, which builds
+- **kpp:** a `union enum class U` makes a static creator per alternative, `U::Name(args...)`, which builds
   that alternative from its value or its constructor's arguments (`InputAction::CloseGui(data)`,
   `InputAction::OpenGui()` for a void one). A member you declare replaces only the creator of its own
   signature (`Name()` for a void alternative, a function of one parameter pack for one with a value); any
@@ -725,7 +723,7 @@ p[Property::Text] = String("hello");
 - **See:** [design 8.5][d8]; specs `kpp/typed_union_creators`, `kpp/typed_union_creator_declared_by_the_union`.
 
 ```cpp
-union enum Action : u8
+union enum class Action : u8
 {
   { {Move, int}, {Stop, void} }
 

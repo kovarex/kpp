@@ -2,7 +2,7 @@
 // factorio: zlib converted as C: gzguts.h's `#define COPY 1` (a constant of the conversion) and inflate.h's inflate_mode enumerator COPY, never in one C translation unit; inflate's `state->mode = COPY` stored 1, and its next call returned Z_STREAM_ERROR
 // error: enumerator_and_constant_of_one_name.kpp:5: error: 'COPY' is declared here and at
 const auto COPY = 1;
-[[c]] enum Mode { HEAD = 10, COPY, SYNC };
+enum Mode { HEAD = 10, COPY, SYNC };
 
 int main()
 {

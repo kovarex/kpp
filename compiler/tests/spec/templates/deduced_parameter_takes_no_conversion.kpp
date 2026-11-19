@@ -2,7 +2,7 @@
 // found in the game's Optional (the converter's namespace-scope `BaseClass != GameOptional<BaseClass>` operators): with conversions allowed, 120 comparisons of directions, versions and IDs picked them
 struct Direction
 {
-  [[c]] enum Enum { North, East };
+  enum Enum { North, East };
   Enum value;
   Direction() : value(North) {}
   implicit Direction(Enum v) : value(v) {}

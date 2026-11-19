@@ -1,6 +1,6 @@
 // spec: a function template's `StringType (*toString)(T)` parameter deduces T and StringType from a function passed by name (the function decays to its pointer, as in C++), and from `&Class::staticFunction`
 // factorio: the prototypes' `result.add(beaconCounter, "beacon_counter", beaconCounterToString)` into PrototypeExplorerWidgets::add (21 in BeaconPrototype and the like)
-enum Counter { Total, Same };
+enum class Counter { Total, Same };
 struct Widgets
 {
   int sum = 0;

@@ -17,10 +17,10 @@ union enum Action : u16
 };
 int main()
 {
-  Action a(Action::Tag::Small, 4);
+  Action a(Action::Small, 4);
   a.tick = 9;
   a.player = 2;
   Action b = a;
-  std::println(sizeof(Bare), " ", sizeof(Action), " ", b.tick, " ", b.player, " ", b[Action::Tag::Small]);
+  std::println(sizeof(Bare), " ", sizeof(Action), " ", b.tick, " ", b.player, " ", b[Action::Small]);
   return 0;
 }

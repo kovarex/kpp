@@ -5,7 +5,7 @@
 namespace Inflate
 {
   const auto COPY = 1;
-  [[c]] enum Mode { HEAD = 10, COPY, SYNC };
+  enum Mode { HEAD = 10, COPY, SYNC };
 }
 namespace Inflate::Window
 {

@@ -14,9 +14,9 @@ union enum Value : uint8_t
   {
     switch (this)
     {
-      case Tag::Number: return std::format("number {}", (this)[Number]);
-      case Tag::Text: return std::format("text {}", (this)[Text]);
-      case Tag::Owned: return std::format("owned {}", (this)[Owned].id);
+      case Number: return std::format("number {}", (this)[Number]);
+      case Text: return std::format("text {}", (this)[Text]);
+      case Owned: return std::format("owned {}", (this)[Owned].id);
     }
   }
 };
@@ -24,13 +24,13 @@ int main()
 {
   Tracked t(7);
   Value a;
-  a[Value::Tag::Text] = std::String("hello");
+  a[Value::Text] = std::String("hello");
   Value b = a;
-  a[Value::Tag::Owned] = t;
-  std::println(a.describe(), " | ", b.describe(), " | ", a != Value::Tag::Text);
+  a[Value::Owned] = t;
+  std::println(a.describe(), " | ", b.describe(), " | ", a != Value::Text);
   b = a;
   std::println(b.describe());
-  a[Value::Tag::Number] = 1;
+  a[Value::Number] = 1;
   std::println(a.describe());
   return 0;
 }

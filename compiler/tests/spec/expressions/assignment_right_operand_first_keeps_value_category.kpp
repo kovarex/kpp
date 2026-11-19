@@ -14,7 +14,7 @@ struct Tracked
 };
 struct Sum { int total = 0; };
 Sum& operator+=(Sum& s, int v) { s.total += v; return s; }
-enum Flags : int { None = 0, A = 1, B = 2 };
+enum class Flags : int { None = 0, A = 1, B = 2 };
 Flags& operator|=(Flags& f, Flags g) { f = Flags(int(f) | int(g)); return f; }
 Tracked slots[2];
 Sum sums[2];

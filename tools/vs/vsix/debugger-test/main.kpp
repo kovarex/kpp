@@ -88,7 +88,7 @@ struct Handle
 // through a generic lambda per type and makes the type's Handle from the index)
 struct Signal
 {
-  enum Type : u8 { Part = 0, Fluid = 1 };
+  enum class Type : u8 { Part = 0, Fluid = 1 };
 
   static const char* typeToStr(Type type)
   {
@@ -234,7 +234,7 @@ struct Chain
 // (a class's own listing of its children, debugItems: the game's PropertyTree)
 struct Tree
 {
-  enum Kind : u8 { Leaf = 0, List = 1 };
+  enum class Kind : u8 { Leaf = 0, List = 1 };
 
   const Tree* begin() const
   {

@@ -8,17 +8,17 @@
 struct Pos { int x = 0; int y = 0; bool operator==(const Pos&) const = default; };
 
 // Without members of its own: the built-in == and < (the same void alternative is equal), and the size of the values alone.
-union enum Signal : u8
+union enum class Signal : u8
 {
   { {Off, void}, {Level, int}, {Pulse, void} }
 };
 
-union enum Level : u8
+union enum class Level : u8
 {
   { {Value, int} }
 };
 
-union enum Action : u8
+union enum class Action : u8
 {
   { {Nothing, void}, {Move, Pos}, {Stop, void}, {Say, std::String} }
   u32 tick = 0;

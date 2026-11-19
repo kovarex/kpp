@@ -6,7 +6,7 @@ inline int operator+(int acc, const A& a) { return acc + a.v; }
 inline int operator+(int acc, const B& b) { return acc + b.v * 100; }
 struct Vec { int x, y; };
 inline Vec operator+(const Vec& a, const Vec& b) { return Vec{a.x + b.x, a.y + b.y}; }
-enum Flag { None = 0, A = 1, B = 2, C = 4 };
+enum class Flag { None = 0, A = 1, B = 2, C = 4 };
 inline Flag operator|(Flag a, Flag b) { return Flag(int(a) + int(b)); } // (adds: A | A is 2 here, and the fold 6, where a built-in | gives 5)
 struct Sink { int total = 0; };
 inline Sink& operator<<(Sink& s, int v) { s.total += v; return s; }

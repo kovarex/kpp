@@ -1,6 +1,6 @@
 // spec: a bit-field's value is promoted as C++'s [conv.prom] 5 has it, never by its declared type alone: to int when int holds every value of its width (an `unsigned u3 : 3`, a `uint64_t w3 : 3`, an `int64_t i20 : 20`), to unsigned int when only that does (a 32-bit unsigned one, a `uint64_t w32 : 32`), and as its declared type when it is wider than 32 bits; an enum bit-field promotes as its enum ([conv.prom] 5's last sentence: `Level : uint32_t`, unsigned) and a bool one as bool. So `u3 - 2` is the int -1, `-u3`, `~u3` and `u3 << 31` are ints, `(w3 - 3) / 2` is 0, `no ? u3 : -1` is -1, the comparisons are of ints, sizeof(i20 + 0) is 4, a compound assignment computes in int (`u3 /= -2` from 6: -3, its low 3 bits 5), in a member function and at compile time alike; clang prints the same (g++ the same but for the conditional, 4294967295: it keeps a bit-field operand of ?: unpromoted)
 // kovarex 2026-11-05 ("follow the standard here"): MSVC, and kpp before, kept the declared type (`u3 - 2` the unsigned 4294967295)
-[[c]] enum Level : uint32_t { Low = 1, High = 2 };
+enum Level : uint32_t { Low = 1, High = 2 };
 
 struct S
 {

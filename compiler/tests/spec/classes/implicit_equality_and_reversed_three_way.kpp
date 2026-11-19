@@ -3,7 +3,7 @@
 class Kind
 {
 public:
-  enum Enum : uint8_t
+  enum class Enum : uint8_t
   {
     First = 0,
     Second = 1,

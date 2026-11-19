@@ -1,13 +1,13 @@
 // format: braces end-of-line with indent 4 and case-indent no (a K&R style); one-liners stay
 namespace game
 {
-  enum Mode
+  enum class Mode
   {
     Off,
     On
   };
 
-  enum Small { A, B };
+  enum class Small { A, B };
 
   struct Counter
   {

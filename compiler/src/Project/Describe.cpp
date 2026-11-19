@@ -257,7 +257,7 @@ namespace projects
     static const char* const allowed[] = {
       "-j", "--ext", "--errors", "--unresolved", "--why", "--why-at", "--access-warnings", "--return-copy-warnings",
       "--zero-null-warnings", "--indentation-warnings", "--unused-checks", "--slip-checks", "--unused-field-checks", "--this-warnings", "--this-pointer",
-      "--this-reference-warnings", "--this-reference", "--explicit-by-default", "--no-implicit-fallthrough",
+      "--this-reference-warnings", "--this-reference", "--plain-enum-warnings", "--explicit-by-default", "--no-implicit-fallthrough",
       "--struct-rule", "--c-type-warnings", "--quiet", "--msvc-diagnostics", "--diagnostic-columns", "--check", "--incremental-link",
       "--subsystem", "--defer-link", "--toolchain", "--debug-info", "--optimize", "--no-optimize", "--target", "--keep-going",
       "--stub-missing", "--no-inline", "--sanitize", "--lto", "--lto-partitions", "--opt-level", "--codegen-threads", "--keep-symbol",

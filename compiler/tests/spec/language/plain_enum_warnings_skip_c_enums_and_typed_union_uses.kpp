@@ -1,0 +1,18 @@
+// spec: --plain-enum-warnings says nothing about a [[c]] enum (C's rules, kept on purpose: design.md 8.4) or its enumerators' uses, nor about a typed union's subscript `u[Name]` and comparison `u == U::Name`, which name an alternative and are no array index or comparison with an integer (2026-11-18: both were warnings)
+// kpp: --plain-enum-warnings
+// warning: plain_enum_warnings_skip_c_enums_and_typed_union_uses.kpp:7: warning: Tag is a plain enum
+// no-warning: of Mode used
+// no-warning: of Tag used
+[[c]] enum Mode { ModeRead = 1, ModeWrite = 2 };
+union enum Value : u8
+{
+  { {Number, int}, {Ratio, float} }
+};
+int main()
+{
+  int flags = ModeRead | ModeWrite;
+  Value v;
+  v[Number] = flags;
+  std::println(v == Value::Number ? v[Number] : 0);
+  return 0;
+}

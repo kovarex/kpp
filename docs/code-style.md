@@ -148,8 +148,7 @@ The same for `?` and `:` of a conditional expression.
   constructor.
 - `==` that compares every member is defaulted (`bool operator==(const Position& other) const =
   default;`).
-- Every enum is scoped, written `enum E` (`enum class` is an error); `[[c]] enum` only for converted C and
-  mirrors of C APIs.
+- Every enum is an `enum class`.
 
 ## Inside functions
 

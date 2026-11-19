@@ -13,7 +13,7 @@ template<typename T> struct UniquePtr
 {
   int mine = 9;
 };
-enum Colour
+enum class Colour
 {
   { Red, Green }
 };

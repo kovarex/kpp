@@ -1,4 +1,4 @@
-enum MarkdownType : u8
+enum class MarkdownType : u8
 {
   document,
   blockQuote,

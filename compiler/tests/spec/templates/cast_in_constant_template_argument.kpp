@@ -9,7 +9,7 @@ struct Bits
 };
 struct Flags
 {
-  enum Enum { OutputClosed, InputClosed, Third };
+  enum class Enum { OutputClosed, InputClosed, Third };
   Bits<3> bits;
   template<Enum value>
   bool contains() const { return this.bits.test<static_cast<size_t>(value)>(); }

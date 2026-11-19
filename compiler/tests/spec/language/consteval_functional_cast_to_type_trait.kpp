@@ -1,7 +1,7 @@
 // spec: at compile time a functional cast to a built-in trait's type (`UnderlyingType<E>(value)` in a template) converts as at run time, as `static_cast<UnderlyingType<E>>(value)` does, and one to a class the trait gives constructs it (`RemoveCvRef<T>(3, 4)`) (`7 7 3 3`)
 // found while making an enum's appendTo (design.md 14) run at compile time
 extern "C" import "stdio.h";
-enum Direction : u8 { North, East };
+enum class Direction : u8 { North, East };
 template<typename E>
 constexpr int underlying(E value) { return int(std::UnderlyingType<E>(value)); }
 static_assert(underlying(Direction(7)) == 7);

@@ -108,7 +108,7 @@ struct ClassDecl : Decl
   // `union enum` (design.md 8.5): a tag and one live alternative. The parser desugars it to the
   // members below; the compiler adds the tag-aware operations.
   bool isTypedUnion = false;
-  Decl* tagEnum = nullptr;        // the nested kpp enum `Tag` naming the alternatives (scoped in kpp: `Property::Tag::Integer`)
+  Decl* tagEnum = nullptr;        // the nested kpp enum `Tag` naming the alternatives (unscoped: `Property::Integer`)
   Decl* tagField = nullptr;       // the tag data member (`__tag`; the generated `tag()` returns it)
   Span<Decl*> alternatives;       // the storage member of each alternative, in tag order (inside an anonymous union)
   // `union enum U : u16 inline(N)`: an alternative larger than N bytes is kept on the heap, its

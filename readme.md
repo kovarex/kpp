@@ -102,7 +102,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   `values` (for iteration), `str()` and `fromStr()`, generated, or written by hand to replace them.
 
   ```cpp
-  enum Direction : u8
+  enum class Direction : u8
   {
     { North, East, South, West }
     bool isVertical() const { return this == North || this == South; }
@@ -157,7 +157,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   }
   ```
 
-  A `union enum` (its tags in `U::Tag`) also makes a creator per alternative, `U::Name(...)`,
+  A `union enum class` (its tags in `U::Tag`) also makes a creator per alternative, `U::Name(...)`,
   which builds it from its value or its constructor's arguments; an alternative of type `void` carries
   no value. A member you write with a creator's signature replaces that one creator, and any other is an
   overload beside it: unlike C++, where one constructor of your own drops the implicit default
@@ -165,7 +165,7 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   implicit default constructor beside its other constructors the same way; `T() = delete;` removes it.
 
   ```cpp
-  union enum Action : u8
+  union enum class Action : u8
   {
     { {Stop, void}, {Move, int} }
 

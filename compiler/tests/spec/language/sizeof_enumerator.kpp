@@ -1,11 +1,11 @@
 // spec: sizeof of an enumerator is its enumeration's size: an unscoped enumeration's (int's, 4), one in a namespace, and an enum class's of its underlying type (u8, 1)
 // factorio: none in the game; the C libraries' harnesses print each interface constant's size (programs/factorio/harness), stb_image's and fontstash's enumerators among them
-[[c]] enum { A = 1, B = 2 };
+enum { A = 1, B = 2 };
 namespace scope
 {
-  [[c]] enum { C = 3 };
+  enum { C = 3 };
 }
-enum E : u8 { X };
+enum class E : u8 { X };
 int main()
 {
   std::println((int)sizeof(A), " ", (int)sizeof(scope::C), " ", (int)sizeof(E::X));

@@ -16,7 +16,7 @@ extern "C" import "windows.h";
 
 // --- tokens -------------------------------------------------------------------------------
 
-enum TokenKind : uint8_t { End, Identifier, Keyword, Number, String, Char, Punctuator, Directive, Error };
+enum class TokenKind : uint8_t { End, Identifier, Keyword, Number, String, Char, Punctuator, Directive, Error };
 
 struct Token
 {

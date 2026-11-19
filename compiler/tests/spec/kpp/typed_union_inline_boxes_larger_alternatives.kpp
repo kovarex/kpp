@@ -36,21 +36,21 @@ int main()
     std::println(std::StringView(a.name), " ", sizeof(a.type), " ", boxed);
   }
   {
-    Action a(Action::Tag::Big, 7);
-    std::println("big ", a[Action::Tag::Big].tracked.id, " live ", live);
+    Action a(Action::Big, 7);
+    std::println("big ", a[Action::Big].tracked.id, " live ", live);
     Action copy = a;
-    copy[Action::Tag::Big].tracked.id = 8;
-    std::println("copy ", copy[Action::Tag::Big].tracked.id, " original ", a[Action::Tag::Big].tracked.id, " live ", live, " equal ", copy == a);
-    const Large* where = &a[Action::Tag::Big];
+    copy[Action::Big].tracked.id = 8;
+    std::println("copy ", copy[Action::Big].tracked.id, " original ", a[Action::Big].tracked.id, " live ", live, " equal ", copy == a);
+    const Large* where = &a[Action::Big];
     Action moved = std::move(a);
-    std::println("moved keeps its place ", &moved[Action::Tag::Big] == where, " live ", live);
+    std::println("moved keeps its place ", &moved[Action::Big] == where, " live ", live);
     copy = moved;
-    std::println("assigned ", copy[Action::Tag::Big].tracked.id, " equal ", copy == moved, " live ", live);
-    copy[Action::Tag::Count] = 3;
-    std::println("count ", copy[Action::Tag::Count], " live ", live);
+    std::println("assigned ", copy[Action::Big].tracked.id, " equal ", copy == moved, " live ", live);
+    copy[Action::Count] = 3;
+    std::println("count ", copy[Action::Count], " live ", live);
     copy = moved;
-    copy[Action::Tag::OtherBig] = Large(9);
-    std::println("other ", copy[Action::Tag::OtherBig].tracked.id, " live ", live);
+    copy[Action::OtherBig] = Large(9);
+    std::println("other ", copy[Action::OtherBig].tracked.id, " live ", live);
   }
   std::println("live ", live);
   return 0;

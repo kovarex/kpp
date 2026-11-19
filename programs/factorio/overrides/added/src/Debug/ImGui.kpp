@@ -222,7 +222,7 @@ struct ImColor
   static ImColor HSV(float h, float s, float v, float a = 1.0f) { float r, g, b; ImGui::ColorConvertHSVtoRGB(h, s, v, r, g, b); return ImColor(r, g, b, a); }
 };
 
-[[c]] enum ImGuiWindowFlags_
+enum ImGuiWindowFlags_
 {
   ImGuiWindowFlags_NoTitleBar = 1 << 0,
   ImGuiWindowFlags_NoResize = 1 << 1,
@@ -248,7 +248,7 @@ struct ImColor
   ImGuiWindowFlags_ChildMenu = 1 << 28
 };
 
-[[c]] enum ImGuiInputTextFlags_
+enum ImGuiInputTextFlags_
 {
   ImGuiInputTextFlags_CharsDecimal = 1 << 0,
   ImGuiInputTextFlags_CharsHexadecimal = 1 << 1,
@@ -270,7 +270,7 @@ struct ImColor
   ImGuiInputTextFlags_Multiline = 1 << 20
 };
 
-[[c]] enum ImGuiTreeNodeFlags_
+enum ImGuiTreeNodeFlags_
 {
   ImGuiTreeNodeFlags_Selected = 1 << 0,
   ImGuiTreeNodeFlags_Framed = 1 << 1,
@@ -287,14 +287,14 @@ struct ImColor
   ImGuiTreeNodeFlags_AllowOverlapMode = ImGuiTreeNodeFlags_AllowItemOverlap
 };
 
-[[c]] enum ImGuiSelectableFlags_
+enum ImGuiSelectableFlags_
 {
   ImGuiSelectableFlags_DontClosePopups = 1 << 0,
   ImGuiSelectableFlags_SpanAllColumns = 1 << 1,
   ImGuiSelectableFlags_AllowDoubleClick = 1 << 2
 };
 
-[[c]] enum ImGuiComboFlags_
+enum ImGuiComboFlags_
 {
   ImGuiComboFlags_PopupAlignLeft = 1 << 0,
   ImGuiComboFlags_HeightSmall = 1 << 1,
@@ -304,14 +304,14 @@ struct ImColor
   ImGuiComboFlags_HeightMask_ = ImGuiComboFlags_HeightSmall | ImGuiComboFlags_HeightRegular | ImGuiComboFlags_HeightLarge | ImGuiComboFlags_HeightLargest
 };
 
-[[c]] enum ImGuiFocusedFlags_
+enum ImGuiFocusedFlags_
 {
   ImGuiFocusedFlags_ChildWindows = 1 << 0,
   ImGuiFocusedFlags_RootWindow = 1 << 1,
   ImGuiFocusedFlags_RootAndChildWindows = ImGuiFocusedFlags_RootWindow | ImGuiFocusedFlags_ChildWindows
 };
 
-[[c]] enum ImGuiHoveredFlags_
+enum ImGuiHoveredFlags_
 {
   ImGuiHoveredFlags_Default = 0,
   ImGuiHoveredFlags_ChildWindows = 1 << 0,
@@ -323,7 +323,7 @@ struct ImColor
   ImGuiHoveredFlags_RootAndChildWindows = ImGuiHoveredFlags_RootWindow | ImGuiHoveredFlags_ChildWindows
 };
 
-[[c]] enum ImGuiDragDropFlags_
+enum ImGuiDragDropFlags_
 {
   ImGuiDragDropFlags_SourceNoPreviewTooltip = 1 << 0,
   ImGuiDragDropFlags_SourceNoDisableHover = 1 << 1,
@@ -335,7 +335,7 @@ struct ImColor
   ImGuiDragDropFlags_AcceptPeekOnly = ImGuiDragDropFlags_AcceptBeforeDelivery | ImGuiDragDropFlags_AcceptNoDrawDefaultRect
 };
 
-[[c]] enum ImGuiKey_
+enum ImGuiKey_
 {
   ImGuiKey_Tab,
   ImGuiKey_LeftArrow,
@@ -359,7 +359,7 @@ struct ImColor
   ImGuiKey_COUNT
 };
 
-[[c]] enum ImGuiCol_
+enum ImGuiCol_
 {
   ImGuiCol_Text,
   ImGuiCol_TextDisabled,
@@ -411,7 +411,7 @@ struct ImColor
   ImGuiCol_ColumnActive = ImGuiCol_SeparatorActive
 };
 
-[[c]] enum ImGuiStyleVar_
+enum ImGuiStyleVar_
 {
   ImGuiStyleVar_Alpha,
   ImGuiStyleVar_WindowPadding,
@@ -434,7 +434,7 @@ struct ImColor
   ImGuiStyleVar_ChildWindowRounding = ImGuiStyleVar_ChildRounding
 };
 
-[[c]] enum ImGuiColorEditFlags_
+enum ImGuiColorEditFlags_
 {
   ImGuiColorEditFlags_NoAlpha = 1 << 1,
   ImGuiColorEditFlags_NoPicker = 1 << 2,
@@ -461,7 +461,7 @@ struct ImColor
   ImGuiColorEditFlags__OptionsDefault = ImGuiColorEditFlags_Uint8|ImGuiColorEditFlags_RGB|ImGuiColorEditFlags_PickerHueBar
 };
 
-[[c]] enum ImGuiMouseCursor_
+enum ImGuiMouseCursor_
 {
   ImGuiMouseCursor_None = -1,
   ImGuiMouseCursor_Arrow = 0,
@@ -474,7 +474,7 @@ struct ImColor
   ImGuiMouseCursor_Count_
 };
 
-[[c]] enum ImGuiCond_
+enum ImGuiCond_
 {
   ImGuiCond_Always = 1 << 0,
   ImGuiCond_Once = 1 << 1,
@@ -486,7 +486,7 @@ struct ImColor
   ImGuiSetCond_Appearing = ImGuiCond_Appearing
 };
 
-[[c]] enum ImDrawCornerFlags_
+enum ImDrawCornerFlags_
 {
   ImDrawCornerFlags_TopLeft = 1 << 0,
   ImDrawCornerFlags_TopRight = 1 << 1,
@@ -499,7 +499,7 @@ struct ImColor
   ImDrawCornerFlags_All = 0xF
 };
 
-[[c]] enum ImDrawListFlags_
+enum ImDrawListFlags_
 {
   ImDrawListFlags_AntiAliasedLines = 1 << 0,
   ImDrawListFlags_AntiAliasedFill = 1 << 1

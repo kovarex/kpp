@@ -1,6 +1,6 @@
 // spec: a function template named without its arguments as a call's argument, for a parameter that is a pointer to a function of a known type, is the instance whose arguments are deduced from that type's parameters, as for a variable it initializes: for a function's, a member function's and a constructor's parameter, and a union enum class's creator, whose arguments are a pack
 // factorio: the map editor's checkboxes, `this.checkBoxes->add(name, value, &EditorAction::SetCloneTiles)` for a `EditorAction (*)(const bool&)` once EditorAction is a union enum class (2026-11-17)
-union enum Action : u8
+union enum class Action : u8
 {
   {
     {Nothing, void},

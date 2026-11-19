@@ -27,25 +27,25 @@ union enum Action : u16
 
   Action(Reader& reader) : tick(u64(reader.read()))
   {
-    std::println("before the body: count ", this == Action::Tag::Count, " ", this[Action::Tag::Count]);
+    std::println("before the body: count ", this == Action::Count, " ", this[Action::Count]);
     if (reader.read() == 1)
-      this[Action::Tag::Text] = "read";
+      this[Action::Text] = "read";
     else
     {
-      this[Action::Tag::Watched] = Tracked(5);
+      this[Action::Watched] = Tracked(5);
       reader.read(); // (throws at the end of the values)
     }
   }
-  Action(int count) : Action(Action::Tag::Count, count) {}
+  Action(int count) : Action(Action::Count, count) {}
 };
 void show(const char* what, const Action& a)
 {
   std::print(std::StringView(what), ": tick ", a.tick, " ");
   switch (a)
   {
-    case Action::Tag::Count: std::println("count ", a[Action::Tag::Count]);
-    case Action::Tag::Text: std::println("text ", a[Action::Tag::Text]);
-    case Action::Tag::Watched: std::println("watched ", a[Action::Tag::Watched].id);
+    case Action::Count: std::println("count ", a[Action::Count]);
+    case Action::Text: std::println("text ", a[Action::Text]);
+    case Action::Watched: std::println("watched ", a[Action::Watched].id);
   }
 }
 int main()

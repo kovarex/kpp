@@ -89,7 +89,7 @@ T inTemplate(T value)
   int count;
   return value + T(count * 2);
 }
-enum Light : u8
+enum class Light : u8
 {
   { Off, On }
   void switchOn() { this = On; }

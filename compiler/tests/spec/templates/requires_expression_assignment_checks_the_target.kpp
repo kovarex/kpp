@@ -1,6 +1,6 @@
 // spec: a requires-expression's assignment is satisfied only when C++ allows it ([expr.ass], [class.copy.assign], [expr.prim.req] 5): not to a const object, a class's (its operator= is no const member) nor an i32's; not to an i32's value (`make<i32>() = v`; a class's value takes it, as its operator= has no ref-qualifier); not from a value of a type the target takes by no implicit conversion (an i32* from an i32, an i32 from an i32*, an enum class from an i32); not through an implicit assignment C++ defines as deleted (a reference member, a const member, a member whose copy assignment is deleted, a declared move constructor), nor a defaulted copy assignment it defines as deleted (a const member), nor the class's own deleted move assignment; and an rvalue of a class whose member's move assignment is deleted beside its copy assignment is assigned, by the implicit copy assignment, as the implicit move assignment C++ defines as deleted is no candidate ([over.match.funcs] 8): `0 0 0 1 0 0 0 0 0 0 0 1 1 0 1 0`, clang's and g++'s (every one was satisfied but the deleted ones of members)
 extern "C" import "stdio.h";
-enum Color
+enum class Color
 {
   Red,
   Green

@@ -19,7 +19,7 @@ struct Counted
   std::String name;
 };
 
-union enum Action : u8
+union enum class Action : u8
 {
   { {Nothing, void}, {Move, Pos}, {Jump, Pos}, {Say, std::String}, {Keep, Counted} }
   u32 tick = 0;

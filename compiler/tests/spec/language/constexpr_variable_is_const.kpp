@@ -2,7 +2,7 @@
 // factorio: the game's `static constexpr` members (Direction::COUNT, AlertType::alertTTL, NamedBool's True and False) passed and compared everywhere
 struct Plain
 {
-  enum Enum : uint8_t { False, True };
+  enum class Enum : uint8_t { False, True };
   static constexpr Enum True = Enum::True;
   static constexpr int count = 3;
   static constexpr int limits[] = {1, 2};

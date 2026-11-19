@@ -3,7 +3,7 @@
 extern "C" import "stdio.h";
 const char* f(int) { return "int"; }
 const char* f(unsigned) { return "unsigned"; }
-[[c]] enum Wide : char32_t { Big = 4000000000u };
+enum Wide : char32_t { Big = 4000000000u };
 static_assert(Big > 0 && -U'a' == 4294967199u);
 
 int main()

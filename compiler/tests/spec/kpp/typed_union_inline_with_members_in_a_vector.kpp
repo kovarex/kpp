@@ -40,25 +40,25 @@ int main()
   static_assert(sizeof(Action) == 128 && sizeof(Holder<Walk>) == 24 && sizeof(Holder<Blueprint>) == 16);
   std::println(sizeof(Action), " ", sizeof(Holder<double>), " ", sizeof(Holder<Walk>), " ", sizeof(Holder<Blueprint>));
   {
-    Holder<Blueprint> h(Holder<Blueprint>::Tag::Value, 4);
+    Holder<Blueprint> h(Holder<Blueprint>::Value, 4);
     Holder<Blueprint> other = h;
-    std::println("holder ", other[Holder<Blueprint>::Tag::Value].tracked.id, " live ", live);
+    std::println("holder ", other[Holder<Blueprint>::Value].tracked.id, " live ", live);
   }
   {
     std::Vector<Action> actions;
     for (int i = 0; i < 6; ++i)
     {
-      Action a = i % 2 ? Action(Action::Tag::SetupBlueprint, i) : Action(Action::Tag::StartWalking, Walk{double(i), 1});
+      Action a = i % 2 ? Action(Action::SetupBlueprint, i) : Action(Action::StartWalking, Walk{double(i), 1});
       a.updateTick = u64(i * 10);
       actions.push_back(a);
     }
     std::Vector<Action> copy = actions;
-    copy[1][Action::Tag::SetupBlueprint].tracked.id = 100;
-    std::println("live ", live, " copy ", copy[1][Action::Tag::SetupBlueprint].tracked.id, " original ", actions[1][Action::Tag::SetupBlueprint].tracked.id,
+    copy[1][Action::SetupBlueprint].tracked.id = 100;
+    std::println("live ", live, " copy ", copy[1][Action::SetupBlueprint].tracked.id, " original ", actions[1][Action::SetupBlueprint].tracked.id,
                  " tick ", copy[5].updateTick);
     Action moved = std::move(copy[3]);
-    copy[3][Action::Tag::SetupBlueprint] = Blueprint(33);
-    std::println("refilled ", copy[3][Action::Tag::SetupBlueprint].tracked.id, " moved ", moved[Action::Tag::SetupBlueprint].tracked.id, " live ", live);
+    copy[3][Action::SetupBlueprint] = Blueprint(33);
+    std::println("refilled ", copy[3][Action::SetupBlueprint].tracked.id, " moved ", moved[Action::SetupBlueprint].tracked.id, " live ", live);
   }
   std::println("live ", live);
   return 0;

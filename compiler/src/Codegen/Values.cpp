@@ -189,7 +189,7 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     if (!sameEnum && ut->kind == TyKind::Enum && (uf->kind == TyKind::Enum || number(uf)))
       fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the enumeration " + types.toString(to, &symbols) + " without a cast");
     if (!sameEnum && uf->kind == TyKind::Enum && scoped(uf) && number(ut))
-      fail(at, "a value of the enum " + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
+      fail(at, "a value of the enum class " + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
   }
   // (`enum class E : bool`: converts as a bool does, `(E)2` to true, and reads as 0 or 1, never -1.)
   auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? (enumUnderlying(t)->kind == TyKind::Bool ? TyKind::Bool : TyKind::Int) : t->kind; };

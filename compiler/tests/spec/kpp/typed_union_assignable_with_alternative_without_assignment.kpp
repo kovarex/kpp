@@ -20,25 +20,25 @@ union enum Action : u16
   Action() {}
   Action(Action::Tag tag, int value, bool read)
   {
-    if (tag == Action::Tag::Count)
-      this[Action::Tag::Count] = value;
+    if (tag == Action::Count)
+      this[Action::Count] = value;
     else
-      this[Action::Tag::Cargo] = Destination(read ? value : 0);
+      this[Action::Cargo] = Destination(read ? value : 0);
   }
 };
 static_assert(std::isMoveAssignable<Action> && std::isCopyAssignable<Action>);
 static_assert(!std::isCopyAssignable<Fixed>);
 int main()
 {
-  Action a(Action::Tag::Pinned, 4);
-  Action b(Action::Tag::Pinned, 9);
+  Action a(Action::Pinned, 4);
+  Action b(Action::Pinned, 9);
   a = b;
-  Action c(Action::Tag::Count, 1);
+  Action c(Action::Count, 1);
   c = std::move(b);
-  Action::Tag read = Action::Tag::Cargo;
+  Action::Tag read = Action::Cargo;
   Action d(read, 6, true);
   Action e(Action::Tag(0), 2, true);
   d = Action(read, 7, true);
-  std::println(a[Action::Tag::Pinned].value, " ", c[Action::Tag::Pinned].value, " ", d[Action::Tag::Cargo].where, " ", e[Action::Tag::Count]);
+  std::println(a[Action::Pinned].value, " ", c[Action::Pinned].value, " ", d[Action::Cargo].where, " ", e[Action::Count]);
   return 0;
 }

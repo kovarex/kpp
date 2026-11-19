@@ -2,7 +2,7 @@
 // factorio: GraphicsSettings::determinePreset's `using Graphics::IntelGPUArchitecture;` before `IntelGPUArchitecture intelGPUArch = ...`
 namespace Graphics
 {
-  enum Architecture
+  enum class Architecture
   {
     Unknown = 0,
     Legacy = 1,

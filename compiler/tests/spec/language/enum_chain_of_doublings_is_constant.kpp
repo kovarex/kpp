@@ -1,6 +1,6 @@
 // spec: an enum whose enumerators each double the one before (31 of them, C's flag pattern) is evaluated in steps proportional to its enumerators: its last one, and another enumerator of the enum used as an array's bound, are constants
 // factorio: trio (converted as C): trio.c's anonymous enum, FLAGS_SPACE = 2 * FLAGS_STICKY ... FLAGS_FIXED_SIZE (28 of them), then MAX_PARAMETERS = 64, the bound of its arrays
-[[c]] enum
+enum
 {
   F0 = 1,
   F1 = 2 * F0,

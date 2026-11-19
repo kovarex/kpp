@@ -2,7 +2,7 @@
 // factorio: generic lambdas passed to algorithm templates (std::sort, forEach) whose bodies use the enclosing namespace's operators
 namespace Flags
 {
-  enum Bits : int { None = 0, A = 1, B = 2 };
+  enum class Bits : int { None = 0, A = 1, B = 2 };
 }
 namespace Shapes
 {

@@ -22,8 +22,8 @@ int main()
   U a = std::String("hello, a string long enough for the heap");
   U& alias = a;
   a = alias;
-  std::println(a[U::Tag::Text]);
-  U boom(U::Tag::N, "boom");
+  std::println(a[U::Text]);
+  U boom(U::N, "boom");
   U b = 5;
   try
   {
@@ -34,10 +34,10 @@ int main()
     std::println("threw");
   }
   U c = 7;
-  std::println(b == c, " ", c == b, " ", b < c, " ", c < b, " ", b == U::Tag::Int, " ", int(c.tag()));
+  std::println(b == c, " ", c == b, " ", b < c, " ", c < b, " ", b == U::Int, " ", int(c.tag()));
   U d = b;
   std::println(b == d, " ", d < c, " ", d <= b);
   b = 9;
-  std::println(b[U::Tag::Int], " ", b == c, " ", c < b);
+  std::println(b[U::Int], " ", b == c, " ", c < b);
   return 0;
 }

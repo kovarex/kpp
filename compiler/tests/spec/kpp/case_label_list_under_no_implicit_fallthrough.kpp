@@ -1,6 +1,6 @@
 // spec: under --no-implicit-fallthrough `case A, B, C:` is one label, its group the statements after it, which its values share (where labels side by side are cases of their own: kpp/no_implicit_fallthrough_labels_side_by_side_are_two_cases); the group breaks at its end, and `fallthrough;` after a list's statements runs on into the next group; a kpp enum's exhaustive switch through lists; the evaluator alike (kovarex, 2026-11-08; kpp/case_label_list has it without the flag)
 // kpp: --no-implicit-fallthrough
-enum Direction : uint8_t
+enum class Direction : uint8_t
 {
   { North, East, South, West }
 };

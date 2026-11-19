@@ -1,12 +1,12 @@
 // spec: an operator on an enumeration operand calls the operator function declared for it ([over.match.oper]: the non-member candidates of an enum operand), unary (`!`, `~`, `-`, prefix and postfix `++`, `--`), binary (`+`) and compound assignments (`|=`) alike, at run time and at compile time; the built-in operator only where none is declared. clang gives `true 2 101 0 30 3 1000 7` for both lines
 // found by thread D (2026-11-05): the unary ones were the built-in operator at run time and at compile time (`false -2 -1 4 34 -1 1000`), and the interpreter took the built-in `+` and `|=` too (3, 3); the game's PathFindFlags and TargeterFlags declare an operator! that agrees with the built-in one
-enum Flags : unsigned { None = 0, A = 1, B = 2, All = 3 };
+enum class Flags : unsigned { None = 0, A = 1, B = 2, All = 3 };
 constexpr bool operator!(Flags f) { return f == Flags::All; }
 constexpr Flags operator~(Flags f) { return Flags(~unsigned(f) & 3u); }
-[[c]] enum Plain { P0, P1, P2 };
+enum Plain { P0, P1, P2 };
 constexpr int operator-(Plain p) { return 100 + int(p); }
 constexpr int operator+([[maybe_unused]] Plain a, [[maybe_unused]] Plain b) { return 1000; }
-enum Dir { N, E, S, W };
+enum class Dir { N, E, S, W };
 constexpr Dir& operator++(Dir& d)
 {
   d = d == Dir::W ? Dir::N : Dir(int(d) + 1);

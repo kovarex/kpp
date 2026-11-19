@@ -3,7 +3,7 @@
 // error: end_of_a_value_returning_function_is_error.kpp:21: error: control can reach the end of colorCode, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
 // error: end_of_a_value_returning_function_is_error.kpp:30: error: control can reach the end of search, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
 // error: end_of_a_value_returning_function_is_error.kpp:39: error: control can reach the end of breaksOut, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
-enum Color { Red, Green, Blue };
+enum class Color { Red, Green, Blue };
 int half(int x)
 {
   if (x > 0)

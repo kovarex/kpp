@@ -2,7 +2,7 @@
 // class's own default constructor or operator= takes the compiler's (kovarex 2026-11-17): `Name()` for a void
 // alternative, a function of one parameter pack for one with a value. Any other member of that name is an overload
 // beside the creator: InputAction's `SetCircuitModeOfOperation(EnumType mode, bool value)` calls the creator.
-union enum Action : u8
+union enum class Action : u8
 {
   { {Move, int}, {Stop, void}, {Jump, int}, {Turn, int}, {Wait, void} }
 

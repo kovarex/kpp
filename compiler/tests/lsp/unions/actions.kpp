@@ -1,5 +1,5 @@
 // A union enum class's creators build its alternatives' classes (tests\lsp\unions.jsonl).
-enum Browsing : u8 { No, Yes };
+enum class Browsing : u8 { No, Yes };
 
 namespace Unit
 {
@@ -9,7 +9,7 @@ namespace Unit
     int y = 0;
   };
 
-  union enum Action : u8
+  union enum class Action : u8
   {
     {
       {Nothing, void},

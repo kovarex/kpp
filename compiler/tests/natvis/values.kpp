@@ -70,7 +70,7 @@ struct Stack
 
 struct Heading
 {
-  enum Enum : u8 { North, East, South, West };
+  enum class Enum : u8 { North, East, South, West };
   Enum debugValue() const { return Enum(this.value); }
   u8 value = 0;
 };
@@ -112,7 +112,7 @@ struct Short
 class Sign
 {
 public:
-  enum Enum : u8 { Greater, Less, AtLeast };
+  enum class Enum : u8 { Greater, Less, AtLeast };
   const char* str() const
   {
     switch (this.value)
@@ -261,7 +261,7 @@ using FluidHandle = Handle<Fluid>;
 // makes the type's Handle from the index (getRaw<T>: T::fromIndex, a constructed value) and asks it for its prototype.
 struct Signal
 {
-  enum Type : u8 { Part = 0, Fluid = 1 };
+  enum class Type : u8 { Part = 0, Fluid = 1 };
 
   static const char* typeToStr(Type type)
   {
@@ -424,7 +424,7 @@ struct Chain
 // its value line by debugValue, the kind by its enumerator's name; its union's members left out of the rows.
 struct Tree
 {
-  enum Kind : u8 { Leaf = 0, List = 1 };
+  enum class Kind : u8 { Leaf = 0, List = 1 };
 
   const Tree* begin() const
   {
@@ -531,9 +531,9 @@ int main()
   Point^ point = std::makeUnique<Point>(); // (UniquePtr<Point>, named Point^ in the PDB)
   point->x = 4;
   Property count;
-  count[Property::Tag::Integer] = 12;
+  count[Property::Integer] = 12;
   Property name;
-  name[Property::Tag::Text] = std::String("gear");
+  name[Property::Text] = std::String("gear");
   std::Deque<int> queue;
   for (int i = 0; i < 20; ++i)
     queue.push_back(i);
@@ -594,7 +594,7 @@ int main()
   for (const Link& link : chain)
     total += link.value;
   std::println(numbers.size(), " ", small, " ", view.size(), " ", ages.size(), " ", seen.size(), " ", *some, " ", none.has_value(), " ", point->x, " ",
-          count[Property::Tag::Integer], " ", name[Property::Tag::Text], " ", queue.size(), " ", queue[0], " ", words.size(), " ", stack.front(), " ",
+          count[Property::Integer], " ", name[Property::Text], " ", queue.size(), " ", queue[0], " ", words.size(), " ", stack.front(), " ",
           heights.size(), " ", groups.size(), " ", ids.size(), " ", again.use_count(), " ", weak.expired(), " ", shared->y, " ", total);
   return 0;
 }

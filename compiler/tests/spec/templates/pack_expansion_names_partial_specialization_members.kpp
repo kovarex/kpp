@@ -4,13 +4,13 @@ template<class T> struct Kind
 {
   static int get() { return 1; }
   using Type = char;
-  [[c]] enum { Value = 10 };
+  enum { Value = 10 };
 };
 template<class T> struct Kind<T*>
 {
   static int get() { return 100; }
   using Type = double;
-  [[c]] enum { Value = 1000 };
+  enum { Value = 1000 };
 };
 struct A
 {

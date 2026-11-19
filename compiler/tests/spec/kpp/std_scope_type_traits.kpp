@@ -9,7 +9,7 @@ template<typename T> struct Decay
   static constexpr int mine = 22;
 };
 std::Conditional<true, char, double> small = 'x';
-enum Flags : u16
+enum class Flags : u16
 {
   A
 };

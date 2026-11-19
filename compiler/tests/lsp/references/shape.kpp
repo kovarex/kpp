@@ -20,7 +20,7 @@ class Shape : public Listener
 {
 public:
   using Confirm = Named<class ConfirmTag>;
-  enum Kind { Round, Flat };
+  enum class Kind { Round, Flat };
 
   Shape(i32 size) : Listener(size), size(size) {}
   i32 area() const { return this.size * this.size; }

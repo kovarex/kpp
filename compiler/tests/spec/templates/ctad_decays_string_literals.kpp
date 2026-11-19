@@ -1,7 +1,7 @@
 // spec: class template argument deduction takes each value as a by-value argument where the member or guide parameter is no reference, so a string literal decays to const char*: an aggregate's `T items[N]` (std::array's guide) and Pair's guide (std::pair's), where a constructor taking `const A&` alone would make A the literal's array (`relevancy downloads autonomous 1`)
 // found while making a string literal deduce an array (templates/string_literal_deduces_array_by_reference): `Array{"relevancy", "downloads"}` and `Pair{"autonomous", Kind::A}` deduced arrays of chars
 extern "C" import "stdio.h";
-enum Kind { A, B };
+enum class Kind { A, B };
 int main()
 {
   constexpr auto words = std::Array{"relevancy", "downloads"};

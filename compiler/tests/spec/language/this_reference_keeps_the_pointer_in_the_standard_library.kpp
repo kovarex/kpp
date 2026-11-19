@@ -1,6 +1,6 @@
 // spec: --this-reference changes `this` in the program's own files only: the standard library, compiled with every program, keeps C++'s pointer until it is converted with the default (design.md 23d), so its classes work beside the program's (`this.` here, `this->` and `*this` there); an enum's methods keep `this` as the value (`5 1`)
 // kpp: --this-reference
-enum Dir
+enum class Dir
 {
   { North, South }
   Dir opposite() const { return this == Dir::North ? Dir::South : Dir::North; }

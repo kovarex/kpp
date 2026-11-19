@@ -3,7 +3,7 @@
 struct AlertType
 {
   using InternalType = uint8_t;
-  enum Enum : InternalType { A, B };
+  enum class Enum : InternalType { A, B };
 };
 template<class Deserialiser>
 struct Helper

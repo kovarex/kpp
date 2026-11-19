@@ -2,7 +2,7 @@
 // the stdlib's Vector and Deque take their direct paths, which set up no exception guard, where these say nothing throws (K, 2026-11-08)
 extern "C" int printf(const char* format, ...);
 
-enum Color { Red, Green };
+enum class Color { Red, Green };
 constexpr int base = 4;
 int compute() { return 3; }
 int computeNoexcept() noexcept { return 3; }

@@ -1,5 +1,5 @@
 // GlobalScope::runBuild (kpp --run-build): a projectlib-shaped Project, describe() building a String from Vector<String>s.
-enum Configuration { debug, release };
+enum class Configuration { debug, release };
 struct Project
 {
   Configuration configuration = Configuration::debug;

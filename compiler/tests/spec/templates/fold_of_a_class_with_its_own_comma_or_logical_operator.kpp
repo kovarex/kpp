@@ -46,7 +46,7 @@ public:
 };
 
 template<typename... Args> int dotStar(Mem& m, Args... members) { return (... + (m.*members)); }
-enum Color { Red = 1, Green = 2, Blue = 4 };
+enum class Color { Red = 1, Green = 2, Blue = 4 };
 Color operator|(Color a, Color b) { return Color(int(a) * 10 + int(b)); }
 int operator+(Color a, int b) { return int(a) * 10 + b; }
 int operator+(int b, Color a) { return b * 10 + int(a); }

@@ -2,7 +2,7 @@
 // factorio: what the game's ssprintf, Logging and C library calls pass (language/printf_format_must_match_arguments for the mismatches)
 // target: windows (MSVC's %I64u, and %ld as 32 bits: glibc reads %I as a flag and %ld as 64 bits; a Linux snippet comes with Q1, docs/design.md "Targets and hosts")
 extern "C" int printf(const char* format, ...);
-[[c]] enum Kind { First, Second };
+enum Kind { First, Second };
 int main()
 {
   unsigned u = 2;

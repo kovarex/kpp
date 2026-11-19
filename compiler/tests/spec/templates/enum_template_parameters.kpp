@@ -1,5 +1,5 @@
 // spec: enum values as non-type template arguments
-enum Mode { Fast, Safe };
+enum class Mode { Fast, Safe };
 template<Mode M> const char* modeName() { return M == Mode::Fast ? "fast" : "safe"; }
 int main()
 {

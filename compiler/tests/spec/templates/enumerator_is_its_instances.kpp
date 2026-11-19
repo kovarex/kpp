@@ -3,8 +3,8 @@
 extern "C" int printf(const char* format, ...);
 template<int N> struct S
 {
-  [[c]] enum { V = N * 2, W = V + 1 };
-  enum E { A = N, B };
+  enum { V = N * 2, W = V + 1 };
+  enum class E { A = N, B };
   static int inside() { return V; }
   static int scoped() { return (int)E::A; }
   static int pick(E e)
@@ -28,10 +28,10 @@ template<int N> struct S
 };
 template<class T> struct Z
 {
-  [[c]] enum { Size = sizeof(T) };
+  enum { Size = sizeof(T) };
   struct In
   {
-    [[c]] enum { Twice = Size * 2 };
+    enum { Twice = Size * 2 };
     int get() { return Twice; }
   };
 };
@@ -43,7 +43,7 @@ struct Plain : S<7> {};
 template<int N> struct Constant { static constexpr int value = N; };
 template<int N> int local()
 {
-  [[c]] enum { V = N * 3 };
+  enum { V = N * 3 };
   return V;
 }
 constexpr int fromInstance = S<3>::V;

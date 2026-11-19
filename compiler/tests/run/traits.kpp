@@ -2,7 +2,7 @@
 
 struct Base { int x; };
 struct Derived : Base { int y; };
-enum Color : uint8_t { { Red, Green } };
+enum class Color : uint8_t { { Red, Green } };
 
 template<typename T>
 const char* describe()

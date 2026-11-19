@@ -1,6 +1,6 @@
 // spec: Atomic<T> for every size and kind of T: bool and 16-bit values next to plain fields (a store writes only its own bytes), an enum class, double and float (their bits, not a conversion), a small struct, a pointer, compare-exchange, integer and floating-point arithmetic
 // factorio: 53 std::atomic_bool, 15 std::atomic<bool>, 10 std::atomic<float> and <double> (loading progress), atomics of enums (ProcessResult, HeavyMode), of a time point and of pointers
-enum Mode : uint8_t { Off, On, Heavy };
+enum class Mode : uint8_t { Off, On, Heavy };
 struct Pair32 { int a, b; };
 struct Flags
 {

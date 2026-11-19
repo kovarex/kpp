@@ -1,5 +1,5 @@
 // spec: a kpp enum reached through a template parameter: E::values, E::count, value.str()
-enum Dir : uint8_t
+enum class Dir : uint8_t
 {
   { A, B, C }
 };

@@ -439,8 +439,8 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
   // An enum class has no arithmetic of its own (C++'s [expr.arith.conv]: no usual conversions for
   // it): only its overloaded operators, chosen before this.
   if (scopedEnum(l.ty) || scopedEnum(r.ty))
-    fail(at, std::string(punctuatorSpelling(op)) + " on a value of an enum (" + types.toString(l.ty, &symbols) + " " + std::string(punctuatorSpelling(op)) + " " +
-                 types.toString(r.ty, &symbols) + "): an enum converts to a number only by a cast");
+    fail(at, std::string(punctuatorSpelling(op)) + " on a value of an enum class (" + types.toString(l.ty, &symbols) + " " + std::string(punctuatorSpelling(op)) + " " +
+                 types.toString(r.ty, &symbols) + "): an enum class converts to a number only by a cast");
   const Ty* ct = op == P::Shl || op == P::Shr ? promoted(l.ty) : commonArithmetic(l.ty, r.ty);
   {
     bool outer = operandConversion;
@@ -584,8 +584,8 @@ auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
   // An enum class compares with its own type only (C++: no usual conversions for it).
   if ((scopedEnum(l.ty) || scopedEnum(r.ty)) && !(l.ty->kind == TyKind::Enum && r.ty->kind == TyKind::Enum &&
                                                   types.unqualified(l.ty)->decl == types.unqualified(r.ty)->decl))
-    fail(at, "a comparison of a value of an enum with another type (" + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) +
-                 "): an enum converts to a number only by a cast");
+    fail(at, "a comparison of a value of an enum class with another type (" + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) +
+                 "): an enum class converts to a number only by a cast");
   const Ty* ct = (l.ty->kind == TyKind::Bool && r.ty->kind == TyKind::Bool) ? types.boolType() : commonArithmetic(l.ty, r.ty);
   {
     bool outer = operandConversion;

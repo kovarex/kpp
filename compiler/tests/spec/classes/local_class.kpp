@@ -21,7 +21,7 @@ int countPairs(int a, int b)
 
 int main()
 {
-  enum Color { Red, Green };
+  enum class Color { Red, Green };
   struct Point { int x = 1; int y = 2; Color c = Color::Green; };
   Point p;
   Point q{5, 6, Color::Red};

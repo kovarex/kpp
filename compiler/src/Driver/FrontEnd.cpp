@@ -470,6 +470,7 @@ void runResolve(Build& build)
   setThisReference(options.thisReference);
   setExplicitByDefault(options.convertDir.empty()); // (design.md "Explicit by default"; the C++ a conversion reads converts as C++)
   setThisReferenceWarnings(options.thisReferenceWarnings);
+  setPlainEnumWarnings(options.plainEnumWarnings);
   setNoImplicitFallthrough(options.convertDir.empty()); // (design.md "No implicit fallthrough"; the C++ a conversion reads is C++)
   if (options.convertDir.empty())
     global.enableAccessErrors(); // (not the C++ a conversion reads: its friends, its quirks)

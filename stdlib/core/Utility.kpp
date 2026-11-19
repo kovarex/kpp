@@ -622,7 +622,7 @@ public:
 
 // The byte order of scalar types (std::endian): every target kpp builds for (x64 Windows) is
 // little-endian, so native is little.
-enum Endian
+enum class Endian
 {
   little = 0,
   big = 1,

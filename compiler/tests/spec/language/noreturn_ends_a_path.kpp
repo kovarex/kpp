@@ -13,8 +13,8 @@ struct Checker
   [[noreturn]]
   static void rejectAny(T value) { throw Failure{int(value) + 300}; }
 };
-enum Color { Red, Green, Blue };
-enum Heading : u8
+enum class Color { Red, Green, Blue };
+enum class Heading : u8
 {
   { North, East, South, West }
   static constexpr Heading Nowhere = Heading(16);

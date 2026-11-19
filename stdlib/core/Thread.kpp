@@ -664,7 +664,7 @@ private:
 };
 
 // Whether a timed wait returned because its time ran out (std::cv_status).
-enum CvStatus { no_timeout, timeout };
+enum class CvStatus { no_timeout, timeout };
 
 // Waits of threads for a condition other threads make true (std::condition_variable), always
 // with the predicate checked again under the lock: a wait may return without a notify (a spurious
@@ -741,7 +741,7 @@ private:
 // How an atomic operation orders the memory accesses around it (std::memory_order). Every Atomic
 // operation is sequentially consistent, the strongest order, whichever is asked: each order is
 // accepted where C++ takes one and gives at least what it promises.
-enum MemoryOrder
+enum class MemoryOrder
 {
   relaxed,
   consume,

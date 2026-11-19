@@ -22,6 +22,6 @@ int main()
   std::Vector<Shape> shapes;
   shapes.emplace_back(s);
   shapes.emplace_back(3);
-  std::println(a == Shape::Tag::Box, " ", b[Circle], " ", h.shape[Box].side, " ", shapes[0] == Shape::Tag::Box, " ", shapes[1][Circle]);
+  std::println(a == Shape::Box, " ", b[Circle], " ", h.shape[Box].side, " ", shapes[0] == Shape::Box, " ", shapes[1][Circle]);
   return 0;
 }

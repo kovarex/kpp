@@ -42,7 +42,7 @@ namespace re2
 class RE2
 {
 public:
-  [[c]] enum CannedOptions
+  enum CannedOptions
   {
     DefaultOptions = 0,
     Latin1 = 1,
@@ -50,7 +50,7 @@ public:
     Quiet = 3,
   };
 
-  [[c]] enum Anchor
+  enum Anchor
   {
     UNANCHORED = 0,
     ANCHOR_START = 1,

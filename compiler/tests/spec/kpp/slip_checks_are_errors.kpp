@@ -9,7 +9,7 @@
 // error: slip_checks_are_errors.kpp:44: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
 // error: slip_checks_are_errors.kpp:45: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
 // error: slip_checks_are_errors.kpp:46: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
-enum Color { Red, Green, Blue, Alpha };
+enum class Color { Red, Green, Blue, Alpha };
 int* find(int* p) { return p; }
 int conditions(int x)
 {

@@ -1,6 +1,6 @@
 // spec: an explicit template argument picks the overloads whose parameter is of its kind: a type for `template<class Expression>`, a constant for `template<Mode M>`
 // found in the game's NoiseExpressionParser: `NamedFunction::create<Abs>({"value"})` next to `template<VoronoiType TYPE> create`, which tied with it and took whichever came first
-enum Mode { Cell, Distance };
+enum class Mode { Cell, Distance };
 struct Abs {};
 
 struct Fn

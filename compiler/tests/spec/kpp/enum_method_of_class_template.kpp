@@ -2,7 +2,7 @@
 extern "C" int printf(const char* format, ...);
 template<class T> struct S
 {
-  enum Dir : T
+  enum class Dir : T
   {
     { north = 5, east, south = 300, wide = sizeof(T) }
     bool isNorth() const { return this == north; }

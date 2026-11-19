@@ -4,7 +4,7 @@ template<class Tag>
 class Flag
 {
 public:
-  enum Enum : uint8_t { False, True };
+  enum class Enum : uint8_t { False, True };
   static constexpr Enum True = Enum::True;
   static constexpr Enum False = Enum::False;
   constexpr Flag() = default;

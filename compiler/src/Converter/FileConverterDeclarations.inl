@@ -815,7 +815,7 @@
         }
         if (chosen)
         {
-          replace(toks[first].offset, endOffset(end - 1) - toks[first].offset, info.qualified + "::Tag::" + chosen->name);
+          replace(toks[first].offset, endOffset(end - 1) - toks[first].offset, info.qualified + "::" + chosen->name);
           counts.add("std::variant constructions in an alternative written U(U::Tag, ...)");
         }
         return;
@@ -839,7 +839,7 @@
         return;
       // In place of the call's `(`: an insert at the argument would be taken by the argument's own
       // rewrite starting there (`std::nullopt`).
-      replace(toks[open].offset, toks[open].length, "(" + info.qualified + "::Tag::" + chosen->name + ", ");
+      replace(toks[open].offset, toks[open].length, "(" + info.qualified + "::" + chosen->name + ", ");
       counts.add("std::variant converting constructions written U(U::Tag, value)");
     }
 
