@@ -6320,6 +6320,14 @@ and before a body's `{` it keeps that brace on its own line under `braces = end-
   5. Class template argument deduction by copy (`Box b = 5;`) takes marked constructors only, as C++'s explicit guide is
      no candidate there; written guides are as in C++.
   6. Inherited constructors keep their base's mark; a copy or move constructor is never a conversion.
+  7. An aggregate's members are copy-initialised from its values, a parenthesised list as a braced one (C++'s
+     [dcl.init.general] 16.6.2.2): `Target t(source)`, `Target{source}`, `Target t = {source, 1}`, `new Target{source}`
+     and `emplace_back(source)` take only a marked constructor or conversion operator of the member's type (2026-11-19:
+     until then none of these was checked, so the game's Commandable::BadTarget, its Deserialiser constructor removed,
+     was built by `emplace_back(input)` through Optional's unmarked `Optional(MapDeserialiser&)`, its tick left 0, a
+     silent wrong answer; clang rejects the same C++). The game's PipelineBindingStages(Enum), used so 315 times in
+     PipelineStateObject's binding lists, is marked `implicit` for it. Spec
+     classes/aggregate_member_takes_no_explicit_constructor_is_error.
   The order: the counts and the marks first (the converter marks the game, C; the stdlib's `implicit(cond)`s and
   Atomic's `operator T`), then the flip with its errors behind a flag, then the flag as the default, the headline
   staying 0. Built: `implicit(cond)` (kept as the explicit condition `!(cond)`), and `implicit` twice or beside

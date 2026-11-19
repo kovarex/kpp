@@ -781,6 +781,7 @@
     // walked where it is written (not a template's instance), and not from a class with a conversion
     // operator (which may make the T the copy constructor takes): codegen still reports those.
     void checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token);
+    void checkAggregateElements(const Ty* t, Span<Expr*> elements, int depth = 0);
     // `new T`, `new T()`, `new (p) T()`, `new T[n]`: T's default constructor, one class t does not have an error, in
     // an instance too (as that instance's), where codegen said it "does not support" it, and inside the noexcept
     // operator, which answered 1 (K's spec language/noexcept_operator_of_a_construction_without_a_constructor_is_error).

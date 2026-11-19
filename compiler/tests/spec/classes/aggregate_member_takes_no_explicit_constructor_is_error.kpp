@@ -1,0 +1,32 @@
+// spec: an aggregate's members are copy-initialised from its arguments, parenthesised as braced ([dcl.init.general] 16.6.2.2):
+// a constructor not marked implicit (explicit by default) or `explicit` builds none of them, as clang rejects `Target t(source);`
+// ("no viable conversion from 'Source' to 'Position'"). Until 2026-11-19 kpp took the constructor, a silent wrong answer: the
+// game's Commandable::BadTarget, its Deserialiser constructor removed, was built by `badTargets.emplace_back(input)` with
+// its position read from the map and its tick left 0, the rest of the map read out of step ("Corrupt map"). design.md "Explicit by default", rule 7
+// error: aggregate_member_takes_no_explicit_constructor_is_error.kpp:27: error: copy-initialising Position from Source by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Position(...) takes it
+// error: aggregate_member_takes_no_explicit_constructor_is_error.kpp:28: error: copy-initialising Position from Source by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Position(...) takes it
+// error: aggregate_member_takes_no_explicit_constructor_is_error.kpp:29: error: copy-initialising Position from Source by its constructor, which converts only when marked implicit (design.md "Explicit by default"): Position(...) takes it
+struct Source
+{
+  int value = 5;
+};
+struct Position
+{
+  Position() {}
+  Position(Source& source) : x(source.value) {}
+  int x = 0;
+};
+struct Target
+{
+  Position position;
+  int tick;
+};
+int main()
+{
+  Source source;
+  Target t(source);
+  Target u{source};
+  Target v = {source, 1};
+  Target w(Position(source), 2); // (an explicit construction, then a copy: fine)
+  return t.position.x + u.tick + v.tick + w.tick;
+}

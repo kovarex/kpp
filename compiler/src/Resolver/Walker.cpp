@@ -5401,7 +5401,10 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
   std::vector<const Ty*> inherited;
   impl.inheritedConstructorSources(def, c, inherited, 0);
   if (!constructors && inherited.empty())
-    return; // an aggregate: its members take the arguments
+  {
+    checkAggregateElements(c, args); // an aggregate: its members take the arguments
+    return;
+  }
   if (argTypes.size() == 1)
   {
     // A copy or move from the class or a class derived from it: its implicit copy or move
@@ -5476,6 +5479,85 @@ auto GlobalScope::Impl::Walker::checkImplicitAssignmentVolatile(const Ty* l, con
   if (const Ty* r = rhs ? types.stripRef(rhs) : nullptr; r && r->isVolatile && types.unqualified(r) == types.unqualified(l))
     reportCheck(token, "assignment from a volatile object (" + types.toString(r, &impl.symbols) + "): the implicit assignment operator of " +
                            types.toString(types.unqualified(l), &impl.symbols) + " takes none ([class.copy.assign])");
+}
+
+// An aggregate's bases and members are copy-initialised from its elements in order, a parenthesised list as a braced one
+// ([dcl.init.general] 16.6.2.2, [dcl.init.aggr] 4.2), so a constructor or conversion operator that is explicit (by
+// default, not marked implicit) makes none of them (kovarex 2026-11-19: Commandable::BadTarget, built by
+// `emplace_back(input)` with its position read from the map deserialiser through Optional's explicit constructor and its
+// tick left 0, was a silent wrong answer; clang: "no viable conversion"). A brace list element is checked against its
+// member the same way; checking stops at an element that may begin a brace elision (a member that is an aggregate or an
+// array, given no list of its own). A copy or move of the aggregate itself is its own constructor's.
+auto GlobalScope::Impl::Walker::checkAggregateElements(const Ty* t, Span<Expr*> elements, int depth) -> void
+{
+  if (probing || !file || file->isImported || inGenericTemplate() || !t || !t->isKnown() || types.isDependent(t) || depth > 16 || elements.empty())
+    return;
+  const Ty* c = types.unqualified(types.stripRef(t));
+  if (c->kind != TyKind::Class || c->isBraceList() || Impl::lambdaOf(c) || Impl::mentionsUnknown(c) || impl.isInitializerList(c))
+    return;
+  ClassDecl* def = impl.classDefinition(c);
+  if (!def || def->isTypedUnion || def->isClosure)
+    return;
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+      return; // (no aggregate: its constructors take the elements)
+  std::vector<const Ty*> inherited;
+  impl.inheritedConstructorSources(def, c, inherited, 0);
+  if (!inherited.empty())
+    return;
+  auto typeOf = [&](Expr* e) -> const Ty*
+  {
+    return e && e->kind != NodeKind::BraceInitExpr && e->ty && e->ty->isKnown() && !types.isDependent(e->ty) && !Impl::mentionsUnknown(e->ty) &&
+               e->ty->kind != TyKind::Pack
+             ? argumentType(e, e->ty, types)
+             : nullptr;
+  };
+  if (elements.size() == 1)
+    if (const Ty* a = elements[0] && elements[0]->kind != NodeKind::BraceInitExpr && argTypesOf(elements).size() == 1 ? argTypesOf(elements)[0] : nullptr)
+      if (const Ty* u = types.unqualified(types.stripRef(a)); u == c || (u->kind == TyKind::Class && impl.isBaseClass(c, u)))
+        return; // (a copy or move)
+  std::vector<const Ty*> parts;
+  if (!impl.directBases(c, def, parts) || !impl.fieldTypes(c, def, parts))
+    return;
+  if (def->keyword == Kw::union_ && parts.size() > 1)
+    parts.resize(1); // (a union's first member: the one a list initializes)
+  // The elements' types, a pack expansion's by its elements (`T(forward<Args>(args)...)` in an instance: emplace_back's).
+  bool lists = false;
+  for (Expr* e : elements)
+    lists = lists || (e && e->kind == NodeKind::BraceInitExpr);
+  std::vector<const Ty*> expanded = lists ? std::vector<const Ty*>() : argTypesOf(elements);
+  size_t count = lists ? elements.size() : expanded.size();
+  for (size_t i = 0; i < count && i < parts.size(); ++i)
+  {
+    Expr* e = elements[std::min(i, size_t(elements.size() - 1))];
+    const Ty* part = parts[i];
+    if (!e || !part || !part->isKnown() || types.isDependent(part))
+      return;
+    if (lists && e->kind == NodeKind::BraceInitExpr)
+    {
+      auto* list = static_cast<BraceInitExpr*>(e);
+      if (list->designators.empty() && !list->text)
+        checkAggregateElements(part, list->args, depth + 1);
+      continue;
+    }
+    const Ty* a = lists ? typeOf(e) : expanded[i];
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a))
+      return;
+    const Ty* p = types.unqualified(types.stripRef(part));
+    const Ty* u = types.unqualified(types.stripRef(a));
+    if (p->kind == TyKind::Array)
+      return; // (a brace elision may begin here)
+    if (p->kind == TyKind::Class && p != u && !(u->kind == TyKind::Class && impl.isBaseClass(p, u)))
+    {
+      bool aggregate = true;
+      if (ClassDecl* pd = impl.classDefinition(p))
+        for (Decl* m : membersRead(pd))
+          aggregate = aggregate && !(m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+      if (aggregate)
+        return; // (an aggregate member given no list of its own: a brace elision may begin here)
+    }
+    checkExplicitCopy(a, part, e->token, e);
+  }
 }
 
 auto GlobalScope::Impl::Walker::checkExplicitCopy(const Ty* from, const Ty* to, uint32_t token, const Expr* source) -> void
@@ -5706,6 +5788,8 @@ auto GlobalScope::Impl::Walker::checkSwitchOnClass(SwitchStmt* w) -> void
 
 auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty* to) -> void
 {
+  if (b && b->designators.empty() && !b->text)
+    checkAggregateElements(to, b->args); // (`Target t = {source};`: an aggregate's members copy-initialised)
   // Explicit by default, a list of two or more values takes an unmarked constructor (`return {x, y};`,
   // `Color c = {1, 0, 0};`), and `{a}` an implicit one, as `= a` does (design.md "Explicit by default", rule 1);
   // `{}` any default one (rule 2); in template code too (reportExplicitError).
@@ -11538,6 +11622,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         packListText(static_cast<BraceInitExpr*>(v->init)->args, declared, v->init->token);
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
+      if (v->init && declared && !impl.containsAuto(declared) && v->bracedInit && v->init->kind == NodeKind::BraceInitExpr &&
+          static_cast<BraceInitExpr*>(v->init)->designators.empty() && !static_cast<BraceInitExpr*>(v->init)->text)
+        checkAggregateElements(declared, static_cast<BraceInitExpr*>(v->init)->args); // `Target t{source};`
       if (v->init && declared && declared->kind == TyKind::Array && v->init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(v->init)->braced)
         checkParenthesizedArray(static_cast<FunctionalCastExpr*>(v->init)->args, declared, v->init->token); // `int a[3](1, 2)` (C++20)
       // `int x{1.5};`, `char c = {300};`, `int a[2] = {1, 2.5};`: a brace list narrowing an element.
@@ -12984,6 +13071,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         bindOverloadSetsOfConstruction(t, n->args);
       if (impl.holdsText(t) && !inGenericTemplate())
         reportTextError(n->token, impl.isTextClosure(t) ? "a lambda capturing a Text cannot be stored (design.md 14)" : textStored("allocated"));
+      if (n->braced && !array)
+        checkAggregateElements(t, n->args.size() == 1 && n->args[0] && n->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(n->args[0])->args
+                                                                                                                  : n->args); // `new Target{source}`
       if (!n->braced && array && !n->args.empty())
         checkParenthesizedArray(n->args, wholeArray, n->token); // `new int[3](8, 9)` (C++20)
       else if (!n->braced)
@@ -13259,6 +13349,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         }
         bindOverloadSetsOfConstruction(t, args);
       }
+      if (c->braced)
+        checkAggregateElements(t, c->args.size() == 1 && c->args[0] && c->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(c->args[0])->args
+                                                                                                                  : c->args); // `Target{source}`
       if (!c->braced)
       {
         checkConstruction(t, c->args, c->token);
