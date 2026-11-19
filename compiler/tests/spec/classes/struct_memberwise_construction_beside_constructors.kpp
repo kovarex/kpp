@@ -62,7 +62,7 @@ struct Sealed
   int x;
   int y;
 };
-union enum class Action
+union enum Action
 {
   { {Load, Payload}, {Nothing, void} }
 };

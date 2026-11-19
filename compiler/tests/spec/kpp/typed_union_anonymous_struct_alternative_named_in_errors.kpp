@@ -1,7 +1,7 @@
 // spec: an anonymous struct alternative's type, which has no name to write, is shown in a message as the union's
 // alternative, `Action::Close` (kovarex 2026-11-18, option 1A). design.md 8.5
 // error: typed_union_anonymous_struct_alternative_named_in_errors.kpp:11: error: a class (Action::Close) does not convert to int32: it has no implicit conversion operator to a scalar
-union enum class Action : u8
+union enum Action : u8
 {
   { {Close, struct { int a; }} }
 };

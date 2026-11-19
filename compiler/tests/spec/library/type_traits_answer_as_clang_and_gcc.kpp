@@ -2,7 +2,7 @@
 // found by thread J's trait battery (n17, 2026-11-06): the stdlib's containers choose memcpy or element copies by these
 extern "C" int printf(const char* format, ...);
 [[c]] enum E { e0 };
-enum C : short { c0 };
+[[c]] enum C : short { c0 };
 struct Empty {};
 struct Pod { int a; float b; };
 struct PodArr { int a[3]; char c; };

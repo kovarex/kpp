@@ -24,7 +24,7 @@ union Raw
   int i;
   float f;
 };
-enum class Color { Red };
+enum Color { Red };
 template<class T>
 int sum(const T& value)
 {
