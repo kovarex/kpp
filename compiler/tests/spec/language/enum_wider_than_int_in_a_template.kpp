@@ -5,7 +5,7 @@ template<long long N> long long wideLocal()
   [[c]] enum L { a = N };
   return (long long)sizeof(L) * 1000 + (long long)(a > 0);
 }
-template<long long N> struct Wide { [[c]] enum { v = N }; enum E { w = N, x = 1 }; static long long get() { return (long long)v + 1; } };
+template<long long N> struct Wide { [[c]] enum { v = N }; [[c]] enum E { w = N, x = 1 }; static long long get() { return (long long)v + 1; } };
 int inConstant[sizeof(Wide<0x100000000ll>::E)];
 int main()
 {
