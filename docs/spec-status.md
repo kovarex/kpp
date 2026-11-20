@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2331 pass, 2 pending, 0 failing, 0 fixed** (2333 snippets, 194.2 s).
+**2332 pass, 2 pending, 0 failing, 0 fixed** (2334 snippets, 193.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1957,6 +1957,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/for_constexpr_switch.kpp` | for constexpr inside a switch, one case per type (design.md 8.2) | pass |  |  |
 | `kpp/for_constexpr_types.kpp` | for constexpr over a list of types | pass |  |  |
 | `kpp/for_constexpr_values.kpp` | for constexpr over a list of constants | pass |  |  |
+| `kpp/has_constructor_trait.kpp` | std::hasConstructor<T, Args...> (kpp's, kovarex 2026-11-20) is true where a constructor T declares, or inherits by `using`, takes Args; false for T's implicit default, copy and move constructors, a struct's member-wise construction, an aggregate, a deleted constructor, an argument whose class converts to T (all of which isConstructible counts), and a type that is no class | pass | DeserialiserHelper's should_construct, so that a struct with no constructor taking the Deserialiser loads field by field though the Deserialiser converts to it (kpp-factorio PR 7) |  |
 | `kpp/implicit_condition.kpp` | `implicit(cond)` (design.md "Explicit by default", Q3: the positive form replacing explicit(cond)): the constructor or conversion operator converts while the condition holds under the instance's arguments, and is explicit while it does not; direct initialization takes it either way | pass |  |  |
 | `kpp/implicit_condition_errors_is_error.kpp` | `implicit(cond)` false is explicit: copy-initialization does not take it; `implicit` written twice, or beside `explicit`, is an error whose fix names the word to remove (design.md 23e) | pass |  |  |
 | `kpp/implicit_condition_of_a_constructor_template_refuses_copy_initialization_is_error.kpp` | a constructor template whose `implicit(cond)` is false for the arguments deduced is explicit there, as one whose condition is on the class's parameters: copy-initialization does not take it (`Box<OnlyExplicit> b = 6;`, as std::optional<E> o = 6 for an explicit E(int)), while isConvertible already says false | pass |  |  |

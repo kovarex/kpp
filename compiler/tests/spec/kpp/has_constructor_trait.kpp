@@ -1,0 +1,41 @@
+// spec: std::hasConstructor<T, Args...> (kpp's, kovarex 2026-11-20) is true where a constructor T declares, or inherits by `using`, takes Args; false for T's implicit default, copy and move constructors, a struct's member-wise construction, an aggregate, a deleted constructor, an argument whose class converts to T (all of which isConstructible counts), and a type that is no class
+// factorio: DeserialiserHelper's should_construct, so that a struct with no constructor taking the Deserialiser loads field by field though the Deserialiser converts to it (kpp-factorio PR 7)
+extern "C" int printf(const char* format, ...);
+struct Reader
+{
+  template<class T> requires (std::isStruct<T>) operator T() { return T(); }
+};
+struct Loaded
+{
+  Loaded() {}
+  Loaded(Reader& input) {}
+  int a = 1;
+};
+struct Plain
+{
+  int a = 1;
+  int b = 2;
+};
+struct Other
+{
+  Other(const char* name) {}
+  Other(int) = delete;
+  int a = 1;
+};
+struct Base
+{
+  Base(Reader& input, int extra) {}
+};
+struct Derived : Base
+{
+  using Base::Base;
+};
+int main()
+{
+  printf("%d%d%d %d%d%d%d %d%d%d %d%d %d%d\n", std::hasConstructor<Loaded, Reader&>, std::hasConstructor<Loaded>, std::hasConstructor<const Loaded&, Reader&>,
+         std::hasConstructor<Plain, Reader&>, std::hasConstructor<Plain>, std::hasConstructor<Plain, int, int>, std::hasConstructor<Plain, const Plain&>,
+         std::hasConstructor<Other, const char*>, std::hasConstructor<Other, int>, std::hasConstructor<Other, Reader&>,
+         std::hasConstructor<Derived, Reader&, int>, std::hasConstructor<Derived, Reader&>,
+         std::hasConstructor<int, int>, std::isConstructible<Plain, Reader&>);
+  return 0;
+}

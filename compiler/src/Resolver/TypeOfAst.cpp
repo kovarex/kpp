@@ -574,6 +574,62 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     return one() && ((one()->kind == TyKind::Int || one()->kind == TyKind::Char || one()->kind == TyKind::Bool) && (one()->isUnsigned || one()->kind == TyKind::Bool));
   if (name == "isFunction") return one() && one()->kind == TyKind::Function;
   if (name == "isTriviallyCopyable") return one() ? triviallyCopyable(one()) : std::nullopt;
+  // The constructors class t declares (deleted ones left out), with those `using Base::Base;` inherits but the base's
+  // copy and move ones; s gains the base's arguments.
+  auto declaredConstructors = [&](const Ty* t, ClassDecl* def, Subst& s, std::vector<FunctionDecl*>& ctors)
+  {
+    for (Decl* m : membersRead(def))
+    {
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
+        ctors.push_back(static_cast<FunctionDecl*>(m));
+      if (m->kind != NodeKind::UsingNameDecl)
+        continue;
+      // `using Vector2::Vector2;`: the base's constructors, but its copy and move ones, are
+      // the class's too, under the base's arguments.
+      const QualifiedName& q = static_cast<UsingNameDecl*>(m)->name;
+      if (q.parts.size() < 2 || q.parts[q.parts.size() - 1].symbol != q.parts[q.parts.size() - 2].symbol)
+        continue;
+      QualifiedName baseName = q;
+      baseName.parts.count -= 1;
+      Lookup bl = lookupQualified(baseName, def->ownScope, nullptr, 0);
+      if (!bl.scope || bl.scope == def->ownScope || !bl.scope->owner || bl.scope->owner->kind != NodeKind::ClassDecl)
+        continue;
+      auto* base = static_cast<ClassDecl*>(bl.scope->owner);
+      for (const Subst::Pair& p : memberSubst(t, bl.scope, 0).pairs)
+        if (!s.find(p.param))
+          s.pairs.push_back(p);
+      for (Decl* bm : membersRead(base))
+        if (bm->kind == NodeKind::FunctionDecl && (bm->flags & DF_Constructor) && !(bm->flags & DF_Delete))
+          if (auto* f = static_cast<FunctionDecl*>(bm); f->params.size() != 1 || selfParameter(f->params[0], base) == 0)
+            ctors.push_back(f);
+    }
+  };
+  if (name == "hasConstructor")
+  {
+    // hasConstructor<T, Args...> (kpp's, kovarex 2026-11-20, for the game's DeserialiserHelper: whether a struct has its own
+    // loading constructor): a constructor class T declares (or inherits by `using`) takes Args, as isConstructible chooses
+    // among them; not T's implicit ones, its member-wise or aggregate construction, nor a conversion operator of an
+    // argument's class giving a T (isConstructible's all). False for a type that is no class.
+    if (a.empty())
+      return false;
+    const Ty* t = types.unqualified(types.stripRef(a[0]));
+    if (!t->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    if (t->kind != TyKind::Class)
+      return false;
+    ClassDecl* def = classDefinition(t);
+    if (!def)
+      return std::nullopt;
+    for (size_t i = 1; i < a.size(); ++i)
+      if (!a[i] || !a[i]->isKnown() || types.isDependent(a[i]))
+        return std::nullopt;
+    std::vector<FunctionDecl*> ctors;
+    Subst s = substFor(t);
+    declaredConstructors(t, def, s, ctors);
+    std::vector<const Ty*> args(a.begin() + 1, a.end());
+    bool ambiguous = false;
+    return !ctors.empty() && (chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr || ambiguous);
+  }
   if (name == "isConstructible")
   {
     // isConstructible<T, Args...>: T has a constructor taking Args (a class without constructors
@@ -617,31 +673,7 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
         return false;
       std::vector<FunctionDecl*> ctors;
       Subst s = substFor(t);
-      for (Decl* m : membersRead(static_cast<ClassDecl*>(def)))
-      {
-        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Delete))
-          ctors.push_back(static_cast<FunctionDecl*>(m));
-        if (m->kind != NodeKind::UsingNameDecl)
-          continue;
-        // `using Vector2::Vector2;`: the base's constructors, but its copy and move ones, are
-        // the class's too, under the base's arguments.
-        const QualifiedName& q = static_cast<UsingNameDecl*>(m)->name;
-        if (q.parts.size() < 2 || q.parts[q.parts.size() - 1].symbol != q.parts[q.parts.size() - 2].symbol)
-          continue;
-        QualifiedName baseName = q;
-        baseName.parts.count -= 1;
-        Lookup bl = lookupQualified(baseName, def->ownScope, nullptr, 0);
-        if (!bl.scope || bl.scope == def->ownScope || !bl.scope->owner || bl.scope->owner->kind != NodeKind::ClassDecl)
-          continue;
-        auto* base = static_cast<ClassDecl*>(bl.scope->owner);
-        for (const Subst::Pair& p : memberSubst(t, bl.scope, 0).pairs)
-          if (!s.find(p.param))
-            s.pairs.push_back(p);
-        for (Decl* bm : membersRead(base))
-          if (bm->kind == NodeKind::FunctionDecl && (bm->flags & DF_Constructor) && !(bm->flags & DF_Delete))
-            if (auto* f = static_cast<FunctionDecl*>(bm); f->params.size() != 1 || selfParameter(f->params[0], base) == 0)
-              ctors.push_back(f);
-      }
+      declaredConstructors(t, static_cast<ClassDecl*>(def), s, ctors);
       if (copy)
         return true;
       // Direct-initialization from a class whose conversion operator (kpp's are explicit, which it takes), own or a base's,
@@ -840,7 +872,7 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
 auto GlobalScope::Impl::isBoolTraitName(uint32_t symbol) -> bool
 {
   std::string_view n = symbols.name(symbol);
-  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isStruct" || n == "isInstanceOf" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
+  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isStruct" || n == "hasConstructor" || n == "isInstanceOf" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
          n == "isNullPointer" || n == "isIntegral" || n == "isFloatingPoint" || n == "isArithmetic" || n == "isSigned" ||
          n == "isUnsigned" || n == "isFunction" || n == "isTriviallyCopyable" || n == "isSame" || n == "isBaseOf" || n == "isConvertible" ||
          n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||

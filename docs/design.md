@@ -3753,6 +3753,16 @@ compiler trait beside isStruct (TypeOfAst.cpp traitValue; traitArgs reads its se
 template template argument is read). C++ has none (std::is_specialization_of is a proposal). Spec
 kpp/is_instance_of_trait.
 
+**hasConstructor (kovarex, 2026-11-20, for the game's loader: "So hasConstructor would be kpp feature, the rest factorio
+logic?").** `std::hasConstructor<T, Args...>` is true when a constructor class T declares, or inherits by `using`, takes
+Args (through const and a reference on T; a deleted one never), chosen among them as isConstructible chooses. Not T's
+implicit default, copy or move constructor, a struct's member-wise construction, an aggregate's, nor an argument whose
+class converts to T, all of which isConstructible counts; false for a type that is no class, not a constant for a
+class without a definition. The game's DeserialiserHelper asks it: a struct's own `(Deserialiser&)` constructor loads
+it, else it is default-constructed and loaded field by field, though the Deserialiser's struct conversion
+(`targetData(input)`) makes every struct constructible from one. A compiler trait beside isStruct. Spec
+kpp/has_constructor_trait.
+
 **As converted (thread C, 2026-11-02).** The converter writes the C++'s rule-breaking structs as
 classes: `class`, then `public:` first so that the members keep their access, and `public` before
 each base written without an access (a class's bases start private). The breaks are A's (a private

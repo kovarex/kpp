@@ -946,6 +946,17 @@ static_assert(twice(4) == 8);
   and a new struct case in the chain took std::Array before its overload.
 - **See:** [design 9, isInstanceOf][dstruct]; spec `kpp/is_instance_of_trait`.
 
+### `std::hasConstructor<T, Args...>` asks whether T declares a constructor taking Args (built)
+
+- **C++:** std::is_constructible only, which also counts the implicit constructors, aggregate
+  initialization and an argument's conversion operator giving a T.
+- **kpp:** `std::hasConstructor<T, Args...>`: a constructor T declares (or inherits by `using`) takes
+  Args; none of isConstructible's other ways, false for a type that is no class.
+- **Why:** kovarex (2026-11-20): the game's Deserialiser converts to any struct (`targetData(input)`),
+  which makes every struct constructible from it; its loader asks whether the struct has a loading
+  constructor of its own, else loads it field by field.
+- **See:** [design 9, hasConstructor][dstruct]; spec `kpp/has_constructor_trait`.
+
 ### Compile-time loops and reflection (built)
 
 - **C++:** recursion over packs, macros, or C++26's reflection.
