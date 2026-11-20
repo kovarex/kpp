@@ -490,8 +490,10 @@ namespace codegen
     bool despiteErrors = false;                          // --keep-going: the IR assembled despite errors
     Target target;                                       // the platform the IR is for (--target)
     // A session kept across errors (generate): the program functions whose emission raised them, by
-    // IR name (emitted again by every later build), and the modules not assembled since they changed.
+    // IR name (emitted again by every later build), the instances too (with how each was emitted: an
+    // error typed into a template's body, kovarex 2026-11-20), and the modules not assembled since they changed.
     std::unordered_map<std::string, FunctionDecl*> erroring;
+    std::unordered_map<std::string, Instantiation> erroringInstances;
     std::vector<bool> unassembled;
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck

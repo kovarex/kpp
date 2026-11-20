@@ -2746,6 +2746,30 @@ void GlobalScope::forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile
   }
 }
 
+bool GlobalScope::instanceStatsPlaceLost(const ResolveStats& total)
+{
+  auto lost = [](const ResolveStats& s)
+  {
+    for (auto& [symbol, where] : s.unresolvedFirst)
+      if (where.token == lostStatsPlace)
+        return true;
+    for (auto& [symbol, where] : s.missingMembersFirst)
+      if (where.token == lostStatsPlace)
+        return true;
+    for (auto& [key, site] : s.why)
+      if (site.token == lostStatsPlace)
+        return true;
+    return false;
+  };
+  if (lost(total))
+    return true;
+  std::lock_guard lock(impl->instanceStatsMutex);
+  for (const Impl::InstanceContribution& c : impl->instanceContributions)
+    if (lost(*c.stats))
+      return true;
+  return false;
+}
+
 ResolveStats GlobalScope::instanceStatsAtResolveEnd()
 {
   std::lock_guard lock(impl->instanceStatsMutex);
@@ -3018,7 +3042,12 @@ bool GlobalScope::recheckInstancesOf(const std::vector<FunctionDecl*>& sources, 
       FileOfLookups walkedFile(f);
       w.runFunctionInstance(r, task); // (the record keeps a new Recheck, the same)
     }
-    if (r->deducedReturn != deducedBefore)
+    // What the body's first return gives is read by the instance's callers only when the function's return type is
+    // `auto` (instantiateFunction's autoReturn, a generic lambda's call operator): one it declares is what they typed,
+    // whatever the body now gives (kovarex, 2026-11-20: an error typed into the game's LuaHelper::pushContainer, an
+    // i32 function whose `return undeclared;` gives no type, made that build and the one after the fix full ones).
+    bool callersRead = rc.lambdaTy || !r->body || (r->body->returnType && Impl::astMentionsAuto(r->body->returnType) && !r->body->trailingReturn);
+    if (callersRead && r->deducedReturn != deducedBefore)
       return why = "an instance of a changed template deduces another return type", false;
   }
   // An instance the old checks asked for and nothing asks for now would not be in a build from scratch.

@@ -544,14 +544,16 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
   kept.grafts.push_back(std::move(c.parsed)); // its arena holds the new bodies
   // The kept instance statistics' places in this file (an instance of a template it declares)
   // move with its tokens (and each instance walk's own, from which the total may be made again);
-  // one in a replaced body cannot be told, and the build is from scratch.
-  bool lost = false;
+  // one in a replaced body has no place in the new text: it is marked lost. It is an instance's of the template whose
+  // body this is, and that instance is checked again and its statistics with it (an unresolved name's place, after an
+  // error typed into a template's body and fixed: kovarex, 2026-11-20, the game's LuaHelper::pushContainer); one left
+  // after the rewalk makes the build one from scratch (incrementalBuild, GlobalScope::instanceStatsPlaceLost).
   auto moved = [&](uint32_t& token)
   {
     if (token < map.size() && map[token] != UINT32_MAX)
       token = map[token];
     else
-      lost = true;
+      token = GlobalScope::lostStatsPlace;
   };
   for (auto& [symbol, where] : kept.instanceStats.unresolvedFirst)
     if (where.file == i)
@@ -563,8 +565,6 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
     if (site.file == &file)
       moved(site.token);
   kept.global->forEachInstanceStatsPlace(uint32_t(i), &file, moved);
-  if (lost)
-    return why = "an instance's statistic names a place in a replaced body", false;
   return true;
 }
 
@@ -1222,6 +1222,12 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
     kept.instantiation.bodies += made.bodies - droppedCounts.bodies;
     kept.instanceStats = global.instanceStatsAtResolveEnd();
     // (codegen drops what it emitted for the old closures itself, rebuildLLVM: not every instance of their templates)
+  }
+  // A statistic's place in a replaced body (graftBodies) that no check again replaced.
+  if (same && global.instanceStatsPlaceLost(kept.instanceStats))
+  {
+    same = false;
+    why = "an instance's statistic names a place in a replaced body";
   }
   if (!same)
   {

@@ -15,6 +15,10 @@ auto codegen::Emitter::error(Node* at, const std::string& message, bool shown) -
   if (!owner.empty() && owner == emittingName && emittingNow.args.empty() && !emittingNow.classTy && emittingNow.depth == 0 &&
       emittingNow.name.empty() && emittingNow.requestedBy.empty() && onDemandNow.name.empty() && !emittingShared)
     erroring.emplace(owner, emittingNow.f);
+  // A template instance's own emission (an item of a level, as rebuildLLVM emits it again): the same, by how it was emitted.
+  else if (!owner.empty() && owner == emittingName && (!emittingNow.args.empty() || emittingNow.classTy) && onDemandNow.name.empty() &&
+           !emittingShared)
+    erroringInstances.emplace(owner, emittingNow);
   else
     unattributedErrors = true;
 }

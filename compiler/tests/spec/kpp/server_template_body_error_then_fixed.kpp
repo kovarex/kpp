@@ -1,0 +1,99 @@
+// spec: a compile server's builds after an error typed into a function template's body whose return type is declared, and after its fix, are what a build from scratch gives (kovarex, 2026-11-20: such an edit of the game's LuaHelper::pushContainer made the error's build and the fix's build from scratch, 13 s each; the server now keeps the program and codegen's session across the error, its instance emitted again by how it was emitted)
+//--- step: the program
+template<typename T>
+int twice(T v)
+{
+  T r = v + v;
+  return r + 1;
+}
+
+int other() { return 3; }
+
+int main()
+{
+  std::println(twice(5), " ", twice(20), " ", other());
+  return 0;
+}
+// expect: 11 41 3
+//--- step: an error typed into the template's body
+template<typename T>
+int twice(T v)
+{
+  T r = v + v;
+  return r + undeclaredInTwice;
+}
+
+int other() { return 3; }
+
+int main()
+{
+  std::println(twice(5), " ", twice(20), " ", other());
+  return 0;
+}
+// error: 'undeclaredInTwice' is not declared
+//--- step: another function edited while the error stays
+template<typename T>
+int twice(T v)
+{
+  T r = v + v;
+  return r + undeclaredInTwice;
+}
+
+int other() { return 4; }
+
+int main()
+{
+  std::println(twice(5), " ", twice(20), " ", other());
+  return 0;
+}
+// error: 'undeclaredInTwice' is not declared
+//--- step: the error fixed
+template<typename T>
+int twice(T v)
+{
+  T r = v + v;
+  return r + 2;
+}
+
+int other() { return 4; }
+
+int main()
+{
+  std::println(twice(5), " ", twice(20), " ", other());
+  return 0;
+}
+// expect: 12 42 4
+//--- step: a call of a function not declared yet
+template<typename T>
+int twice(T v)
+{
+  T r = v + v;
+  return r + later(2);
+}
+
+int other() { return 4; }
+
+int main()
+{
+  std::println(twice(5), " ", twice(20), " ", other());
+  return 0;
+}
+// error: 'later' is not declared
+//--- step: that function declared, the template unchanged
+template<typename T>
+int twice(T v)
+{
+  T r = v + v;
+  return r + later(2);
+}
+
+int later(int v) { return v * 10; }
+
+int other() { return 4; }
+
+int main()
+{
+  std::println(twice(5), " ", twice(20), " ", other());
+  return 0;
+}
+// expect: 30 60 4

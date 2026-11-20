@@ -1213,7 +1213,10 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
                           std::none_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em) { return em->unattributedErrors; });
   if (keptAcrossErrors)
     for (auto& em : emitters)
+    {
       sh.erroring.insert(em->erroring.begin(), em->erroring.end());
+      sh.erroringInstances.insert(em->erroringInstances.begin(), em->erroringInstances.end());
+    }
   bool keepTexts = ((checkRebuild && !failed) || (keep && (!failed || keptAcrossErrors))) && sh.moduleCount > 1;
   gatherProgramFunctions(sh, emitters);
   // Each module's own texts finished, on the emitters' threads: a module's step touches only its own data, and
@@ -1778,7 +1781,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // alone must fail again (an error that goes without a change is one that a mark of something
   // emitted once hid: codegen in full).
   std::vector<std::string> erroredBefore;
-  const bool hadErrors = !sh.erroring.empty();
+  const bool hadErrors = !sh.erroring.empty() || !sh.erroringInstances.empty();
+  // The instances (below, once the level items are gathered: their emission is a level's item, as it was).
+  std::map<std::string, Instantiation> erroredInstances(sh.erroringInstances.begin(), sh.erroringInstances.end());
+  sh.erroringInstances.clear();
   {
     std::unordered_set<const FunctionDecl*> gone(removed.begin(), removed.end());
     std::map<std::string, FunctionDecl*> byName(sh.erroring.begin(), sh.erroring.end());
@@ -2358,6 +2364,31 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         if (Decl* cls = e.global.owningClass(f); cls && cls->kind == NodeKind::ClassDecl && cls->templateParams.empty())
           if (const Ty* classTy = e.canonicalClass(e.types.classType(cls, {}), f); trivialNow(f, {}, classTy))
             madeTrivial.push_back({e.functionName(f, {}, nullptr), nullptr});
+    // The instances whose emission raised the last build's errors (an error typed into a template's body, kovarex 2026-11-20:
+    // the game's LuaHelper::pushContainer): no definition of theirs is kept to emit again, so each is emitted from how it was
+    // emitted then, at its depth. One whose template was removed (or declared in a replaced body), or that is trivial now (a build from scratch
+    // inlines it and may define it nowhere): codegen in full. One for an old lambda's closure goes (its writer's new body
+    // makes what it needs). Emitted again only for its error (its template not changed), it must fail again (erroredBefore).
+    for (auto& [name, inst] : erroredInstances)
+    {
+      if (std::find(removed.begin(), removed.end(), inst.f) != removed.end() || goneDecl(inst.f))
+      {
+        out.declined = "the instance with an error " + name + " is of a template removed (or declared in a replaced body)";
+        return out;
+      }
+      if (forOldClosure(inst) || !owners.insert(name).second)
+        continue;
+      if (!(inst.f->flags & DF_Virtual) && trivialNow(inst.f, inst.args, inst.classTy))
+      {
+        out.declined = "the instance with an error " + name + " is trivial now";
+        return out;
+      }
+      Decl* defined = e.global.definitionOf(inst.f, inst.args);
+      const Decl* written = defined && defined->kind == NodeKind::FunctionDecl ? defined : inst.f;
+      if (!editedOrRechecked.count(written) && !editedOrRechecked.count(inst.f))
+        erroredBefore.push_back(name);
+      holding[inst.depth].push_back(inst);
+    }
     for (const Shared::Definition* d : editedInstances)
     {
       const FunctionDecl* written = writtenOf(*d);
@@ -2597,6 +2628,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     em->failedFunctions.clear();
     em->failedAt.clear();
     em->erroring.clear();
+    em->erroringInstances.clear();
     em->unattributedErrors = false;
     em->hiddenErrors = 0;
   }
@@ -2716,6 +2748,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // it), each of those emitted again only for its last error failing again.
   bool errors = false;
   std::unordered_map<std::string, FunctionDecl*> erroring;
+  std::unordered_map<std::string, Instantiation> erroringInstances;
   for (auto& em : emitters)
     if (!em->errors.empty() || em->unattributedErrors || em->hiddenErrors)
     {
@@ -2726,9 +2759,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         return out;
       }
       erroring.insert(em->erroring.begin(), em->erroring.end());
+      erroringInstances.insert(em->erroringInstances.begin(), em->erroringInstances.end());
     }
   for (const std::string& name : erroredBefore)
-    if (!erroring.count(name))
+    if (!erroring.count(name) && !erroringInstances.count(name))
     {
       out.declined = "the error of " + name + " went without a change to it";
       return out;
@@ -2974,6 +3008,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     which.erase(std::unique(which.begin(), which.end()), which.end());
   }
   sh.erroring = std::move(erroring);
+  sh.erroringInstances = std::move(erroringInstances);
   sh.unassembled.resize(sh.moduleCount);
   if (errors || !assembleModules)
   {

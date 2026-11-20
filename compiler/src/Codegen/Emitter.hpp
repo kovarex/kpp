@@ -181,10 +181,12 @@ namespace codegen
     std::vector<std::string> errors, failedFunctions;
     std::unordered_map<std::string, std::string> failedAt; // failed function's IR name -> "qualified name at file:line"
     // Where its errors came from, for a compile server's session kept across builds with errors
-    // (rebuildLLVM): the program functions (level 0) whose own emission raised them, by IR name, and
-    // whether any came from elsewhere (an instance, a global's constructor, a shared text, a check
-    // after the emission), which a later build cannot emit again on its own.
+    // (rebuildLLVM): the program functions (level 0) whose own emission raised them, by IR name, the
+    // template instances whose own emission did, with how each was emitted (erroringInstances), and
+    // whether any came from elsewhere (a lambda's operator on demand, a global's constructor, a shared
+    // text, a check after the emission), which a later build cannot emit again on its own.
     std::unordered_map<std::string, FunctionDecl*> erroring;
+    std::unordered_map<std::string, Instantiation> erroringInstances;
     bool unattributedErrors = false;
     // The failures not shown (error's shown false: each follows from an error the checker reported):
     // failures all the same, for every decision that asks whether codegen failed (errors holds the

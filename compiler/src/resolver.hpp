@@ -838,6 +838,11 @@ public:
   void resolveAll(size_t count, unsigned threads, const std::function<void(size_t)>& resolveOne);
   // The places in a file each instance walk's own statistics name ("first at"), to move with its tokens.
   void forEachInstanceStatsPlace(uint32_t fileIndex, const ParsedFile* file, const std::function<void(uint32_t& token)>& visit);
+  // The token a compile server's edit gives such a place in a body it replaced (no token of the new text is it): an
+  // instance of the body's template is checked again and its statistics with it, so none is left after that unless
+  // some walk not checked again named it (instanceStatsPlaceLost; the build is then one from scratch).
+  static constexpr uint32_t lostStatsPlace = UINT32_MAX - 1;
+  bool instanceStatsPlaceLost(const ResolveStats& total);
   // The instances' own copies of a file's nodes (bodies, initializers, generic lambdas' operators),
   // with the declaration each was copied from: they index the file's tokens too.
   void forEachInstanceCopy(const ParsedFile& file, const std::function<void(Node* copy, const Decl* source)>& visit);

@@ -74,7 +74,7 @@
     template<typename F>
     bool withoutFailing(F&& f)
     {
-      size_t errorsBefore = errors.size(), erroringBefore = erroring.size();
+      size_t errorsBefore = errors.size(), erroringBefore = erroring.size(), erroringInstancesBefore = erroringInstances.size();
       bool unattributedBefore = unattributedErrors, shownBefore = lastFailureShown;
       std::string failureBefore = lastFailure;
       try
@@ -87,6 +87,8 @@
         errors.resize(errorsBefore);
         if (erroring.size() != erroringBefore)
           erroring.erase(owner);
+        if (erroringInstances.size() != erroringInstancesBefore)
+          erroringInstances.erase(owner);
         unattributedErrors = unattributedBefore;
         lastFailure = std::move(failureBefore);
         lastFailureShown = shownBefore;

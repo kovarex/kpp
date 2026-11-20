@@ -1591,7 +1591,8 @@ Codegen kept its session only after a build without errors. Any error meant code
 and so did the next build: the language server's check took 6 to 13 s to show an error typed
 into a game function, and as long again to clear it. Now a session survives errors that came from
 a program function's own emission (`Emitter::error` records the function; level 0, not an
-instance, an operator on demand, a global's constructor or a shared text). Every later build
+operator on demand, a global's constructor or a shared text; a template's instance since
+2026-11-20, below). Every later build
 emits those functions again, so each error is given again at its current line or goes, and one
 emitted again only for its error must fail again (else codegen in full: an error that went
 without a change is one that a mark of something emitted once hid). Lambda operators marked
@@ -1624,6 +1625,69 @@ end does not build a file with checker errors from the kept program ("the file h
 errors"). The checker keeps its errors as text, not by the walk that found them. A removed
 string literal's only use leaves its definition in its module (the IR is then 120 bytes larger
 than from scratch, and `--verify-incremental` says so). That holds without errors too.
+
+### An error typed into a template's body (2026-11-20)
+
+kovarex: the game's incremental `factorio-test debug` took 13 s where an edit took under 2 s. The
+edit had an error, and two things made a build with an error the slow kind. `--keep-going` (the
+game's debug builds passed it, from its bring-up) assembles the IR despite errors, so codegen keeps
+no session across them: the build with the error and the build after the fix are both codegen in
+full (8.3 and 8.1 s for an error typed into a plain function's body; without the flag 0.5 and 1.1
+s). The game's build.kpp dropped it. The second was an error in a template's body, a special case
+of the server's three ways to follow an edit:
+
+- **A plain function's body** is walked again by itself: nothing else reads it but its callers'
+  code, which codegen emits again when it inlined the body.
+- **A template's body** is not one function but its instances, each a copy of the body walked with
+  its arguments (`recheckInstancesOf`). What a walk of an instance gives other code is more than a
+  plain function gives: the type its first return statement has (an `auto` function's return type,
+  which its callers' walks used), the statistics of the names it could not resolve (each kept with
+  a place in the body), and codegen's emission of it at the depth where a caller asked for it.
+- **Anything else** (a declaration, a class's layout) is followed through what read it, or the
+  build is from scratch.
+
+An error in the body changes each of the three, and each made the build one from scratch, or
+codegen in full:
+
+1. *"an instance of a changed template deduces another return type"*. `return undeclared;` has no
+   type, so the instance's deduced return changed, and callers typed by the old one would be
+   stale. That holds only for an `auto` function; `i32 pushContainer(...)` declares its return
+   type, and its callers never read the deduction (`instantiateFunction` asks the body only for an
+   `auto` one). The comparison is now made only where callers read it: an `auto` return type
+   (not a trailing one) or a generic lambda's call operator.
+2. *"an instance's statistic names a place in a replaced body"* (the build after the fix). The
+   error build kept the unresolved name's place, a token of the body; the fix replaced the body,
+   and its tokens with it, so the place had nowhere to move. Such a place is now marked lost
+   (`GlobalScope::lostStatsPlace`); it belongs to an instance of the changed template, which is
+   checked again and whose statistics are replaced, so none is left after the walks. One that is
+   left (some walk not checked again named it) still makes the build one from scratch
+   (`GlobalScope::instanceStatsPlaceLost`).
+3. *Codegen's "rebuildLLVM declined (an error: (one following from a checker error))"*. A session
+   was kept across an error only from a program function's own emission: the next build emits that
+   function again by its name. An instance's error was "unattributed", as no later build could
+   emit it again on its own: its failed emission left no definition to find it by. `Emitter::error`
+   now records an instance's own emission with how it was emitted (its `Instantiation`: the
+   template, the arguments, the module that asked, the depth; `Shared::erroringInstances`), and
+   the next build emits each again at its depth. One emitted again only for its error (its
+   template unchanged) must fail again, as a program function must. Codegen in full when the
+   template was removed (or declared in a replaced body) or the instance is trivial now (a build
+   from scratch inlines it and may define it nowhere). One made for an old lambda's closure goes.
+
+The game (kpp-factorio kpp be8d40a without `--keep-going`), `kpp factorio-test debug`, the server
+built once, `return 1;` in `LuaHelper::pushContainer` (52 modules of instances) made `return
+undeclaredProbe;`, then restored (`scratch\buildspeed\cycle.ps1`, one round each):
+
+| | before | now |
+|---|---|---|
+| the error typed | 5.7 s (codegen in full) | 3.0 s |
+| the error fixed | 9.8 s (codegen in full: no kept session) | 2.4 s |
+| with `--keep-going`, as the game had it | 13.2 s, 12.9 s (not incremental, then not incremental) | |
+
+`incremental.ps1`'s steps 95 to 102 (built from scratch before, each failing the step): the error
+typed into `twice<T>`, another file edited while it stays, the fix, a return of another type
+(`short`), a call of a function declared nowhere and that function defined in a new file (the
+template unchanged: its instance read the name and is checked again), each the same as from
+scratch (`--verify-incremental`).
 
 ### Codegen's record of the bodies a function holds (2026-10-30)
 
