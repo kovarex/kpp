@@ -729,7 +729,10 @@ namespace
       bool qualifier = at(Kw::const_, 1) || at(Kw::volatile_, 1);
       bool typeAfterQualifier = (atIdent(2) && (atIdent(3) || at(P::Star, 3) || at(P::Amp, 3) || at(P::AndAnd, 3) || at(P::ColonColon, 3) || at(P::Less, 3))) ||
                                 (at(TokenKind::Keyword, 2) && isBuiltinTypeKeyword(Kw(tok(2).id)));
-      if (at(TokenKind::Keyword, 1) && isDeclStartKeyword(Kw(tok(1).id)) && (!qualifier || typeAfterQualifier))
+      // (`UTF32CHAR operator*() const`, Unreal's Utf8Iterator.h: the return type of an operator
+      // function, which a macro before a conversion function, `MACRO operator bool()`, is not)
+      bool operatorFunction = at(Kw::operator_, 1) && at(TokenKind::Punctuator, 2);
+      if (at(TokenKind::Keyword, 1) && isDeclStartKeyword(Kw(tok(1).id)) && (!qualifier || typeAfterQualifier) && !operatorFunction)
       {
         advance();
         return true;
@@ -753,32 +756,33 @@ namespace
       int i = ahead;
       for (;;)
       {
-        int depth = 0;
-        do
+        if (at(P::Less, i))
         {
-          if (at(P::Less, i))
-            ++depth;
-          else if (at(P::Greater, i))
-            --depth;
-          else if (at(P::Shr, i))
-            depth -= 2;
-          else if (at(P::Semi, i) || at(P::LBrace, i) || at(TokenKind::End, i))
+          int depth = 0;
+          do
+          {
+            if (at(P::Less, i))
+              ++depth;
+            else if (at(P::Greater, i))
+              --depth;
+            else if (at(P::Shr, i))
+              depth -= 2;
+            else if (at(P::Semi, i) || at(P::LBrace, i) || at(TokenKind::End, i))
+              return true;
+            ++i;
+          } while (depth > 0);
+          if (depth < 0)
             return true;
-          ++i;
-        } while (depth > 0);
-        if (depth < 0)
-          return true;
+        }
         if (!at(P::ColonColon, i))
           break;
-        // `Tree<T>::size`, `Tree<T>::Node<U>`, `Tree<T>::~Tree`
+        // `Tree<T>::size`, `Tree<T>::Node<U>`, `Tree<T>::Node::size`, `Tree<T>::~Tree`
         ++i;
         if (at(P::Tilde, i))
           ++i;
         if (!atIdent(i))
           return true;
         ++i;
-        if (!at(P::Less, i))
-          break;
       }
       return !(at(P::Assign, i) || at(P::Semi, i) || at(P::LParen, i) || at(P::LBracket, i));
     }
@@ -998,9 +1002,11 @@ namespace
         bool plausible = at(P::LParen) || at(P::LBracket) || at(P::ColonColon) || at(P::LBrace) || at(P::RParen) || at(P::Comma) ||
                          at(P::Greater) || at(P::Semi) || at(P::RBracket) || at(P::Dot) || at(P::Arrow) ||
                          at(P::Ellipsis) || at(P::Shr) || at(P::RBrace) || at(P::Colon) || at(TokenKind::End);
+        // (and an operator before a fold's `...`, `(count<Ts> + ...)`, Unreal's StructuredLog.h: binary there)
         bool binaryOnly = at(P::EqEq) || at(P::NotEq) || at(P::AndAnd) || at(P::OrOr) || at(P::Question) ||
                           at(P::Slash) || at(P::Percent) || at(P::Pipe) || at(P::Caret) || at(P::Assign) ||
-                          at(P::Less) || at(P::LessEq) || at(P::Shl) || at(P::Spaceship) || at(P::Elvis);
+                          at(P::Less) || at(P::LessEq) || at(P::Shl) || at(P::Spaceship) || at(P::Elvis) ||
+                          (at(TokenKind::Punctuator) && at(P::Ellipsis, 1) && at(P::RParen, 2));
         if (inRequires)
           plausible = true, sawLogical = false;
         // An argument that can only be a type (`pi_v<float> * x`, `v<const T*> - 1`): `<` cannot be
@@ -3105,8 +3111,10 @@ namespace
       // looks like one, wherever it stands; the converter's C++ input keeps C++'s guesses.
       if (isKpp() && !typedefDeclarators)
         return scope != Scope::Local;
+      // (and a named cast, which no parameter starts with: `const TIntPoint<T> TIntPoint<T>::NoneValue(static_cast<T>(INDEX_NONE), ...)`)
       if (at(TokenKind::Number, 1) || at(TokenKind::String, 1) || at(TokenKind::Char, 1) || at(P::Minus, 1) ||
-          at(Kw::true_, 1) || at(Kw::false_, 1) || at(Kw::nullptr_, 1) || at(Kw::this_, 1))
+          at(Kw::true_, 1) || at(Kw::false_, 1) || at(Kw::nullptr_, 1) || at(Kw::this_, 1) || at(Kw::static_cast_, 1) ||
+          at(Kw::reinterpret_cast_, 1) || at(Kw::const_cast_, 1) || at(Kw::dynamic_cast_, 1))
         return false;
       if (scope != Scope::Local)
         return !laterArgumentIsLiteral() && !firstParameterIsExpression(); // At namespace/class scope `name(...)` is a function.
@@ -3146,7 +3154,8 @@ namespace
           return false;
         else if (depth == 0 && at(P::Comma, i) &&
                  (at(TokenKind::Number, i + 1) || at(TokenKind::String, i + 1) || at(TokenKind::Char, i + 1) ||
-                  at(Kw::true_, i + 1) || at(Kw::false_, i + 1) || at(Kw::nullptr_, i + 1) || at(P::LBrace, i + 1)))
+                  at(Kw::true_, i + 1) || at(Kw::false_, i + 1) || at(Kw::nullptr_, i + 1) || at(P::LBrace, i + 1) ||
+                  at(P::LBracket, i + 1))) // (a lambda: `Helper registered(Phase::Ready, []{ ... });`, Unreal's IMPLEMENT_TYPE_LAYOUT)
           return true;
       }
     }
@@ -6936,9 +6945,15 @@ namespace
       noGreater = true;
       uint32_t start = pos;
       Expr* e = parseAssignmentImpl(true, true);
-      // Detect top-level && / || for the comparison heuristic.
+      // Detect top-level && / || for the comparison heuristic: not one in parentheses or brackets
+      // (`Expr<!(trivial<K> && trivial<V>)>()`, Unreal's UE_STATIC_DEPRECATE, is a template-id).
+      int depth = 0;
       for (uint32_t i = start; i < pos; ++i)
-        if (toks[i].is(P::AndAnd) || toks[i].is(P::OrOr))
+        if (toks[i].is(P::LParen) || toks[i].is(P::LBracket) || toks[i].is(P::LBrace))
+          ++depth;
+        else if (toks[i].is(P::RParen) || toks[i].is(P::RBracket) || toks[i].is(P::RBrace))
+          --depth;
+        else if (depth == 0 && (toks[i].is(P::AndAnd) || toks[i].is(P::OrOr)))
           sawLogical = true;
       noGreater = saved;
       return e;

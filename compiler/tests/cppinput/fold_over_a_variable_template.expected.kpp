@@ -1,0 +1,5 @@
+// cppinput: a fold whose operand is a variable template's id (Unreal's StructuredLog.h:
+// `return (ValueCount<FieldArgTypes> + ...);`)
+template<typename T> constexpr i32 width = sizeof(T);
+template<typename... Ts> constexpr i32 total() { return (width<Ts> + ...); }
+i32 main() { return total<char, i16, i32>() == 7 ? 0 : 1; }
