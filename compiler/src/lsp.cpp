@@ -1982,11 +1982,132 @@ namespace
       return it != list.end() && it->token == d->token ? it->decl : nullptr;
     }
 
+    // The text of the tokens from `first` to its balanced `)` (sizeof's parentheses), or `first` alone.
+    static std::string parenthesizedText(const ParsedFile* f, uint32_t first)
+    {
+      const std::vector<Token>& tokens = *f->tokens;
+      size_t last = first;
+      if (first + 1 < tokens.size() && tokens[first + 1].is(P::LParen))
+        for (size_t i = first + 1, depth = 0; i < tokens.size(); ++i)
+        {
+          if (tokens[i].is(P::LParen))
+            ++depth;
+          else if (tokens[i].is(P::RParen) && --depth == 0)
+          {
+            last = i;
+            break;
+          }
+        }
+      return std::string(f->text.substr(tokens[first].offset, tokens[last].offset + tokens[last].length - tokens[first].offset));
+    }
+
+    // Hover of `sizeof(T)` or `alignof(T)`'s keyword: its value, from the code generator's layouts of the last check
+    // (GlobalScope::classLayout; none while the program has errors that stop code generation, or in a template, whose
+    // T has no value); of `static_assert`'s keyword: whether its condition holds, with a comparison's operand values.
+    // Null when the token is none of them or no value is known.
+    Json constantHover(const KeptProgram& program, const Json& params)
+    {
+      ParsedFile* f = fileOf(program, params["textDocument"]["uri"].text);
+      if (!f || !f->tokens)
+        return Json();
+      uint32_t t = tokenAt(*f->tokens, offsetOf(f->text, startsOf(f), params["position"]));
+      if (t == UINT32_MAX)
+        return Json();
+      const Token& token = (*f->tokens)[t];
+      if (!token.is(Kw::sizeof_) && !token.is(Kw::alignof_) && !token.is(Kw::static_assert_))
+        return Json();
+      Node* found = nullptr;
+      forEachNode(f->decls, [&](Node* n)
+      {
+        if (!found && n->token == t && (n->kind == NodeKind::SizeofExpr || n->kind == NodeKind::StaticAssertDecl))
+          found = n;
+      });
+      if (!found)
+        return Json();
+      GlobalScope* global = program.global;
+      // The declaration it is written in, as the code generator evaluates it there (the static_assert's own, a
+      // function, a variable's initializer): the last one starting before it, inside namespaces and classes.
+      Decl* context = nullptr;
+      for (Span<Decl*> decls = f->decls;;)
+      {
+        Decl* last = nullptr;
+        for (Decl* d : decls)
+          if (d->token <= t && d->file == f)
+            last = d;
+        if (!last)
+          break;
+        context = last;
+        if (last->kind != NodeKind::NamespaceDecl && last->kind != NodeKind::ClassDecl)
+          break;
+        decls = childrenOf(last);
+      }
+      if (FunctionDecl* function = enclosingFunction(f->decls, t))
+        context = function;
+      if (!context)
+        return Json();
+      ConstHooks hooks;
+      std::function<std::optional<int64_t>(const Ty*, bool)> layout = [&](const Ty* ty, bool alignment) -> std::optional<int64_t>
+      {
+        // As the code generator lays them out (Emitter::sizeOf, alignOf): its class layouts, the rest from the type.
+        ty = global->types().unqualified(global->types().stripRef(ty));
+        switch (ty->kind)
+        {
+          case TyKind::Bool: return 1;
+          case TyKind::Char: case TyKind::Int: case TyKind::Float: return ty->bits / 8;
+          case TyKind::Nullptr: case TyKind::Pointer: case TyKind::Function: return 8;
+          case TyKind::Array:
+          {
+            std::optional<int64_t> inner = layout(ty->inner, alignment);
+            return inner && !alignment ? std::optional<int64_t>(int64_t(ty->count) * *inner) : inner;
+          }
+          case TyKind::Enum:
+          {
+            const Ty* u = global->underlyingOf(ty);
+            return u ? layout(u, alignment) : std::optional<int64_t>(4);
+          }
+          case TyKind::Class:
+          {
+            std::optional<std::pair<uint64_t, uint64_t>> known = global->classLayout(ty);
+            return known ? std::optional<int64_t>(int64_t(alignment ? known->second : known->first)) : std::nullopt;
+          }
+          default: return std::nullopt; // (a member pointer, a closure, a vector: not shown)
+        }
+      };
+      hooks.layout = layout;
+      std::string value;
+      auto shown = [&](const std::string& text) { return markdownHover ? "```kpp\n" + text + "\n```\n" : text + "\n"; };
+      if (found->kind == NodeKind::SizeofExpr)
+      {
+        std::optional<ConstValue> v = global->evaluate(static_cast<Expr*>(found), f, context, TemplateArgs(), hooks);
+        std::optional<std::string> number = v ? GlobalScope::constantNumberText(*v) : std::nullopt;
+        if (!number)
+          return Json();
+        value = shown(parenthesizedText(f, t) + " == " + *number);
+      }
+      else
+      {
+        auto* s = static_cast<StaticAssertDecl*>(found);
+        std::optional<ConstValue> v = s->cond ? global->evaluate(s->cond, f, context, TemplateArgs(), hooks) : std::nullopt;
+        if (!v || !(v->isScalar() || v->isPointer()))
+          return Json();
+        std::string detail = GlobalScope::staticAssertFailure(s, [&](Expr* e) { return global->evaluate(e, f, context, TemplateArgs(), hooks); });
+        value = shown(parenthesizedText(f, t)) + (v->truthy() ? "holds" : "fails") + detail;
+      }
+      return Json::object()
+        .set("contents", Json::object().set("kind", markdownHover ? "markdown" : "plaintext").set("value", value))
+        .set("range", tokenRange(f, t));
+    }
+
     Json hover(const Json& params)
     {
       Json result;
       onProgram([&](const KeptProgram& program)
       {
+        if (Json constant = constantHover(program, params); constant.kind != Json::Null)
+        {
+          result = std::move(constant);
+          return;
+        }
         const ParsedFile* file = nullptr;
         const Occurrence* o = occurrenceAt(program, params, &file);
         if (!o)

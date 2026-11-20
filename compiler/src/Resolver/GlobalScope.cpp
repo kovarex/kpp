@@ -414,6 +414,19 @@ void GlobalScope::mergeDefaultArguments(FunctionDecl* f)
   }
 }
 
+void GlobalScope::setClassLayouts(std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> layouts)
+{
+  impl->classLayouts = std::move(layouts);
+}
+
+std::optional<std::pair<uint64_t, uint64_t>> GlobalScope::classLayout(const Ty* t) const
+{
+  if (!impl->codeGenerated)
+    return std::nullopt; // (the front end changed the program since: the layouts may be older)
+  auto it = impl->classLayouts.find(t);
+  return it == impl->classLayouts.end() ? std::nullopt : std::optional<std::pair<uint64_t, uint64_t>>(it->second);
+}
+
 std::vector<GlobalScope::LayoutStaticAssert> GlobalScope::layoutStaticAsserts()
 {
   std::lock_guard lock(impl->checkerErrorsMutex);

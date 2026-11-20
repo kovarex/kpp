@@ -1,6 +1,7 @@
 // GlobalScope::Impl, access checking (design.md, "struct and class") (its declarations in AccessChecker.hpp, part of GlobalScopeImpl.hpp): a translation unit
 // of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
+#include <cstdio>
 
 auto GlobalScope::Impl::accessContext(Decl* d, std::vector<Scope*>& out) -> void
 {
@@ -387,6 +388,81 @@ auto GlobalScope::Impl::structRule(Span<Decl*> decls, std::vector<std::string>& 
   }
 }
 
+std::optional<std::string> GlobalScope::constantNumberText(const ConstValue& v)
+{
+  const Ty* t = v.type;
+  if (v.kind == ConstValue::Kind::Float)
+  {
+    char text[64];
+    std::snprintf(text, sizeof(text), "%.17g", v.f);
+    return std::string(text);
+  }
+  if (v.kind != ConstValue::Kind::Int)
+    return std::nullopt;
+  if (t && t->kind == TyKind::Bool)
+    return std::string(v.i ? "true" : "false");
+  if (t && t->kind != TyKind::Int && t->kind != TyKind::Char)
+    return std::nullopt; // an enumerator, a pointer's bits: no number the program wrote
+  if (t && t->isUnsigned)
+    return std::to_string(uint64_t(v.i) & (t->bits >= 64 ? ~uint64_t(0) : (uint64_t(1) << t->bits) - 1));
+  return std::to_string(v.i);
+}
+
+std::string GlobalScope::staticAssertFailure(const StaticAssertDecl* s, const std::function<std::optional<ConstValue>(Expr*)>& value)
+{
+  const ParsedFile* file = s->file;
+  if (!file || !file->tokens || file->tokens->empty())
+    return std::string();
+  const std::vector<Token>& tokens = *file->tokens;
+  auto spelling = [&](const Token& t)
+  {
+    std::string spliced;
+    return std::string(tokenSpelling(file->text, t, spliced));
+  };
+  std::string out;
+  if (s->message && s->message->kind == NodeKind::LiteralExpr)
+    out = ": " + spelling(tokens[std::min<size_t>(s->message->token, tokens.size() - 1)]);
+  else if (s->cond)
+  {
+    // The condition as written: from after `static_assert(` to its `)` or the `,` before a message.
+    size_t first = size_t(s->token) + 2, last = first, depth = 0;
+    for (size_t i = first; i < tokens.size(); ++i)
+    {
+      const Token& t = tokens[i];
+      if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::LBrace))
+        ++depth;
+      else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::RBrace))
+      {
+        if (depth == 0)
+          break;
+        --depth;
+      }
+      else if (depth == 0 && t.is(P::Comma))
+        break;
+      last = i;
+    }
+    if (first < tokens.size() && last >= first)
+      out = ": " + std::string(file->text.substr(tokens[first].offset, tokens[last].offset + tokens[last].length - tokens[first].offset));
+  }
+  // A comparison's operands, as a failing check prints them (kpp/test_check_values).
+  Expr* cond = s->cond;
+  while (cond && cond->kind == NodeKind::ParenExpr)
+    cond = static_cast<ParenExpr*>(cond)->inner;
+  if (!cond || cond->kind != NodeKind::BinaryExpr)
+    return out;
+  auto* b = static_cast<BinaryExpr*>(cond);
+  P op = P(b->op);
+  if (b->isKeyword || !(op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq))
+    return out;
+  if (b->lhs && b->rhs && b->lhs->kind == NodeKind::LiteralExpr && b->rhs->kind == NodeKind::LiteralExpr)
+    return out; // (`1 == 2` says itself)
+  std::optional<ConstValue> l = b->lhs ? value(b->lhs) : std::nullopt, r = b->rhs ? value(b->rhs) : std::nullopt;
+  std::optional<std::string> lt = l ? constantNumberText(*l) : std::nullopt, rt = r ? constantNumberText(*r) : std::nullopt;
+  if (lt && rt)
+    out += " (" + *lt + " " + spelling(tokens[std::min<size_t>(b->token, tokens.size() - 1)]) + " " + *rt + ")";
+  return out;
+}
+
 auto GlobalScope::Impl::checkStaticAssert(StaticAssertDecl* s, const TypeContext& ctx, const std::string& instance, const FunctionDecl* inFunction) -> void
 {
   if (!s->cond)
@@ -425,7 +501,14 @@ auto GlobalScope::Impl::checkStaticAssert(StaticAssertDecl* s, const TypeContext
   std::string message = v               ? "static assertion failed"
                       : !why.empty()    ? "static assertion whose condition is no constant: " + why
                                         : "static assertion whose condition the compiler cannot evaluate yet";
-  if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
+  if (v) // its message or condition, and a comparison's operand values (the layout the checker knows exactly)
+  {
+    bool outer = exactLayoutOnly;
+    exactLayoutOnly = true;
+    message += staticAssertFailure(s, [&](Expr* e) { return constValue(e, ctx, 0); });
+    exactLayoutOnly = outer;
+  }
+  else if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
   {
     const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
     std::string spliced;

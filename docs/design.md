@@ -4203,6 +4203,12 @@ its reason (each as clang 19 refuses it; a floating overflow to an infinity stay
 there, and outside a required constant the folded value is IEEE's or the kept enumeration value,
 as at run time) (static_assert reports it: `static assertion whose condition is no constant: signed
 overflow in int32 (addition)`), and *Fold* for the code generator, where signed arithmetic wraps.
+A static_assert that fails says its message, else its condition as written, and a comparison's operand values as a
+failing `check` prints them (kovarex 2026-11-20, after `static_assert(sizeof(EditorAction) <= 128)` failed with
+nothing to say why): `static assertion failed: sizeof(EditorAction) <= 128 (184 <= 128)`, `"msg" (8 == 16) (in
+Wide<char>)`; none for two literals (`1 == 2`) or a value that is no number (an enumerator, a pointer), from the
+checker's constants or the code generator's layouts alike (spec language/static_assert_failure_shows_operand_values).
+The language server's hover shows the same (docs/ide.md).
 The walk types number literals with the same function, so a literal's type and value cannot
 disagree. The checker's evaluator (constValue in resolver.cpp; constEval is its integer view)
 covers step 1 and the part of step 2 that changes nothing: function bodies of returns, `if`,

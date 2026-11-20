@@ -188,6 +188,8 @@
     const void* unit = nullptr;                                    // the unit that met it (reportingUnit)
   };
   std::vector<LayoutAssert> layoutAsserts;                          // (under checkerErrorsMutex) for the code generator
+  // The code generator's class layouts of the last build (size, alignment): GlobalScope::setClassLayouts.
+  std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> classLayouts;
   // (under checkerErrorsMutex) Failed static_asserts in template instances' function bodies, by
   // that body, errors once the code generator emits it (GlobalScope::functionEmitted).
   std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceAssertErrors;

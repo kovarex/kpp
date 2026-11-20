@@ -1,0 +1,16 @@
+// The language server's constants test (tests/lsp.ps1, constants.jsonl): hover of sizeof, alignof and static_assert.
+struct Big { u64 a[18]; };
+struct Bits { u32 x : 3; u32 y : 5; };
+static_assert(sizeof(Big) <= 256);
+static_assert(sizeof(Bits) == 4, "two bit fields share one unit");
+template<class T>
+struct Box
+{
+  T value;
+  static constexpr u64 size = sizeof(T);
+};
+int main()
+{
+  [[maybe_unused]] Box<int> box{1};
+  return int(alignof(Big)) - 8;
+}

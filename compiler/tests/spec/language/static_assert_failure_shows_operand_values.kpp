@@ -1,0 +1,31 @@
+// spec: a failing static_assert says its message, else its condition as written, and a comparison's operand values as a failing check prints them (no values when both operands are literals): the checker's constants and the code generator's layouts alike
+// error: static_assert_failure_shows_operand_values.kpp:10: error: static assertion failed: sizeof(Big) <= 128 (144 <= 128)
+// error: static_assert_failure_shows_operand_values.kpp:11: error: static assertion failed: "Big fits a cache line pair" (144 <= 128)
+// error: static_assert_failure_shows_operand_values.kpp:12: error: static assertion failed: alignof(Big) == 4 && true
+// error: static_assert_failure_shows_operand_values.kpp:13: error: static assertion failed: sizeof(Bits) != 4 (4 != 4)
+// error: static_assert_failure_shows_operand_values.kpp:14: error: static assertion failed: 1 == 2
+// error: static_assert_failure_shows_operand_values.kpp:15: error: static assertion failed: limit * 2 < 100u (256 < 100)
+// error: static_assert_failure_shows_operand_values.kpp:21: error: static assertion failed: "no padding after the first member" (8 == 5) (in Wide<char>)
+// error: static_assert_failure_shows_operand_values.kpp:25: error: static assertion failed: -limit > 0.5 (-128 > 0.5)
+static_assert(sizeof(Big) <= 128);
+static_assert(sizeof(Big) <= limit, "Big fits a cache line pair");
+static_assert(alignof(Big) == 4 && true);
+static_assert(sizeof(Bits) != 4);
+static_assert(1 == 2);
+static_assert(limit * 2 < 100u);
+template<class T>
+struct Wide
+{
+  T a;
+  int32_t b;
+  static_assert(sizeof(Wide) == sizeof(T) + 4, "no padding after the first member");
+};
+int main()
+{
+  static_assert(-limit > 0.5);
+  [[maybe_unused]] Wide<char> w{'x', 3};
+  return 0;
+}
+struct Big { u64 a[18]; };
+struct Bits { u32 x : 3; u32 y : 5; };
+constexpr int limit = 128;

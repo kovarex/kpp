@@ -747,6 +747,17 @@ static std::string outputText(Emitter& em, unsigned i, const std::string& prefix
   return em.moduleText(i - sh.moduleCount, prefix, true, errors);
 }
 
+// The classes laid out, for the language server's hover of sizeof and alignof (GlobalScope::classLayouts).
+static void publishClassLayouts(Shared& sh, GlobalScope& global)
+{
+  std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> layouts;
+  layouts.reserve(sh.structs.size());
+  for (const auto& [t, info] : sh.structs)
+    if (info.complete && info.align)
+      layouts.emplace(t, std::pair{info.size, info.align});
+  global.setClassLayouts(std::move(layouts));
+}
+
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                               const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream)
 {
@@ -1037,6 +1048,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     }
   };
   emitLevels();
+  publishClassLayouts(sh, global);
   e.finishAssertRuntime();
   e.finishThreadExitRuntime();
   e.finishProgramExitRuntime();
@@ -1623,6 +1635,8 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
   if (rebuilt && session.shared)
   {
+    if (!session.emitters.empty())
+      publishClassLayouts(*session.shared, session.emitters[0]->global);
     out.debugClasses = session.shared->debugClasses;
     out.debugValueClasses = session.shared->debugValueClasses;
   }

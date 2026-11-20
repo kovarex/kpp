@@ -1,0 +1,25 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\constants: hover of `sizeof(T)` and `alignof(T)`'s
+// keyword shows the value from the code generator's layouts (a bit field's unit too), none in a template whose T has
+// no value; hover of `static_assert` shows whether its condition holds with a comparison's operand values; after an
+// edit of the class, the new layout's.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{"textDocument":{"hover":{"contentFormat":["markdown","plaintext"]}}}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+// sizeof(Big): 144.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":15}}}
+// static_assert(sizeof(Big) <= 256): holds, 144 <= 256.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":2}}}
+// sizeof(Bits): the code generator's 4 (two bit fields in one unit).
+{"jsonrpc":"2.0","id":4,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":4,"character":15}}}
+// static_assert with a message: its message and the values.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":4,"character":2}}}
+// sizeof(T) in the template: no value (null).
+{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":9,"character":31}}}
+// alignof(Big) in a function: 8.
+{"jsonrpc":"2.0","id":7,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":14,"character":14}}}
+// Big grows to 40 elements: sizeof(Big) is 320 and the static_assert fails.
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"// The language server's constants test (tests/lsp.ps1, constants.jsonl): hover of sizeof, alignof and static_assert.\nstruct Big { u64 a[18]; };\nstruct Bits { u32 x : 3; u32 y : 5; };\nstatic_assert(sizeof(Big) <= 256);\nstatic_assert(sizeof(Bits) == 4, \"two bit fields share one unit\");\ntemplate<class T>\nstruct Box\n{\n  T value;\n  static constexpr u64 size = sizeof(T);\n};\nint main()\n{\n  [[maybe_unused]] Box<int> box{1};\n  return int(alignof(Big)) - 8;\n}\n"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":1,"character":19},"end":{"line":1,"character":21}},"text":"40"}]}}
+{"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":15}}}
+{"jsonrpc":"2.0","id":9,"method":"textDocument/hover","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":3,"character":2}}}
+{"jsonrpc":"2.0","id":10,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

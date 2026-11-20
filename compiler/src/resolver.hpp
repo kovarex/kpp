@@ -365,6 +365,16 @@ public:
     std::string instance;
   };
   std::vector<LayoutStaticAssert> layoutStaticAsserts();
+  // What a failing static_assert says after "static assertion failed": its message, else its condition as written
+  // (`sizeof(Big) <= 128`), and a comparison's operand values as a failing check prints them (` (144 <= 128)`), each
+  // operand's value from value. No values when an operand is a literal on both sides or a value is no number.
+  static std::string staticAssertFailure(const StaticAssertDecl* s, const std::function<std::optional<ConstValue>(Expr*)>& value);
+  // A number, a bool or a character code as the program would print it ("144", "true", "-1.5"); none for other values.
+  static std::optional<std::string> constantNumberText(const ConstValue& v);
+  // The layouts the code generator gave the program's classes in its last build (size, alignment), for the language
+  // server's hover of `sizeof(T)` (a check builds them; none until code generation ran). setClassLayouts replaces them.
+  void setClassLayouts(std::unordered_map<const Ty*, std::pair<uint64_t, uint64_t>> layouts);
+  std::optional<std::pair<uint64_t, uint64_t>> classLayout(const Ty* t) const;
 
   size_t scopeCount() const;
   size_t entryCount() const;

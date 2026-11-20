@@ -512,7 +512,17 @@ auto codegen::Emitter::checkLayoutAssert(const GlobalScope::LayoutStaticAssert& 
   std::string message = v                ? "static assertion failed"
                       : !why.empty()     ? "static assertion whose condition is no constant: " + why
                                          : "static assertion whose condition the compiler cannot evaluate yet";
-  if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
+  if (v) // its message or condition, and a comparison's operand values
+  {
+    try
+    {
+      message += GlobalScope::staticAssertFailure(s, [&](Expr* e) { return foldConst(e); });
+    }
+    catch (Unsupported&) // (an operand's layout failed and reported itself: the failure without its values)
+    {
+    }
+  }
+  else if (s->message && s->message->kind == NodeKind::LiteralExpr && s->file && s->file->tokens && !s->file->tokens->empty())
   {
     const Token& t = (*s->file->tokens)[std::min<size_t>(s->message->token, s->file->tokens->size() - 1)];
     message += ": " + std::string(s->file->text.substr(t.offset, t.length));
