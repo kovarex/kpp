@@ -60,6 +60,9 @@ Add 'LLVM back end' (PsCheck 'tests\backend.ps1') -seconds 5 -skip @{ 3 = 'LLVM 
 Add 'verifier' (PsCheck 'tests\verifier.ps1') -seconds 17
 Add 'stubs' (PsCheck 'tests\stubs.ps1') -seconds 7
 Add 'static constants' (PsCheck 'tests\staticconstants.ps1') -seconds 1
+# C++ the converter reads beside Factorio's (tests\cppinput.ps1): each tests\cppinput\*.cpp converts with no
+# parse error to its .expected.kpp, which builds and runs.
+Add 'cppinput' (PsCheck 'tests\cppinput.ps1') -seconds 3
 Add 'lto' (PsCheck 'tests\lto.ps1') -seconds 8
 Add 'sections' (PsCheck 'tests\sections.ps1') -seconds 2
 Add 'debug info' (PsCheck 'tests\debuginfo.ps1') -seconds 8

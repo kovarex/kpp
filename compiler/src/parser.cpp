@@ -734,12 +734,53 @@ namespace
         advance();
         return true;
       }
-      if (atIdent(1) && (atIdent(2) || at(P::Star, 2) || at(P::Amp, 2) || at(P::AndAnd, 2) || at(P::Less, 2)))
+      if (atIdent(1) && (atIdent(2) || at(P::Star, 2) || at(P::Amp, 2) || at(P::AndAnd, 2) || (at(P::Less, 2) && nameFollowsTemplateArguments(2))))
       {
         advance();
         return true;
       }
       return false;
+    }
+
+    // Whether a declarator follows the template arguments that open at `ahead` (a `<`), and the
+    // qualified name they may continue: `MACRO Box<T> x` and `MACRO Box<T>::Item x` are a macro before
+    // a template type, while `SIZE_T Size<Variant<Ts...>> = 2;` is a type before a variable template's
+    // specialisation (Unreal's TVariantMeta.h) and `SIZE_T Tree<T>::size() const` one before a member
+    // defined outside its class template (DirectoryTree.h): what follows the name is `=`, `;`, `(` or
+    // `[`. Unbalanced to the end of the statement: as before, a macro.
+    bool nameFollowsTemplateArguments(int ahead) const
+    {
+      int i = ahead;
+      for (;;)
+      {
+        int depth = 0;
+        do
+        {
+          if (at(P::Less, i))
+            ++depth;
+          else if (at(P::Greater, i))
+            --depth;
+          else if (at(P::Shr, i))
+            depth -= 2;
+          else if (at(P::Semi, i) || at(P::LBrace, i) || at(TokenKind::End, i))
+            return true;
+          ++i;
+        } while (depth > 0);
+        if (depth < 0)
+          return true;
+        if (!at(P::ColonColon, i))
+          break;
+        // `Tree<T>::size`, `Tree<T>::Node<U>`, `Tree<T>::~Tree`
+        ++i;
+        if (at(P::Tilde, i))
+          ++i;
+        if (!atIdent(i))
+          return true;
+        ++i;
+        if (!at(P::Less, i))
+          break;
+      }
+      return !(at(P::Assign, i) || at(P::Semi, i) || at(P::LParen, i) || at(P::LBracket, i));
     }
 
     // --- names ---
@@ -2902,7 +2943,8 @@ namespace
       // C headers parenthesise function names to suppress macro expansion:
       //   int (lua_gettop) (lua_State *L);
       // Strip the wrapping parens so the name is parsed normally.
-      if ((isC() || at(P::Assign, 3)) && at(P::LParen) && atIdent(1) && at(P::RParen, 2)) // (and `int (x) = 3;`)
+      // (and `int (x) = 3;`, and a typedef's function type: `typedef void (WriteFunc)(Writer& w);`, Unreal's MemoryLayout.h)
+      if ((isC() || at(P::Assign, 3) || (typedefDeclarators && at(P::LParen, 3))) && at(P::LParen) && atIdent(1) && at(P::RParen, 2))
       {
         advance();           // skip '('
         parseQualifiedName(d.name, true); // consume the function name
@@ -3424,6 +3466,13 @@ namespace
             init.braced = false;
             expect(P::RParen, "expected ')'");
           }
+          else if (at(P::LBrace) && at(P::Dot, 1) && atIdent(2))
+          {
+            // `either{.ansi = literal}`, designators (Unreal's NameTypes.h): the braced list the member is
+            // made from, as the list of `either{{.ansi = literal}}` is
+            scratch.push_back(parseBraceInit());
+            init.braced = true;
+          }
           else if (accept(P::LBrace))
           {
             parseExpressionList(P::RBrace);
@@ -3706,7 +3755,8 @@ namespace
         return;
       }
       bool isEnum = accept(Kw::enum_);
-      if (atIdent() && at(P::Assign, 1))
+      // (an alias's attributes stand after its name: `using Old [[deprecated("use New")]] = New;`, Unreal's ExternalMutex.h)
+      if (atIdent() && (at(P::Assign, 1) || (at(P::LBracket, 1) && at(P::LBracket, 2))))
       {
         UsingAliasDecl* u = decl<UsingAliasDecl>(start);
         u->name = tok().id;
@@ -3715,6 +3765,12 @@ namespace
         u->templateParams = templ.params;
         u->isTemplate = templ.present;
         advance();
+        skipAttributes();
+        if (!at(P::Assign))
+        {
+          error("expected '=' in alias");
+          return;
+        }
         advance();
         skipAttributes();
         u->type = parseType();
@@ -3922,7 +3978,8 @@ namespace
           advance();
         }
         if (accept(P::Assign))
-          p->defaultArg = parseType();
+          if (Type* t = parseType()) // (a function type too: `template<typename = void()>`, Unreal's TaskDelegate.h)
+            p->defaultArg = parseAliasSuffixes(t);
         return p;
       }
       if (at(Kw::template_))
@@ -3957,7 +4014,8 @@ namespace
           advance();
         }
         if (accept(P::Assign))
-          p->defaultArg = parseType();
+          if (Type* t = parseType()) // (a function type too: `template<typename = void()>`, Unreal's TaskDelegate.h)
+            p->defaultArg = parseAliasSuffixes(t);
         return p;
       }
       // Non-type parameter (possibly a concept-constrained type parameter `Concept T`).
@@ -7316,6 +7374,14 @@ namespace
       advance();
       Type* t = parseType();
       bool type = t && at(P::RParen) && (t->kind != NodeKind::NamedType || isTemplateTypeName(t));
+      // Or a parenthesised name that a name, literal, `!` or `~` follows, which only a cast can be
+      // followed by: `(uint32)(uint8)Pos[1]` (Unreal's Utf8Iterator.cpp) is `(uint32)((uint8)Pos[1])`.
+      if (t && !type && at(P::RParen))
+      {
+        advance();
+        type = atIdent() || at(TokenKind::Number) || at(TokenKind::String) || at(TokenKind::Char) || at(P::Bang) || at(P::Tilde) ||
+               at(Kw::this_) || at(Kw::true_) || at(Kw::false_) || at(Kw::nullptr_);
+      }
       restore(save);
       scratch.resize(mark);
       out.nodeCount = nodes;

@@ -1,0 +1,9 @@
+// cppinput: a template parameter's default type may be a function type (Unreal's TaskDelegate.h:
+// `template<typename = void(), uint32 = PLATFORM_CACHE_LINE_SIZE>`)
+template<typename F = void(), u32 N = 64>
+struct Delegate
+{
+  static constexpr u32 size = N;
+};
+
+i32 main() { return Delegate<>::size == 64 ? 0 : 1; }

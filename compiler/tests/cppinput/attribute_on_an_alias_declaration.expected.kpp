@@ -1,0 +1,15 @@
+// cppinput: an alias declaration's attributes stand after its name (Unreal's ExternalMutex.h:
+// `using FExternalMutex [[deprecated("Use TIntrusiveMutex.")]] = TExternalMutex<...>;`)
+template<typename T>
+struct Mutex
+{
+  T state;
+};
+using OldMutex [[deprecated("use Mutex")]] = Mutex<i32>;
+using Plain [[maybe_unused]] = i32;
+
+i32 main()
+{
+  Mutex<i32> m{0};
+  return m.state;
+}

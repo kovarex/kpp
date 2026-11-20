@@ -1,0 +1,20 @@
+// cppinput: a member initializer's braces may designate the members they set (Unreal's NameTypes.h:
+// `: Either{.AnsiLiteral = Literal}`)
+struct Either
+{
+  const char* ansi;
+  const char* wide;
+};
+struct Name
+{
+  Either either;
+  implicit Name(const char* literal) : either{.ansi = literal}
+  {
+  }
+};
+
+i32 main()
+{
+  Name n("x");
+  return n.either.wide == nullptr && n.either.ansi[0] == 'x' ? 0 : 1;
+}

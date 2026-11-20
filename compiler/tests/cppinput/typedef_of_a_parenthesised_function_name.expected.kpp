@@ -1,0 +1,12 @@
+// cppinput: a typedef of a function type whose name is in parentheses (Unreal's MemoryLayout.h:
+// `typedef void (FWriteFrozenMemoryImageFunc)(FMemoryImageWriter& Writer, ...)`) is the function type
+typedef void WriteFunc(i32* target, i32 value);
+void write(i32* target, i32 value) { *target = value; }
+
+i32 main()
+{
+  WriteFunc* f = write;
+  i32 x = 0;
+  f(&x, 7);
+  return x == 7 ? 0 : 1;
+}
