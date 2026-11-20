@@ -38,6 +38,14 @@ struct Tick
 };
 std::string toStr(const Tick& tick) { return "tick " + toStr(tick.value); }
 const char* actionName(int action) { return action ? "Build" : "Nothing"; }
+// An operator called by its name, which no lookup resolves (a friend; Unreal's MemoryLayout.h):
+// no format to check, and no plain name to look a C function up by (the converter crashed on it).
+struct Layout
+{
+  int flags;
+  friend inline bool operator==(const Layout& a, const Layout& b) { return a.flags == b.flags; }
+  friend inline bool operator!=(const Layout& a, const Layout& b) { return !operator==(a, b); }
+};
 
 int main()
 {
@@ -69,5 +77,7 @@ int main()
   uint64_t updateTick = 123456789012ull;
   Tick tick{7};
   printf("[%s %u %s] %d %d %u %s\n", toCStr(updateTick), player, actionName(1), small, delta, negative, toCStr(tick));
+  Layout four{4}, five{5};
+  printf("layouts differ %d, equal %d\n", int(four != five), int(four == four));
   return 0;
 }

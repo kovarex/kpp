@@ -2441,15 +2441,20 @@
                                                      : nullptr;
       // The C library's, which the C++ parse does not declare: by name, with the format's place.
       static const std::map<std::string_view, size_t> cFunctions = {{"printf", 0}, {"sprintf", 1}, {"snprintf", 2}, {"fprintf", 1}};
+      // (a name's last part, if a plain name: an operator's has no symbol, as in Unreal's
+      // `return !operator==(Lhs, Rhs);` naming a friend operator, which no lookup resolves)
+      auto plainName = [&](const QualifiedName& name) -> std::string_view {
+        return !name.parts.empty() && name.last().special == 0 && name.last().symbol != UINT32_MAX ? symbols.name(name.last().symbol) : std::string_view();
+      };
       size_t formatIndex;
       std::string_view calleeName;
       if (d && d->kind == NodeKind::FunctionDecl && (d->flags & DF_Variadic) && !static_cast<FunctionDecl*>(d)->params.empty())
       {
         formatIndex = static_cast<FunctionDecl*>(d)->params.size() - 1;
-        calleeName = symbols.name(static_cast<FunctionDecl*>(d)->name.last().symbol);
+        calleeName = plainName(static_cast<FunctionDecl*>(d)->name);
       }
       else if (auto c = !d && callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(callee)->name.parts.size() == 1
-                          ? cFunctions.find(symbols.name(static_cast<NameExpr*>(callee)->name.parts[0].symbol))
+                          ? cFunctions.find(plainName(static_cast<NameExpr*>(callee)->name))
                           : cFunctions.end();
                c != cFunctions.end())
       {
