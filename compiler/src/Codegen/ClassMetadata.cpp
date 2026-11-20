@@ -1613,6 +1613,21 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     initializeFrom(addr, t, args[0], at);
     return;
   }
+  // `T(input, forward<Args>(args)...)` of no Args: the arguments without the empty expansion, so that one value whose
+  // class converts to T takes that conversion, not T's members (until 2026-11-20 DeserialiserHelper::loadIndirect's
+  // `T(input)` of a struct the game's Deserialiser converts to was its member-wise construction from the Deserialiser).
+  if (args.size() > 1)
+  {
+    std::vector<Expr*> kept;
+    for (Expr* a : args)
+      if (!(a && isPackExpansion(a) && packElementCount(static_cast<UnaryExpr*>(a)->operand, at) == 0))
+        kept.push_back(a);
+    if (kept.size() < args.size())
+    {
+      constructInto(addr, t, Span<Expr*>{kept.data(), uint32_t(kept.size())}, at, listElements, copyInit);
+      return;
+    }
+  }
   // `using Base::Base;`: the base's constructors, when none of the class's own takes the
   // arguments (a copy stays a copy).
   bool copyLike = args.size() == 1 && args[0]->ty && isClass(types.stripRef(args[0]->ty)) && classKey(types.stripRef(args[0]->ty)) == classKey(t);

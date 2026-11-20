@@ -325,6 +325,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
   };
   std::vector<Candidate> candidates;
   std::vector<const Ty*> declaredResults; // by the classes searched so far
+  std::vector<std::pair<const Ty*, TyKind>> declaredTemplateResults; // their templates': the type and the form declared
   std::vector<const Ty*> classes{start};
   for (size_t i = 0; i < classes.size() && i < 64; ++i)
   {
@@ -334,6 +335,7 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
       continue;
     Subst args = substFor(cls);
     std::vector<const Ty*> ownResults;
+    std::vector<std::pair<const Ty*, TyKind>> ownTemplateResults;
     for (Decl* m : membersRead(def))
     {
       if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Conversion))
@@ -363,10 +365,20 @@ auto GlobalScope::Impl::chooseConversion(const Ty* from, const Ty* to, Conversio
       const Ty* plain = types.unqualified(types.stripRef(result));
       if (f->templateParams.empty() && std::find(declaredResults.begin(), declaredResults.end(), plain) != declaredResults.end())
         continue; // hidden by a derived class's operator to the same type
+      // A conversion function template, by a derived class's of the same form (`template<class T> operator T()` in both,
+      // the same name, [class.member.lookup]) giving the same type: MapDeserialiser's over Deserialiser's (until
+      // 2026-11-20 both candidates, ambiguous, and `Data(mapInput)` was Data's member-wise construction from it).
+      const Ty* form = types.unqualified(types.stripRef(ft->inner));
+      if (!f->templateParams.empty() &&
+          std::find(declaredTemplateResults.begin(), declaredTemplateResults.end(), std::pair<const Ty*, TyKind>{plain, form->kind}) != declaredTemplateResults.end())
+        continue;
+      if (!f->templateParams.empty())
+        ownTemplateResults.push_back({plain, form->kind});
       ownResults.push_back(plain);
       candidates.push_back({f, cls, fargs, result});
     }
     declaredResults.insert(declaredResults.end(), ownResults.begin(), ownResults.end());
+    declaredTemplateResults.insert(declaredTemplateResults.end(), ownTemplateResults.begin(), ownTemplateResults.end());
     std::vector<const Ty*> bases;
     if (directBases(cls, def, bases))
       for (const Ty* b : bases)

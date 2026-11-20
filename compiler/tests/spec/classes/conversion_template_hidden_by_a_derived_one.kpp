@@ -1,0 +1,29 @@
+// spec: a derived class's conversion function template hides its base's of the same form ([class.member.lookup]): `Data(r)`, `new Data(r)` and a forwarded `new T(args...)` of a MapReader take MapReader's, as clang does (until 2026-11-20 both were candidates, ambiguous, and Data was built member-wise from r)
+// factorio: MapDeserialiser's and Deserialiser's struct conversions (kpp-factorio PR 7)
+extern "C" int printf(const char* format, ...);
+class Reader
+{
+public:
+  template<class T> requires (std::isStruct<T>) operator T() { T t; t.x = 7; return t; }
+};
+class MapReader : public Reader
+{
+public:
+  template<class T> requires (std::isStruct<T>) operator T() { T t; t.x = 8; return t; }
+};
+struct Data
+{
+  Data() {}
+  Data(const Data& o) : x(o.x) {}
+  int x = 1;
+};
+template<class T, typename... Args> T* make(Args&&... args) { return new T(std::forward<Args>(args)...); }
+int main()
+{
+  MapReader r;
+  Data* a = make<Data>(r);
+  Data* b = new Data(r);
+  Data c(r);
+  printf("%d %d %d %d\n", a->x, b->x, c.x, std::isConstructible<Data, MapReader&>);
+  return 0;
+}

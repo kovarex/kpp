@@ -644,6 +644,12 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
       }
       if (copy)
         return true;
+      // Direct-initialization from a class whose conversion operator (kpp's are explicit, which it takes), own or a base's,
+      // gives a T: `T t(r)` (until 2026-11-20 false for a class T, the game's Deserialiser converting to any struct).
+      if (args.size() == 1 && !static_cast<ClassDecl*>(def)->isTypedUnion)
+        if (const Ty* from = types.unqualified(types.stripRef(args[0]));
+            from->kind == TyKind::Class && from != t && !types.isDependent(from) && convertsByOperator(from, t, 0, 0, true))
+          return true;
       if (static_cast<ClassDecl*>(def)->isTypedUnion)
       {
         // A typed union (design.md 8.5) is built by a constructor of its own, from a value of exactly one

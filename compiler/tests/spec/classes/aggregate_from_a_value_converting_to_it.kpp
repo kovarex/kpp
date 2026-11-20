@@ -1,0 +1,27 @@
+// spec: `new T(forward<Args>(args)...)` of one value whose class converts to the aggregate T takes that conversion, not T's members from the value (until 2026-11-20 the checker's "a Reader does not convert to std::String" in the instance)
+// factorio: HeapOptional<SelectedPrototypeData>::emplace(input) with a Deserialiser converting to any struct (kpp-factorio PR 7)
+extern "C" int printf(const char* format, ...);
+class Reader
+{
+public:
+  template<class T> requires (std::isStruct<T>) operator T() { T t; t.name = "loaded"; return t; }
+};
+struct Data
+{
+  std::String base;
+  std::String name;
+};
+template<class T> class Holder
+{
+public:
+  template<typename... Args> T& emplace(Args&&... args) { this.data = new T(std::forward<Args>(args)...); return *this.data; }
+  T* data = nullptr;
+};
+int main()
+{
+  Reader r;
+  Holder<Data> h;
+  h.emplace(r);
+  printf("%s\n", h.data->name.data());
+  return 0;
+}

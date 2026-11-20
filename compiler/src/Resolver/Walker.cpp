@@ -5402,6 +5402,13 @@ auto GlobalScope::Impl::Walker::checkConstruction(const Ty* t, Span<Expr*> args,
   impl.inheritedConstructorSources(def, c, inherited, 0);
   if (!constructors && inherited.empty())
   {
+    // (`new T(forward<Args>(args)...)` of one value whose class converts to the aggregate T: that conversion, as
+    // codegen takes it, not T's members from the value; until 2026-11-20 "a Deserialiser does not convert to
+    // std::String" for SelectedPrototypeData)
+    if (argTypes.size() == 1)
+      if (const Ty* a = types.unqualified(types.stripRef(argTypes[0]));
+          a->kind == TyKind::Class && a != c && !types.isDependent(a) && impl.convertsByOperator(a, c, 0, 0, true))
+        return;
     checkAggregateElements(c, args); // an aggregate: its members take the arguments
     return;
   }

@@ -1,0 +1,30 @@
+// spec: isConstructible<T, R&> of a class T is true where a conversion operator of R (kpp's are explicit, which direct-initialization takes) gives a T, as `T t(r);` compiles: a templated, constrained one too and one of a base; false where the constraint refuses; clang's output for the C++ with `explicit` (until 2026-11-20 it was false for a class T, a silent wrong answer: only a scalar T looked at the operators)
+// factorio: the game's Deserialiser converting to any struct (`targetData(input)`) left DeserialiserHelper's should_construct false
+extern "C" int printf(const char* format, ...);
+struct Target
+{
+  Target(int a) : a(a) {}
+  int a = 1;
+};
+class Other
+{
+public:
+  Other(int) {}
+};
+struct Reader
+{
+  template<class T> requires (std::isStruct<T>) operator T() { return T(5); }
+};
+struct Plain
+{
+  operator Target() { return Target(6); }
+};
+struct Derived : Plain {};
+int main()
+{
+  Reader r;
+  Target t(r);
+  printf("%d%d%d%d%d %d\n", std::isConstructible<Target, Reader&>, std::isConstructible<Other, Reader&>, std::isConstructible<Target, Plain>,
+         std::isConstructible<Target, Derived&>, std::isConstructible<Target, int>, t.a);
+  return 0;
+}

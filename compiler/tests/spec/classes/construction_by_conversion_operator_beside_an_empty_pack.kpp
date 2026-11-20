@@ -1,0 +1,22 @@
+// spec: `T(r, forward<Args>(args)...)` of no Args is `T(r)`: a value whose class converts to the struct T takes that conversion, as `T a(r);` does, not T's member-wise construction from it; clang's output for the C++ with `explicit`
+// factorio: DeserialiserHelper::loadIndirect's `T(input, forward<Args>(args)...)` of a struct the Deserialiser converts to (kovarex 2026-11-20): until then "codegen does not support a conversion from Deserialiser to BuildMode"
+extern "C" int printf(const char* format, ...);
+enum class Mode : u8 { A, B };
+struct Reader
+{
+  template<class T> requires (std::isStruct<T>) operator T() { T t; t.x = 7; return t; }
+};
+struct Data
+{
+  Mode mode = Mode::A;
+  int x = 1;
+};
+template<class T, typename... Args> T make(Reader& r, Args&&... args) { return T(r, std::forward<Args>(args)...); }
+int main()
+{
+  Reader r;
+  Data a(r);
+  Data b = make<Data>(r);
+  printf("%d %d\n", a.x, b.x);
+  return 0;
+}
