@@ -2026,7 +2026,18 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
     }
     return;
   }
-  unsupported(at, "a constructor of " + qualifiedName(c) + " taking " + std::to_string(args.size()) + " arguments");
+  // (no constructor takes them, and the class is no aggregate: the checker reports this where it can type the
+  // arguments; until 2026-11-20 this read "codegen does not support a constructor of T taking 1 arguments yet")
+  std::string list;
+  for (Expr* a : args)
+    list += (list.empty() ? "" : ", ") + (a && a->ty ? types.toString(a->ty, &symbols) : std::string("?"));
+  // (shown once: the checker's error from the construction's start to its last argument is that one, `Target t(input);`)
+  uint32_t first = at ? at->token : 0, last = first;
+  for (Expr* a : args)
+    if (a)
+      forEachNode(a, [&](Node* n) { first = std::min(first, n->token); last = std::max(last, n->token); });
+  bool shown = !(at && currentFile && global.checkerErrorIn(checkerChecked) && global.checkerErrorWithin(currentFile, first, last + 1));
+  fail(at, "no constructor of " + qualifiedName(c) + " takes (" + list + ")", shown);
 }
 
 auto codegen::Emitter::aggregateMembers(const StructInfo& info, ClassDecl* c) -> std::vector<Decl*>

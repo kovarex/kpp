@@ -75,6 +75,13 @@ auto codegen::Emitter::fail(Node* at, const std::string& message, bool shown) ->
 
 auto codegen::Emitter::holdsCheckerError(Node* at, uint32_t tokensAfter) -> bool
 {
+  // A constructor's initializers (`: targetData(input)`, failing at the constructor): an error the checker reported on
+  // one of their arguments (`no constructor of SchedulableTargetData takes (Deserialiser&)`) is the one shown.
+  if (at && at->kind == NodeKind::FunctionDecl && currentFile && global.checkerErrorIn(checkerChecked))
+    for (const FunctionDecl::CtorInit& init : static_cast<FunctionDecl*>(at)->ctorInits)
+      for (Expr* a : init.args)
+        if (a && holdsCheckerError(a, tokensAfter))
+          return true;
   if (!at || at->kind < NodeKind::NameExpr || at->kind > NodeKind::ParenExpr || !currentFile || !global.checkerErrorIn(checkerChecked))
     return false;
   uint32_t first = at->token, last = at->token;

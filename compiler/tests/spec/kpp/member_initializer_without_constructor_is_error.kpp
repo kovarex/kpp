@@ -1,0 +1,32 @@
+// spec: a constructor's member initializer that no constructor of the member's class takes is the checker's error, as `T(input)` in a body is: until 2026-11-20 it was codegen's "does not support a constructor of Target taking 1 arguments yet", and its generic "no constructor" case now says so too
+// factorio: `targetData(input)` once SchedulableTargetData's hand-written (Deserialiser&) constructor was removed for loading by inspection (kovarex 2026-11-20)
+// error: member_initializer_without_constructor_is_error.kpp:22: error: no constructor of Target takes (Reader&)
+// error: member_initializer_without_constructor_is_error.kpp:29: error: no constructor of Target takes (Reader&)
+struct Reader
+{
+  int value = 4;
+};
+struct Target
+{
+  Target(const char* name) {}
+  int a = 1;
+  int b = 2;
+};
+struct Plain
+{
+  int a = 1;
+  int b = 2;
+};
+struct Holder
+{
+  Holder(Reader& input) : target(input), plain(3, 4) {}
+  Target target;
+  Plain plain;
+};
+int main()
+{
+  Reader r;
+  Target t(r);
+  Holder h(r);
+  return t.a + h.plain.b;
+}

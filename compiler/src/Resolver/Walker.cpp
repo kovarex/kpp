@@ -11491,6 +11491,10 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           {
             packText(init.args, textConstructor(initialized, init.args), f->token);
             checkBracedConstruction(initialized, init.args); // `: origin(0, {1, 2})`
+            // `: targetData(input)` that no constructor takes (until 2026-11-20 codegen's "does not support a
+            // constructor of SchedulableTargetData taking 1 arguments", once its (Deserialiser&) one was removed)
+            if (!init.args.empty())
+              checkConstruction(initialized, init.args, init.args[0] ? init.args[0]->token : f->token);
           }
           if (initialized && initialized->kind == TyKind::Array && l.decl->kind == NodeKind::VariableDecl && !init.args.empty())
             checkParenthesizedArray(init.args, initialized, f->token); // `values(4, 5)` (C++20)
