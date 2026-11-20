@@ -34,7 +34,7 @@ constexpr uint16_t ATTR_NoReturn = 4096; // [[noreturn]] on a function: it never
 constexpr uint16_t ATTR_C = 16384; // [[c]] on an enum written in kpp: C's rules, its enumerators in the scope around and converting to integers (design.md 8.4, "[[c]]")
 constexpr uint16_t ATTR_MaybeUnused = 8192; // [[maybe_unused]] on a variable, parameter, data member or function: nothing need use it (Walker::checkUnusedNames)
 constexpr uint8_t ATTR_MemberSpecialization = 128; // `template<> R UpdateBuffer::f()` through an alias of a class template's instance (finishIndex)
-constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4, BUILTIN_EnumEnumeratorName = 5; // Decl::builtin: generated enum members
+constexpr uint8_t BUILTIN_EnumCount = 1, BUILTIN_EnumValues = 2, BUILTIN_EnumStr = 3, BUILTIN_EnumFromStr = 4, BUILTIN_EnumEnumeratorName = 5, BUILTIN_EnumIsValid = 6; // Decl::builtin: generated enum members
 
 struct Decl : Node
 {

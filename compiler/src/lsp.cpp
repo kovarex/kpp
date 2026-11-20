@@ -1770,6 +1770,7 @@ namespace
       case BUILTIN_EnumValues: return "static const " + self + " values[]";
       case BUILTIN_EnumStr: return "const char* str() const";
       case BUILTIN_EnumEnumeratorName: return "const char* enumeratorName() const";
+      case BUILTIN_EnumIsValid: return "bool isValid() const";
       case BUILTIN_EnumFromStr: return "static std::Optional<" + self + "> fromStr(const char* text)";
       default: break;
       }

@@ -606,7 +606,9 @@ function that runs every level of a hierarchy. See the readme's Planned.
   whose default one makes each value declared without an initializer (`Direction() { this = None; }`;
   `E(x)` of one number stays the conversion), conversion operators and member operators (`Dir operator+(const
   Dir&) const`), as a class's (kovarex, 2026-11-11). The constant evaluation runs them all.
-  A plain `enum class` without the inner block keeps C++'s rules.
+  A plain `enum class` without the inner block keeps C++'s rules, apart from one generated method: every kpp
+  enum and every `enum class` written in kpp has `bool isValid() const`, whether the value is one of the
+  enumerators (kovarex, 2026-11-20: the check after loading a value; `E(x)` stays the unchecked conversion).
 - **Why:** it replaces the hand-written tables and macros beside each enum.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
   no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`

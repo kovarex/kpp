@@ -305,7 +305,7 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
       fprintf(stderr, "declare %s: def %s, def flags %x, def body %d, f flags %x, f body %d\n", name.c_str(), def == f ? "self" : "other", def->flags,
               def->body != nullptr, f->flags, f->body != nullptr);
   }
-  if (f->builtin == BUILTIN_EnumStr || f->builtin == BUILTIN_EnumEnumeratorName)
+  if (f->builtin == BUILTIN_EnumStr || f->builtin == BUILTIN_EnumEnumeratorName || f->builtin == BUILTIN_EnumIsValid)
   {
     emitEnumStr(f, name, classTy);
     return name;
@@ -400,6 +400,23 @@ auto codegen::Emitter::emitEnumStr(FunctionDecl* f, const std::string& name, con
   std::string k = llType(enumUnderlying(et), f), cases, blocks;
   int i = 0;
   std::set<std::string> seen; // (of enumerators of one value, the first names it)
+  if (f->builtin == BUILTIN_EnumIsValid)
+  {
+    // isValid(): true for a value one of the enumerators has (a switch, which LLVM turns into a range check or a
+    // bit test), false for any other.
+    for (Decl* d : e->enumerators)
+      if (d->kind == NodeKind::EnumeratorDecl)
+      {
+        std::string value = std::to_string(enumeratorValue(static_cast<EnumeratorDecl*>(d), et));
+        if (seen.insert(value).second)
+          cases += "    " + k + " " + value + ", label %valid\n";
+      }
+    shared += "$" + name.substr(1) + " = comdat any\n"
+              "define linkonce_odr" + std::string(narrowExtension(types.boolType())) + " i1 " + name + "(ptr %this) comdat {\nentry:\n  %v = load " + k +
+              ", ptr %this\n  switch " + k + " %v, label %other [\n" + cases + "  ]\nvalid:\n  ret i1 true\nother:\n  ret i1 false\n}\n";
+    emittingShared = false;
+    return;
+  }
   for (Decl* d : e->enumerators)
     if (d->kind == NodeKind::EnumeratorDecl)
     {

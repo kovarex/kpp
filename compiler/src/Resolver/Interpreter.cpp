@@ -6041,6 +6041,23 @@ auto GlobalScope::Impl::constEnumMethod(FunctionDecl* f, ConstValue& self, const
     return std::nullopt;
   if (!t->args.empty())
     return none("an enum of a class template's instance, whose methods the constant evaluation does not run yet");
+  if (f->builtin == BUILTIN_EnumIsValid && f->parent && f->parent->kind == NodeKind::EnumDecl && self.kind == ConstValue::Kind::Int)
+  {
+    // The generated isValid(): whether one of the enumerators has the value (design.md 8.4).
+    auto* e = static_cast<EnumDecl*>(f->parent);
+    TypeContext ctx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
+                    e->file ? e->file->text : std::string_view()};
+    bool valid = false;
+    for (Decl* m : e->enumerators)
+      if (m->kind == NodeKind::EnumeratorDecl)
+      {
+        std::optional<ConstValue> v = constValueOfDecl(m, ctx, depth + 1);
+        if (!v || v->kind != ConstValue::Kind::Int)
+          return none("an enumerator that is no constant");
+        valid = valid || v->i == self.i;
+      }
+    return ConstValue::integer(valid, types.boolType());
+  }
   FunctionDecl* def = f->body ? f : constDefinition(f);
   if (!def || !def->body || def->params.size() != f->params.size() || !f->templateParams.empty())
     return none("its body is not where the constant evaluation sees it");

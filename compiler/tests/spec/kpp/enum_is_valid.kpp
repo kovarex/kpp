@@ -1,0 +1,54 @@
+// spec: every kpp enum and every `enum class` written in kpp has the generated method `bool isValid() const`: whether the value is one of the enum's enumerators (kovarex, 2026-11-20: a check after loading one from a deserialiser, `E(raw)` itself stays the plain conversion); values with gaps and enumerators of one value too; a hand-written one replaces it, as str()'s does; a typed union's Tag has it, the constant evaluation runs it
+enum class Mode : u8
+{
+  { Off, Low = 3, High = 7, Max = 7 }
+};
+
+enum class Kind : i16
+{
+  Negative = -2,
+  Zero = 0,
+  Big = 300,
+};
+
+enum class Small : u8
+{
+  A,
+  B,
+  C,
+};
+
+enum class Custom : u8
+{
+  { First, Second }
+  bool isValid() const { return this == First; }
+};
+
+union enum class Shape
+{
+  { {Circle, int}, {Empty, void} }
+};
+
+static_assert(Mode::High.isValid() && Mode(7).isValid() && !Mode(2).isValid()); // (the constant evaluation runs it)
+static_assert(Kind(-2).isValid() && !Kind(-1).isValid());
+constexpr bool smallC = Small::C.isValid();
+
+template<class T>
+bool loaded(u8 raw)
+{
+  T value = T(raw);
+  return value.isValid();
+}
+
+int main()
+{
+  std::println(Mode::Off.isValid(), Mode::Low.isValid(), Mode::High.isValid(), Mode(1).isValid(), Mode(8).isValid(), Mode(255).isValid());
+  std::println(Kind::Negative.isValid(), Kind(-1).isValid(), Kind::Zero.isValid(), Kind(300).isValid(), Kind(299).isValid());
+  Small s = Small(2);
+  const Small& reference = s;
+  std::println(s.isValid(), reference.isValid(), Small(3).isValid(), loaded<Small>(1), loaded<Small>(200), loaded<Mode>(3), loaded<Mode>(4));
+  std::println(Custom::First.isValid(), Custom::Second.isValid());
+  Shape shape = Shape::Circle(3);
+  std::println(shape.tag().isValid(), Shape::Tag(1).isValid(), Shape::Tag(2).isValid(), smallC);
+  return 0;
+}

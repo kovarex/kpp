@@ -715,6 +715,16 @@ text)` returns `Optional<E>`; the compiler declares it on every kpp enum and low
 library's `enumFromStr<E>(text)` (stdlib/core/Optional.kpp), which walks `E::values` comparing
 `str()`; a `String` passes its `c_str()`, and a hand-written `fromStr` replaces the generated one.
 
+*isValid()* (kovarex, 2026-11-20: "a way to check that the loaded value is correct (one of the available values)"
+after loading an enum from a deserialiser; "Lets not do fromUnderlying then, and just have method to check the value
+in the enum"): every kpp enum, every `enum class` written in kpp and a typed union's Tag have the generated `bool
+isValid() const`, true when one of the enumerators has the value (gaps and enumerators of one value too, a value of
+an enum with no enumerators never), false for any other; a hand-written one replaces it, as `str()`'s does. `E(x)`
+stays the plain conversion that checks nothing: about 250 of the game's conversions make values outside the
+enumerators on purpose (sentinels such as `LuaEventType(-1)`, enums used as typed numbers such as `Color32`).
+`[[c]]` and imported C enums have none (under C's rules every number of the type is a value). Its body is a switch
+on the value, which LLVM makes a range check or a bit test; the constant evaluation runs it. Spec kpp/enum_is_valid.
+
 An enumerator of a scoped enum is named through its enum outside the enum, in a case label too
 (kovarex, 2026-11-07: "for readability and simplicity ... for now, this is a simple rule"):
 `case Direction::North:`, no bare label on a switch over the enum and no `.North` shorthand. Inside the

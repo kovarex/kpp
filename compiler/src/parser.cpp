@@ -57,6 +57,7 @@ namespace
       kwValues = symbols.intern("values");
       kwStr = symbols.intern("str");
       kwEnumeratorName = symbols.intern("enumeratorName");
+      kwIsValid = symbols.intern("isValid");
       kwTypes = symbols.intern("types");
       kwFromStr = symbols.intern("fromStr");
       kwUnderlyingType = symbols.intern("UnderlyingType");
@@ -1682,6 +1683,31 @@ namespace
         from->name.parts = makeSpanOf(std::vector<NamePart>{part});
         pushDecl(from);
       }
+    }
+
+    // `bool isValid() const` (unless written by hand) on a kpp enum and on an `enum class` written in kpp: whether
+    // the value is one of the enumerators (kovarex, 2026-11-20: the check after loading one from a deserialiser;
+    // `E(raw)` stays the plain conversion). The code generator writes its body (Decl::builtin).
+    void addEnumIsValid(EnumDecl* e, uint32_t start, size_t mark)
+    {
+      for (size_t i = mark; i < scratch.size(); ++i)
+        if (scratch[i]->kind == NodeKind::FunctionDecl)
+        {
+          auto* f = static_cast<FunctionDecl*>(scratch[i]);
+          if (f->name.parts.size() == 1 && f->name.parts[0].symbol == kwIsValid)
+            return;
+        }
+      FunctionDecl* valid = decl<FunctionDecl>(start);
+      valid->flags |= DF_Const;
+      valid->builtin = BUILTIN_EnumIsValid;
+      BuiltinType* boolType = node<BuiltinType>(start);
+      boolType->keyword = Kw::bool_;
+      valid->returnType = boolType;
+      NamePart part;
+      part.symbol = kwIsValid;
+      valid->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      pushDecl(valid);
+      (void)e;
     }
 
     // --- build configuration ---
@@ -4143,6 +4169,7 @@ namespace
         currentParent = tag;
         size_t tagMark = scratch.size();
         addEnumBuiltins(tag, start, tagMark);
+        addEnumIsValid(tag, start, tagMark);
         tag->members = makeSpan<Decl*>(tagMark);
         currentParent = c;
       }
@@ -5668,6 +5695,8 @@ namespace
       }
       if (e->isKpp)
         addEnumBuiltins(e, start, mark);
+      if (e->isKpp || e->isClass)
+        addEnumIsValid(e, start, mark);
       e->members = makeSpan<Decl*>(mark);
       e->enumerators = makeSpanOf(enumerators);
       currentParent = savedParent;
@@ -8187,7 +8216,7 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
              kwTagMethod, kwTypeMember, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
