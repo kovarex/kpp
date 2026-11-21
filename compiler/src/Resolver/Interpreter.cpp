@@ -3778,12 +3778,13 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
   // as UTF-8 (Unreal's TEXT("...") format checks, `consteval TCheckedFormatStringPrivate(const TCHAR (&Fmt)[N])`; it
   // was no constant). Any piece may carry the prefix (`L"a" "b"`).
   int unitBits = 0;
-  bool prefixL = false;
+  bool prefixL = false, prefixU8 = false; // (u8"": UTF-8 code units, char8_t's, as a narrow one's bytes)
   for (size_t i = l->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String && !unitBits; ++i)
   {
     std::string spliced;
     std::string_view spelled = tokenSpelling(text, (*toks)[i], spliced);
     prefixL = spelled.starts_with("L");
+    prefixU8 = prefixU8 || spelled.starts_with("u8");
     unitBits = prefixL ? int(types.wcharBits()) : spelled.starts_with("u8") ? 0
                : spelled.starts_with("u") ? 16 : spelled.starts_with("U") ? 32 : 0;
   }
@@ -3793,7 +3794,7 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
     // operator it calls).
     std::string spliced;
     std::string_view spelled = tokenSpelling(text, (*toks)[i], spliced);
-    if (unitBits)
+    if (unitBits || prefixU8)
     {
       size_t open = spelled.find('"');
       if (open == std::string_view::npos)
@@ -3848,7 +3849,7 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
   }
   if (!constMayMake(bytes.size() + 1))
     return std::nullopt;
-  const Ty* ch = types.charType(8, false);
+  const Ty* ch = types.charType(8, prefixU8); // (char8_t for u8"", as the walk types it)
   std::vector<ConstValue> chars;
   chars.reserve(bytes.size() + 1);
   for (char c : bytes)
