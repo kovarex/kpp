@@ -1,0 +1,14 @@
+// spec: with `extern "C" define UNICODE;` windows.h's TCHAR is WCHAR, wchar_t, and a program's `typedef wchar_t TCHAR;` names the same type, one entity with the header's (Unreal Engine's Platform.h, `typedef FPlatformTypes::TCHAR TCHAR;`); its `const auto TRUE = 1;` and `const auto FALSE = 0;` (AllowWindowsPlatformTypes.h's macros, converted) are windef.h's constants written alike, one with them
+// target: windows (windows.h)
+extern "C" define UNICODE;
+extern "C" import "windows.h";
+typedef wchar_t TCHAR;
+const auto TRUE = 1;
+const auto FALSE = 0;
+
+int main()
+{
+  TCHAR c = 65;
+  std::println(sizeof(TCHAR), " ", TRUE, " ", FALSE, " ", (int)c);
+  return 0;
+}

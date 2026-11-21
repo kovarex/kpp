@@ -269,4 +269,6 @@ struct EmptyDecl : Decl {};
 struct DeductionGuideDecl : Decl { QualifiedName name; Span<Decl*> params; Type* target = nullptr; Expr* requiresClause = nullptr; };
 struct AsmDecl : Decl {};
 struct FriendDecl : Decl { Type* type; Decl* decl; };
-struct ImportDecl : Decl { uint32_t pathToken; }; // extern "C" import "header.h"; (the string token)
+// extern "C" import "header.h"; (pathToken: the string token), or with isDefine `extern "C" define NAME;` or
+// `extern "C" define NAME = value;` (pathToken: NAME, the value its tokens after `=` to endToken's `;`), design.md 5.
+struct ImportDecl : Decl { uint32_t pathToken; bool isDefine = false; };

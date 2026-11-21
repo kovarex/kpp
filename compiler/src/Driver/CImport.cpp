@@ -1046,9 +1046,35 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   std::vector<std::string> headers;
   std::vector<std::string> importedAt; // each header's first `extern "C" import`, `file:line`
   bool refused = false;                // a used library's import of a file outside the include directories
+  std::map<std::string, std::pair<std::string, std::string>> defines; // `extern "C" define`: name -> (value, where first)
   for (size_t i = 0; i < parsed.size(); ++i)
     for (Decl* d : parsed[i]->decls)
-      if (d->kind == NodeKind::ImportDecl)
+      if (d->kind == NodeKind::ImportDecl && static_cast<ImportDecl*>(d)->isDefine)
+      {
+        // `extern "C" define NAME = value;` (design.md 5): the whole program's, one value of a name wherever it is written
+        const std::vector<Token>& tokens = lexed[i].tokens;
+        auto* def = static_cast<ImportDecl*>(d);
+        const Token& name = tokens[def->pathToken];
+        std::string spelled = files[i].text.substr(name.offset, name.length), value;
+        if (def->pathToken + 1 < tokens.size() && tokens[def->pathToken + 1].is(P::Assign) && def->endToken >= 1 && def->endToken - 1 < tokens.size())
+        {
+          uint32_t from = tokens[def->pathToken + 2].offset, to = tokens[def->endToken - 1].offset;
+          value = to > from ? files[i].text.substr(from, to - from) : std::string();
+          while (!value.empty() && isspace((unsigned char)value.back()))
+            value.pop_back();
+        }
+        size_t line = 1 + size_t(std::count(files[i].text.begin(), files[i].text.begin() + name.offset, '\n'));
+        std::string at = files[i].path.string() + ":" + std::to_string(line);
+        auto [it, added] = defines.emplace(spelled, std::make_pair(value, at));
+        if (!added && it->second.first != value)
+        {
+          fprintf(stderr, "%s: error: `extern \"C\" define %s` is %s here and %s at %s: the C headers are preprocessed once, with one value of each name\n",
+                  at.c_str(), spelled.c_str(), value.empty() ? "empty" : value.c_str(), it->second.first.empty() ? "empty" : it->second.first.c_str(),
+                  it->second.second.c_str());
+          refused = true;
+        }
+      }
+      else if (d->kind == NodeKind::ImportDecl)
       {
         const Token& t = lexed[i].tokens[static_cast<ImportDecl*>(d)->pathToken];
         std::string path = files[i].text.substr(t.offset + 1, t.length - 2);
@@ -1081,6 +1107,8 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     return;
   auto importStart = std::chrono::steady_clock::now();
   std::string wrapper = "#define WIN32_LEAN_AND_MEAN\n#define NOMINMAX\n#define _USE_MATH_DEFINES\n";
+  for (const auto& [name, value] : defines) // (the program's, before every header: UNICODE for Unreal Engine's TCHAR)
+    wrapper += "#define " + name + (value.first.empty() ? std::string() : " " + value.first) + "\n";
   for (const std::string& h : headers)
     // (intrin.h is MSVC's: another target's clang has the same SSE intrinsics in immintrin.h)
     wrapper += !options.target.windows() && h == "intrin.h" ? std::string("#include <immintrin.h>\n#include <x86intrin.h>\n") : "#include <" + h + ">\n";

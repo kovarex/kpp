@@ -1097,7 +1097,20 @@ std::vector<std::string> GlobalScope::topLevelClashes()
       depth += token.is(P::LParen) || token.is(P::LBracket) || token.is(P::LBrace);
       depth -= token.is(P::RParen) || token.is(P::RBracket) || token.is(P::RBrace);
       if (depth == 0 && token.is(P::Semi))
+      {
+        // (an imported header's macro constant of an int's value, `const int TRUE = 1;` from windef.h, is spelled as
+        // a program's `const auto TRUE = 1;` would be, which is its type: the converted AllowWindowsPlatformTypes.h's)
+        if (constant && d->file->isImported && out.size() >= 5 && out[0] == "const" && out[1] == "int" && out[3] == "=")
+        {
+          bool intLiteral = true;
+          for (size_t k = 4; k < out.size(); ++k)
+            intLiteral = intLiteral && (out[k] == "(" || out[k] == ")" || out[k] == "-" ||
+                                        (!out[k].empty() && isdigit((unsigned char)out[k][0]) && out[k].find_first_not_of("0123456789") == std::string::npos));
+          if (intLiteral)
+            out[1] = "auto";
+        }
         return constant ? out : std::vector<std::string>{};
+      }
       out.push_back(std::string(tokenSpelling(d->file->text, token, buffer)));
     }
     return std::vector<std::string>{};

@@ -43,6 +43,7 @@ namespace
       : toks(tokens), text(text.data()), symbols(symbols), out(out), arena(out.arena)
     {
       kwImport = symbols.intern("import");
+      kwDefine = symbols.intern("define");
       kwSuite = symbols.intern("SUITE");
       kwFlags = symbols.intern("flags");
       kwAssert = symbols.intern("assert");
@@ -2303,6 +2304,29 @@ namespace
           expect(P::Semi, "expected ';' after import");
           externC = savedExternC;
           pushDecl(imp);
+          return;
+        }
+        // `extern "C" define UNICODE;`, `extern "C" define WINVER = 0x0A00;`: a macro the C headers the program
+        // imports are preprocessed with (design.md 5), the whole program's wherever it is written.
+        if (isKpp() && atIdent(kwDefine) && atIdent(1))
+        {
+          noteWord(pos);
+          ImportDecl* def = decl<ImportDecl>(start);
+          def->isDefine = true;
+          advance();
+          def->pathToken = pos;
+          advance();
+          if (accept(P::Assign))
+          {
+            if (at(P::Semi))
+              error("expected the value after `extern \"C\" define NAME =`");
+            while (!at(P::Semi) && !at(TokenKind::End))
+              advance();
+          }
+          expect(P::Semi, "expected ';' after `extern \"C\" define NAME` or its value");
+          def->endToken = pos;
+          externC = savedExternC;
+          pushDecl(def);
           return;
         }
         if (accept(P::LBrace))
@@ -8299,7 +8323,7 @@ namespace
     ParsedFile::TestSuite* currentSuite = nullptr; // The suite being parsed (design.md 8.7).
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
-    uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwAssert, kwReleaseAssert, kwCaller,
+    uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
              kwTagMethod, kwTypeMember, kwSuite, kwFlags;

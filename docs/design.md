@@ -331,6 +331,18 @@ builds win less unless machine code is cached per function.
   declared, not compiled: the library provides them (the link line adds
   `legacy_stdio_definitions` for the UCRT's inline printf/scanf family). `--cinclude DIR` adds
   include directories for the imports.
+- **Macros for the import (kovarex, 2026-11-21, option A for Unreal Engine).** `extern "C" define NAME;` and
+  `extern "C" define NAME = value;`, anywhere in the program, are macros the imported headers are preprocessed
+  with, before every header, as a C compiler's `-D` (Unreal Engine builds with UNICODE, which makes windows.h's
+  TCHAR wchar_t, UE's own). They are the whole program's, as its imports are: one name given two values is an
+  error naming both. A value's macro becomes the import's constant like any header's (specs interop/c_import_define,
+  c_import_define_two_values_is_error).
+- **A program's name that a C header has too.** Still one name of the program, an error, unless the two are one
+  entity: two names of one type (`typedef wchar_t TCHAR;` beside windows.h's TCHAR under UNICODE), or a constant
+  written alike, where a header's macro constant of an int's value, which the import writes `const int TRUE = 1;`,
+  is spelled as the program's `const auto TRUE = 1;` (UE's AllowWindowsPlatformTypes.h, converted); of another
+  value it stays an error (specs interop/c_import_constant_written_alike, c_import_define_unicode_typedef_alike,
+  c_import_constant_of_another_value_is_error).
 - **Converted code imports once per library (kovarex, 2026-11-02).** An import is the whole program's
   wherever it is written, so the converter writes no import into a converted file: each library's
   (each converted root's) C headers are imported once, in its `c-imports.kpp` (src/c-imports.kpp for

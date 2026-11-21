@@ -1,0 +1,10 @@
+// spec: a program's constant of a name an imported C header defines as a macro of the same int value (`const auto SEEK_SET = 0;` beside stdio.h's `#define SEEK_SET 0`, which the import writes `const int SEEK_SET = 0;`) is one constant with the header's, as two files' constants written alike are; of another value it stays an error (c_import_constant_of_another_value_is_error)
+// found for Unreal Engine (kovarex, 2026-11-21): AllowWindowsPlatformTypes.h's `#define TRUE 1`, converted to `const auto TRUE = 1;`, against windef.h's TRUE
+extern "C" import "stdio.h";
+const auto SEEK_SET = 0;
+
+int main()
+{
+  std::println(SEEK_SET);
+  return 0;
+}

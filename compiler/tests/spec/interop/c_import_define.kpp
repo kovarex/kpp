@@ -1,0 +1,11 @@
+// spec: `extern "C" define NAME = value;` and `extern "C" define NAME;`, anywhere in the program, are macros the imported C headers are preprocessed with, before every header, as a C compiler's -D (design.md 5); a value's macro is the import's constant as a header's would be (`6 * 7`, 42)
+// found for Unreal Engine (kovarex, 2026-11-21, option A): UE builds with UNICODE, which makes windows.h's TCHAR UE's wchar_t; the import had no way to take a program's macros
+extern "C" define KPP_SPEC_ANSWER = 6 * 7;
+extern "C" define KPP_SPEC_FLAG;
+extern "C" import "stddef.h";
+
+int main()
+{
+  std::println(KPP_SPEC_ANSWER);
+  return 0;
+}

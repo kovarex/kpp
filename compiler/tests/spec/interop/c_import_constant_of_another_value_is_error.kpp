@@ -1,0 +1,9 @@
+// spec: a program's constant of a name an imported C header defines, of another value (`const auto SEEK_CUR = 7;` beside stdio.h's SEEK_CUR 1), is two entities: an error, the header's name being the program's
+// error: c_import_constant_of_another_value_is_error.kpp:4: error: 'SEEK_CUR' is declared here and in the imported C headers
+extern "C" import "stdio.h";
+const auto SEEK_CUR = 7;
+
+int main()
+{
+  return SEEK_CUR;
+}

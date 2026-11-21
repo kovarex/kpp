@@ -1,0 +1,10 @@
+// spec: one name given two values by `extern "C" define` (the C headers are preprocessed once for the whole program) is an error naming both
+// error: c_import_define_two_values_is_error.kpp:4: error: `extern "C" define KPP_SPEC_LEVEL` is 2 here and 1 at
+extern "C" define KPP_SPEC_LEVEL = 1;
+extern "C" define KPP_SPEC_LEVEL = 2;
+extern "C" import "stddef.h";
+
+int main()
+{
+  return 0;
+}
