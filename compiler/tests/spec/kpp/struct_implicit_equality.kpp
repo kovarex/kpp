@@ -1,0 +1,77 @@
+// spec: a struct (the keyword) that declares no operator== has one implicitly, comparing its bases and members in order as a defaulted == does (design.md 31, kovarex 2026-11-21): `a == b` and `a != b`, a nested struct, an array, floats as IEEE (a NaN unequal to itself), an enum, a std::String and a std::Vector by their own ==, a class template's instance, std::find and a requirement `requires { a == b; }`, in a constant expression too; a struct that declares its own == (one comparing fewer members) keeps it, and one that converts implicitly (`implicit operator i32()`) still compares by its conversion
+enum class Kind
+{
+  A,
+  B,
+};
+struct Pos
+{
+  i32 x;
+  i32 y;
+};
+struct Named
+{
+  std::String name;
+  Pos pos;
+  Kind kind;
+};
+struct Grid
+{
+  i32 cells[3];
+  f32 weight;
+};
+struct Base
+{
+  i32 id;
+};
+struct Derived : Base
+{
+  i32 extra;
+};
+template<typename T>
+struct Box
+{
+  T value;
+};
+struct Cached
+{
+  i32 key;
+  i32 cache;
+  bool operator==(const Cached& other) const { return this.key == other.key; }
+};
+struct Wrapper
+{
+  Cached cached;
+  std::Vector<Pos> path;
+};
+struct Level
+{
+  i32 value;
+  implicit operator i32() const { return this.value / 10; }
+};
+template<typename T>
+constexpr bool comparable = requires (const T& a, const T& b) { a == b; };
+static_assert(Pos{1, 2} == Pos{1, 2});
+static_assert(Pos{1, 2} != Pos{2, 1});
+int main()
+{
+  Pos a{1, 2}, b{1, 2}, c{2, 1};
+  std::println(a == b, " ", a == c, " ", a != c);
+  Named n1{"x", a, Kind::A}, n2{"x", b, Kind::A}, n3{"y", b, Kind::A}, n4{"x", b, Kind::B};
+  std::println(n1 == n2, " ", n1 == n3, " ", n1 == n4);
+  f32 zero = 0.0f;
+  Grid g1{{1, 2, 3}, 0.5f}, g2{{1, 2, 3}, 0.5f}, g3{{1, 2, 4}, 0.5f}, g4{{1, 2, 3}, zero / zero};
+  std::println(g1 == g2, " ", g1 == g3, " ", g4 == g4);
+  Derived d1{{1}, 2}, d2{{1}, 2}, d3{{2}, 2};
+  std::println(d1 == d2, " ", d1 == d3);
+  Box<Pos> x{a}, y{c};
+  std::println(x == y, " ", x != y);
+  Wrapper w1{{1, 10}, {a, c}}, w2{{1, 20}, {a, c}}, w3{{1, 10}, {a}};
+  std::println(w1 == w2, " ", w1 == w3);
+  std::Vector<Pos> path{a, c};
+  std::println(std::find(path, c) != path.end(), " ", std::find(path, Pos{5, 5}) != path.end());
+  std::println(comparable<Pos>, " ", comparable<Wrapper>, " ", comparable<Box<Named>>);
+  Level l1{11}, l2{19};
+  std::println(l1 == l2);
+  return 0;
+}

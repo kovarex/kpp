@@ -3367,7 +3367,8 @@ auto GlobalScope::Impl::constBinaryValues(P op, const ConstValue& l, const Const
       if (a.isObject() && a.type && types.unqualified(a.type)->kind == TyKind::Class)
       {
         Subst subst;
-        if (constDefaulted(constClassOperator(a.type, P::Spaceship, {constTypeOfValue(b)}, subst, depth)))
+        if (constDefaulted(constClassOperator(a.type, P::Spaceship, {constTypeOfValue(b)}, subst, depth)) ||
+            (b.isObject() && b.type && types.unqualified(b.type) == types.unqualified(a.type) && hasImplicitEquality(a.type))) // design.md 31
         {
           std::optional<bool> same = constMemberwiseEqual(a, b, ctx, depth + 1);
           return same ? std::optional<ConstValue>(boolean(op == P::EqEq ? *same : !*same)) : std::nullopt;

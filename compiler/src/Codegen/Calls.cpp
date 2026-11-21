@@ -1514,6 +1514,9 @@ auto codegen::Emitter::objectsEqual(const std::string& a, const std::string& b, 
   // declare no == of its own, compares member-wise as a defaulted == would (design.md 8.5).
   if (ClassDecl* def = classDef(t->decl, at); def && !def->name.empty() && !alternativeStructShown(def, symbols.name(def->name.last().symbol)).empty())
     return memberwiseEqual(a, b, t, at);
+  // A struct that declares no == compares by its implicit one, member-wise (design.md 31).
+  if (global.hasImplicitEquality(t))
+    return memberwiseEqual(a, b, t, at);
   // A class with no == compares as `a == b` does in C++: by the built-in == on its conversion (the game's
   // TechnologyWithCount, by its operator bool, in ResearchCondition's defaulted ==), never member by member (the
   // checker refuses a defaulted == over a class that has neither: Walker::deletedDefaultedEquality).

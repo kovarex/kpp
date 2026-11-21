@@ -201,6 +201,7 @@
   // some that C++ never makes: a primary template's body for arguments an explicit specialization takes).
   std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceWarnings;
   std::unordered_set<const FunctionDecl*> emittedFunctions;
+  GlobalScope* outer = nullptr; // the GlobalScope this is the Impl of (its findFreeOperator: implicitEqualityOf)
   bool codeGenerated = true; // GlobalScope::setCodeGenerated: false, none of emittedFunctions counts
   bool converting = false;   // GlobalScope::setConverting: both branches of a plain function's if constexpr walked
   bool debug = true;         // GlobalScope::setDebug: config::debug (false: an assert's expression is discarded code)

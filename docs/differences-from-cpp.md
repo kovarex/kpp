@@ -577,6 +577,22 @@ struct OpenTrainsGuiData
 OpenTrainsGuiData data(parameters, playSound); // member-wise: C++ needs a constructor written for it
 ```
 
+### A struct has an implicit `==` (built)
+
+- **C++:** a class compares only by an `operator==` it declares, written or `= default`.
+- **kpp:** a struct that declares none compares its bases and members in order, as a defaulted `==` would, unless one
+  of them is a pointer, a reference, an owning pointer (`T^`), an anonymous union or of a type with no `==`: then
+  comparing it is an error naming the member. A struct that declares or inherits an `==`, or converts implicitly, keeps
+  what it had. No `<=>` is implicit.
+- **Why:** kovarex (2026-11-21): "do only == implicit and not with references or pointers"; 30 of the game's 39 struct
+  `==` only repeated the default.
+- **See:** [design 31][d31]; specs `kpp/struct_implicit_equality`, `kpp/struct_implicit_equality_excluded_is_error`.
+
+```cpp
+struct Pos { i32 x; i32 y; };
+bool same = Pos{1, 2} == Pos{1, 2}; // true: C++ needs `bool operator==(const Pos&) const = default;`
+```
+
 ### One definition for const and non-const (later, details not decided)
 
 - **C++:** a getter is written twice, and C++23's deducing `this` helps a little.
@@ -1221,6 +1237,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d27]: design.md#27-flags-a-set-of-named-bits-decided-2026-11-12
 [d29]: design.md#29-the-implicit-default-constructor-stays-beside-other-constructors-decided-2026-11-17-built
 [d30]: design.md#30-a-struct-keeps-its-member-wise-construction-beside-its-constructors-decided-2026-11-18-built
+[d31]: design.md#31-a-struct-has-an-implicit--decided-2026-11-21-built
 [dbgv]: debugging.md#debugvalue
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01

@@ -1281,6 +1281,136 @@ auto GlobalScope::Impl::memberwiseTakes(const Ty* t, ClassDecl* def, const std::
   return memberwiseBesideConstructors(def) && aggregateTakes(t, def, args, true);
 }
 
+auto GlobalScope::Impl::declaresEqualityOrConversion(const Ty* t, ClassDecl* def, int depth) -> bool
+{
+  if (!def || depth > 64)
+    return false;
+  for (Decl* m : membersRead(def))
+  {
+    if (m->kind != NodeKind::FunctionDecl)
+      continue;
+    auto* f = static_cast<FunctionDecl*>(m);
+    if (f->name.empty())
+      continue;
+    const NamePart& last = f->name.last();
+    if (last.special == 2 && P(last.opToken) == P::EqEq)
+      return true; // (its own, written, defaulted, deleted, a friend, or the one its defaulted <=> implies)
+    if (last.special == 3 && (f->flags & DF_Implicit))
+      return true; // `implicit operator i32()`: `a == b` is the conversion's, as before
+  }
+  std::vector<const Ty*> bases;
+  if (directBases(t, def, bases))
+    for (const Ty* b : bases)
+    {
+      const Ty* base = types.unqualified(types.stripRef(b));
+      if (base->kind == TyKind::Class && declaresEqualityOrConversion(base, classDefinition(base), depth + 1))
+        return true;
+    }
+  return false;
+}
+
+auto GlobalScope::Impl::implicitEqualityOf(const Ty* t, int depth, const std::string& prefix) -> std::optional<std::string>
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || t->kind != TyKind::Class || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t) || depth > 64)
+    return std::nullopt;
+  ClassDecl* def = classDefinition(t);
+  if (!memberwiseBesideConstructors(def) || !def->file || def->file->isImported || (def->attributes & ATTR_Draft) ||
+      declaresEqualityOrConversion(t, def, 0))
+    return std::nullopt;
+  // How a base or member of type m compares: "" by an == (a scalar's built-in one, a class's own or free one, a struct's
+  // implicit one), else why the struct has none.
+  auto compares = [&](const Ty* m, const std::string& name) -> std::optional<std::string>
+  {
+    m = types.unqualified(m);
+    while (m->kind == TyKind::Array && m->inner)
+      m = types.unqualified(m->inner);
+    switch (m->kind)
+    {
+      case TyKind::Pointer: case TyKind::MemberPointer: case TyKind::Nullptr: case TyKind::Function:
+        return "its " + name + " is a pointer";
+      case TyKind::Class:
+        break;
+      case TyKind::Bool: case TyKind::Char: case TyKind::Int: case TyKind::Float: case TyKind::Enum: case TyKind::Vector:
+        return std::string();
+      default:
+        return std::nullopt; // (not known yet: no implicit ==)
+    }
+    if (!m->isKnown() || types.isDependent(m) || mentionsUnknown(m))
+      return std::nullopt;
+    if (m->decl && (m->decl == libraryDecl("UniquePtr", NodeKind::ClassDecl) || m->decl == libraryDecl("SharedPtr", NodeKind::ClassDecl)))
+      return "its " + name + " is an owning pointer";
+    ClassDecl* mdef = classDefinition(m);
+    if (!mdef)
+      return std::nullopt;
+    if (mdef->isTypedUnion)
+      return std::string(); // (the alternative held, then its value: design.md 8.5)
+    std::string shown = types.toString(m, &symbols);
+    if (mdef->keyword == Kw::union_)
+      return "its " + name + ", a " + shown + ", is a union";
+    if (std::optional<std::string> inner = implicitEqualityOf(m, depth + 1, name))
+      return *inner; // a struct of its own: its implicit ==, or why it has none
+    for (Decl* f : membersRead(mdef))
+      if (f->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(f)->name.empty() && static_cast<FunctionDecl*>(f)->name.last().special == 2 &&
+          P(static_cast<FunctionDecl*>(f)->name.last().opToken) == P::EqEq)
+        return (f->flags & DF_Delete) ? "its " + name + ", a " + shown + ", has a deleted operator==" : std::string();
+    const Ty* operand = types.lref(types.qualified(m, true, false));
+    if (outer && outer->findFreeOperator(uint32_t(P::EqEq), operand, operand, mdef))
+      return std::string();
+    if (declaresEqualityOrConversion(m, mdef, 0))
+      return std::string(); // (an inherited ==, or the conversion its `a == b` takes)
+    return "its " + name + ", a " + shown + ", has no operator==";
+  };
+  std::vector<const Ty*> bases;
+  if (!directBases(t, def, bases))
+    return std::nullopt;
+  for (const Ty* b : bases)
+  {
+    const Ty* base = types.unqualified(types.stripRef(b));
+    std::optional<std::string> why = compares(base, (depth > 0 ? prefix + "'s base " : "base ") + types.toString(base, &symbols));
+    if (!why || !why->empty())
+      return why;
+  }
+  Subst s = substFor(t);
+  const Subst* sp = s.pairs.empty() ? nullptr : &s;
+  DeclContext dc;
+  declContextFor(def, dc);
+  TypeContext ctx{dc.scope, &dc.params, sp, def->file ? def->file->tokens : nullptr, def->file ? def->file->text : std::string_view()};
+  for (Decl* m : membersRead(def))
+  {
+    // An anonymous struct's or union's members are the class's own: none compares them (codegen's memberwiseEqual).
+    if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.empty() && static_cast<ClassDecl*>(m)->isDefinition)
+    {
+      std::string what = static_cast<ClassDecl*>(m)->keyword == Kw::union_ ? "union" : "struct";
+      return depth > 0 ? "its " + prefix + " has an anonymous " + what : "it has an anonymous " + what;
+    }
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)))
+      continue;
+    if (m->when)
+    {
+      // (design.md 19: a false `when`'s member is not there)
+      std::optional<int64_t> holds = m->whenKnown >= 0 ? std::optional<int64_t>(m->whenKnown) : constEval(m->when, ctx, 0);
+      if (!holds)
+        return std::nullopt;
+      if (!*holds)
+        continue;
+    }
+    auto* v = static_cast<VariableDecl*>(m);
+    if (v->name.empty())
+      continue; // (an unnamed bit-field: padding)
+    const Ty* mt = declaredTypeOf(m, sp, 0);
+    if (!mt || !mt->isKnown() || types.isDependent(mt) || mentionsUnknown(mt))
+      return std::nullopt;
+    std::string name = (depth > 0 ? prefix + "'s member " : "member ") + std::string(symbols.name(v->name.last().symbol));
+    if (mt->isReference())
+      return "its " + name + " is a reference";
+    std::optional<std::string> why = compares(mt, name);
+    if (!why || !why->empty())
+      return why;
+  }
+  return std::string();
+}
+
 auto GlobalScope::Impl::aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args, bool besideConstructors) -> bool
 {
   for (Decl* m : membersRead(def))

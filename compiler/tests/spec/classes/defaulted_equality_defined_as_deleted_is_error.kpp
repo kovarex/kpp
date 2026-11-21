@@ -1,10 +1,10 @@
-// spec: a defaulted == that C++ defines as deleted ([class.compare.default] 2, [class.eq] 2: a reference member, a member or base whose type has no usable ==, a union among them) is an error where a comparison calls it, naming the member, never a comparison of addresses, of a union's first member or of the members of a class that declares no ==; declaring one that nothing calls is no error, and a member whose class has a defaulted <=> compares by the == it implies
+// spec: a defaulted == that C++ defines as deleted ([class.compare.default] 2, [class.eq] 2: a reference member, a member or base whose type has no usable == (a class: a struct has an implicit one, design.md 31), a union among them) is an error where a comparison calls it, naming the member, never a comparison of addresses, of a union's first member or of the members of a class that declares no ==; declaring one that nothing calls is no error, and a member whose class has a defaulted <=> compares by the == it implies
 // found by the defaulted comparison study (2026-11-18): kpp compared a reference member's addresses, a union member's first member and the private members of a class with no ==
-// error: defaulted_equality_defined_as_deleted_is_error.kpp:68: error: Bound is compared by its defaulted operator==, which C++ defines as deleted: its member r is a reference ([class.compare.default] 2)
-// error: defaulted_equality_defined_as_deleted_is_error.kpp:69: error: WithUnion is compared by its defaulted operator==, which C++ defines as deleted: its member u, a Bits, has no operator== ([class.compare.default] 2)
-// error: defaulted_equality_defined_as_deleted_is_error.kpp:70: error: Holder is compared by its defaulted operator==, which C++ defines as deleted: its member s, a Secret, has no operator== ([class.compare.default] 2)
-// error: defaulted_equality_defined_as_deleted_is_error.kpp:71: error: Derived is compared by its defaulted operator==, which C++ defines as deleted: its base Plain has no operator== ([class.compare.default] 2)
-// error: defaulted_equality_defined_as_deleted_is_error.kpp:72: error: Nested is compared by its defaulted operator==, which C++ defines as deleted: its member h's member s, a Secret, has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:69: error: Bound is compared by its defaulted operator==, which C++ defines as deleted: its member r is a reference ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:70: error: WithUnion is compared by its defaulted operator==, which C++ defines as deleted: its member u, a Bits, has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:71: error: Holder is compared by its defaulted operator==, which C++ defines as deleted: its member s, a Secret, has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:72: error: Derived is compared by its defaulted operator==, which C++ defines as deleted: its base Plain has no operator== ([class.compare.default] 2)
+// error: defaulted_equality_defined_as_deleted_is_error.kpp:73: error: Nested is compared by its defaulted operator==, which C++ defines as deleted: its member h's member s, a Secret, has no operator== ([class.compare.default] 2)
 struct Bound
 {
   i32& r;
@@ -33,8 +33,9 @@ struct Holder
   Secret s;
   bool operator==(const Holder&) const = default;
 };
-struct Plain
+class Plain
 {
+public:
   i32 x;
 };
 struct Derived : Plain

@@ -774,6 +774,9 @@ public:
   // What the compiler names in the standard library, std (design.md 16).
   FunctionDecl* libraryFunction(std::string_view name);
   bool isLibraryClass(const Ty* t, std::string_view name);
+  // Whether struct t has the implicit operator== of a struct that declares none (design.md 31): no pointer or
+  // reference among its bases and members, each comparing by an ==.
+  bool hasImplicitEquality(const Ty* t);
   // The class a friend function defined in a class (a hidden friend) was found through for these
   // argument types (an instance of a class template: its arguments are the function's); null for
   // any other function, or when two instances of its class are among the arguments.

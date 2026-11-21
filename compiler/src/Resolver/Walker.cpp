@@ -8833,7 +8833,12 @@ auto GlobalScope::Impl::Walker::threeWayDefaulted(const Ty* lhs, const Ty* rhs, 
 auto GlobalScope::Impl::Walker::implicitEquality(const Ty* lhs, const Ty* rhs, uint32_t token) -> bool
 {
   const Ty* cls = types.unqualified(types.stripRef(lhs));
-  if (!cls || cls->kind != TyKind::Class || !threeWayDefaulted(cls, cls, token))
+  if (!cls || cls->kind != TyKind::Class)
+    return false;
+  // A struct's implicit == (design.md 31): two of one struct, never another type converted to it.
+  if (const Ty* other = rhs ? types.unqualified(types.stripRef(rhs)) : nullptr; other == cls && impl.hasImplicitEquality(cls))
+    return true;
+  if (!threeWayDefaulted(cls, cls, token))
     return false;
   return impl.conversionRank(rhs, types.lref(types.qualified(cls, true, false))) < Impl::NotViable;
 }
@@ -8868,6 +8873,8 @@ auto GlobalScope::Impl::Walker::deletedDefaultedEquality(const Ty* cls, uint32_t
       probing = wasProbing;
       if (implied)
         return deletedDefaultedEquality(t, token, level + 1, name); // (the == its defaulted <=> implies)
+      if (!f && impl.hasImplicitEquality(t))
+        return {}; // a struct's implicit == (design.md 31)
     }
     if (f && (f->flags & DF_Delete))
       return "its " + name + " has a deleted operator==";
@@ -9697,6 +9704,17 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
       }
       return t;
     }
+    // Two of one struct that has no implicit == (design.md 31: a pointer or reference among its members) and no
+    // conversion to compare by: the error says which member leaves it out.
+    if ((op == P::EqEq || op == P::NotEq) && types.unqualified(ls) == types.unqualified(rs))
+      if (std::optional<std::string> why = impl.implicitEqualityOf(ls); why && !why->empty())
+      {
+        if (probing)
+          return unknown(Why::Overload);
+        reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) + " has no operator==: a struct's implicit == leaves it out, as " + *why +
+                                  " (design.md 31); declare one to compare it");
+        return types.boolType();
+      }
     // Two typed unions of one type with no operator of their own compare as std::variant's
     // (design.md 8.5): by the alternative held, then by its values.
     if (typedUnionOf(ls) && types.unqualified(ls) == types.unqualified(rs))

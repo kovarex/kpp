@@ -4,6 +4,7 @@
 
 GlobalScope::GlobalScope(SymbolTable& symbols) : impl(new Impl(symbols))
 {
+  impl->outer = this;
   std::lock_guard lock(membersOutsideMutex);
   membersOutsideSink = &impl->membersReadOutside;
 }
@@ -857,6 +858,8 @@ FunctionDecl* GlobalScope::libraryFunction(std::string_view name)
 {
   return static_cast<FunctionDecl*>(impl->libraryDecl(name, NodeKind::FunctionDecl));
 }
+
+bool GlobalScope::hasImplicitEquality(const Ty* t) { return impl->hasImplicitEquality(t); }
 
 bool GlobalScope::isLibraryClass(const Ty* t, std::string_view name)
 {

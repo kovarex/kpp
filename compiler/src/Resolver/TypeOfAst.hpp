@@ -204,6 +204,19 @@
   // Whether struct t takes args member-wise beside its constructors (memberwiseBesideConstructors): as an
   // aggregate would, its constructors set aside.
   bool memberwiseTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args);
+  // A struct's implicit operator== (design.md 31, kovarex 2026-11-21): a struct (the keyword, memberwiseBesideConstructors)
+  // that declares no operator== compares its bases and members in order, as a defaulted == would, unless one of them is a
+  // pointer or a reference ("not with references or pointers"). nullopt: t is no such struct (a class, a typed union, a
+  // closure, an imported C struct, one that declares or inherits an operator== or converts implicitly, whose `a == b`
+  // stays the conversion's); "" it has one; else why its bases and members leave it out ("its member next is a pointer").
+  std::optional<std::string> implicitEqualityOf(const Ty* t, int depth = 0, const std::string& prefix = {});
+  bool hasImplicitEquality(const Ty* t)
+  {
+    std::optional<std::string> why = implicitEqualityOf(t);
+    return why && why->empty();
+  }
+  // Whether class def (or a base) declares an operator== (deleted ones too) or an implicit conversion operator.
+  bool declaresEqualityOrConversion(const Ty* t, ClassDecl* def, int depth);
 
   // Whether code outside class def can destroy one: no deleted, private or protected destructor.
   bool destructibleOutside(ClassDecl* def);

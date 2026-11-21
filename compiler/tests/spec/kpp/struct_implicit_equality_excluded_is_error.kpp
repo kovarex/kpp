@@ -1,0 +1,67 @@
+// spec: a struct has no implicit operator== (design.md 31, kovarex 2026-11-21: "not with references or pointers") where a base or member is a pointer, a reference, an owning pointer (`T^`), an anonymous union or of a type with no ==, nested structs included; comparing one is an error naming the member, and a requirement `requires { a == b; }` is not met
+// error: struct_implicit_equality_excluded_is_error.kpp:59: error: Node has no operator==: a struct's implicit == leaves it out, as its member next is a pointer (design.md 31); declare one to compare it
+// error: struct_implicit_equality_excluded_is_error.kpp:60: error: Bound has no operator==: a struct's implicit == leaves it out, as its member r is a reference (design.md 31); declare one to compare it
+// error: struct_implicit_equality_excluded_is_error.kpp:61: error: Owner has no operator==: a struct's implicit == leaves it out, as its member held is an owning pointer (design.md 31); declare one to compare it
+// error: struct_implicit_equality_excluded_is_error.kpp:62: error: Holder has no operator==: a struct's implicit == leaves it out, as its member node's member next is a pointer (design.md 31); declare one to compare it
+// error: struct_implicit_equality_excluded_is_error.kpp:63: error: HasClass has no operator==: a struct's implicit == leaves it out, as its member point, a Point, has no operator== (design.md 31); declare one to compare it
+// error: struct_implicit_equality_excluded_is_error.kpp:64: error: WithUnion has no operator==: a struct's implicit == leaves it out, as it has an anonymous union (design.md 31); declare one to compare it
+struct Node
+{
+  i32 value;
+  Node* next;
+};
+struct Bound
+{
+  i32& r;
+};
+struct Owner
+{
+  i32^ held;
+};
+struct Holder
+{
+  Node node;
+};
+class Point
+{
+public:
+  i32 x;
+};
+struct HasClass
+{
+  Point point;
+};
+struct WithUnion
+{
+  union
+  {
+    i32 i;
+    f32 f;
+  };
+};
+template<typename T>
+constexpr bool comparable = requires (const T& a, const T& b) { a == b; };
+static_assert(!comparable<Node>);
+static_assert(!comparable<Bound>);
+static_assert(!comparable<Owner>);
+static_assert(!comparable<Holder>);
+static_assert(!comparable<HasClass>);
+static_assert(!comparable<WithUnion>);
+int main()
+{
+  i32 k = 1;
+  Node n1{1, nullptr}, n2{1, nullptr};
+  Bound b1{k}, b2{k};
+  Owner o1, o2;
+  Holder h1{n1}, h2{n2};
+  HasClass c1{Point{1}}, c2{Point{1}};
+  WithUnion u1, u2;
+  bool same = n1 == n2;
+  same = b1 == b2;
+  same = o1 != o2;
+  same = h1 == h2;
+  same = c1 == c2;
+  same = u1 == u2;
+  (void)same;
+  return 0;
+}

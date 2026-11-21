@@ -3558,6 +3558,37 @@ Found with it: a braced functional cast's designators were dropped at compile ti
 was 4, run time 0, for any aggregate), spec expressions/designated_functional_cast_in_constant. Braced construction of a
 class with constructors that none takes (`Loaded b{3, 4};`) is still codegen's error, not the checker's, as before.
 
+### 31. A struct has an implicit `==` (decided 2026-11-21, built)
+kovarex, 2026-11-21, after the study "Default == and <=> for kpp structs" (Claude Doc): "do only == implicit and not with
+references or pointers". A struct (the keyword, as design.md 30: no typed union, closure or imported C struct) that
+declares no `operator==` compares as if it declared `bool operator==(const S&) const = default;`: its bases, then its
+members, in order, each by its own `==` (a scalar's built-in one, a class's own or free one, a struct's implicit one, a
+typed union's, an array element by element, floats as IEEE). `a != b` is `!(a == b)` as always. No `<=>` is made: an
+order stays opt-in (`= default`), as the game's hand-written `operator<` mostly order by something else, and the
+library's synthThreeWay (Pair, Tuple, Optional) would prefer an implicit `<=>` to them.
+
+- None where a base or member, nested structs included, is a pointer (`T*`, a member or function pointer), a reference,
+  an owning pointer (`T^`, std::UniquePtr, std::SharedPtr), an anonymous union or struct, or of a type with no `==`.
+  Comparing one is an error naming the member: "Node has no operator==: a struct's implicit == leaves it out, as its
+  member next is a pointer (design.md 31); declare one to compare it", and a requirement `requires { a == b; }` is not
+  met.
+- None where the struct declares or inherits an `operator==` of any parameter (deleted ones too; the one a defaulted
+  `<=>` implies), nor where it converts implicitly (`implicit operator i32()`): its `a == b` stays the conversion's, as
+  before. So nothing that compiled changes meaning: the game's IR (wube/kpp-factorio kpp d75dcfd, factorio and
+  factorio-test, debug) is byte-identical before and after.
+- Only two of one struct: no other type converts to it for its implicit `==` (a declared one takes conversions).
+- It is no function: `S::operator==` names nothing, and the checker (Walker::implicitEquality), the compile-time
+  interpreter and codegen (objectsEqual, memberwiseEqual) compare member-wise where they find none declared
+  (Impl::implicitEqualityOf decides, from declarations alone). A class's defaulted `==` over a struct member uses it.
+
+The study (wube/Factorio kpp 9e349b852e): 39 of the game's 1,273 structs declared `==`, 22 `= default` and 8 written
+member by member, which the implicit one replaces; 5 compare fewer members (caches, counts) and 4 other logic, and keep
+theirs. Compared with Go (automatic `==` where every field compares, an error at the use otherwise), D, C# records and
+Kotlin data classes (automatic equality), Swift (`Equatable` synthesised on request) and Rust (derive on request); none
+makes an order automatic. Specs: kpp/struct_implicit_equality, kpp/struct_implicit_equality_excluded_is_error;
+classes/defaulted_equality_defined_as_deleted_is_error's base is now a class. docs/differences-from-cpp.md, "A struct
+has an implicit ==".
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional

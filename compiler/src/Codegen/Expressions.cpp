@@ -3154,10 +3154,11 @@ auto codegen::Emitter::rewrittenComparison(BinaryExpr* b, P op, const Ty* lt, co
       if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Default) && !static_cast<FunctionDecl*>(m)->name.empty() &&
           static_cast<FunctionDecl*>(m)->name.last().special == 2 && P(static_cast<FunctionDecl*>(m)->name.last().opToken) == P::Spaceship)
         defaulted = true;
-    if (!defaulted)
-      return std::nullopt;
     const Ty* other = withCurrentArgs(types.unqualified(types.stripRef(otherSide->ty)));
     bool sameClass = isClass(other) && classKey(other) == classKey(cls);
+    // (or a struct's implicit ==, design.md 31: two of one struct)
+    if (!defaulted && !(sameClass && global.hasImplicitEquality(cls)))
+      return std::nullopt;
     if (!sameClass && !findConstructor(cls, {argumentType(otherSide, otherSide->ty, types)}, b))
       return std::nullopt;
     auto otherValue = [&]() -> std::string
