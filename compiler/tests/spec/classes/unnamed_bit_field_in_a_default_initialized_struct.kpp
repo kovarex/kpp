@@ -1,0 +1,23 @@
+// spec: a struct with an unnamed bit-field, default-initialized (`Flags f;`, and as a member, `Holder h;`): the unnamed bit-field is no member ([class.bit] 2) and needs no default construction, as clang has it
+// found by thread UE (2026-11-21): the check of the default constructor read the unnamed bit-field's name, which it has none of, and kpp crashed (since 2026-11-18 at the earliest); the game's conversion crashed the same way on Lua's `struct lua_TValue { TValuefields; };`, a macro's use the C++ parse reads as a member without a name
+struct Flags
+{
+  unsigned low : 4;
+  unsigned : 4;
+  unsigned high : 4;
+};
+struct Holder
+{
+  Flags flags;
+  int count = 2;
+};
+int main()
+{
+  Flags f;
+  f.low = 1;
+  f.high = 3;
+  Holder h;
+  h.flags.low = 5;
+  std::println((int)f.low, " ", (int)f.high, " ", (int)h.flags.low, " ", h.count);
+  return 0;
+}

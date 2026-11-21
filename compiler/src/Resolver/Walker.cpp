@@ -5323,7 +5323,9 @@ auto GlobalScope::Impl::Walker::missingDefaultConstructor(const Ty* t) -> std::s
   Subst s = impl.substFor(c);
   for (Decl* m : membersRead(def))
   {
-    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)) || static_cast<VariableDecl*>(m)->init)
+    // (not an unnamed bit-field, which is no member, [class.bit] 2: `unsigned : 4;`)
+    if (m->kind != NodeKind::VariableDecl || (m->flags & (DF_Static | DF_Typedef | DF_Friend)) || static_cast<VariableDecl*>(m)->init ||
+        static_cast<VariableDecl*>(m)->name.parts.empty())
       continue;
     const Ty* mt = impl.declaredTypeOf(m, s.pairs.empty() ? nullptr : &s, 0);
     if (!mt || !mt->isKnown() || types.isDependent(mt))
