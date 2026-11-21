@@ -469,8 +469,12 @@ void runCodegen(Build& build)
   if (!objectCacheDir.empty())
   {
     objectCacheCompiler = inProcess ? "kpp " + objectcache::stamp(compilerPath()) : "clang " + objectcache::stamp(clangPath());
+    // (and the directory it is compiled in, which clang writes into the object's debug information as its compilation
+    // directory: a snippet's object made from another directory differed from its compile there, and a compile server's
+    // --verify-incremental reported the patched kept object "not what its compile gives", 2026-11-21)
+    std::error_code cwdError;
     objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections") +
-                       (options.target.mac() ? " compact-unwind-non-canonical" : "");
+                       (options.target.mac() ? " compact-unwind-non-canonical" : "") + " in " + std::filesystem::current_path(cwdError).string();
   }
   std::vector<std::string> objectCacheKeys(outputModules);
   std::atomic<int> sharedHits{0};
