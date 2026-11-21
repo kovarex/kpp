@@ -1,0 +1,13 @@
+// spec: a wide string literal in a constant evaluation is the array of its code units (`L"ab"[1]`, wchar_t's; u"" char16_t's, U"" char32_t's): `98 3`
+// found by thread UE (2026-11-21): the evaluator read narrow literals only, and a wide one was no constant (Unreal's TEXT("...") formats checked at compile time)
+static_assert(L"ab"[1] == 98);
+static_assert(u"é"[0] == 0xe9);
+static_assert(U"x"[0] == 120);
+
+int main()
+{
+  constexpr int b = L"ab"[1];
+  constexpr int n = sizeof(L"ab") / sizeof(wchar_t);
+  std::println(b, " ", n);
+  return 0;
+}

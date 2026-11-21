@@ -1,0 +1,14 @@
+// spec: a cast to void in a constant evaluation, `(void)x;` (a parameter a constexpr body does not use otherwise, an array reference's too): the value discarded, the evaluation going on (`3 4`)
+// found by thread UE (2026-11-21): it was no constant, and with it every constexpr or consteval body that wrote one (Unreal's format checks, TCheckFormatString)
+constexpr int f(int x) { (void)x; return 3; }
+template<int N> constexpr int len(const char (&s)[N]) { (void)s; return N; }
+static_assert(f(1) == 3);
+static_assert(len("abc") == 4);
+
+int main()
+{
+  constexpr int a = f(2);
+  constexpr int b = len("xyz");
+  std::println(a, " ", b);
+  return 0;
+}

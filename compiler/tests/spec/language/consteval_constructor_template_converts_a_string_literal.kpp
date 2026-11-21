@@ -1,0 +1,17 @@
+// spec: a consteval constructor template that converts a string literal, `template<int N> consteval implicit Checked(const char (&s)[N])` (Unreal's TCheckedFormatString, a printf format checked as it is passed), runs at the call with N deduced from the literal (`3 a`)
+// found by thread UE (2026-11-21): the immediate call ran the template with N unbound and was "no constant" at every call of FString::Printf
+struct Checked
+{
+  const char* text;
+  int size;
+  template<int N>
+  consteval implicit Checked(const char (&s)[N]) : text{s}, size{N} {}
+};
+int sizeOf(Checked c) { return c.size; }
+char firstOf(Checked c) { return c.text[0]; }
+
+int main()
+{
+  std::println(sizeOf("ab"), " ", firstOf("ab"));
+  return 0;
+}

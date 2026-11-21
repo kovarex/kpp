@@ -7553,7 +7553,19 @@ auto GlobalScope::Impl::Walker::checkImmediateConversion(Expr* arg, const Ty* pa
     std::optional<ConstValue> value = impl.constValue(arg, ctx(), 0);
     if (!value)
       return std::nullopt;
-    return impl.constRunConstructor(ctor, cls, {*value}, 0);
+    if (ctor->templateParams.empty())
+      return impl.constRunConstructor(ctor, cls, {*value}, 0);
+    // (a constructor template, `template <int32 N> consteval TCheckedFormatStringPrivate(const CharType (&Fmt)[N])`,
+    // Unreal's format check: its parameters as the argument deduces them, as the evaluator's construction does; it ran
+    // with N unbound, no constant)
+    Subst own = subst;
+    impl.deduceCall(ctor, impl.declaredTypeOf(ctor, subst.empty() ? nullptr : &subst, 0), {argumentType(arg, arg->ty, types)}, own);
+    if (!impl.fillDefaultTemplateArgs(ctor, own))
+      return std::nullopt;
+    for (Decl* p : ctor->templateParams)
+      if (const Ty* bound = own.find(p); !bound || !bound->isKnown() || types.isDependent(bound))
+        return std::nullopt;
+    return impl.constRunConstructor(ctor, cls, {*value}, 0, &own);
   });
 }
 

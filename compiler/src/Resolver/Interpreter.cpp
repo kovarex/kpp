@@ -477,6 +477,10 @@ auto GlobalScope::Impl::constConverted(std::optional<ConstValue> v, const Ty* t)
   if (!v || !t)
     return std::nullopt;
   t = types.unqualified(types.stripRef(t));
+  // (`(void)x;`, a value discarded, the parameter a body does not use, Unreal's format checks: void, whatever it was,
+  // as a call returning void is; it was no constant, and with it every constexpr body that wrote one)
+  if (t->kind == TyKind::Void)
+    return ConstValue::integer(0, types.voidType());
   if (t->isArithmetic() || t->kind == TyKind::Enum)
     return v->isScalar() || (v->isPointer() && t->kind == TyKind::Bool) ? constArith().convert(*v, t) : std::nullopt;
   if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)
@@ -3750,12 +3754,32 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
   if (!toks || l->token >= toks->size() || (*toks)[l->token].getKind() != TokenKind::String)
     return std::nullopt; // another file's tokens: never a wrong string
   std::string bytes;
+  // A wide one (L"", u"", U""): its code units, each its element's (wchar_t's, char16_t's, char32_t's), from its text
+  // as UTF-8 (Unreal's TEXT("...") format checks, `consteval TCheckedFormatStringPrivate(const TCHAR (&Fmt)[N])`; it
+  // was no constant). Any piece may carry the prefix (`L"a" "b"`).
+  int unitBits = 0;
+  bool prefixL = false;
+  for (size_t i = l->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String && !unitBits; ++i)
+  {
+    std::string spliced;
+    std::string_view spelled = tokenSpelling(text, (*toks)[i], spliced);
+    prefixL = spelled.starts_with("L");
+    unitBits = prefixL ? int(types.wcharBits()) : spelled.starts_with("u8") ? 0
+               : spelled.starts_with("u") ? 16 : spelled.starts_with("U") ? 32 : 0;
+  }
   for (size_t i = l->token; i < toks->size() && (*toks)[i].getKind() == TokenKind::String; ++i)
   {
     // `"type"sv`: the chars the quotes hold, as the walk types the literal (a suffix names no
     // operator it calls).
     std::string spliced;
     std::string_view spelled = tokenSpelling(text, (*toks)[i], spliced);
+    if (unitBits)
+    {
+      size_t open = spelled.find('"');
+      if (open == std::string_view::npos)
+        return std::nullopt;
+      spelled = spelled.substr(open);
+    }
     size_t quote = spelled.rfind('"');
     if (quote != std::string_view::npos && quote + 1 < spelled.size())
     {
@@ -3767,6 +3791,37 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
     }
     if (!decodeNarrowString(spelled, bytes))
       return std::nullopt;
+  }
+  if (unitBits)
+  {
+    std::vector<uint32_t> units;
+    for (size_t i = 0; i < bytes.size();)
+    {
+      unsigned char c = bytes[i];
+      size_t n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
+      if (i + n > bytes.size())
+        return std::nullopt;
+      uint32_t code = n == 1 ? c : n == 2 ? c & 0x1F : n == 3 ? c & 0x0F : c & 0x07;
+      for (size_t k = 1; k < n; ++k)
+        code = (code << 6) | (uint32_t(static_cast<unsigned char>(bytes[i + k])) & 0x3F);
+      if (unitBits == 16 && code >= 0x10000)
+      {
+        units.push_back(0xD800 + ((code - 0x10000) >> 10)); // (a surrogate pair)
+        units.push_back(0xDC00 + ((code - 0x10000) & 0x3FF));
+      }
+      else
+        units.push_back(code);
+      i += n;
+    }
+    if (!constMayMake(units.size() + 1))
+      return std::nullopt;
+    const Ty* unit = prefixL ? types.wcharType() : types.charType(uint8_t(unitBits), true);
+    std::vector<ConstValue> chars;
+    chars.reserve(units.size() + 1);
+    for (uint32_t u : units)
+      chars.push_back(ConstValue::integer(int64_t(u), unit));
+    chars.push_back(ConstValue::integer(0, unit));
+    return ConstValue::object(types.array(types.qualified(unit, true, false), uint32_t(chars.size())), std::move(chars));
   }
   if (!constMayMake(bytes.size() + 1))
     return std::nullopt;
@@ -8899,6 +8954,11 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
                    : args[i].type                                                     ? types.unqualified(types.stripRef(args[i].type))
                                                                                       : nullptr;
+    // (a place typed as an array of no length, a wide string literal's `const wchar_t[]`: the value's own length,
+    // `L"ab"` for `const wchar_t (&)[3]`)
+    if (have && have->kind == TyKind::Array && !have->count && args[i].type)
+      if (const Ty* sized = types.unqualified(types.stripRef(args[i].type)); sized->kind == TyKind::Array && sized->count)
+        have = sized;
     // (An array's const is its elements': `const int (&a)[3]` refers to an int[3] as it is.)
     if (have && (have == want || want->kind == TyKind::Void || (have->kind == TyKind::Array && unqualifiedDeep(have) == unqualifiedDeep(want))))
       basePart = std::vector<size_t>{};

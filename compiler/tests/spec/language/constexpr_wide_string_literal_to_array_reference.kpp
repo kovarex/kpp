@@ -1,0 +1,10 @@
+// spec: a wide string literal passed to a `const wchar_t (&)[N]` parameter in a constant evaluation, `len(L"ab")` (Unreal's `consteval TCheckedFormatStringPrivate(const TCHAR (&Fmt)[N])`): the array, N 3 (`3`)
+// pending: the argument's place is typed `const wchar_t[]`, no length, and the reference does not bind (a narrow literal's is sized); 469 errors in Unreal's converted Core (FString::Printf); UE
+template<int N> constexpr int len(const wchar_t (&s)[N]) { (void)s; return N; }
+
+int main()
+{
+  constexpr int n = len(L"ab");
+  std::println(n);
+  return 0;
+}
