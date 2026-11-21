@@ -8961,6 +8961,10 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     if (have && have->kind == TyKind::Array && !have->count && args[i].type)
       if (const Ty* sized = types.unqualified(types.stripRef(args[i].type)); sized->kind == TyKind::Array && sized->count)
         have = sized;
+    // (and one whose value holds as many elements as the reference's array, of its element type: that array)
+    if (have && have->kind == TyKind::Array && !have->count && want->kind == TyKind::Array && want->count && args[i].isObject() && args[i].parts &&
+        args[i].parts->size() == want->count && have->inner && want->inner && types.unqualified(have->inner) == types.unqualified(want->inner))
+      have = want;
     // (An array's const is its elements': `const int (&a)[3]` refers to an int[3] as it is.)
     if (have && (have == want || want->kind == TyKind::Void || (have->kind == TyKind::Array && unqualifiedDeep(have) == unqualifiedDeep(want))))
       basePart = std::vector<size_t>{};

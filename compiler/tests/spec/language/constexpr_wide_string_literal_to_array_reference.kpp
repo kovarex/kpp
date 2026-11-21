@@ -1,6 +1,5 @@
 // spec: a wide string literal passed to a `const wchar_t (&)[N]` parameter in a constant evaluation, `len(L"ab")` (Unreal's `consteval TCheckedFormatStringPrivate(const TCHAR (&Fmt)[N])`): the array, N 3 (`3`)
-// pending: the argument's place is typed `const wchar_t[]`, no length, and the reference does not bind (a narrow literal's is sized), where wchar_t is 16 bits (Windows; it passes on Linux, whose wchar_t is 32); 469 errors in Unreal's converted Core (FString::Printf); UE
-// target: windows (a 16-bit wchar_t)
+// found by thread UE (2026-11-21): the literal's value came typed `const wchar_t[]`, no length, and the reference did not bind where wchar_t is 16 bits (Windows; Linux's 32-bit one bound); constBindParameter takes an array of no length whose elements are as many as the reference's array's as that array
 template<int N> constexpr int len(const wchar_t (&s)[N]) { (void)s; return N; }
 
 int main()
