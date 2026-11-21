@@ -2461,7 +2461,23 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
   std::vector<const Ty*> elementTypes;           // what an expansion's elements present to deduction
   if (!constArguments(c->args, ctx, depth, values, &places, &categories, &elementTypes))
     return std::nullopt;
-  Subst bound = memberSubst(object, qualified ? (f->parent ? f->parent->ownScope : nullptr) : l.foundIn, depth + 1);
+  // `object.Pair<2, short>::make()` with the bases Pair<2, char> and Pair<2, short>: the instance the qualifier is or
+  // derives from, its arguments and its part of the object (the object's first base instance of the template ran,
+  // silently, as codegen's call did until 2026-11-22).
+  const Ty* qualifierTy = nullptr;
+  if (qualified)
+  {
+    NamedType written{};
+    written.kind = NodeKind::NamedType;
+    written.token = m->token;
+    written.name = m->member;
+    written.name.parts.count -= 1;
+    const Ty* q = convertType(&written, ctx, depth + 1);
+    q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+    if (q && q->kind == TyKind::Class && q->isKnown() && !types.isDependent(q) && !mentionsUnknown(q))
+      qualifierTy = q;
+  }
+  Subst bound = memberSubst(qualifierTy ? qualifierTy : object, qualified ? (f->parent ? f->parent->ownScope : nullptr) : l.foundIn, depth + 1);
   LocalStack params;
   for (const Subst::Pair& p : bound.pairs)
     params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
@@ -2541,8 +2557,28 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
     return constRun(f, values, fctx, depth, nullptr, &places, &categories); // what the object's type decides (Array::size of a run-time array)
   if (qualified && held->type && f->parent)
   {
+    // (the qualifier's part first, the part declaring f within it: `object.Pair<2, short>::own()`)
     std::vector<size_t> path;
-    if (const Ty* owner = constBaseDeclaring(held->type, f->parent, path, 0); owner && !path.empty())
+    const Ty* from = held->type;
+    std::function<bool(const Ty*, int)> toQualifier = [&](const Ty* t, int level) -> bool
+    {
+      if (types.unqualified(t) == qualifierTy)
+        return true;
+      const ConstClassLayout* layout = t && level <= 16 ? constLayoutOf(t, level) : nullptr;
+      for (size_t b = 0; layout && b < layout->bases.size(); ++b)
+      {
+        path.push_back(b);
+        if (toQualifier(layout->bases[b], level + 1))
+          return true;
+        path.pop_back();
+      }
+      return false;
+    };
+    if (qualifierTy && toQualifier(held->type, 0))
+      from = qualifierTy;
+    else
+      path.clear();
+    if (const Ty* owner = constBaseDeclaring(from, f->parent, path, 0); owner && !path.empty())
     {
       if (place)
       {

@@ -1,0 +1,43 @@
+// spec: `m.Pair<2, short>::value`, `m.Pair<2, short>::make()` and `p->Pair<2, short>::count` on a class with the bases Pair<2, char> and Pair<2, short> name the static members of the instance the qualifier names, at run time and in a constant evaluation (a method through it too: `global.Pair<2, short>::own()`), as `M::Pair<2, short>::value` does; clang prints the same
+// found by thread UE (2026-11-22), writing a spec for Unreal's TTuple (`b.Element<short, 1>::value`): a static member through an object took the object's first base instance of the template, Pair<2, char>'s, silently (21 where 22); the data member of the instance named was right since 2026-11-07
+template<u32 N, typename U>
+struct Pair
+{
+  static constexpr u32 value = N * 10 + u32(sizeof(U));
+  static inline u32 count = N * 10 + u32(sizeof(U));
+  static u32 make() { return N * 10 + u32(sizeof(U)); }
+  static constexpr u32 cmake() { return N * 10 + u32(sizeof(U)); }
+  constexpr u32 own() const { return N * 10 + u32(sizeof(U)) + this.extra; }
+  u32 extra = u32(sizeof(U)) * 100;
+};
+
+struct M : Pair<2, char>, Pair<2, short>
+{
+};
+
+constexpr M global{};
+static_assert(global.Pair<2, short>::cmake() == 22);
+static_assert(global.Pair<2, char>::cmake() == 21);
+static_assert(global.Pair<2, short>::own() == 222);
+static_assert(global.Pair<2, char>::own() == 121);
+
+template<u32 V>
+struct Show
+{
+  static constexpr u32 v = V;
+};
+
+int main()
+{
+  M m;
+  M* p = &m;
+  u32 a = m.Pair<2, short>::value;
+  u32 b = M::Pair<2, short>::value;
+  u32 c = p->Pair<2, short>::count;
+  u32 d = m.Pair<2, short>::make();
+  u32 e = m.Pair<2, short>::cmake();
+  std::println(a, " ", b, " ", c, " ", d, " ", e, " ", m.Pair<2, char>::value, " ", m.Pair<2, char>::make());
+  constexpr M local{};
+  std::println(Show<local.Pair<2, short>::cmake()>::v, " ", Show<local.Pair<2, short>::own()>::v, " ", m.Pair<2, short>::own());
+  return 0;
+}

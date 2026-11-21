@@ -1003,7 +1003,12 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
         fail(e, "'" + name + "' of " + types.toString(baseTy, &symbols) + " is no data member", !followsUndeclared(baseTy) && !holdsCheckerError(e, 1));
       }
       if (d->flags & DF_Static)
-        return globalAddress(static_cast<VariableDecl*>(d), e, baseTy);
+      {
+        // `m.Pair<2, short>::count` with the bases Pair<2, char> and Pair<2, short>: the instance the qualifier is
+        // or derives from (the object's class gave its first base of that template, Pair<2, char>'s count, silently).
+        const Ty* qualifier = memberQualifier(m, e);
+        return globalAddress(static_cast<VariableDecl*>(d), e, qualifier ? qualifier : baseTy);
+      }
       if (const Ty* qualifier = memberQualifier(m, e))
       {
         // `this->Hook<Robot, TagB>::id`: the field of the instance of its class that the

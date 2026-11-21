@@ -980,8 +980,15 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
           // as for a call through the derived class's name.
           Decl* owner = global.owningClass(f);
           if (owner && classDef(owner, c) != static_cast<ClassDecl*>(objectTy->decl))
-            if (const Ty* base = baseInstantiation(objectTy, owner, c))
+          {
+            // `m.Pair<2, short>::make()` with the bases Pair<2, char> and Pair<2, short>: the instance the qualifier
+            // is or derives from, as for a method (the first instance among the bases was called, silently).
+            const Ty* qualifier = memberQualifier(m, c);
+            if (const Ty* base = qualifier ? instantiationIn(qualifier, owner, c) : nullptr)
               objectTy = base;
+            else if (const Ty* base = baseInstantiation(objectTy, owner, c))
+              objectTy = base;
+          }
         }
       }
       std::string indirect;
