@@ -632,9 +632,14 @@ void runCodegen(Build& build)
   // The checker's errors first, then codegen's: a failure of codegen that follows from one of them (one it
   // could not tell from its own) reads after its cause (2026-11-17, kovarex: "codegen does not support a member
   // access on a non-class object" came before "E has no member 'str'").
-  reportCheckerErrors(global, true, cg.instanceAssertsChecked);
+  size_t checkerErrors = reportCheckerErrors(global, true, cg.instanceAssertsChecked);
+  // A failure in the test runner's own text (`<tests>.kpp`) beside the checker's errors follows from one of them: its
+  // __kppEqual given a check's operands that no operator compares, which the checker reported at the check
+  // (2026-11-21, kovarex: "the <tests>.kpp is weird").
+  std::string runner = std::string(testRunnerPath) + ":";
   for (const std::string& e : cg.errors)
-    fprintf(stderr, "%s\n", global.withAliasNames(e).c_str());
+    if (!checkerErrors || e.compare(0, runner.size(), runner) != 0)
+      fprintf(stderr, "%s\n", global.withAliasNames(e).c_str());
   if (!cg.errors.empty())
     codegenExit = 1;
   // A debugValue() the debugger cannot compute is the build's error, in every build and the language

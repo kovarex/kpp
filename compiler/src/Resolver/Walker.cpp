@@ -2,6 +2,7 @@
 // translation unit of its own since 2026-11-05 (resolver.cpp split, stage 2), moved without a change.
 #include "GlobalScopeImpl.hpp"
 #include "../Ast/AstWalk.hpp"
+#include "../tests.hpp"
 #include "sse_macros.hpp"
 #include <cmath> // std::isnan, isinf, fabs (MSVC's headers brought it in by chance; libstdc++'s do not)
 
@@ -9388,6 +9389,105 @@ auto GlobalScope::Impl::Walker::reportUnmarkedOperand(const Ty* side, const std:
   return true;
 }
 
+auto GlobalScope::Impl::Walker::reportMissingComparison(BinaryExpr* b, const Ty* l, const Ty* r, const Ty* lc, const Ty* rc) -> void
+{
+  // The operands as written: `const char[31]` for a string literal (argumentType), the object's own const.
+  auto shown = [&](Expr* e, const Ty* t) { return types.toString(types.stripRef(argumentType(e, t, types)), &symbols); };
+  std::string op(punctuatorSpelling(P(b->op)));
+  std::string message = "no operator" + op + " between " + shown(b->lhs, l) + " and " + shown(b->rhs, r);
+  if (lc && rc)
+    message += ": the built-in " + op + " would compare " + types.toString(types.decay(types.unqualified(types.stripRef(lc))), &symbols) + " with " +
+               types.toString(types.decay(types.unqualified(types.stripRef(rc))), &symbols) + ", and C++ compares no pointer with a number";
+  reportComparisonError(b->token, message);
+}
+
+auto GlobalScope::Impl::Walker::reportComparisonError(uint32_t token, const std::string& message) -> void
+{
+  missingComparison = message;
+  // (the runner's __kppEqual instance: its check reports it, at its own line)
+  if (!probing && file && file->path == testRunnerPath)
+    return;
+  reportCheck(token, message);
+}
+
+auto GlobalScope::Impl::Walker::pointerAgainstNumber(const Ty* lc, Expr* le, const Ty* rc, Expr* re) -> bool
+{
+  const Ty* a = types.unqualified(types.stripRef(lc));
+  const Ty* c = types.unqualified(types.stripRef(rc));
+  auto pointer = [](const Ty* t) { return t->kind == TyKind::Pointer || t->kind == TyKind::Array || t->kind == TyKind::MemberPointer; };
+  auto number = [](const Ty* t) { return t->isArithmetic() || t->kind == TyKind::Enum; };
+  auto literal = [](Expr* e)
+  {
+    // (a check's operand, held: checkTestComparison)
+    for (;;)
+    {
+      e = unparenthesized(e);
+      if (e && e->kind == NodeKind::HeldExpr && static_cast<HeldExpr*>(e)->holder)
+        e = static_cast<HeldExpr*>(e)->holder->inner;
+      else
+        break;
+    }
+    return e && e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::Number;
+  };
+  if (!a || !c || !a->isKnown() || !c->isKnown() || types.isDependent(a) || types.isDependent(c))
+    return false;
+  return (pointer(a) && number(c) && !literal(re)) || (number(a) && pointer(c) && !literal(le));
+}
+
+auto GlobalScope::Impl::Walker::checkTestComparison(const AssertStmt* a) -> void
+{
+  if (!a->compares || !file || file->isImported || probing || activeSubst || inGenericTemplate())
+    return;
+  // cond: `__kppEqual(x, y)`, or `__kppEqual(x, y) || __kppMessage(...)`.
+  Expr* compare = a->cond;
+  if (compare && compare->kind == NodeKind::BinaryExpr && !static_cast<BinaryExpr*>(compare)->isKeyword && P(static_cast<BinaryExpr*>(compare)->op) == P::OrOr)
+    compare = static_cast<BinaryExpr*>(compare)->lhs;
+  if (!compare || compare->kind != NodeKind::CallExpr || static_cast<CallExpr*>(compare)->args.size() != 2)
+    return;
+  Expr* le = static_cast<CallExpr*>(compare)->args[0];
+  Expr* re = static_cast<CallExpr*>(compare)->args[1];
+  auto plain = [&](const Ty* t) { return t && t->isKnown() && !types.isDependent(t) && !Impl::mentionsUnknown(t); };
+  if (!plain(le->ty) || !plain(re->ty))
+    return;
+  if (types.stripRef(le->ty)->kind != TyKind::Class && types.stripRef(re->ty)->kind != TyKind::Class)
+    return;
+  // The comparison `x == y` typed again on the operands as walked (held: not walked twice), probing: the error the
+  // class branch reports is the check's.
+  ParenExpr holders[2] = {};
+  HeldExpr held[2] = {};
+  Expr* operands[2] = {le, re};
+  for (int i = 0; i < 2; ++i)
+  {
+    holders[i].kind = NodeKind::ParenExpr;
+    holders[i].token = operands[i]->token;
+    holders[i].inner = operands[i];
+    holders[i].ty = argumentType(operands[i], operands[i]->ty, types);
+    held[i].kind = NodeKind::HeldExpr;
+    held[i].token = operands[i]->token;
+    held[i].holder = &holders[i];
+  }
+  BinaryExpr b = {};
+  b.kind = NodeKind::BinaryExpr;
+  b.token = compare->token;
+  b.op = a->compareOp;
+  b.isKeyword = false;
+  b.lhs = &held[0];
+  b.rhs = &held[1];
+  missingComparison.clear();
+  bool wasProbing = probing;
+  uint32_t errors = probeErrors;
+  probing = true;
+  OperatorCall call = OperatorCall::Undecided;
+  FunctionDecl* callee = nullptr;
+  bool member = false;
+  typeOfBinaryOperator(&b, call, callee, member);
+  probing = wasProbing;
+  probeErrors = errors;
+  if (!missingComparison.empty())
+    impl.reportCheckerError(file, compare->token, missingComparison);
+  missingComparison.clear();
+}
+
 auto GlobalScope::Impl::Walker::enumUnaryOperator(P op, bool postfix, const Ty* operand, uint32_t token, FunctionDecl** chosen, bool* member) -> const Ty*
 {
   // Postfix `d++` is `operator++(d, 0)` ([over.oper.incr]): the candidates taking (E&, int).
@@ -9706,10 +9806,14 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
         if (defaulted)
           if (std::string why = deletedDefaultedEquality(ls, b->token); !why.empty())
           {
+            std::string message = types.toString(types.unqualified(ls), &impl.symbols) + " is compared by its defaulted operator==, which C++ defines as deleted: " +
+                                  why + " ([class.compare.default] 2)";
             if (probing)
+            {
+              missingComparison = message; // (a check's: checkTestComparison)
               return unknown(Why::Overload);
-            reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) +
-                                      " is compared by its defaulted operator==, which C++ defines as deleted: " + why + " ([class.compare.default] 2)");
+            }
+            reportComparisonError(b->token, message);
           }
       }
       call = operatorCall;
@@ -9731,10 +9835,14 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     if ((op == P::EqEq || op == P::NotEq) && types.unqualified(ls) == types.unqualified(rs))
       if (std::optional<std::string> why = impl.implicitEqualityOf(ls); why && !why->empty())
       {
+        std::string message = types.toString(types.unqualified(ls), &impl.symbols) + " has no operator==: a struct's implicit == leaves it out, as " + *why +
+                              " (design.md 31); declare one to compare it";
         if (probing)
+        {
+          missingComparison = message; // (a check's: checkTestComparison)
           return unknown(Why::Overload);
-        reportCheck(b->token, types.toString(types.unqualified(ls), &impl.symbols) + " has no operator==: a struct's implicit == leaves it out, as " + *why +
-                                  " (design.md 31); declare one to compare it");
+        }
+        reportComparisonError(b->token, message);
         return types.boolType();
       }
     // Two typed unions of one type with no operator of their own compare as std::variant's
@@ -9755,13 +9863,26 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
     const Ty* rc = builtinOperand(r);
     if ((!lc || !rc) && !isAssignmentOp(op))
       std::tie(lc, rc) = builtinOperandsOf(op, b->lhs, l, b->rhs, r, b->token); // (a class converting to several scalar types)
+    bool comparison = op == P::EqEq || op == P::NotEq || op == P::Less || op == P::Greater || op == P::LessEq || op == P::GreaterEq || op == P::Spaceship;
     if (!lc || !rc)
     {
       // (an operand that converts only by an operator explicit by default: the rule's error; an assignment's left
       // operand converts to nothing)
       std::string text = file && file->tokens && b->token < file->tokens->size() ? Impl::spelledTokens(file, b->token, b->token) : std::string("operator");
-      if (!(!lc && !isAssignmentOp(op) && reportUnmarkedOperand(l, text, b->token)) && !rc)
-        reportUnmarkedOperand(r, text, b->token);
+      bool unmarked = !lc && !isAssignmentOp(op) && reportUnmarkedOperand(l, text, b->token);
+      if (!unmarked && !rc)
+        unmarked = reportUnmarkedOperand(r, text, b->token);
+      // (codegen said "S has no operator== yet", in the test runner's text for a check's comparison)
+      if (comparison && !unmarked && !Impl::mentionsUnknown(ls) && !Impl::mentionsUnknown(rs))
+        reportMissingComparison(b, l, r, nullptr, nullptr);
+      return unknown(Why::Operator);
+    }
+    // `info == "text"` of a class converting to an enumeration or a number: no built-in == compares it with a pointer
+    // (codegen said "an integer (DragBuild) does not convert to const char* without a cast", or, in a check, "a
+    // conversion from const char* to const char[31]" in the test runner's text).
+    if (comparison && pointerAgainstNumber(lc, b->lhs, rc, b->rhs))
+    {
+      reportMissingComparison(b, l, r, lc, rc);
       return unknown(Why::Operator);
     }
     l = lc;
@@ -12368,6 +12489,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       // discarded code, not checked (a `when (config::debug)` member it names, design.md 19).
       if (auto* a = static_cast<AssertStmt*>(s); a->release || a->testKind || impl.debug)
         walkExpr(a->cond);
+      checkTestComparison(static_cast<AssertStmt*>(s));
       checkTestStatementName(static_cast<AssertStmt*>(s));
       break;
     case NodeKind::DeclStmt:

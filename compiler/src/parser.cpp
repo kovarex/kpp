@@ -6346,7 +6346,11 @@ namespace
                               : P(b->op) == P::LessEq ? "__kppLessEqual" : P(b->op) == P::Greater ? "__kppGreater"
                               : P(b->op) == P::GreaterEq ? "__kppGreaterEqual" : nullptr;
           if (compare)
+          {
             s->cond = syntheticCall(b->token, compare, {b->lhs, b->rhs});
+            s->compares = true; // (the checker checks the comparison here, at b's operator: Walker::checkTestComparison)
+            s->compareOp = b->op;
+          }
         }
         if (accept(P::Comma))
         {

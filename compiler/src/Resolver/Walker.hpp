@@ -191,6 +191,12 @@
     // instance that nothing calls is never instantiated in C++: Array<const char, N>::fill).
     void reportInInstance(uint32_t token, std::string message);
     void checkTestStatementName(const AssertStmt* a);
+    // `check(a == b)`, `require(a < b)` in a test: the runner's __kppEqual (Less...) compares, so a comparison of no
+    // operator fails in its body, at the runner's text (`<tests>.kpp`). Its error is the check's, at its operator.
+    void checkTestComparison(const AssertStmt* a);
+    // The class branch's error for a comparison of a class operand that no operator takes: none to call, or only the
+    // built-in one comparing a pointer with a number ([expr.eq] 2, [expr.rel] 2). Set where the walk reports it.
+    std::string missingComparison;
     void checkTestDeclaration(FunctionDecl* f);
 
     // A warning at token: in an instance's body one that counts once its function is emitted
@@ -1144,6 +1150,16 @@
     // The built-in operator op (as written: `+`, `[]`) on a class operand side that converts only through such an
     // operator: the rule's error naming it, true; false when side has none.
     bool reportUnmarkedOperand(const Ty* side, const std::string& op, uint32_t token);
+    // A comparison b of a class operand that no operator takes (lc, rc: the scalars the built-in one would take, null
+    // when there are none): the error `no operator== between A and B`, reported (an instance of the test runner's
+    // comparisons leaves it to its check, checkTestComparison) and kept in missingComparison.
+    void reportMissingComparison(BinaryExpr* b, const Ty* l, const Ty* r, const Ty* lc, const Ty* rc);
+    // A comparison's error, message, at token: reported, but in the test runner's text kept for its check alone
+    // (missingComparison, checkTestComparison), whose line the error is to name.
+    void reportComparisonError(uint32_t token, const std::string& message);
+    // lc, rc: scalars one of which is a pointer and the other a number or an enumeration, which no built-in
+    // comparison takes; le or re a number literal is a null pointer constant (`p == 0`) and compares.
+    bool pointerAgainstNumber(const Ty* lc, Expr* le, const Ty* rc, Expr* re);
 
     // A user-defined operator on an enumeration operand (`Flags operator|(Flags, Flags)`) beats the
     // built-in one, which a scoped enum does not even have. A free non-template function whose

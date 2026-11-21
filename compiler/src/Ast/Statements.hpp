@@ -25,7 +25,7 @@ struct IfStmt : Stmt
   // element's): 1 the first, 2 the else branch, 0 not decided (the language server's inactive code).
   uint8_t constexprSeen = 0;
 };
-struct AssertStmt : Stmt { Expr* cond; uint32_t startToken, endToken; bool release = false; uint8_t testKind = 0; bool checksCall = false; bool hasMessage = false; }; // tokens of the expression text // assert(cond); release_assert(cond); testKind 1 check(cond), 2 require(cond) in a test; hasMessage: assert's or release_assert's `cond || std::__kppAssertMessage(pieces...)`
+struct AssertStmt : Stmt { Expr* cond; uint32_t startToken, endToken; bool release = false; uint8_t testKind = 0; bool checksCall = false; bool hasMessage = false; bool compares = false; uint32_t compareOp = 0; }; // tokens of the expression text // assert(cond); release_assert(cond); testKind 1 check(cond), 2 require(cond) in a test; hasMessage: assert's or release_assert's `cond || std::__kppAssertMessage(pieces...)`
 struct ForStmt : Stmt { Stmt* init = nullptr; Node* cond = nullptr; Expr* step = nullptr; Stmt* body; };
 // begin, end: the functions the loop calls on a class range, as the checker chose them (design.md 24),
 // members of its class (or a base) when rangeMembers, else free functions taking the range; null when

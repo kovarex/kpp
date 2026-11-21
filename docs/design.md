@@ -5124,7 +5124,10 @@ human output.
    no qualified name. In a test's body, `check(cond);` and `require(cond);` are assert statements
    (`AssertStmt::testKind` 1 and 2). A comparison `a OP b` becomes `__kppEqual(a, b)` (or
    `NotEqual`, `Less`, `LessEqual`, `Greater`, `GreaterEqual`); when the comparison fails, the
-   call keeps the operands' text for the message. The program's `main` is renamed. Without
+   call keeps the operands' text for the message. Operands no operator compares are the check's
+   error, at its line (`no operator== between DragBuildInfo and const char[14]`): the checker types
+   `a OP b` there (`Walker::checkTestComparison`), and neither the runner's text nor its helpers'
+   names show (kovarex, 2026-11-21). The program's `main` is renamed. Without
    `config::tests`, the parser skips the declaration.
 3. Codegen (B's file, a dozen lines): a failing check calls `kpp_check_failed(file, line, column,
    text, kind)` and goes on. For a require, the call may throw (an invoke), so the test's objects

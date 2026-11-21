@@ -1,0 +1,44 @@
+// spec: check(a == b) and require(a == b) of operands no operator compares are an error at the check's line, naming both types; not codegen's failure in the test runner's own text (<tests>.kpp), which named its internal helper (kovarex, 2026-11-21: a DragBuildInfo compared with a string literal)
+// kpp: --tests
+// error: test_check_compare_without_operator_is_error.kpp:38: error: no operator== between DragBuildInfo and const char[14]: the built-in == would compare DragBuild with const char*
+// error: test_check_compare_without_operator_is_error.kpp:39: error: no operator!= between Point and const char[4]
+// error: test_check_compare_without_operator_is_error.kpp:40: error: no operator< between Point and int32
+// no-warning: <tests>.kpp
+// no-warning: __kpp
+template<class Tag>
+enum class NamedBool : u8
+{
+  {False, True};
+public:
+  constexpr operator bool() const { return this == True; }
+};
+using DragBuild = NamedBool<class DragBuildTag>;
+
+class DragBuildInfo
+{
+public:
+  DragBuildInfo() = default;
+  implicit DragBuildInfo(DragBuild dragBuild) : dragBuild(dragBuild) {}
+  bool operator==(const DragBuildInfo&) const = default;
+  implicit operator DragBuild() const { return this.dragBuild; }
+
+  DragBuild dragBuild = DragBuild::False;
+};
+
+struct Point
+{
+  int x = 0;
+  int y = 0;
+};
+
+test compareWithText
+{
+  DragBuildInfo info;
+  Point point;
+  require(info == "DragBuildInfo");
+  check(point != "0 0");
+  check(point < 3, "point");
+  check(info == DragBuildInfo());
+}
+
+int main() { return 0; }

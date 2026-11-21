@@ -1,0 +1,31 @@
+// spec: a class that converts to an enumeration (or a number) compared with a string literal is an error naming both types: no built-in == compares a pointer with a number (codegen said "an integer (DragBuild) does not convert to const char* without a cast"); compared with 0, a class converting to a pointer still compares (a null pointer constant)
+// error: class_converting_to_enum_compared_with_text_is_error.kpp:26: error: no operator== between DragBuildInfo and const char[4]: the built-in == would compare DragBuild with const char*, and C++ compares no pointer with a number
+// error: class_converting_to_enum_compared_with_text_is_error.kpp:27: error: no operator== between Plain and const char[4]
+enum class DragBuild { False, True };
+
+class DragBuildInfo
+{
+public:
+  implicit operator DragBuild() const { return this.dragBuild; }
+  DragBuild dragBuild = DragBuild::False;
+};
+
+class Handle
+{
+public:
+  implicit operator const int*() const { return this.value; }
+  const int* value = nullptr;
+};
+
+struct Plain { int x = 0; };
+
+int main()
+{
+  DragBuildInfo info;
+  Plain plain;
+  bool a = info == "abc";
+  bool b = plain == "abc";
+  Handle handle;
+  bool c = handle == 0;
+  return a || b || c ? 1 : 0;
+}
