@@ -1458,6 +1458,13 @@ auto GlobalScope::Impl::memberConstant(Decl* d, const TypeContext& ctx, const Su
 {
   if (exactLayoutOnly)
     return constValueOfDecl(d, ctx, 0, &classSubst);
+  // A class whose arguments name a template parameter has no value yet. Its evaluation recursed to the
+  // nesting limit instead, and was not kept, so every asker recursed again: Unreal Engine's
+  // `TAnd<TIsContiguousContainer<CVUnqualifiedOtherRangeType>, TOr<...>>::Value`, asked while a
+  // constructor's constraint was checked, tripped 248 million times converting Core.
+  for (const Subst::Pair& p : classSubst.pairs)
+    if (p.type && types.isDependent(p.type))
+      return std::nullopt;
   std::vector<const void*> key{d};
   for (const Subst::Pair& p : classSubst.pairs)
   {

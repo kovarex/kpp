@@ -361,7 +361,17 @@ auto GlobalScope::Impl::usingEnumerator(Decl* d, int depth) -> Decl*
   auto* u = static_cast<UsingNameDecl*>(d);
   if (u->isEnum || u->name.parts.size() < 2)
     return nullptr;
+  // The lookup of the target may find this using-declaration again: `using BaseType::TFutureBase;` (Unreal
+  // Engine's Future.h, a base's constructors by the base's name) declares TFutureBase in the class whose
+  // BaseType the lookup reads, and each round looked the target up anew down to the depth limit, about
+  // 20 rounds a lookup and 437 million in all, 92% of the resolve converting Core (43 s). Its target being
+  // looked up, it names no enumerator to the lookups within that one.
+  static thread_local std::vector<const UsingNameDecl*> targetsLookedUp;
+  if (std::find(targetsLookedUp.begin(), targetsLookedUp.end(), u) != targetsLookedUp.end())
+    return nullptr;
+  targetsLookedUp.push_back(u);
   Lookup l = lookupQualified(u->name, lexicalScopeOf(u), nullptr, depth + 1);
+  targetsLookedUp.pop_back();
   return l.decl && l.decl->kind == NodeKind::EnumeratorDecl ? l.decl : nullptr;
 }
 
