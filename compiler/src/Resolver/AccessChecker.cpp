@@ -238,7 +238,7 @@ auto GlobalScope::Impl::arrowObject(const Ty* t, int depth) -> const Ty*
   return arrowObject(ft->inner, depth + 1);
 }
 
-auto GlobalScope::Impl::usedAt(Node* n, Scope*& naming) -> Decl*
+auto GlobalScope::Impl::usedAt(Node* n, Scope*& naming, const Ty* self) -> Decl*
 {
   naming = nullptr;
   if (n->kind == NodeKind::NameExpr)
@@ -253,8 +253,18 @@ auto GlobalScope::Impl::usedAt(Node* n, Scope*& naming) -> Decl*
     if (m->op == P::Arrow)
       object = arrowObject(object);
     object = object ? types.unqualified(types.stripRef(object)) : nullptr;
+    // `this.elements.Num()` in a class template's body, elements an Array<T> whose `public: using SuperType::Num;`
+    // makes its base's protected Num public: the object's class under the instance's arguments (self's), else the
+    // template's own (the walk of an instance named the member in the template's body; without a naming class
+    // the using-declaration was not seen, "Base::Num is protected", Unreal's TSet naming TSparseArray's Num).
+    if (object && object->kind == TyKind::Class && types.isDependent(object) && self && self->kind == TyKind::Class && !types.isDependent(self))
+      if (Subst s = substFor(self); !s.empty())
+        if (const Ty* bound = substitute(object, s); bound && !types.isDependent(bound))
+          object = bound;
     if (object && object->kind == TyKind::Class && !types.isDependent(object))
       naming = classScopeOf(object);
+    else if (object && object->kind == TyKind::Class && object->decl)
+      naming = object->decl->ownScope;
   }
   return m->resolved;
 }
@@ -265,7 +275,7 @@ auto GlobalScope::Impl::namesOnlyAccessible(Node* n, FunctionDecl* fn, const std
   forEachNode(n, [&](Node* node)
   {
     Scope* naming;
-    if (Decl* used = accessible ? usedAt(node, naming) : nullptr)
+    if (Decl* used = accessible ? usedAt(node, naming, self) : nullptr)
       accessible = accessOf(used, fn, context, naming, self).allowed;
   });
   return accessible;
@@ -287,7 +297,7 @@ auto GlobalScope::Impl::checkAccessIn(Decl* d, const Ty* self) -> void
       return;
     }
     Scope* naming;
-    if (Decl* used = usedAt(n, naming))
+    if (Decl* used = usedAt(n, naming, self))
       if (std::string denied = checkAccessUse(used, n, d, fn, context, naming, self); !denied.empty() && accessErrors)
         reportCheckerError(d->file, n->token, denied); // (the walk's unit's: a walk again takes it back)
   });

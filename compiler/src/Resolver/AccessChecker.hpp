@@ -70,8 +70,8 @@
 
   // What node n names, for the access checks: a name's, a member's or a type name's declaration, and
   // for a member the class it is named through (naming: its object's, a pointer's pointee, what an
-  // operator-> gives).
-  Decl* usedAt(Node* n, Scope*& naming);
+  // operator-> gives; under self's arguments, the instance whose walk named it, where the object's type is dependent).
+  Decl* usedAt(Node* n, Scope*& naming, const Ty* self = nullptr);
 
   // Whether every declaration a typed requirement (n: a private copy, typed by its probe) names is
   // one the code of fn in the classes of context may name. C++ checks access in a requires-expression
