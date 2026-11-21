@@ -1,0 +1,4 @@
+// cppinput: a function whose later parameter starts with an attribute is a function, not an object
+// made from a lambda (`[[maybe_unused]]` is no capture list; the differential suite's const programs)
+i32 first(i32 a, [[maybe_unused]] i32 b) { return a; }
+i32 main() { return first(0, 1); }

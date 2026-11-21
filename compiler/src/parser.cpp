@@ -3155,7 +3155,7 @@ namespace
         else if (depth == 0 && at(P::Comma, i) &&
                  (at(TokenKind::Number, i + 1) || at(TokenKind::String, i + 1) || at(TokenKind::Char, i + 1) ||
                   at(Kw::true_, i + 1) || at(Kw::false_, i + 1) || at(Kw::nullptr_, i + 1) || at(P::LBrace, i + 1) ||
-                  at(P::LBracket, i + 1))) // (a lambda: `Helper registered(Phase::Ready, []{ ... });`, Unreal's IMPLEMENT_TYPE_LAYOUT)
+                  (at(P::LBracket, i + 1) && !at(P::LBracket, i + 2)))) // (a lambda, not a parameter's `[[attribute]]`: `Helper registered(Phase::Ready, []{ ... });`, Unreal's IMPLEMENT_TYPE_LAYOUT)
           return true;
       }
     }
