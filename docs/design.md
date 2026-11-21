@@ -809,6 +809,14 @@ type, its body is typed and emitted per instance (2026-11-07; a compile error be
 language/enum_underlying_type_from_template_parameter, enum_local_to_a_template_instance,
 enum_wider_than_int_in_a_template, kpp/enum_of_a_class_template_instance and enum_method_of_class_template.
 
+An enumeration may be a template (kovarex, 2026-11-21: the game's NamedBool, `template<class Tag> enum class
+NamedBool : u8 { {False, True}; ... };` in place of a class wrapping an enum). C++ has none; each instance is a type
+of its own, as an enumeration of a class template's instance is (above, the same machinery: the type carries its
+arguments), so `NamedBool<A>` and `NamedBool<B>` overload, a static method called through an instance or its alias
+(`DragBuild::fromBool(b)`) is that instance's and returns it, and a function template deduces Tag from
+`const NamedBool<Tag>&`. Inside its body the name alone is the instance it is in. Named without arguments outside it,
+or with the wrong number, it is no type (a compile error). Spec kpp/enum_template.
+
 **8.5 Typed unions**, the proposal's `union enum`: an enum whose every value carries a typed
 payload, stored as the tag plus storage for the largest alternative.
 ```

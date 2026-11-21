@@ -1,0 +1,41 @@
+// spec: an enumeration template (`template<class Tag> enum class NamedBool : u8`, kovarex 2026-11-21, the game's NamedBool): each instance is a type of its own (overloads on two of them are two functions), a static method called through an instance or its alias returns that instance (`auto`), a function template deduces Tag from `const NamedBool<Tag>&`, and its constexpr methods run in constant evaluation
+extern "C" int printf(const char* format, ...);
+template<class Tag>
+enum class NamedBool : u8
+{
+  {False, True};
+public:
+  [[nodiscard]] constexpr static NamedBool fromBool(bool value) { return value ? NamedBool::True : NamedBool::False; }
+  constexpr operator bool() const { return this == True; }
+  constexpr bool asBool() const { return this == True; }
+};
+struct SoundTag {};
+struct DragTag {};
+using PlaySound = NamedBool<SoundTag>;
+using DragBuild = NamedBool<DragTag>;
+const char* kind(PlaySound value) { return value ? "sound on" : "sound off"; }
+const char* kind(DragBuild value) { return value ? "drag on" : "drag off"; }
+template<class Tag> int push(const NamedBool<Tag>& value) { return value.asBool() ? 10 : 20; }
+int push(int value) { return value; }
+struct Settings
+{
+  PlaySound sound = PlaySound::False;
+  DragBuild drag;
+};
+constexpr PlaySound loud = PlaySound::fromBool(true);
+static_assert(loud);
+static_assert(DragBuild::fromBool(false) == DragBuild::False);
+static_assert(!std::isSame<PlaySound, DragBuild>);
+static_assert(sizeof(DragBuild) == 1);
+int main()
+{
+  const auto fromBool = DragBuild::fromBool(true);
+  printf("%s %s\n", kind(fromBool), kind(PlaySound::fromBool(false)));
+  printf("%s %s\n", kind(PlaySound::True), kind(NamedBool<DragTag>::False));
+  printf("%d %d %d\n", push(PlaySound::True), push(fromBool), push(3));
+  Settings settings;
+  settings.drag = DragBuild::fromBool(true);
+  printf("%s %s %s\n", kind(settings.sound), kind(settings.drag), settings.drag.str());
+  printf("%d\n", (int)DragBuild::count);
+  return 0;
+}

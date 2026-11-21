@@ -8064,7 +8064,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       Subst qualifier = usingArgs;
       for (const Subst::Pair& p : friendArgs.pairs)
         qualifier.pairs.push_back(p); // a friend defined in an instance's class: that instance's arguments
-      if (n->name.parts.size() > 1 && l.foundIn && l.foundIn->kind == ScopeKind::Class)
+      // (an enumeration's, too: `DragBuild::fromBool(b)` with `using DragBuild = NamedBool<DragBuildTag>`)
+      if (n->name.parts.size() > 1 && l.foundIn && (l.foundIn->kind == ScopeKind::Class || l.foundIn->kind == ScopeKind::Enum))
       {
         qualifier = impl.qualifierSubst(n->name, ctx(), 0, l.foundIn);
         for (const Subst::Pair& p : usingArgs.pairs)

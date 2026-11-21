@@ -1638,6 +1638,20 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
     case NodeKind::EnumDecl:
     {
       Decl* def = l.scope && l.scope->owner && l.scope->kind == ScopeKind::Enum ? l.scope->owner : d;
+      if (!def->templateParams.empty() && lastPart.hasTemplateArgs)
+      {
+        // An enumeration template (`template<class Tag> enum class NamedBool : u8`, design.md 8.4): the arguments
+        // written, each enumeration of them a type of its own (`NamedBool<A>` is not `NamedBool<B>`); the name alone
+        // in its own body is the instance it is in (enumTypeIn, below).
+        Span<Decl*> params = def->templateParams;
+        std::vector<const Ty*> args;
+        for (size_t i = 0; i < lastPart.templateArgs.size() && i < params.size(); ++i)
+          args.push_back(templateArgument(lastPart.templateArgs[i], params[i], ctx, depth));
+        if (args.size() != params.size() || lastPart.templateArgs.size() != params.size())
+          return types.unknown();
+        normalizeValueArgs(params, args, def, depth);
+        return types.enumType(def, Span<const Ty*>{args.data(), uint32_t(args.size())});
+      }
       return enumTypeIn(def, ctx.subst);
     }
     case NodeKind::TemplateParamDecl:
@@ -3524,6 +3538,12 @@ auto GlobalScope::Impl::deduce(const Ty* pattern, const Ty* arg, Subst& out, int
             out = std::move(*only);
         }
       }
+      break;
+    case TyKind::Enum:
+      // `const NamedBool<Tag>&` given NamedBool<DragBuildTag>, an enumeration template's instance; an enumeration of a
+      // class template's instance (`typename Flag<T>::Enum`) is a non-deduced context, as in C++.
+      if (a->kind == TyKind::Enum && a->decl == pattern->decl && !pattern->decl->templateParams.empty())
+        deduceClassArgs(pattern->args, a->args, out, depth);
       break;
     case TyKind::Function:
       if (a->kind == TyKind::Function || a->kind == TyKind::Lambda)
