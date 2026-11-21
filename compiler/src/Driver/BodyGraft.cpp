@@ -732,6 +732,14 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
   for (const DeclaredMember* d : addedMembers)
     if (!plainDataMember(*d))
       return why = "an added or changed data member of a template, a union, or static, an alias", false;
+  // An enumeration's generated members (str(), fromStr(), isValid() ...: Decl::builtin) span it, from `enum` to its `}`: one
+  // removed or added is its own text edited, its underlying type or an enumerator's value, which a size, a static_assert or
+  // a conversion reads through the type, not by a name (kovarex, 2026-11-21: the game's saveEnum<SelectionMode> kept the
+  // old size's error after `enum class SelectionMode : u8`, and codegen kept its old size and values).
+  for (const auto* list : {&removed, &added})
+    for (const DeclaredFunction* d : *list)
+      if (d->f->builtin)
+        return why = "an enumeration changed (its underlying type, an enumerator or a member)", false;
   for (const DeclaredFunction* d : removed)
     if (!plainFunction(*d, oldTokens))
       return why = "a removed or changed function others may read without its name (a template, virtual, special, constexpr)", false;

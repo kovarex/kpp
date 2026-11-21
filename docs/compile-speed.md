@@ -1063,7 +1063,12 @@ at a new function's is the same; the others are removed, the new functions not p
 and every token gone or new must be a removed or added function's (anything else changed: from
 scratch). Each must be a plain function: no template or template's member, not virtual, no
 constructor, destructor, operator or conversion, not constexpr, no deduced return type, no class or
-enumeration in its body (what reads such functions without a lookup: layouts, vtables, traits). Then:
+enumeration in its body (what reads such functions without a lookup: layouts, vtables, traits), and
+none of an enumeration's generated members (str(), fromStr() and the others span the enumeration from
+`enum` to its `}`: one removed or added is the enumeration's own text edited, its underlying type or
+an enumerator's value, which sizes, static_asserts and code read through the type; until 2026-11-21
+such an edit kept the old declaration, a stale "Unsafe enum saving." in the game and the old values in
+its code). Then:
 - the removed functions are taken out of the index (`GlobalScope::unindexFunction`: their scope's
   entry, or their class's out-of-line definitions) and their walks' records dropped;
 - the file's kept nodes are pointed at the new tokens (as in 3b), the added functions grafted into

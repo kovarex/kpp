@@ -1,0 +1,157 @@
+// spec: a compile server follows an enumeration's own text edited, its underlying type and an enumerator's value, which code reads through the type, not by a name: an instance of a function template in another file whose static_assert reads sizeof(std::UnderlyingType<T>) is checked again, and the code is what a build from scratch writes (kovarex, 2026-11-21: the game's saveEnum kept "Unsafe enum saving." in Visual Studio after `enum class SelectionMode` became `: u8`, until a full build; the edit was taken as one of the enumeration's generated functions, str() and the others, which span it, and its kept declaration, size and values stayed the old ones)
+//--- step: the program
+int main()
+{
+  Holder h;
+  std::println(save(h), " ", int(Mode::Select));
+  return 0;
+}
+// expect: 1 1
+//--- file: mode.kpp
+enum class Mode : u8
+{
+  Nothing,
+  Select,
+};
+//--- file: helper.kpp
+template<class T>
+int saveEnum(const T& target)
+{
+  static_assert(sizeof(std::UnderlyingType<T>) == sizeof(u8), "Unsafe enum saving.");
+  return int(sizeof(target));
+}
+struct Holder
+{
+  Mode mode = Mode::Select;
+};
+int save(const Holder& h) { return saveEnum(h.mode); }
+//--- step: an enumerator's value changed
+int main()
+{
+  Holder h;
+  std::println(save(h), " ", int(Mode::Select));
+  return 0;
+}
+// expect: 1 5
+//--- file: mode.kpp
+enum class Mode : u8
+{
+  Nothing,
+  Select = 5,
+};
+//--- file: helper.kpp
+template<class T>
+int saveEnum(const T& target)
+{
+  static_assert(sizeof(std::UnderlyingType<T>) == sizeof(u8), "Unsafe enum saving.");
+  return int(sizeof(target));
+}
+struct Holder
+{
+  Mode mode = Mode::Select;
+};
+int save(const Holder& h) { return saveEnum(h.mode); }
+//--- step: the enumeration made an int's
+int main()
+{
+  Holder h;
+  std::println(save(h), " ", int(Mode::Select));
+  return 0;
+}
+// error: Unsafe enum saving.
+//--- file: mode.kpp
+enum class Mode
+{
+  Nothing,
+  Select = 5,
+};
+//--- file: helper.kpp
+template<class T>
+int saveEnum(const T& target)
+{
+  static_assert(sizeof(std::UnderlyingType<T>) == sizeof(u8), "Unsafe enum saving.");
+  return int(sizeof(target));
+}
+struct Holder
+{
+  Mode mode = Mode::Select;
+};
+int save(const Holder& h) { return saveEnum(h.mode); }
+//--- step: a u8's again
+int main()
+{
+  Holder h;
+  std::println(save(h), " ", int(Mode::Select));
+  return 0;
+}
+// expect: 1 5
+//--- file: mode.kpp
+enum class Mode : u8
+{
+  Nothing,
+  Select = 5,
+};
+//--- file: helper.kpp
+template<class T>
+int saveEnum(const T& target)
+{
+  static_assert(sizeof(std::UnderlyingType<T>) == sizeof(u8), "Unsafe enum saving.");
+  return int(sizeof(target));
+}
+struct Holder
+{
+  Mode mode = Mode::Select;
+};
+int save(const Holder& h) { return saveEnum(h.mode); }
+//--- step: a u16's
+int main()
+{
+  Holder h;
+  std::println(save(h), " ", int(Mode::Select));
+  return 0;
+}
+// error: Unsafe enum saving.
+//--- file: mode.kpp
+enum class Mode : u16
+{
+  Nothing,
+  Select = 5,
+};
+//--- file: helper.kpp
+template<class T>
+int saveEnum(const T& target)
+{
+  static_assert(sizeof(std::UnderlyingType<T>) == sizeof(u8), "Unsafe enum saving.");
+  return int(sizeof(target));
+}
+struct Holder
+{
+  Mode mode = Mode::Select;
+};
+int save(const Holder& h) { return saveEnum(h.mode); }
+//--- step: a u8's again, its value as first
+int main()
+{
+  Holder h;
+  std::println(save(h), " ", int(Mode::Select));
+  return 0;
+}
+// expect: 1 1
+//--- file: mode.kpp
+enum class Mode : u8
+{
+  Nothing,
+  Select,
+};
+//--- file: helper.kpp
+template<class T>
+int saveEnum(const T& target)
+{
+  static_assert(sizeof(std::UnderlyingType<T>) == sizeof(u8), "Unsafe enum saving.");
+  return int(sizeof(target));
+}
+struct Holder
+{
+  Mode mode = Mode::Select;
+};
+int save(const Holder& h) { return saveEnum(h.mode); }
