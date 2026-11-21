@@ -1,0 +1,23 @@
+// spec: a member function defined out of line in another file than its class's (`int Manager::run() const {...}` in the .cpp, Manager in its header) sees the private names of the file it is written in (design.md 15), its helpers, types and objects, and `::name` finds them, as a static member's out-of-line initializer does; there a private name hides the global of the same spelling, which the class's own file still sees
+// found by thread UE (2026-11-22): Unreal's .cpp files define their header classes' members, which name the file's statics and its DEFINE_LOG_CATEGORY_STATIC objects: "'LogFileManager' is not declared" (the lookup went through the class's scope, the header's file); the game's converter writes a class and its members into one file
+private int helper() { return 4; }
+private int describe() { return 10; }
+private struct Category
+{
+  int n = 3;
+} Log;
+
+int Manager::run() const
+{
+  Category local;
+  return Log.n + helper() + ::helper() + local.n + describe();
+}
+
+int Manager::start = helper() * 100;
+
+int main()
+{
+  Manager m;
+  std::println(m.run(), " ", Manager::start, " ", m.inlineRead(), " ", describe());
+  return 0;
+}

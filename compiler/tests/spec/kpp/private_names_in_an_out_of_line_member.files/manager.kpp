@@ -1,0 +1,11 @@
+// Manager, declared here, its members defined in private_names_in_an_out_of_line_member.kpp; describe() is
+// the global its private describe() hides there.
+int describe() { return 1000; }
+
+class Manager
+{
+public:
+  int run() const;
+  int inlineRead() const { return describe(); }
+  static int start;
+};

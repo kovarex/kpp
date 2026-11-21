@@ -4836,7 +4836,7 @@ auto GlobalScope::Impl::Walker::addArgumentDependentCandidates(Lookup& l, uint32
     // In the global namespace, as ordinary lookup has it: this file's `private` functions first (design.md 15).
     Scope* in = ns;
     if (ns == &impl.root)
-      if (Scope* own = impl.privateScopeFor(scope); own && own->parent == ns && own->find(symbol))
+      if (Scope* own = impl.privateScopeFor(scope, &locals); own && own->parent == ns && own->find(symbol))
         in = own;
     Lookup found;
     if (!impl.lookupInScope(in, symbol, found, 0, false) || !found.decl || found.decl->kind != NodeKind::FunctionDecl || found.foundIn != in)
@@ -11579,11 +11579,16 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         impl.recordInstanceSubst(f, *activeSubst); // the classes of its body see these arguments
       Scope* saved = scope;
       const Ty* savedThis = thisType;
+      const ParsedFile* savedWrittenIn = locals.writtenIn;
       ++declaredTypes;
       walkType(f->returnType);
       --declaredTypes;
       if (f->name.parts.size() > 1)
       {
+        // An out-of-line member function sees its own file's private names (design.md 15), not its class's
+        // file's: Unreal's `void FFileManagerGeneric::ProcessCommandLineOptions()` in its .cpp names that file's
+        // log category and static helpers, its class is declared in a header.
+        locals.writtenIn = f->file;
         scope = semanticScopeFor(f->name);
         if (!activeSubst)
           thisType = computeThisType();
@@ -11726,6 +11731,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       }
       scope = saved;
       thisType = savedThis;
+      locals.writtenIn = savedWrittenIn;
       break;
     }
     case NodeKind::VariableDecl:
@@ -11745,10 +11751,15 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       walkExpr(v->bitfield);
       walkExpr(v->alignment); // (`alignas(T)`: its name resolved, a type's or a constant's, for codegen's alignmentValue)
       Scope* saved = scope;
+      const ParsedFile* savedWrittenIn = locals.writtenIn;
       if (v->name.parts.size() > 1)
+      {
+        locals.writtenIn = v->file; // (an out-of-line static member's initializer: its own file's private names, as a function's)
         scope = semanticScopeFor(v->name);
+      }
       const Ty* initTy = walkExpr(v->init);
       scope = saved;
+      locals.writtenIn = savedWrittenIn;
       if (member && v->init && !bodyOf)
         recordFieldNames(v, v->init); // (a default initializer naming another field: `int b = this.a + 1;`)
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements && !bodyOf && returnFrames.empty())

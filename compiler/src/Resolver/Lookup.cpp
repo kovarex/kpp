@@ -81,8 +81,10 @@ auto GlobalScope::Impl::pick(const std::vector<Entry>& entries) -> Entry
   return *best;
 }
 
-auto GlobalScope::Impl::privateScopeFor(Scope* context) -> Scope*
+auto GlobalScope::Impl::privateScopeFor(Scope* context, const LocalStack* locals) -> Scope*
 {
+  if (locals && locals->writtenIn)
+    return locals->writtenIn->privateScope;
   const ParsedFile* file = nullptr;
   for (Scope* s = context; !file && s; s = s->parent)
     if (s->privateTo)
@@ -716,7 +718,7 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
     // The file's private names (design.md 15) hide the global ones of the same spelling (in a
     // scoped library's file, the library's: design.md 16).
     if (s == &root || s->library)
-      if (Scope* own = privateScopeFor(context); own && own->parent == s)
+      if (Scope* own = privateScopeFor(context, locals); own && own->parent == s)
       {
         if (lookupInScope(own, symbol, out, depth, false) && found(out))
           return out;
@@ -1736,10 +1738,10 @@ auto GlobalScope::Impl::lookupQualified(const QualifiedName& name, Scope* contex
   return name.requiresThis ? bareNameOutside(name, l, context) : l;
 }
 
-auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth) -> bool
+auto GlobalScope::Impl::lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth, const LocalStack* locals) -> bool
 {
   if (s == &root || s->library)
-    if (Scope* own = privateScopeFor(context); own && own->parent == s && lookupInScope(own, symbol, out, depth, false))
+    if (Scope* own = privateScopeFor(context, locals); own && own->parent == s && lookupInScope(own, symbol, out, depth, false))
       return true;
   return lookupInScope(s, symbol, out, depth);
 }
@@ -1803,7 +1805,7 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
       if (!last)
         return {};
       if (current)
-        lookupInScopeOrPrivate(current, context, part.symbol, out, depth);
+        lookupInScopeOrPrivate(current, context, part.symbol, out, depth, locals);
       else
         out = lookupUnqualified(part.symbol, context, locals, depth);
       return out;
@@ -1816,7 +1818,7 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
       uint32_t symbol = opSymbols[part.opToken];
       out = Lookup{};
       if (current)
-        lookupInScopeOrPrivate(current, context, symbol, out, depth);
+        lookupInScopeOrPrivate(current, context, symbol, out, depth, locals);
       else
         out = lookupUnqualified(symbol, context, locals, depth);
       return out;
@@ -1836,7 +1838,7 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     Lookup step;
     if (current)
     {
-      lookupInScopeOrPrivate(current, context, part.symbol, step, depth);
+      lookupInScopeOrPrivate(current, context, part.symbol, step, depth, locals);
       if (currentTy)
         lookupThroughBaseInstances(currentTy, part.symbol, step, depth); // `G<0>::type` with G<N> : E<N> and E<0> a specialisation
       if (step.found == Found::No)

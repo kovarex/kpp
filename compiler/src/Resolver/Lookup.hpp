@@ -17,8 +17,9 @@
 
   // The private names (design.md 15) of the file a lookup from context is made for: that of the
   // innermost private scope, class or enum around context, else the thread's (lookupFile: a
-  // namespace's scope is every file's).
-  Scope* privateScopeFor(Scope* context);
+  // namespace's scope is every file's). The file an out-of-line member function is written in, where
+  // locals walk its body (LocalStack::writtenIn).
+  Scope* privateScopeFor(Scope* context, const LocalStack* locals = nullptr);
 
   // Another file than from's that declares symbol private (design.md 15), the first in file order,
   // for the error of naming it (null: none).
@@ -213,7 +214,7 @@
 
   // A lookup in s, and in the global scope (`::helper`) first in the private names of the file the
   // lookup from context is made for (design.md 15), which hide the global ones there.
-  bool lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth);
+  bool lookupInScopeOrPrivate(Scope* s, Scope* context, uint32_t symbol, Lookup& out, int depth, const LocalStack* locals = nullptr);
 
   // A class specialization at the top level whose template nothing there declares: an error (one in std is std::X).
   void reportSpecializationsOfNothing();

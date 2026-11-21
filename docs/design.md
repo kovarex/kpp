@@ -2374,7 +2374,10 @@ As built (thread A, 2026-11-01; specs `kpp/private_*`):
   its global classes' members, its namespaces' functions, and `::name`) finds them before the
   global scope, so they hide a global or standard-library name of the same spelling there. A global
   template whose body calls its file's private helper calls that helper wherever it is
-  instantiated.
+  instantiated. A member defined out of line in another file than its class's (`int Manager::run()`
+  in Unreal's .cpp, Manager in its header) is that file's function: its body and a static member's
+  out-of-line initializer see the private names of the file they are written in, not the class's
+  file's (2026-11-22; they found none, or the global of the same spelling).
 - Two private declarations of one name in one file are the usual clash ("top-level names are
   global"); two files' never meet. Naming another file's private name is "'helper' is private to
   PATH".

@@ -53,4 +53,8 @@ struct LocalStack
 
   std::vector<Item> items;
   std::vector<ClassFrame> classFrames;
+  // The file of the out-of-line member function walked (`int Manager::run() {...}` in another file than
+  // Manager's): its body's names see that file's private names (design.md 15), though its scope is its
+  // class's, which is another file's (privateScopeFor). Null: the scope's file.
+  const ParsedFile* writtenIn = nullptr;
 };
