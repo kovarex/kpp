@@ -6046,8 +6046,10 @@ auto GlobalScope::Impl::constEnumConstruct(const Ty* t, const std::vector<ConstV
   for (const ConstValue& a : args)
     argTypes.push_back(a.type);
   FunctionDecl* ctor = chooseConstructor(t, argTypes, nullptr, nullptr);
+  if (args.empty() && (!ctor || ((ctor->flags & DF_Default) && !(ctor->flags & DF_Delete))))
+    return constConverted(ConstValue::integer(0), t); // no default constructor declared, or `E() = default;`: the implicit one's zero (design.md 29)
   if (!ctor)
-    return none(args.empty() ? "none takes no arguments" : "none takes these arguments");
+    return none("none takes these arguments");
   FunctionDecl* def = ctor->body ? ctor : constDefinition(ctor);
   if (!def || !def->body || def->params.size() != ctor->params.size() || !ctor->templateParams.empty())
     return none("its body is not where the constant evaluation sees it");

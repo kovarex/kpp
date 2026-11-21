@@ -1,0 +1,15 @@
+// spec: a kpp enum whose default constructor is deleted makes no value without an initializer: an error, never the zero (kovarex, 2026-11-11; since 2026-11-21 an enum that declares other constructors and no default one keeps its implicit default, as a class does, design.md 29)
+// error: enum_deleted_default_constructor_made_without_initializer_is_error.kpp:12: error: a value of Dir is made without an initializer, and its default constructor is deleted
+enum class Dir : u8
+{
+  { North, East, South, West }
+  Dir() = delete;
+  Dir(int a, int b) { this = Dir((a + b) & 3); }
+};
+
+int main()
+{
+  Dir d;
+  std::println(d, Dir(1, 2));
+  return 0;
+}

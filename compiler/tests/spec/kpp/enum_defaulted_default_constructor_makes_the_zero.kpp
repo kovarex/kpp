@@ -1,0 +1,21 @@
+// spec: a kpp enum's `E() = default;` is the implicit default constructor written out: it makes the zero value, in code and in a constant (kovarex 2026-11-21: RailLayer with `RailLayer() = default;` beside `RailLayer(Deserialiser&, bool load = true)` was "codegen does not support a defaulted function without its object")
+// design.md 8.4
+struct Deserialiser { u8 next = 1; };
+enum class RailLayer : u8
+{
+  {Ground, Elevated}
+public:
+  RailLayer() = default;
+  RailLayer(Deserialiser& input, bool load = true) { if (load) this = RailLayer(input.next); }
+};
+struct Holder { RailLayer layer; i32 x = 5; };
+constexpr RailLayer constant = RailLayer();
+int main()
+{
+  RailLayer a = RailLayer();
+  Holder h;
+  Deserialiser d;
+  std::Vector<RailLayer> v(2);
+  std::println(a, " ", h.layer, " ", RailLayer(d), " ", v[1], " ", constant, " ", std::isNothrowDefaultConstructible<RailLayer>);
+  return 0;
+}

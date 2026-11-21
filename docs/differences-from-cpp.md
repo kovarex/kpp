@@ -532,7 +532,8 @@ struct Celsius { implicit Celsius(double degrees); };
   parameters all have defaults) or deletes it with `T() = delete;`, and, as in C++, when a part cannot be
   default-initialized (a reference or const scalar member without an initializer, a member or base without
   one). `isConstructible<T>` and the other traits answer by it. Where a class has none, `T x;` and `new T` are
-  the checker's error naming why.
+  the checker's error naming why. A kpp enum with constructors keeps its implicit default the same way, which
+  makes the zero value (2026-11-21, the game's RailLayer).
 - **Why:** kovarex (2026-11-17), after removing a `RemoteViewSurfaceData() = default;` from the game: the same
   annoyance as with the union enum class's creators below; nothing is dropped, nothing is written back.
 - **See:** [design 29][d29]; specs `classes/implicit_default_constructor_beside_others`,

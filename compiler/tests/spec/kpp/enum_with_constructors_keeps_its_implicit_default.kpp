@@ -1,0 +1,28 @@
+// spec: a kpp enum that declares constructors but no default one keeps its implicit default constructor, which makes the zero value, as a class keeps its own (design.md 29; kovarex 2026-11-21: the game's RailLayer, with `RailLayer(Deserialiser&, bool load = true)`, had no default value): a local, `E()`, a member left out, a container's new elements and a constant
+// design.md 8.4
+struct Deserialiser { u8 next = 1; };
+enum class RailLayer : u8
+{
+  {Ground, Elevated}
+public:
+  RailLayer(Deserialiser& input, bool load = true) { if (load) this = RailLayer(input.next); }
+};
+enum class Dir : u8
+{
+  { North, East }
+  Dir() = delete;
+  Dir(int a, int b) { this = Dir((a + b) & 1); }
+};
+struct Holder { RailLayer layer; i32 x = 5; };
+constexpr RailLayer constant = RailLayer();
+int main()
+{
+  RailLayer a = RailLayer();
+  RailLayer b = RailLayer();
+  Holder h;
+  Deserialiser d;
+  RailLayer c(d);
+  std::Vector<RailLayer> v(2);
+  std::println(a, " ", b, " ", h.layer, " ", c, " ", v[1], " ", constant);
+  return 0;
+}

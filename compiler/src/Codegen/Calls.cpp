@@ -1217,6 +1217,13 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
 
 auto codegen::Emitter::defaultedCall(FunctionDecl* f, const Ty* classTy, const std::string& thisArg, Span<Expr*> args, Node* at) -> Value
 {
+  if (!classTy && thisArg.empty() && args.empty() && (f->flags & DF_Constructor) && f->parent && f->parent->kind == NodeKind::EnumDecl)
+  {
+    // `E() = default;` of a kpp enum, called as `E()`: the implicit default constructor written out, the zero value
+    // (design.md 8.4, 29; kovarex 2026-11-21, the game's RailLayer).
+    const Ty* e = at && static_cast<Expr*>(at)->ty ? types.unqualified(types.stripRef(static_cast<Expr*>(at)->ty)) : types.enumType(f->parent);
+    return {"0", e};
+  }
   if (!classTy || thisArg.empty())
     unsupported(at, "a defaulted function without its object");
   const Ty* t = types.unqualified(types.stripRef(classTy));

@@ -737,8 +737,12 @@ local, a global, a static, a member, an array's elements, `E()`, `E{}`, `return 
 container's new elements, the members of an aggregate its braces leave out. One with parameters makes `E(args)`,
 `E x(args);`, `E x{args}` and a member initializer's `m(args)`; `this` is the value made, as in its methods.
 `E(x)` of one number or enumeration value stays the conversion, so a constructor taking one is an error at its
-declaration, as is a member initializer (an enum has no members); a value made without an initializer of an
-enum that has constructors and no default one is an error. A conversion operator converts the value as a
+declaration, as is a member initializer (an enum has no members). An enum that declares constructors and no default one
+keeps its implicit default constructor, which makes the zero value, as a class keeps its own beside its other
+constructors (design.md 29; kovarex 2026-11-21: the game's RailLayer, with `RailLayer(Deserialiser&, bool load = true)`,
+had no default value; until then such a value was an error); `E() = default;` writes that implicit one out (it was
+"codegen does not support a defaulted function without its object"); a value made without an initializer of an enum whose
+default constructor is deleted is an error. A conversion operator converts the value as a
 class's converts its object (`operator bool() const`, explicit unless marked implicit: a condition, `!`, `&&`,
 `||`, `?:`, a cast). Every kpp enum has the generated `const char* enumeratorName() const`: the enumerator's
 name, or null for a value that is none (`str()` gives "?"); a hand-written one replaces it. The constant
@@ -748,7 +752,7 @@ Direction with its constexpr default constructor was. It runs the enum's other m
 B's report: `Dir::East.turned()` and `d.turn()` were no constant), `this` the value: one that is not const changes
 the value where it was called on. Specs kpp/enum_constructors, enum_constructors_everywhere,
 enum_constructor_in_constant_evaluation, enum_method_in_constant_evaluation, enum_conversion_operator,
-enum_enumerator_name, enum_without_default_constructor_made_without_initializer_is_error,
+enum_enumerator_name, enum_deleted_default_constructor_made_without_initializer_is_error, enum_with_constructors_keeps_its_implicit_default, enum_defaulted_default_constructor_makes_the_zero,
 enum_constructor_taking_one_number_is_error, enum_constructor_member_initializer_is_error.
 An enum's member operators are its operators, as a class's are (2026-11-12, thread B's report: with
 `Dir operator+(const Dir&) const` in the enum, `a + b` was typed int32 and codegen refused it, and in a constant

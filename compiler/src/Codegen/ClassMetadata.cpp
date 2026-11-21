@@ -733,6 +733,16 @@ auto codegen::Emitter::constructEnum(const std::string& addr, const Ty* t, Span<
   const Ty* e = types.unqualified(types.stripRef(t));
   std::vector<const Ty*> argTypes = argTypesOf(args);
   FunctionDecl* ctor = global.chooseConstructor(e, argTypes);
+  if (argTypes.empty() && (!ctor || ((ctor->flags & DF_Default) && !(ctor->flags & DF_Delete))))
+  {
+    // No default constructor declared: the implicit one stays beside the others, as a class's does (design.md 29,
+    // kovarex 2026-11-21 for enums: RailLayer with `RailLayer(Deserialiser&, bool load = true)` had no default value),
+    // and makes the zero value, as an enum without constructors does. A deleted one is chosen, and refused, above.
+    fn += "  store " + llType(e, at) + " 0, ptr " + addr + "\n"; // (not storeZero, which constructs an enum with constructors)
+    return;
+  }
+  if (ctor && (ctor->flags & DF_Delete) && argTypes.empty())
+    fail(at, "a value of " + types.toString(e, &symbols) + " is made without an initializer, and its default constructor is deleted");
   if (!ctor)
   {
     std::string list;

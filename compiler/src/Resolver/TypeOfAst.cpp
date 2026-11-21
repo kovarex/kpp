@@ -1832,7 +1832,12 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
   if (u->kind == TyKind::Void || u->kind == TyKind::Function)
     return false;
   if (enumWithConstructors(u))
-    return chooseConstructor(u, {}, nullptr, nullptr) != nullptr; // a kpp enum's: one of its constructors takes none (kovarex, 2026-11-11)
+  {
+    // A kpp enum's: one of its constructors takes none, or none is declared and its implicit default makes the zero value,
+    // as a class's stays beside its other constructors (design.md 29; kovarex 2026-11-21, RailLayer). Not a deleted one.
+    FunctionDecl* f = chooseConstructor(u, {}, nullptr, nullptr);
+    return !f || !(f->flags & DF_Delete);
+  }
   if (u->kind == TyKind::Lambda)
   {
     // [expr.prim.lambda.closure] 13: a defaulted default constructor without a lambda-capture, none
@@ -1918,8 +1923,8 @@ auto GlobalScope::Impl::triviallyDefaultConstructible(const Ty* t, int depth) ->
     return false; // `int[]`: no object of it, as the libraries answer
   if (closureWithCaptures(t))
     return false; // a closure of a lambda-capture has no default constructor
-  if (enumWithConstructors(t))
-    return false; // a kpp enum whose constructors make its values (kovarex, 2026-11-11)
+  if (FunctionDecl* f = enumWithConstructors(t) ? chooseConstructor(types.unqualified(t), {}, nullptr, nullptr) : nullptr; f && !(f->flags & DF_Default))
+    return false; // a kpp enum whose default constructor makes its values (kovarex, 2026-11-11); without one, the zero (design.md 29)
   TrivialSubject s = trivialSubject(t);
   if (!s.cls)
     return s.answer;
@@ -1972,7 +1977,7 @@ auto GlobalScope::Impl::nothrowDefaultConstructionUncached(const Ty* t) -> std::
   {
     // A kpp enum's default constructor (kovarex, 2026-11-11): as its noexcept says.
     FunctionDecl* f = chooseConstructor(u, {}, nullptr, nullptr);
-    return f && (f->flags & DF_Noexcept) && !f->noexceptCondition;
+    return !f || (f->flags & DF_Default) || ((f->flags & DF_Noexcept) && !f->noexceptCondition); // (none declared or `= default`: the implicit zero, design.md 29)
   }
   if (u->kind != TyKind::Class)
     return true; // a scalar, a pointer, an enum, a closure without captures: nothing runs

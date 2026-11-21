@@ -509,7 +509,9 @@ private:
       case TyKind::MemberPointer:
         return true;
       case TyKind::Enum:
-        return !this->w.impl.enumWithConstructors(t); // (one with constructors: its default one makes it, kovarex 2026-11-11)
+        if (FunctionDecl* f = this->w.impl.enumWithConstructors(t) ? this->w.impl.chooseConstructor(t, {}, nullptr, nullptr) : nullptr)
+          return (f->flags & DF_Default) != 0;
+        return true; // (one with a default constructor: it makes it, kovarex 2026-11-11; without one the zero, design.md 29)
       default:
         return false;
     }
