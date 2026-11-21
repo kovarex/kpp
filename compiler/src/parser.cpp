@@ -54,6 +54,7 @@ namespace
       kwConfig = symbols.intern("config");
       kwNameof = symbols.intern("nameof");
       kwQualifiedNameof = symbols.intern("qualifiednameof");
+      kwCheckValid = symbols.intern("checkValid");
       kwThisType = symbols.intern("This");
       kwCount = symbols.intern("count");
       kwValues = symbols.intern("values");
@@ -1775,6 +1776,19 @@ namespace
     // `bool isValid() const` (unless written by hand) on a kpp enum and on an `enum class` written in kpp: whether
     // the value is one of the enumerators (kovarex, 2026-11-20: the check after loading one from a deserialiser;
     // `E(raw)` stays the plain conversion). The code generator writes its body (Decl::builtin).
+    // Whether the members parsed since mark declare a function of that name (one the enum writes itself replaces the generated).
+    bool declaresMember(size_t mark, uint32_t symbol) const
+    {
+      for (size_t i = mark; i < scratch.size(); ++i)
+        if (scratch[i]->kind == NodeKind::FunctionDecl)
+        {
+          auto* f = static_cast<FunctionDecl*>(scratch[i]);
+          if (f->name.parts.size() == 1 && f->name.parts[0].symbol == symbol)
+            return true;
+        }
+      return false;
+    }
+
     void addEnumIsValid(EnumDecl* e, uint32_t start, size_t mark)
     {
       for (size_t i = mark; i < scratch.size(); ++i)
@@ -5823,6 +5837,30 @@ namespace
         if (inRecovery)
           break;
       }
+      // `template<class X> E checkValid() const`: the value, or a throw of X with one message when it is no enumerator
+      // (kovarex, 2026-11-21: "The pattern of throwing when it is not valid is very often repeated, with the message always
+      // specified in its own way"), written for every enum that has isValid() and read as its member; one the enum
+      // declares replaces it.
+      // (Not one the parser writes itself, a flags declaration's __KppBit: its problems are reported at tokens counted before
+      // the tokens inserted here.)
+      bool written = !e->name.empty() && e->name.last().symbol != UINT32_MAX && symbols.name(e->name.last().symbol).substr(0, 5) == "__Kpp";
+      if ((e->isKpp || e->isClass) && isKpp() && at(P::RBrace) && !written && !declaresMember(mark, kwCheckValid))
+      {
+        std::vector<Token> made = synthesize(
+          "template<typename __KppException> This checkValid() const { if (!this.isValid()) throw __KppException(std::toString("
+          "__kpp_text __kpp_text_slot, qualifiednameof(This), __kpp_text __kpp_text_slot, i64(std::UnderlyingType<This>(this)), "
+          "__kpp_text __kpp_text_slot)); return this; }",
+          start, {"Invalid ", " value: ", "."});
+        toks.insert(toks.begin() + pos, made.begin(), made.end());
+        while (!at(P::RBrace) && !at(TokenKind::End))
+        {
+          ++enumBodies;
+          parseDeclaration(Scope::Enum);
+          --enumBodies;
+          if (inRecovery)
+            break;
+        }
+      }
       if (e->isKpp)
         addEnumBuiltins(e, start, mark);
       if (e->isKpp || e->isClass)
@@ -8381,7 +8419,7 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCheckValid, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
              kwTagMethod, kwTypeMember, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.

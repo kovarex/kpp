@@ -1750,6 +1750,12 @@ namespace
     {
       if (std::string creator = creatorText(program, d); !creator.empty())
         return creator;
+      // An enum's generated checkValid (its tokens the parser wrote, located at the enum's own).
+      if (d->kind == NodeKind::FunctionDecl && d->parent && d->parent->kind == NodeKind::EnumDecl && d->file && d->file->tokens &&
+          d->token < d->file->tokens->size() && d->parent->token < d->file->tokens->size() &&
+          (*d->file->tokens)[d->token].offset == (*d->file->tokens)[d->parent->token].offset &&
+          program.symbols->name(static_cast<const FunctionDecl*>(d)->name.last().symbol) == "checkValid")
+        return "template<class Exception> " + declarationName(d->parent, *program.symbols) + " checkValid() const";
       if (!d->parent || d->token != d->parent->token)
         return {};
       if (d->parent->kind == NodeKind::ClassDecl && static_cast<const ClassDecl*>(d->parent)->tagEnum)

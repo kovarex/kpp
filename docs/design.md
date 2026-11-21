@@ -745,7 +745,13 @@ had no default value; until then such a value was an error); `E() = default;` wr
 default constructor is deleted is an error. A conversion operator converts the value as a
 class's converts its object (`operator bool() const`, explicit unless marked implicit: a condition, `!`, `&&`,
 `||`, `?:`, a cast). Every kpp enum has the generated `const char* enumeratorName() const`: the enumerator's
-name, or null for a value that is none (`str()` gives "?"); a hand-written one replaces it. The constant
+name, or null for a value that is none (`str()` gives "?"); a hand-written one replaces it. Every enum with
+`isValid()` has the generated `template<class X> E checkValid() const` (kovarex, 2026-11-21: "The pattern of throwing
+when it is not valid is very often repeated, with the message always specified in its own way"): the value when it is
+one of the enumerators, else a throw of `X("Invalid <qualifiednameof(E)> value: <its number>.")`, so a loader writes
+`Distraction mode = Distraction(value).checkValid<RuntimeError>();`; a hand-written checkValid replaces it. In an enum's
+member function template, as in its other methods, `this` is the value (until then a pointer there). Specs
+kpp/enum_check_valid, enum_member_template_this_is_the_value. The constant
 evaluation runs an enum's constructors as a class's, `this` the value: `E()`, `E(args)`, `{}` and a member
 without an initializer are constants, and a constant global holding one is constant data, as one holding C++'s
 Direction with its constexpr default constructor was. It runs the enum's other methods too (2026-11-12, thread

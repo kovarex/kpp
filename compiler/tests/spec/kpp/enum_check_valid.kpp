@@ -1,0 +1,15 @@
+// spec: every enum with isValid() has the generated `template<class X> E checkValid() const`: the value when it is one of the enumerators, else a throw of X("Invalid <the enum's qualified name> value: <its number>."); one the enum declares replaces it (kovarex, 2026-11-21: "The pattern of throwing when it is not valid is very often repeated, with the message always specified in its own way. We should have some method like checkValid<ExceptionType>()")
+// design.md 8.4
+struct RuntimeError { std::String text; RuntimeError(std::String text) : text(text) {} };
+namespace AI { enum class Distraction : u8 { { Never, ByEnemy } }; }
+enum class Mode : i16 { Slow = -2, Fast = 3 };
+enum class Own : u8 { { A, B } Own checkValid() const { return this; } };
+int main()
+{
+  try { AI::Distraction(u8(1)).checkValid<RuntimeError>(); std::println("ok 1"); AI::Distraction(u8(7)).checkValid<RuntimeError>(); }
+  catch (const RuntimeError& e) { std::println(e.text); }
+  try { Mode m = Mode(i16(-5)).checkValid<RuntimeError>(); std::println(int(m)); }
+  catch (const RuntimeError& e) { std::println(e.text); }
+  std::println(int(Mode(i16(3)).checkValid<RuntimeError>()), " ", Own(u8(9)).checkValid().str());
+  return 0;
+}

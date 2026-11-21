@@ -1,0 +1,15 @@
+// spec: in a member function template of a kpp enum, `this` is the value, as in its other methods (it was a pointer: "member access on a non-class object", 2026-11-21, met by the generated checkValid)
+// design.md 8.4
+enum class E : u8
+{
+  { A, B }
+  template<typename X> bool t1() const { return this.isValid(); }
+  bool t2() const { return this.isValid(); }
+  template<typename X> bool t3() const { E copy = this; return copy.isValid(); }
+};
+int main()
+{
+  E e = E(u8(1));
+  std::println(e.t2(), " ", e.t1<int>(), " ", e.t3<int>(), " ", E(u8(5)).t1<int>());
+  return 0;
+}

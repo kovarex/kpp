@@ -2096,7 +2096,7 @@ const Ty* GlobalScope::typeFunctionFor(FunctionDecl* f, FunctionDecl* nodes, con
   if (objectType)
     w.thisType = impl.thisTypeOf(objectType);
   else if (Decl* cls = Impl::enclosingClassDecl(w.scope))
-    w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
+    w.thisType = impl.thisTypeOf(impl.substitute(impl.selfType(cls), subst));
   if (nodes != f && nodes->body)
     impl.indexLocalTypes(nodes->body, w.scope, nodes); // the copy's local classes and enums: scopes of their own members
   w.returnFrames.push_back(nullptr);
@@ -2125,7 +2125,7 @@ FunctionDecl* GlobalScope::instanceBody(FunctionDecl* f, const TemplateArgs& arg
   if (objectType)
     thisType = impl.thisTypeOf(objectType);
   else if (Decl* cls = owningClass(f))
-    thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
+    thisType = impl.thisTypeOf(impl.substitute(impl.selfType(cls), subst));
   bool producer;
   Impl::InstanceRecord* record = impl.claimInstance(f, subst, thisType, producer);
   std::optional<RecordInto> into; // what typing the instance reads is its own
@@ -2249,7 +2249,7 @@ Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args
     w.scope = w.semanticScopeFor(v->name);
   w.activeSubst = &subst;
   if (Decl* cls = Impl::enclosingClassDecl(w.scope))
-    w.thisType = impl.types.pointer(impl.substitute(impl.selfType(cls), subst));
+    w.thisType = impl.thisTypeOf(impl.substitute(impl.selfType(cls), subst));
   w.walkExpr(copy);
   record->state.store(2, std::memory_order_release);
   record->state.notify_all();
