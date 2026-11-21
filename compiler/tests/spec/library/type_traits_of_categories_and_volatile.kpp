@@ -1,0 +1,63 @@
+// spec: the library's isLvalueReference, isRvalueReference, isVolatile, isObject, isScalar, isEmpty and isDefaultConstructible (std::is_lvalue_reference_v ... std::is_default_constructible_v), AddVolatile, conjunction and disjunction (std::conjunction_v, disjunction_v), addressOf (std::addressof, past a class's unary operator&) and launder answer as C++'s do: a reference is neither volatile nor an object, an array of volatile elements is volatile, a class with no data member, no virtual function and only empty bases is empty; clang prints the same
+// found by thread UE (2026-11-22): Unreal's Core names them (TTuple's Get uses std::is_rvalue_reference_v, 192 of TuplesTest's static assertions), and the library had none; the converter wrote them without std::
+struct Empty
+{
+  void f() {}
+};
+
+struct DerivedEmpty : Empty
+{
+};
+
+struct Full
+{
+  int v = 0;
+};
+
+class Virtual
+{
+public:
+  virtual ~Virtual() {}
+};
+
+struct NoDefault
+{
+  NoDefault() = delete; // (kpp keeps the implicit default constructor beside the others: design.md 29)
+  NoDefault(int value) : v(value) {}
+  int v;
+};
+
+struct Odd
+{
+  int v = 7;
+  int* operator&() { return nullptr; }
+};
+
+enum class Color
+{
+  red,
+};
+
+static_assert(std::isLvalueReference<int&> && !std::isLvalueReference<int&&> && !std::isLvalueReference<int>);
+static_assert(std::isRvalueReference<int&&> && !std::isRvalueReference<int&> && !std::isRvalueReference<int>);
+static_assert(std::isVolatile<volatile int> && std::isVolatile<const volatile int> && std::isVolatile<volatile int[3]>);
+static_assert(!std::isVolatile<int> && !std::isVolatile<volatile int&> && !std::isVolatile<volatile int*>);
+static_assert(std::isObject<int> && std::isObject<Full> && std::isObject<int*> && std::isObject<int[2]>);
+static_assert(!std::isObject<int&> && !std::isObject<void> && !std::isObject<int(int)>);
+static_assert(std::isScalar<int> && std::isScalar<double> && std::isScalar<Color> && std::isScalar<int*> && std::isScalar<nullptr_t>);
+static_assert(std::isScalar<int Full::*> && !std::isScalar<Full> && !std::isScalar<int&> && !std::isScalar<int[2]>);
+static_assert(std::isEmpty<Empty> && std::isEmpty<DerivedEmpty> && !std::isEmpty<Full> && !std::isEmpty<Virtual> && !std::isEmpty<int>);
+static_assert(std::isDefaultConstructible<Full> && std::isDefaultConstructible<int> && !std::isDefaultConstructible<NoDefault>);
+static_assert(std::isSame<std::AddVolatile<int>, volatile int>);
+static_assert(std::conjunction<std::TrueType, std::TrueType> && !std::conjunction<std::TrueType, std::FalseType> && std::conjunction<>);
+static_assert(std::disjunction<std::FalseType, std::TrueType> && !std::disjunction<std::FalseType> && !std::disjunction<>);
+
+int main()
+{
+  Odd odd;
+  const Full full;
+  int value = 5;
+  int* laundered = std::launder(&value);
+  std::println(std::addressOf(odd)->v, " ", std::addressOf(full)->v, " ", *std::addressOf(value), " ", *laundered, " ", std::isEmpty<Empty>);
+  return 0;
+}

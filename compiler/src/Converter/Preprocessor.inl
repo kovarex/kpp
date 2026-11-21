@@ -693,5 +693,14 @@
     {"error_category", "std::ErrorCategory"}, {"make_error_code", "std::make_error_code"},
     {"length_error", "std::LengthError"}, {"overflow_error", "std::OverflowError"},
     {"codecvt_utf8", "std::CodecvtUtf8"}, {"wstring_convert", "std::WStringConvert"},
-    {"milli", "std::Milli"}, {"throw_with_nested", "std::throw_with_nested"}, {"rotr", "std::rotr"}, {"lcm", "std::lcm"}};
+    {"milli", "std::Milli"}, {"throw_with_nested", "std::throw_with_nested"}, {"rotr", "std::rotr"}, {"lcm", "std::lcm"},
+    // Unreal Engine's Core (2026-11-22)
+    {"is_lvalue_reference_v", "std::isLvalueReference"}, {"is_rvalue_reference_v", "std::isRvalueReference"}, {"is_volatile_v", "std::isVolatile"},
+    {"is_object_v", "std::isObject"}, {"is_scalar_v", "std::isScalar"}, {"is_empty_v", "std::isEmpty"},
+    {"is_default_constructible_v", "std::isDefaultConstructible"}, {"add_volatile_t", "std::AddVolatile"},
+    {"conjunction_v", "std::conjunction"}, {"disjunction_v", "std::disjunction"}, {"addressof", "std::addressOf"}, {"launder", "std::launder"},
+    {"memory_order", "std::memory_order"}, {"memory_order_relaxed", "std::memory_order_relaxed"}, {"memory_order_consume", "std::memory_order_consume"},
+    {"memory_order_acquire", "std::memory_order_acquire"}, {"memory_order_release", "std::memory_order_release"},
+    {"memory_order_acq_rel", "std::memory_order_acq_rel"}, {"memory_order_seq_cst", "std::memory_order_seq_cst"},
+    {"atomic_thread_fence", "std::atomicThreadFence"}, {"atomic_int", "std::Atomic<i32>"}, {"atomic_uint", "std::Atomic<u32>"}};
 

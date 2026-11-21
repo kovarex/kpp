@@ -163,3 +163,14 @@ answer as C++'s (`noexcept(T(move(x)))` is T's move constructor's answer):
   implementation (MSVC's STL allocates in a list's, a map's and a deque's move constructor).
 - A Tuple's move assignment when each element's does (a reference element's: the assignment of what
   it refers to, a copy for an lvalue reference).
+
+## Type traits
+
+The compiler answers the library's traits (std::isSame, isConstructible, isTriviallyDestructible ...), each the
+std::is_X_v of its name. Since 2026-11-22 also isLvalueReference, isRvalueReference, isVolatile (an array of
+volatile elements is volatile, a reference is not), isObject (no reference, function or void), isScalar (arithmetic,
+enumeration, pointer, member pointer, nullptr), isEmpty (a class with no data member, no virtual function and only
+empty bases; a closure without captures) and isDefaultConstructible (isConstructible<T>; kpp keeps a class's implicit
+default constructor beside its others, design.md 29). core/TypeTraits.kpp has AddVolatile, conjunction and
+disjunction (std::conjunction_v, disjunction_v); core/UtilityExt.kpp addressOf (std::addressof: past a class's unary
+operator&) and launder.

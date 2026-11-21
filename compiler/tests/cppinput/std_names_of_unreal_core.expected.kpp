@@ -1,0 +1,35 @@
+// cppinput: the standard names Unreal's Core uses that the library gained on 2026-11-22 convert to it (the type traits,
+// std::conjunction, add_volatile_t, addressof, launder, the memory orders, atomic_int and atomic_uint), where they were
+// written without std:: and were undeclared
+
+struct Empty
+{
+};
+
+template<typename T>
+constexpr bool Check = std::isLvalueReference<T&> && std::isRvalueReference<T&&> && std::isVolatile<volatile T> && std::isObject<T> &&
+                       std::isScalar<T*> && std::isEmpty<Empty> && std::isDefaultConstructible<T> && std::conjunction<std::TrueType> &&
+                       !std::disjunction<std::FalseType>;
+
+struct Counter
+{
+  std::Atomic<u32> Active;
+  std::Atomic<i32> Count;
+  std::AddVolatile<i32>* Flag = nullptr;
+
+  i32 Next(i32& v)
+  {
+    constexpr std::memory_order MemoryOrder = std::memory_order_relaxed;
+    this->Active.store(3);
+    u32 x = this->Active.load(MemoryOrder);
+    std::atomicThreadFence();
+    return *std::launder(std::addressOf(v)) + i32(x);
+  }
+};
+
+i32 main()
+{
+  Counter c;
+  i32 v = 4;
+  return Check<i32> && c.Next(v) == 7 ? 0 : 1;
+}

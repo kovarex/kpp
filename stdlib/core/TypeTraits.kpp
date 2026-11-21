@@ -38,6 +38,16 @@ template<typename T>
 using AddLvalueReference = T&;
 
 template<typename T>
+using AddVolatile = volatile T;
+
+// std::conjunction_v and std::disjunction_v: whether every (any) B::value holds; true (false) for none. Every
+// B::value is instantiated (std::conjunction stops at the first false one: docs/stdlib-conformance.md).
+template<typename... B>
+constexpr bool conjunction = (B::value && ...);
+template<typename... B>
+constexpr bool disjunction = (B::value || ...);
+
+template<typename T>
 struct MakeUnsignedHelper {};
 template<> struct MakeUnsignedHelper<i8> { using Type = u8; };
 template<> struct MakeUnsignedHelper<i16> { using Type = u16; };

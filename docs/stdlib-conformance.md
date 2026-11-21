@@ -15,6 +15,10 @@ destructor is implicit or defaulted: kpp makes that destructor virtual (design.m
 destructor is trivial, as for `virtual ~X() = default` in C++. A class marked [[foreign_vtable]] keeps
 C++'s answer. Optional of such a class keeps its value as an object (classes/polymorphic_class_destructor_is_not_trivial).
 
+**conjunction and disjunction instantiate every B::value** (core/TypeTraits.kpp, 2026-11-22): they are folds,
+`(B::value && ...)`, where std::conjunction stops at the first false B and leaves the rest uninstantiated, so a later
+B whose ::value is ill-formed is an error here and none in C++. The value is the same.
+
 **`::operator new` in an optimized build** (core/Sizes.kpp, 2026-11-06): it is malloc, which an
 optimizer may remove when the block does not escape, and its BadAlloc with it: `::operator new(huge)`
 whose block nothing keeps returns where C++ (which never elides a call of operator new by name)
@@ -138,6 +142,13 @@ Not in the library (time.md has what replaces each): the C++20 calendar and time
 zoned_time, utc_clock, tai_clock, gps_clock, clock_cast): kpp's calendar is CivilTime with
 toCivilTime and fromCivilTime, in UTC, without leap seconds; FileClock converts with to_sys and
 from_sys. The duration literals (`10ms`, `2h`): a duration is written `Milliseconds(10)`.
+
+Not in the library yet, which Unreal Engine's Core names (2026-11-22; the converter writes them without std::, so
+they are undeclared): common_type_t, align_val_t, is_assignable(_v), is_aggregate_v, invoke_result_t,
+remove_all_extents_t, setlocale, atomic_fetch_or and atomic_fetch_and, the class forms is_constructible and
+is_convertible. The type traits that converted code named and lacked until then are the compiler's (isLvalueReference,
+isRvalueReference, isVolatile, isObject, isScalar, isEmpty, isDefaultConstructible), with AddVolatile, conjunction,
+disjunction, addressOf and launder in core/.
 
 Not in the library by decision: `<regex>`. Its one user is cxxopts, whose five fixed patterns are
 hand-written matchers in the conversion's overrides (docs/path-to-factorio.md, "cxxopts"); a

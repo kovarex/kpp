@@ -4,6 +4,14 @@
 template<typename T>
 const T& asConst(const T& value) noexcept { return value; }
 
+// std::addressof: the object's address, a class's unary operator& not called.
+template<typename T>
+T* addressOf(T& value) noexcept { return (T*)&(char&)value; }
+
+// std::launder: the pointer as it is (kpp's optimizer keeps no assumption a placement new would invalidate).
+template<typename T>
+T* launder(T* p) noexcept { return p; }
+
 // std::to_address: a raw pointer as it is, a fancy pointer or class iterator through its
 // operator->, recursively (pointer_traits<P>::to_address is not consulted: no stdlib class has one).
 template<typename P>

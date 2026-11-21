@@ -749,6 +749,54 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
   }
   if (name == "isFundamental")
     return one() && ((isArithmeticKind(one()) && one()->kind != TyKind::Enum) || one()->kind == TyKind::Void || one() == types.nullptrType());
+  // The categories of [meta.unary.cat] and [meta.unary.comp] and volatile of [meta.unary.prop] (std::is_lvalue_reference_v,
+  // is_rvalue_reference_v, is_object_v, is_scalar_v, is_volatile_v): a reference is neither volatile nor an object, an
+  // array is volatile when its elements are.
+  if (name == "isLvalueReference" || name == "isRvalueReference" || name == "isVolatile" || name == "isObject" || name == "isScalar")
+  {
+    const Ty* t = one();
+    if (!t || !t->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    if (name == "isLvalueReference")
+      return t->kind == TyKind::LRef;
+    if (name == "isRvalueReference")
+      return t->kind == TyKind::RRef;
+    if (t->isReference())
+      return false;
+    if (name == "isVolatile")
+    {
+      while (t->kind == TyKind::Array && t->inner)
+        t = t->inner;
+      return t->isVolatile;
+    }
+    const Ty* u = types.unqualified(t);
+    if (name == "isObject")
+      return u->kind != TyKind::Function && u->kind != TyKind::Void;
+    return isArithmeticKind(u) || u->kind == TyKind::Pointer || u->kind == TyKind::MemberPointer || u == types.nullptrType();
+  }
+  // std::is_empty_v: a class with no data member, no virtual function and only empty bases (a closure without captures).
+  if (name == "isEmpty")
+  {
+    const Ty* t = one();
+    if (!t || !t->isKnown() || types.isDependent(t))
+      return std::nullopt;
+    const Ty* u = types.unqualified(t);
+    if (u->kind == TyKind::Lambda)
+    {
+      LambdaExpr* l = lambdaOf(u);
+      return l && l->captures.empty() && !l->defaultCapture ? std::optional<bool>(true) : std::nullopt;
+    }
+    if (u->kind != TyKind::Class)
+      return false;
+    ClassDecl* def = classDefinition(u);
+    if (!def)
+      return std::nullopt;
+    if (def->keyword == Kw::union_ || def->isTypedUnion)
+      return false;
+    return classDeclaredEmpty(u, 0);
+  }
+  if (name == "isDefaultConstructible")
+    return one() ? traitValue("isConstructible", {one()}) : std::nullopt;
   if (name == "isTriviallyDestructible") return one() ? triviallyDestructible(one()) : std::nullopt;
   if (name == "destructorMayThrow") return one() ? destructorMayThrowUncached(one()) : std::nullopt; // (no trait of the language: destructorMayThrow's cache)
   // (These three define a variable, which is also destroyed: a destructor of its own is no trivial
@@ -881,7 +929,8 @@ auto GlobalScope::Impl::isBoolTraitName(uint32_t symbol) -> bool
          n == "isNothrowCopyConstructible" || n == "isNothrowDefaultConstructible" || n == "isNothrowCopyAssignable" ||
          n == "isTriviallyMoveConstructible" || n == "isMoveAssignable" || n == "isCopyAssignable" || n == "isNothrowMoveAssignable" ||
          n == "isTriviallyMoveAssignable" || n == "isMemberPointer" || n == "isMemberFunctionPointer" || n == "isMemberObjectPointer" ||
-         n == "isInvocable" || n == "isInvocableR";
+         n == "isInvocable" || n == "isInvocableR" || n == "isLvalueReference" || n == "isRvalueReference" || n == "isVolatile" ||
+         n == "isObject" || n == "isScalar" || n == "isEmpty" || n == "isDefaultConstructible";
 }
 
 auto GlobalScope::Impl::classDefinition(const Ty* t) -> ClassDecl*
