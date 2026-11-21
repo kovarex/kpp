@@ -54,6 +54,8 @@
   // out found (found) and they find are one lookup, the functions of the name one overload set
   // ([namespace.qual] 2). Whether anything was found.
   bool withInlineNamespaces(Scope* s, uint32_t symbol, Lookup& out, bool found, int depth);
+  // A name `using enum E;` brings into a class or namespace: one of E's enumerators, never another member of E.
+  bool usingEnumFinds(Scope* e, uint32_t symbol, Lookup& out, int depth);
 
   // Whether a declaration can name a scope, as the part before `::` must: a namespace, a class,
   // an enumeration, an alias, a template parameter (C++ looks only at those there).

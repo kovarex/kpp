@@ -472,7 +472,7 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
       ensureUsingEnums(s, depth);
       if (s->usingEnumState.load(std::memory_order_acquire) == 2) // not while another thread fills them
         for (Scope* e : s->usingEnumScopes)
-          if (lookupInScope(e, symbol, out, depth + 1))
+          if (usingEnumFinds(e, symbol, out, depth + 1))
             return true;
     }
     if (!s->baseTypes.empty())
@@ -535,7 +535,7 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
       ensureUsingEnums(s, depth);
       if (s->usingEnumState.load(std::memory_order_acquire) == 2)
         for (Scope* e : s->usingEnumScopes)
-          if (lookupInScope(e, symbol, out, depth + 1))
+          if (usingEnumFinds(e, symbol, out, depth + 1))
             return true;
     }
     if (withUsing && !s->usingDirectives.empty())
@@ -547,6 +547,18 @@ auto GlobalScope::Impl::lookupInScope(Scope* s, uint32_t symbol, Lookup& out, in
     }
   }
   return false;
+}
+
+auto GlobalScope::Impl::usingEnumFinds(Scope* e, uint32_t symbol, Lookup& out, int depth) -> bool
+{
+  // `using enum E;` brings E's enumerators in ([enum.udecl] 2), not its members: a kpp enum's generated str(), count
+  // and values (every enum class since 2026-11-21) stay E's, or `using enum Enum;` in class SoundPriority gave the
+  // class a str() of its enumeration's, which the test runner's value printer called.
+  Lookup found;
+  if (!lookupInScope(e, symbol, found, depth) || !found.decl || found.decl->kind != NodeKind::EnumeratorDecl)
+    return false;
+  out = found;
+  return true;
 }
 
 auto GlobalScope::Impl::withInlineNamespaces(Scope* s, uint32_t symbol, Lookup& out, bool found, int depth) -> bool

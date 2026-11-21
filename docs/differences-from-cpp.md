@@ -623,10 +623,13 @@ function that runs every level of a hierarchy. See the readme's Planned.
   whose default one makes each value declared without an initializer (`Direction() { this = None; }`;
   `E(x)` of one number stays the conversion), conversion operators and member operators (`Dir operator+(const
   Dir&) const`), as a class's (kovarex, 2026-11-11). The constant evaluation runs them all.
-  A plain `enum class` without the inner block keeps C++'s rules, apart from one generated method: every kpp
-  enum and every `enum class` written in kpp has `bool isValid() const`, whether the value is one of the
-  enumerators (kovarex, 2026-11-20: the check after loading a value; `E(x)` stays the unchecked conversion), and
-  `checkValid<X>()`, the value or a throw of X with one message ("Invalid AI::Distraction value: 7.").
+  An `enum class` written as C++ writes it, without the inner block (`enum class BuildMode : u8 { Normal, Forced };`),
+  is the same kpp enum: the block only makes room for members after the values (kovarex, 2026-11-21: "The C++ style
+  should be equivalent, it is basically the same kind of enum, just without extra brackets"; until then it kept C++'s
+  rules and had no `str()`). Every kpp enum has `bool isValid() const`, whether the value is one of the enumerators
+  (kovarex, 2026-11-20: the check after loading a value; `E(x)` stays the unchecked conversion), and
+  `checkValid<X>()`, the value or a throw of X with one message ("Invalid AI::Distraction value: 7."). An unscoped `enum`,
+  C's and an imported header's keep C++'s rules.
 - **Why:** it replaces the hand-written tables and macros beside each enum.
 - **Names:** outside the enum an enumerator is `Direction::North`, in a case label too; no bare label and
   no `.North` shorthand (kovarex, 2026-11-07). Inside the enum's own methods `North`, `Direction::North`
@@ -641,7 +644,8 @@ function that runs every level of a hierarchy. See the readme's Planned.
 - **Enumeration templates** (built): `template<class Tag> enum class NamedBool : u8 { {False, True}; };`, each
   instance a type of its own (kovarex, 2026-11-21, the game's NamedBool); C++ allows no enum template (spec
   `kpp/enum_template`).
-- **See:** [design 8.4][d8]; specs `kpp/enum_from_str`, `kpp/enum_constructors`; the [readme](../readme.md#less-boilerplate).
+- **See:** [design 8.4][d8]; specs `kpp/enum_from_str`, `kpp/enum_constructors`,
+  `kpp/enum_class_written_as_cpp_is_a_kpp_enum`; the [readme](../readme.md#less-boilerplate).
 
 ```cpp
 enum class Direction : u8
@@ -654,8 +658,9 @@ enum class Direction : u8
 ### `switch` on such an enum is exhaustive (built)
 
 - **C++:** a missing value is at most a warning, and an invalid one falls out of the switch.
-- **kpp:** on an enum with the inner block, or a typed union, a `switch` without `default` must name
-  every value, and a value outside them aborts at run time. Plain enums keep C++'s rule.
+- **kpp:** on a kpp enum (every `enum class` written in kpp, with the inner block or without it), or a typed union,
+  a `switch` without `default` must name every value, and a value outside them aborts at run time. Unscoped enums
+  keep C++'s rule.
 - **Why:** adding a value finds every switch, and a corrupted byte stops the program where it is seen.
 - **See:** [design 8.4][d8]; spec `kpp/typed_unions_switch_copy`.
 

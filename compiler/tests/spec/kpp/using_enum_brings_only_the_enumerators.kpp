@@ -1,0 +1,17 @@
+// spec: `using enum E;` in a class brings E's enumerators in, not E's members: a kpp enum's generated str(), count and values stay E's ([enum.udecl] 2; every enum class is a kpp enum since 2026-11-21, and the game's SoundPriority, with `using enum Enum;`, got a str() its test printer called)
+// design.md 8.4
+class SoundPriority
+{
+public:
+  enum class Enum : u8 { Highest = 0, Default = 127, Lowest = 255 };
+  SoundPriority() = default;
+  implicit SoundPriority(Enum value) : value(value) {}
+  using enum Enum;
+  Enum value = Enum::Default;
+};
+int main()
+{
+  SoundPriority p = SoundPriority::Lowest;
+  std::println(requires { p.str(); }, " ", requires { SoundPriority::count; }, " ", p.value.str(), " ", SoundPriority::Enum::count);
+  return 0;
+}

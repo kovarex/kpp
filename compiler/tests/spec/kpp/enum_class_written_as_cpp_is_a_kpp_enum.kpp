@@ -1,0 +1,18 @@
+// spec: an enum class written as C++ writes it, without the values' own brace block, is a kpp enum as one with the block is: str(), enumeratorName(), count, values, fromStr, UnderlyingType (kovarex, 2026-11-21: "The C++ style should be equivalent, it is basically the same kind of enum, just without extra brackets")
+// design.md 8.4
+enum class BuildMode : u8
+{
+  Normal = 0,
+  Forced = 1,
+  SuperForced = 2
+};
+enum class Plain { A, B };
+template<typename T> std::String code(const T& value) { return std::toString(qualifiednameof(T), "::", value.str()); }
+int main()
+{
+  std::println(code(BuildMode::SuperForced), " ", BuildMode::count, " ", Plain::B.str(), " ", Plain::count);
+  for (BuildMode m : BuildMode::values)
+    std::print(m.str(), " ");
+  std::println(BuildMode::fromStr("Forced").has_value(), " ", BuildMode::fromStr("Other").has_value(), " ", sizeof(BuildMode::UnderlyingType));
+  return 0;
+}

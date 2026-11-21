@@ -5837,6 +5837,12 @@ namespace
         if (inRecovery)
           break;
       }
+      // An `enum class` of kpp source written as C++ writes it (`enum class BuildMode : u8 { Normal, Forced };`) is a kpp
+      // enum as one with the values' brace block is: the block only makes room for members after the values (kovarex,
+      // 2026-11-21: "The C++ style should be equivalent, it is basically the same kind of enum, just without extra
+      // brackets"). Not one whose enumerators a macro writes, and not C's or an imported header's.
+      if (!e->isKpp && e->isClass && isKpp() && std::none_of(enumerators.begin(), enumerators.end(), [](Decl* d) { return d->kind == NodeKind::MacroDecl; }))
+        e->isKpp = true;
       // `template<class X> E checkValid() const`: the value, or a throw of X with one message when it is no enumerator
       // (kovarex, 2026-11-21: "The pattern of throwing when it is not valid is very often repeated, with the message always
       // specified in its own way"), written for every enum that has isValid() and read as its member; one the enum

@@ -720,6 +720,13 @@ Direction::UnderlyingType(d)           // its number, as u8: the underlying type
 switch (d) { case Direction::North: ... } // exhaustive, no default; an invalid value aborts
 ```
 Inside the enum's methods `this` is the value and the enumerators are in scope unqualified.
+An `enum class` of kpp source written as C++ writes it, without the values' own block (`enum class BuildMode : u8
+{ Normal = 0, Forced = 1 };`), is the same kpp enum (kovarex, 2026-11-21: "The C++ style should be equivalent, it is
+basically the same kind of enum, just without extra brackets, as the enum didn't need any extra methods manually
+defined"): count, values, str(), enumeratorName(), fromStr(), UnderlyingType, the exhaustive switch and the abort on a
+value outside the enumerators. Until then only the block made a kpp enum, and 883 of the game's 885 enum classes had
+no str(). Not an unscoped `enum`, C's, an imported header's or one whose enumerators a macro writes. Specs
+kpp/enum_class_written_as_cpp_is_a_kpp_enum, enum_class_written_as_cpp_switch_names_every_value.
 Comparison, copying and `switch` work on the value; the underlying type is explicit or `i32`.
 A method that is not const changes the value it is called on, as a class's method changes its object
 (`void turn() { this = Direction(...); }`, then `d.turn()` changes d); a const method's `this` is const, and
