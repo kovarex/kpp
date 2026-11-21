@@ -1051,7 +1051,7 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
             : s->operand && s->operand->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(s->operand)->resolved : nullptr;
         const Ty* pack = nullptr;
         if (d && d->kind == NodeKind::TemplateParamDecl)
-          pack = ctx.subst->find(d);
+          pack = (ctx.wholePacks ? ctx.wholePacks : ctx.subst)->find(d); // (in a type's expansion, the pack whole)
         else if (d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack)
           pack = declaredTypeOf(d, ctx.subst, depth + 1);
         if (!pack || pack->kind != TyKind::Pack)

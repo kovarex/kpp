@@ -1,0 +1,32 @@
+// spec: `sizeof...(Types)` in the pattern of a pack expansion of base classes (`Element<Types, sizeof...(Types)>...`, Unreal's TTupleBaseElement<Types, Indices, sizeof...(Types)>) is the whole pack's length in every element, beside the pack the pattern expands (`Pair<sizeof...(Ts), Ts>...`); clang prints the same
+// found by thread UE (2026-11-22): each element bound the pack to its own one type, so sizeof... was no constant ("the layout of Element<int32, <unknown>>: the argument for N is a constant the compiler could not evaluate")
+template<typename T, u32 N>
+struct Element
+{
+  T value;
+  static constexpr u32 count = N;
+};
+
+template<typename... Types>
+struct Base : Element<Types, sizeof...(Types)>...
+{
+};
+
+template<u32 N, typename U>
+struct Pair
+{
+  static constexpr u32 value = N * 10 + u32(sizeof(U));
+};
+
+template<typename... Ts>
+struct Mixed : Pair<sizeof...(Ts), Ts>...
+{
+};
+
+int main()
+{
+  Base<int, short, char> b;
+  Mixed<char, short> m;
+  std::println(sizeof(b), " ", Element<short, 3>::count, " ", b.Element<char, 3>::count, " ", m.Pair<2, short>::value, " ", sizeof(m));
+  return 0;
+}

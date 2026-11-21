@@ -1,0 +1,31 @@
+// spec: a partial specialization whose parameters are two packs, the first one before the other (`template<u32... Indices, typename... Types> struct Base<Seq<Indices...>, Types...>`, Unreal's TTupleBase), binds each pack to what its match deduced for it: Indices to 0, 1 and Types to int, short, so a base list expanding both (`Element<Types, Indices>...`) has one base per element; clang prints the same
+// found by thread UE (2026-11-22): the first pack took every argument, the two packs as one, and Types none, so the base list was unknown ("the layout of Base<0, 1, int32, int16>: a base class whose type is unknown") and every TTuple of the converted Core had no size
+template<typename T, u32 I>
+struct Element
+{
+  T value;
+  u32 index() const { return I; }
+};
+
+template<u32... Indices>
+struct Seq
+{
+};
+
+template<typename S, typename... Types>
+struct Base;
+
+template<u32... Indices, typename... Types>
+struct Base<Seq<Indices...>, Types...> : Element<Types, Indices>...
+{
+  static constexpr int count = int(sizeof...(Indices)) * 10 + int(sizeof...(Types));
+};
+
+int main()
+{
+  Base<Seq<0, 1>, int, short> b;
+  b.Element<int, 0>::value = 7;
+  b.Element<short, 1>::value = 3;
+  std::println(sizeof(b), " ", Base<Seq<0, 1>, int, short>::count, " ", b.Element<int, 0>::value + b.Element<short, 1>::value, " ", b.Element<short, 1>::index());
+  return 0;
+}

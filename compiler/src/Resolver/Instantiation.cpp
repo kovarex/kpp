@@ -107,6 +107,14 @@ auto GlobalScope::Impl::substFor(const Ty* classTy) -> Subst
   {
     if (params[i]->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(params[i])->isPack)
     {
+      // A pack before another parameter (a partial specialization's `template<u32... Indices, typename... Types>
+      // struct Base<Seq<Indices...>, Types...>`, Unreal's TTupleBase): the pack its match deduced for it, an
+      // argument per parameter (it took every argument, the two packs as one, and Types none).
+      if (i + 1 < params.size() && classTy->args.size() == params.size() && classTy->args[i] && classTy->args[i]->kind == TyKind::Pack)
+      {
+        s.pairs.push_back({params[i], classTy->args[i]});
+        continue;
+      }
       // `template<typename R, typename... Args>`: the pack takes the rest of the arguments.
       std::vector<const Ty*> rest(classTy->args.begin() + i, classTy->args.end());
       if (rest.size() == 1 && rest[0]->kind == TyKind::Pack)
@@ -2264,6 +2272,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
             pair.type = pair.type->args[i];
         TypeContext ectx = whole;
         ectx.subst = &element;
+        ectx.wholePacks = ctx.wholePacks ? ctx.wholePacks : ctx.subst;
         elements.push_back(convertType(pattern, ectx, depth + 1));
       }
       return types.pack(Span<const Ty*>{elements.data(), uint32_t(elements.size())});
@@ -3126,6 +3135,8 @@ auto GlobalScope::Impl::packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>
         packsNamedIn(a, s, out, depth + 1);
       break;
     case NodeKind::SizeofExpr:
+      if (static_cast<SizeofExpr*>(n)->isPack)
+        break; // (`sizeof...(Types)` counts the pack, whole: it expands nothing)
       packsNamedIn(static_cast<SizeofExpr*>(n)->type, s, out, depth + 1);
       packsNamedIn(static_cast<SizeofExpr*>(n)->operand, s, out, depth + 1);
       break;

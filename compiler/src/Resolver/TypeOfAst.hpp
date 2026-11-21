@@ -61,6 +61,9 @@
     // nodes see it: a context made for a declaration they name starts without it.
     const std::vector<Decl*>* elementPacks = nullptr;
     uint32_t elementIndex = 0;
+    // One element of a type's pack expansion (convertType's PackType, `Element<Types, sizeof...(Types)>...`):
+    // subst binds the packs to the element, this binds them whole, for `sizeof...` to count.
+    const Subst* wholePacks = nullptr;
   };
 
   // What a mention of template parameter d names, subst binding it to bound: under ctx's pack
