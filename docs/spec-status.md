@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2346 pass, 2 pending, 0 failing, 0 fixed** (2348 snippets, 404.8 s).
+**2349 pass, 2 pending, 0 failing, 0 fixed** (2351 snippets, 406.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1993,6 +1993,9 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/private_names_of_two_files_do_not_clash.kpp` | two files' `private` names of one spelling never clash (design.md 15): each file has its own function, constant, variable and type of the name, with its own layout, and the program has both | pass | SDL3 reuses 316 file-local names across its files, curl 82, jpeg 28, zstd 26, Lua 24 (design.md 15), which the converter renamed one by one before |  |
 | `kpp/private_types_and_templates.kpp` | `private` on every kind of top-level declaration: a class with members defined out of line, a class template, a function template, an enum and an enum class, an alias, a constexpr constant and a variable; each the file's own, beside another file's global of the same name and another shape | pass | the game's anonymous namespaces hold classes and templates (Atlas.cpp, AtlasBuilder.cpp, PipelineStateObjectOpenGL.cpp), which the converter maps to `private` |  |
 | `kpp/private_variable_in_extern_c_is_error.kpp` | a `private` variable cannot have C linkage (design.md 15): its name is its file's, and C's names are the program's, so `private` inside `extern "C" { }` is an error | pass |  |  |
+| `kpp/qualifiednameof.kpp` | qualifiednameof(T) is T as kpp source names it from anywhere, a string literal: its namespaces and enclosing classes, kpp's names of built-in types, a template's arguments; of an expression, its type (kovarex, 2026-11-21, for InputActionTestMaker's VariableToCode) | pass |  |  |
+| `kpp/qualifiednameof_anonymous_alternative_is_error.kpp` | an anonymous struct alternative has no name to write, so its qualifiednameof is an error (design.md 8.3) | pass |  |  |
+| `kpp/qualifiednameof_local_class_is_error.kpp` | a class local to a function has no name outside it, so its qualifiednameof is an error (design.md 8.3) | pass |  |  |
 | `kpp/real_enums.kpp` | real enums: value block, methods with this as the value, count, values, str, exhaustive switch, nameof | pass |  |  |
 | `kpp/reflection_bases_offsets.kpp` | members(T) lists the bases' members first; m.offset; object.[m] is assignable | pass |  |  |
 | `kpp/reflection_descriptor_bound_to_reference.kpp` | a reflection descriptor's m.name, m.offset, a.name and a.tag passed to a `const T&` parameter, deduced or not | pass |  |  |

@@ -1,0 +1,33 @@
+// spec: qualifiednameof(T) is T as kpp source names it from anywhere, a string literal: its namespaces and enclosing classes, kpp's names of built-in types, a template's arguments; of an expression, its type (kovarex, 2026-11-21, for InputActionTestMaker's VariableToCode)
+// design.md 8.3
+namespace ActionData
+{
+  struct BuildParameters { i32 x = 0; };
+  enum class Kind : u8 { { A, B } };
+}
+struct RidingState
+{
+  enum class Direction : u8 { { Left, Right } };
+};
+template<typename T, i32 N> struct Box {};
+template<typename T> std::String code(const T& value)
+{
+  if constexpr (std::isEnum<T>)
+    return std::toString(qualifiednameof(T), "::", value.str());
+  else
+    return std::String(qualifiednameof(T));
+}
+int main()
+{
+  std::println(code(RidingState::Direction::Right));
+  std::println(code(ActionData::Kind::B));
+  std::println(code(ActionData::BuildParameters()));
+  std::println(qualifiednameof(i32), " ", qualifiednameof(u8), " ", qualifiednameof(f32), " ", qualifiednameof(f64), " ", qualifiednameof(bool), " ", qualifiednameof(char));
+  std::println(qualifiednameof(const ActionData::Kind*), " ", qualifiednameof(std::Vector<ActionData::Kind>), " ", qualifiednameof(Box<i64, 3>));
+  ActionData::BuildParameters p;
+  const ActionData::BuildParameters& r = p;
+  std::println(qualifiednameof(r), " ", qualifiednameof(p.x + 1));
+  for constexpr (auto m : members(ActionData::BuildParameters))
+    std::println(qualifiednameof(m.type));
+  return 0;
+}

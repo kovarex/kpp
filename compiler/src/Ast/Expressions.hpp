@@ -91,7 +91,7 @@ struct ThrowExpr : Expr { Expr* operand; };
 struct FunctionalCastExpr : Expr { Type* type; Span<Expr*> args; bool braced; };
 // operandType and operandDecl are filled by the type checker: the type named, or the variable the
 // parser read as a type name (`typeid(q)`).
-struct TypeidExpr : Expr { Node* operand; const Ty* operandType = nullptr; Decl* operandDecl = nullptr; };
+struct TypeidExpr : Expr { Node* operand; const Ty* operandType = nullptr; Decl* operandDecl = nullptr; bool qualifiedName = false; }; // qualifiedName: `qualifiednameof(x)`, a string literal (design.md 8.3)
 struct FoldExpr : Expr { Expr* lhs; Expr* rhs; uint32_t op; };
 // requires(params) { requirements; }: true when every requirement is well-typed for the types at
 // hand; the type checker sets satisfied where the expression is typed (again per instantiation).

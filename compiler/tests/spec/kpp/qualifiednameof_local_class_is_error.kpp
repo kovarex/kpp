@@ -1,0 +1,8 @@
+// spec: a class local to a function has no name outside it, so its qualifiednameof is an error (design.md 8.3)
+// error: qualifiednameof_local_class_is_error.kpp:6: error: qualifiednameof(Local): a type local to a function has no name to write outside where it is declared
+int main()
+{
+  struct Local { i32 x = 0; };
+  std::println(qualifiednameof(Local));
+  return 0;
+}

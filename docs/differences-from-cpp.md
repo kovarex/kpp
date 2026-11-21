@@ -981,11 +981,12 @@ static_assert(twice(4) == 8);
 - **C++:** recursion over packs, macros, or C++26's reflection.
 - **kpp:** `for constexpr` over `types<A, B>`, a list of constants, `members(T)` or `alternatives(U)`,
   with `m.name`, `m.type`, `m.offset`, `m.initializer` (the member's default value alone, no object made) and
-  `object.[m]`; `nameof(x)`. C++26 has `has_default_member_initializer` but no way to read the value. Inside functions today, not yet at
+  `object.[m]`; `nameof(x)`; `qualifiednameof(T)`, a type as source names it. C++26 has
+  `has_default_member_initializer` but no way to read the value, and C++ has no portable type name. Inside functions today, not yet at
   namespace or class scope.
 - **Why:** save, load and display are written once per class, without X-macros.
 - **See:** [design 8][d8]; specs `kpp/for_constexpr_types`, `kpp/reflection_members`, `kpp/nameof`,
-  `kpp/reflection_member_initializer`.
+  `kpp/reflection_member_initializer`, `kpp/qualifiednameof`.
 
 ```cpp
 for constexpr (auto m : members(T))

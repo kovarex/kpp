@@ -684,6 +684,139 @@ namespace
 
 bool TypeTable::isDependent(const Ty* t) const { return dependent(t, nullptr); }
 
+std::string TypeTable::sourceName(const Ty* t, const SymbolTable& symbols, std::string& why) const
+{
+  if (!t || !why.empty())
+    return {};
+  std::string prefix = std::string(t->isConst ? "const " : "") + (t->isVolatile ? "volatile " : "");
+  auto declPath = [&](Decl* d) -> std::string
+  {
+    const QualifiedName* name = d && d->kind == NodeKind::ClassDecl ? &static_cast<ClassDecl*>(d)->name
+                              : d && d->kind == NodeKind::EnumDecl  ? &static_cast<EnumDecl*>(d)->name
+                                                                    : nullptr;
+    if (!name || name->empty() || name->last().symbol == UINT32_MAX)
+    {
+      why = "an unnamed class";
+      return {};
+    }
+    std::string own(symbols.name(name->last().symbol));
+    if (!alternativeStructShown(d, own).empty())
+    {
+      why = "an anonymous struct alternative";
+      return {};
+    }
+    if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->lambda)
+    {
+      why = "a lambda's closure";
+      return {};
+    }
+    std::string path = own;
+    for (Decl* p = d->parent; p; p = p->parent)
+      if (p->kind == NodeKind::NamespaceDecl)
+      {
+        if (static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
+          path = std::string(symbols.name(static_cast<NamespaceDecl*>(p)->name)) + "::" + path;
+      }
+      else if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
+      {
+        if (p->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(p)->templateParams.empty())
+        {
+          why = "a type declared in a class template";
+          return {};
+        }
+        const QualifiedName& outer = p->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(p)->name : static_cast<EnumDecl*>(p)->name;
+        if (outer.empty() || outer.last().symbol == UINT32_MAX)
+        {
+          why = "a type declared in an unnamed class";
+          return {};
+        }
+        path = std::string(symbols.name(outer.last().symbol)) + "::" + path;
+      }
+      else if (p->kind == NodeKind::FunctionDecl)
+      {
+        why = "a type local to a function";
+        return {};
+      }
+    return path;
+  };
+  switch (t->kind)
+  {
+    case TyKind::Void: return prefix + "void";
+    case TyKind::Bool: return prefix + "bool";
+    case TyKind::Char: return prefix + (t->isWchar() ? "wchar_t" : t->bits == 8 ? (t->isUnsigned ? "char8_t" : "char") : t->bits == 16 ? "char16_t" : "char32_t");
+    case TyKind::Int:
+      if (t->isLong())
+        return prefix + (t->isUnsigned ? "unsigned long" : "long");
+      return prefix + (t->isUnsigned ? "u" : "i") + std::to_string(t->bits);
+    case TyKind::Float: return prefix + (t->bits == 32 ? "f32" : "f64");
+    case TyKind::Pointer:
+    {
+      std::string inner = sourceName(t->inner, symbols, why);
+      return why.empty() ? inner + "*" + (t->isConst ? " const" : "") + (t->isVolatile ? " volatile" : "") : std::string();
+    }
+    case TyKind::LRef: case TyKind::RRef:
+    {
+      std::string inner = sourceName(t->inner, symbols, why);
+      return why.empty() ? inner + (t->kind == TyKind::LRef ? "&" : "&&") : std::string();
+    }
+    case TyKind::Array:
+    {
+      std::string bounds;
+      const Ty* a = t;
+      for (; a && a->kind == TyKind::Array; a = a->inner)
+      {
+        if (a->decl || !a->count)
+        {
+          why = "an array of no known bound";
+          return {};
+        }
+        bounds += "[" + std::to_string(a->count) + "]";
+      }
+      std::string inner = sourceName(a, symbols, why);
+      return why.empty() ? prefix + inner + bounds : std::string();
+    }
+    case TyKind::Class: case TyKind::Enum:
+    {
+      std::string s = declPath(t->decl);
+      if (!why.empty())
+        return {};
+      if (!t->args.empty())
+      {
+        s += "<";
+        for (size_t i = 0; i < t->args.size(); ++i)
+        {
+          const Ty* a = t->args[i];
+          std::string arg;
+          if (a && a->kind == TyKind::Value && !a->isObjectValue() && !a->decl && !(a->inner && a->inner->kind == TyKind::Float))
+            arg = a->inner && a->inner->kind == TyKind::Bool ? (a->value ? "true" : "false") : std::to_string(a->value);
+          else if (a && a->kind == TyKind::Value)
+          {
+            why = "a class template's instance with an argument that is no type and no integer";
+            return {};
+          }
+          else if (a && a->kind == TyKind::Pack)
+          {
+            for (size_t j = 0; j < a->args.size(); ++j)
+              arg += (j ? ", " : "") + sourceName(a->args[j], symbols, why);
+          }
+          else
+            arg = sourceName(a, symbols, why);
+          if (!why.empty())
+            return {};
+          if (!(a && a->kind == TyKind::Pack && a->args.empty()))
+            s += (s.back() == '<' ? "" : ", ") + arg;
+        }
+        s += ">";
+      }
+      return prefix + s;
+    }
+    case TyKind::Nullptr: return prefix + "decltype(nullptr)";
+    default:
+      why = t->kind == TyKind::Lambda ? "a lambda's closure" : t->kind == TyKind::Function ? "a function type" : "a type kpp has no name for here";
+      return {};
+  }
+}
+
 std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qualified) const
 {
   if (!t)

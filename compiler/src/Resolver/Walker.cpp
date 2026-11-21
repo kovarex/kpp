@@ -10764,7 +10764,7 @@ auto GlobalScope::Impl::Walker::canThrow(Expr* e, std::string& unsupported) -> b
     {
       // Of a glvalue of a polymorphic class, which a null pointer makes throw.
       auto* t = static_cast<TypeidExpr*>(e);
-      if (t->operandType || !t->operand || uint8_t(t->operand->kind) < uint8_t(NodeKind::NameExpr))
+      if (t->qualifiedName || t->operandType || !t->operand || uint8_t(t->operand->kind) < uint8_t(NodeKind::NameExpr))
         return false;
       auto* x = static_cast<Expr*>(t->operand);
       const Ty* c = x->ty ? types.unqualified(types.stripRef(x->ty)) : nullptr;
@@ -13443,6 +13443,8 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         else
           t->operandType = typeOf(static_cast<Type*>(t->operand));
       }
+      if (t->qualifiedName)
+        return record(e, types.pointer(types.qualified(types.charType(), true, false))); // `qualifiednameof(x)`: a string literal (design.md 8.3)
       if (Decl* info = impl.typeInfoDecl())
         return record(e, types.classType(info, {})); // the library's TypeInfo; the code generator fills in the name
       return record(e, unknown(Why::Unsupported));

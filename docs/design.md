@@ -679,6 +679,17 @@ default member initializer alone, with no object, and it names this"); a referen
 object the initializer makes has its own `this`. Not a constant expression yet (the interpreter does not read
 descriptors). Specs kpp/reflection_member_initializer, reflection_member_initializer_in_class_template,
 reflection_member_initializer_naming_this_is_error, reflection_member_initializer_of_a_reference_is_error.
+*qualifiednameof(T)* (kovarex, 2026-11-21: "Basically getting string name of type, how do we do it in kpp?", for a generic
+VariableToCode writing `<enum type>::<value>`): a string literal, T as kpp source names it from anywhere, to paste back into
+code: its namespaces and enclosing classes (`RidingState::Direction`, `ActionData::BuildParameters`), kpp's names of the
+built-in types (`i32`, `u8`, `f32`, `f64`, `bool`, `char`), a template's arguments (`std::Vector<ActionData::Kind>`,
+`Box<i64, 3>`), `const` and `*` as written (`const ActionData::Kind*`). Its operand is read as typeid's: a type (`m.type`,
+a template parameter, bound) or an expression, not evaluated, whose type without its reference and top-level const it
+names. `nameof(T)` stays the last name as written (`"T"` in a template); `typeid(T).name()` stays the short name. A
+type with no such name is an error: one local to a function, a lambda's closure, an anonymous struct alternative, one
+declared in a class template, a function type ("qualifiednameof(Local): a type local to a function has no name to write
+outside where it is declared"). Specs kpp/qualifiednameof, qualifiednameof_local_class_is_error,
+qualifiednameof_anonymous_alternative_is_error.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```

@@ -1,0 +1,7 @@
+RidingState::Direction::Right
+ActionData::Kind::B
+ActionData::BuildParameters
+i32 u8 f32 f64 bool char
+const ActionData::Kind* std::Vector<ActionData::Kind> Box<i64, 3>
+ActionData::BuildParameters i32
+i32

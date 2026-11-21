@@ -770,6 +770,25 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
     case NodeKind::TypeidExpr:
     {
       auto* t = static_cast<TypeidExpr*>(e);
+      if (t->qualifiedName)
+      {
+        // `qualifiednameof(x)` (design.md 8.3): x's type, or the type x names, as kpp source names it from anywhere. An
+        // expression is not evaluated; its type is its static one, without its reference and its top-level const.
+        const Ty* named = t->operandDecl || (t->operand && uint8_t(t->operand->kind) <= uint8_t(NodeKind::PackType)) ? t->operandType
+                        : t->operand ? static_cast<Expr*>(t->operand)->ty : nullptr;
+        if (named && t->operandDecl)
+          named = types.unqualified(types.stripRef(named));
+        else if (named && t->operand && uint8_t(t->operand->kind) > uint8_t(NodeKind::PackType))
+          named = types.unqualified(types.stripRef(named));
+        named = named ? withCurrentArgs(named) : nullptr;
+        if (!named || !named->isKnown() || types.isDependent(named))
+          unsupported(e, "qualifiednameof of an unknown type");
+        std::string why;
+        std::string text = types.sourceName(named, symbols, why);
+        if (!why.empty())
+          fail(e, "qualifiednameof(" + types.toString(named, &symbols) + "): " + why + " has no name to write outside where it is declared");
+        return {cStringConstant(text), e->ty};
+      }
       const Ty* infoTy = e->ty ? types.stripRef(e->ty) : nullptr;
       if (!isClass(infoTy))
         unsupported(e, "typeid without the library's TypeInfo class");

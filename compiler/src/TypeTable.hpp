@@ -136,6 +136,11 @@ public:
   // DebugVisualizationRenderer::LineInfo are two classes): what the code generator's IR names
   // are made of, which must tell every two types apart.
   std::string toString(const Ty* t, const SymbolTable* symbols, bool qualified = false) const;
+  // `qualifiednameof(T)` (design.md 8.3): t as kpp source names it from anywhere, with its namespaces and enclosing
+  // classes (`ActionData::BuildParameters`, `std::Vector<i32>`, `const RidingState::Direction*`). Empty, with why
+  // set, for a type that has no such name (a class local to a function, a lambda's closure, an anonymous struct
+  // alternative, a class nested in a class template, a function type).
+  std::string sourceName(const Ty* t, const SymbolTable& symbols, std::string& why) const;
   size_t size() const;
   // The types made that mention no unknown one: the report's count, the same at every thread count.
   // (A lookup another thread has not finished yet answers unknown for a moment, and a type made of

@@ -1,0 +1,14 @@
+// spec: an anonymous struct alternative has no name to write, so its qualifiednameof is an error (design.md 8.3)
+// error: qualifiednameof_anonymous_alternative_is_error.kpp:12: error: qualifiednameof(Act::Close): an anonymous struct alternative has no name to write outside where it is declared
+union enum class Act : u8
+{
+  {
+    {Nothing, void},
+    {Close, struct { i32 sound = 3; }}
+  }
+};
+int main()
+{
+  for constexpr (auto a : alternatives(Act)) if constexpr (!std::isSame<a.type, void>) std::println(qualifiednameof(a.type));
+  return 0;
+}

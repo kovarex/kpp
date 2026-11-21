@@ -53,6 +53,7 @@ namespace
       kwUnderscore = symbols.intern("_");
       kwConfig = symbols.intern("config");
       kwNameof = symbols.intern("nameof");
+      kwQualifiedNameof = symbols.intern("qualifiednameof");
       kwThisType = symbols.intern("This");
       kwCount = symbols.intern("count");
       kwValues = symbols.intern("values");
@@ -4962,7 +4963,7 @@ namespace
           noteWord(i);
         else if ((ident(i, kwRequireThrows) || ident(i, kwCheckThrows)) && next.is(P::Less) && !member(i))
           noteWord(i);
-        else if (ident(i, kwNameof) && next.is(P::LParen) && !member(i))
+        else if ((ident(i, kwNameof) || ident(i, kwQualifiedNameof)) && next.is(P::LParen) && !member(i))
           noteWord(i);
         else if ((ident(i, kwTest) || ident(i, kwGenerate)) && starts(i) && toks[i - 1].getKind() == TokenKind::Punctuator &&
                  (next.getKind() == TokenKind::Identifier || next.getKind() == TokenKind::Keyword))
@@ -7659,6 +7660,27 @@ namespace
         advance();
         return n;
       }
+      if (atIdent(kwQualifiedNameof) && at(P::LParen, 1))
+      {
+        // `qualifiednameof(T)`: the type (or an expression's type) as kpp source names it from anywhere, a string
+        // literal (design.md 8.3). Read as typeid's operand is; typed and spelled as typeid's type is.
+        noteWord(pos);
+        TypeidExpr* t = node<TypeidExpr>(start);
+        t->qualifiedName = true;
+        advance();
+        advance();
+        uint32_t save = pos;
+        Type* ty = parseType();
+        if (ty && at(P::RParen))
+          t->operand = ty;
+        else
+        {
+          restore(save);
+          t->operand = parseExpression();
+        }
+        expect(P::RParen, "expected ')' after qualifiednameof");
+        return t;
+      }
       if (atIdent(kwNameof) && at(P::LParen, 1))
       {
         noteWord(pos);
@@ -8324,7 +8346,7 @@ namespace
     uint32_t testCount = 0;   // Tests parsed so far in this file.
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
-             kwConditional, kwUnderscore, kwConfig, kwNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
+             kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
              kwTagMethod, kwTypeMember, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
