@@ -1,0 +1,12 @@
+// spec: a function type as a template argument whose parameter is a const class template instance closing two argument lists with `>>` (`Arity<int(const Pair<int, Pair<float, float>>)>`, Unreal's FunctionArityTests.cpp): the type, as without the const
+// found by thread UE (2026-11-21): the argument is read as a type, then again as a call to keep that reading too; the call's reading stopped at the const, and undoing it also undid the type's split of `>>`, so the argument ended a token early and the list was read as a comparison ("unexpected keyword in expression")
+template<typename T> struct Arity;
+template<typename R, typename... A> struct Arity<R(A...)> { static constexpr int value = sizeof...(A); };
+template<typename A, typename B> struct Pair {};
+static_assert(Arity<int(const Pair<int, Pair<float, float>>)>::value == 1);
+
+int main()
+{
+  std::println(Arity<Pair<int, float>(bool, const Pair<int, Pair<float, float>>)>::value);
+  return 0;
+}

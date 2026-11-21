@@ -158,13 +158,30 @@ auto GlobalScope::Impl::scopeOfEntry(const Entry& e, int depth) -> Scope*
   if (e.scope)
     return e.scope;
   Decl* d = e.decl;
+  // (while its target is looked up, an alias or a using-declaration names no scope: `using BaseType::TFutureBase;` in a
+  // class whose `using BaseType = TFutureBase<ResultType>;`, Unreal's Future.h, inheriting the base's constructors, found
+  // itself through BaseType's TFutureBase, whose name the using-declaration declares in the class, down to a stack overflow)
+  static thread_local std::vector<const Decl*> targetsLookedUp;
+  bool alias = d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef));
+  if ((alias || d->kind == NodeKind::UsingNameDecl) && std::find(targetsLookedUp.begin(), targetsLookedUp.end(), d) != targetsLookedUp.end())
+    return nullptr;
+  struct LookingUp
+  {
+    std::vector<const Decl*>* list;
+    ~LookingUp() { if (list) list->pop_back(); }
+  } lookingUp{nullptr};
+  if (alias || d->kind == NodeKind::UsingNameDecl)
+  {
+    targetsLookedUp.push_back(d);
+    lookingUp.list = &targetsLookedUp;
+  }
   if (d->kind == NodeKind::UsingAliasDecl)
     return scopeOfType(static_cast<UsingAliasDecl*>(d)->type, lexicalScopeOf(d), nullptr, depth + 1);
   if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
     return scopeOfType(static_cast<VariableDecl*>(d)->type, lexicalScopeOf(d), nullptr, depth + 1);
   if (d->kind == NodeKind::UsingNameDecl)
   {
-    Lookup l = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
+    Lookup l = usingTarget(static_cast<UsingNameDecl*>(d), depth + 1);
     return l.scope;
   }
   if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl)
@@ -626,7 +643,7 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
         // A block's using-declaration of functions (Walker::declareLocal): the overload set it
         // names, which hides the outer scopes' functions of the name in the block
         // ([namespace.udecl]; until 2026-11-05 the global function of the name was called).
-        Lookup target = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
+        Lookup target = usingTarget(static_cast<UsingNameDecl*>(d), depth + 1);
         if (!target.decl)
           continue;
         out = target;
@@ -772,11 +789,22 @@ auto GlobalScope::Impl::enclosingBoth(Scope* a, Scope* b) -> Scope*
   return root;
 }
 
+auto GlobalScope::Impl::usingTarget(const UsingNameDecl* u, int depth) -> Lookup
+{
+  static thread_local std::vector<const UsingNameDecl*> underWay;
+  if (std::find(underWay.begin(), underWay.end(), u) != underWay.end())
+    return Lookup{};
+  underWay.push_back(u);
+  Lookup target = lookupQualified(u->name, lexicalScopeOf(const_cast<UsingNameDecl*>(u)), nullptr, depth);
+  underWay.pop_back();
+  return target;
+}
+
 auto GlobalScope::Impl::throughUsing(Decl* d, int depth) -> Decl*
 {
   if (!d || d->kind != NodeKind::UsingNameDecl || static_cast<UsingNameDecl*>(d)->isEnum || depth > 8)
     return d;
-  Lookup target = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
+  Lookup target = usingTarget(static_cast<UsingNameDecl*>(d), depth + 1);
   return target.decl ? throughUsing(target.decl, depth + 1) : d;
 }
 
@@ -1097,7 +1125,7 @@ auto GlobalScope::Impl::withNamespaceUsings(const Lookup& l, int depth) -> Looku
       merged.push_back(e);
     else if (isUsing(e.decl))
     {
-      Lookup target = lookupQualified(static_cast<UsingNameDecl*>(e.decl)->name, lexicalScopeOf(e.decl), nullptr, depth + 1);
+      Lookup target = usingTarget(static_cast<UsingNameDecl*>(e.decl), depth + 1);
       if (!target.decl || target.decl->kind != NodeKind::FunctionDecl)
         return l;
       if (target.overloads)

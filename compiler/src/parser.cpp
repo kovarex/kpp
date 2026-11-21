@@ -279,6 +279,34 @@ namespace
       return false;
     }
 
+    // The `>>` splits made at or after token `from` (acceptTemplateClose), and the same ones made again after a
+    // restore to `from` undid them and another reading made splits of its own: a template argument read as a type
+    // (`i32(const Pair<i32, Pair<f32, f32>>)`, split), then as a call that fails early (no split), then taken as the
+    // type, from the position the type's reading ended at, which counts the split.
+    std::vector<std::pair<uint32_t, Token>> splitsFrom(uint32_t from) const
+    {
+      std::vector<std::pair<uint32_t, Token>> taken;
+      for (const auto& s : splits)
+        if (s.first >= from)
+          taken.push_back(s);
+      return taken;
+    }
+    void redoSplits(uint32_t from, const std::vector<std::pair<uint32_t, Token>>& taken)
+    {
+      restore(from);
+      for (const auto& [index, original] : taken)
+      {
+        Token rest = original;
+        rest.offset += 1;
+        rest.length -= 1;
+        rest.id = uint32_t(spelling(rest) == ">" ? P::Greater : P::GreaterEq);
+        splits.push_back({index, original});
+        toks[index].length = 1;
+        toks[index].id = uint32_t(P::Greater);
+        toks.insert(toks.begin() + index + 1, rest);
+      }
+    }
+
     bool isAllCaps(std::string_view s) const
     {
       if (s.size() < 2)
@@ -734,7 +762,8 @@ namespace
       // (`UTF32CHAR operator*() const`, Unreal's Utf8Iterator.h: the return type of an operator
       // function, which a macro before a conversion function, `MACRO operator bool()`, is not; nor
       // one after a type, the game's SSE.hpp `int32x4& VCALL operator+=(int32x4 right)`)
-      bool afterType = atIdent(-1) || at(P::Greater, -1) || at(P::Shr, -1) || at(P::Star, -1) || at(P::Amp, -1) || at(P::AndAnd, -1) ||
+      // (`__forceinline UTF32CHAR operator*()`: MSVC's specifier words are no type)
+      bool afterType = (atIdent(-1) && spelling(-1).substr(0, 2) != "__") || at(P::Greater, -1) || at(P::Shr, -1) || at(P::Star, -1) || at(P::Amp, -1) || at(P::AndAnd, -1) ||
                        (at(TokenKind::Keyword, -1) && isBuiltinTypeKeyword(Kw(tok(-1).id)));
       bool operatorFunction = at(Kw::operator_, 1) && at(TokenKind::Punctuator, 2) && !afterType;
       if (at(TokenKind::Keyword, 1) && isDeclStartKeyword(Kw(tok(1).id)) && (!qualifier || typeAfterQualifier) && !operatorFunction)
@@ -1084,11 +1113,14 @@ namespace
             // parameter is a constant (the parser cannot tell a function from a type).
             uint32_t after = pos;
             size_t savedDiagnostics = out.diagnostics.size();
+            std::vector<std::pair<uint32_t, Token>> typeSplits = splitsFrom(save);
             restore(save);
             bool logical = false;
             Expr* call = parseExpressionNoGreater(logical);
             if (!inRecovery && pos == after && call && call->kind == NodeKind::CallExpr)
               f->asCall = call;
+            else
+              redoSplits(save, typeSplits);
             inRecovery = false;
             out.diagnostics.resize(savedDiagnostics);
             restore(after);
@@ -1109,11 +1141,14 @@ namespace
           if (!inRecovery && (at(P::Comma) || at(P::Greater) || at(P::Shr) || at(P::GreaterEq) || at(P::ShrAssign) || at(P::Ellipsis)))
           {
             uint32_t after = pos;
+            std::vector<std::pair<uint32_t, Token>> typeSplits = splitsFrom(save);
             restore(save);
             bool logical = false;
             Expr* index = parseExpressionNoGreater(logical);
             if (!inRecovery && pos == after && index && index->kind == NodeKind::IndexExpr)
               static_cast<ArrayType*>(array)->asIndex = index;
+            else
+              redoSplits(save, typeSplits);
             inRecovery = false;
             out.diagnostics.resize(savedDiagnostics);
             restore(after);
@@ -3148,7 +3183,7 @@ namespace
         return !laterArgumentIsLiteral() && !firstParameterIsExpression(); // At namespace/class scope `name(...)` is a function.
       // Local: `T x(args);` is a variable, `T f(int);` a function (rare). Guess: parameter list if
       // empty or starts with a builtin type keyword / const / `void`.
-      if (at(P::RParen, 1))
+      if (at(P::RParen, 1) || (at(P::Ellipsis, 1) && at(P::RParen, 2))) // (`int16 UObjectTestOverload(...);`, Unreal's SharedPointer.h)
         return true;
       const Token& t = tok(1);
       if (t.getKind() == TokenKind::Keyword && (isBuiltinTypeKeyword(Kw(t.id)) || t.is(Kw::const_)))

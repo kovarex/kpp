@@ -1,0 +1,15 @@
+// cppinput: a type named in capitals before an operator function, after `__forceinline` (Unreal's Utf8Iterator.h:
+// `[[nodiscard]] FORCEINLINE UTF32CHAR operator*() const`) is its return type: MSVC's specifier words are no type
+// before which the name would be a macro (macro_between_a_type_and_an_operator_function)
+typedef u32 UTF32CHAR;
+struct Iterator
+{
+  const char* at;
+  [[nodiscard]] __forceinline UTF32CHAR operator*() const { return UTF32CHAR(*this->at); }
+};
+
+i32 main()
+{
+  Iterator i{"A"};
+  return *i == 65 ? 0 : 1;
+}

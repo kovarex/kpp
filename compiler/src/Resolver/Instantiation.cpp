@@ -1760,7 +1760,7 @@ auto GlobalScope::Impl::typeOfTypeDecl(Decl* d, const Lookup& l, const NamePart&
       return types.unknown();
     case NodeKind::UsingNameDecl:
     {
-      Lookup inner = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, depth + 1);
+      Lookup inner = usingTarget(static_cast<UsingNameDecl*>(d), depth + 1);
       if (inner.decl && inner.decl != d)
       {
         // `using std::Vector;` then `Vector<int>`: the arguments written where it is named, typed there (the declaration's

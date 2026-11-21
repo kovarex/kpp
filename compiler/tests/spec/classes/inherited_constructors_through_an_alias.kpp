@@ -1,0 +1,22 @@
+// spec: a class template inherits its base's constructors through an alias of the base, `using BaseType = Base<T>; using BaseType::Base;` (Unreal's Future.h: `using BaseType::TFutureBase;`), as `using Base<T>::Base;` does: the name after the alias is the base's own, so the declaration inherits constructors and names no member Base
+// found by thread UE (2026-11-21): it was taken for a member named Base, which the alias's own type then found while it was looked up, and kpp overflowed its stack
+template<typename T> struct Base
+{
+  Base() = default;
+  Base(T v) : value(v) {}
+  T value = 0;
+};
+template<typename T> struct Derived : Base<T>
+{
+  using BaseType = Base<T>;
+  using BaseType::Base;
+  T twice() const { return this.value * 2; }
+};
+
+int main()
+{
+  Derived<int> d(5);
+  Derived<int> e;
+  std::println(d.value, " ", d.twice(), " ", e.value);
+  return 0;
+}

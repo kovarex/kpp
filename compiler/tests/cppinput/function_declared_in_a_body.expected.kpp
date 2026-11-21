@@ -1,0 +1,19 @@
+// cppinput: functions declared in a body (Unreal's SharedPointer.h: `int32 UObjectTestOverload(const volatile UObject*);` and
+// `int16 UObjectTestOverload(...);` in a constructor, for a sizeof's overload resolution) go before the declaration around
+// them, as a kpp body declares no function
+struct Base
+{
+};
+struct Derived : Base
+{
+};
+
+private i32 probeOverload(const volatile Base*);
+private i16 probeOverload(...);
+template <typename T>
+struct Checker
+{
+  static i32 probe() { return sizeof(probeOverload((T*)nullptr)); }
+};
+
+i32 main() { return Checker<Derived>::probe() == sizeof(i32) && Checker<i32>::probe() == sizeof(i16) ? 0 : 1; }

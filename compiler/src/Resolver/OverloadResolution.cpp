@@ -526,7 +526,7 @@ auto GlobalScope::Impl::inheritedConstructorSources(ClassDecl* def, const Ty* p,
     if (m->kind != NodeKind::UsingNameDecl)
       continue;
     const QualifiedName& un = static_cast<UsingNameDecl*>(m)->name;
-    if (un.parts.size() < 2 || un.last().symbol != un.parts[un.parts.size() - 2].symbol)
+    if (!inheritsConstructors(static_cast<UsingNameDecl*>(m), def))
       continue;
     NamedType written{};
     written.kind = NodeKind::NamedType;

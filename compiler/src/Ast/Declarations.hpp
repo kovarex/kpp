@@ -1,6 +1,7 @@
 #pragma once
 // The syntax tree's declaration nodes (Ast.hpp includes it, after Node.hpp).
 #include "Node.hpp"
+#include "Types.hpp"
 
 // --- Declarations ---
 
@@ -260,6 +261,10 @@ struct UsingAliasDecl : Decl { uint32_t name; Type* type; };
 struct UsingDirectiveDecl : Decl { QualifiedName name; };
 // isPack: `using Ts::operator()...;`, the name of each element of the pack Ts.
 struct UsingNameDecl : Decl { QualifiedName name; bool isEnum = false; bool isPack = false; };
+// Whether a class's `using X::Y;` inherits a base's constructors rather than naming a member: `using Base::Base;`, or
+// its last name a base class's own (`using BaseType::TFutureBase;` in a class deriving from TFutureBase<ResultType>,
+// Unreal's Future.h, BaseType its alias); such a declaration is no name in the class.
+inline bool inheritsConstructors(const UsingNameDecl* u, const struct ClassDecl* cls);
 struct StaticAssertDecl : Decl { Expr* cond; Expr* message = nullptr; };
 struct MacroDecl : Decl { uint32_t name; uint32_t endToken; };
 struct ErrorDecl : Decl { uint32_t endToken; };
@@ -272,3 +277,18 @@ struct FriendDecl : Decl { Type* type; Decl* decl; };
 // extern "C" import "header.h"; (pathToken: the string token), or with isDefine `extern "C" define NAME;` or
 // `extern "C" define NAME = value;` (pathToken: NAME, the value its tokens after `=` to endToken's `;`), design.md 5.
 struct ImportDecl : Decl { uint32_t pathToken; bool isDefine = false; };
+
+inline bool inheritsConstructors(const UsingNameDecl* u, const ClassDecl* cls)
+{
+  const QualifiedName& n = u->name;
+  if (n.parts.size() < 2 || n.last().special != 0)
+    return false;
+  if (n.last().symbol == n.parts[n.parts.size() - 2].symbol)
+    return true;
+  if (cls)
+    for (const ClassDecl::Base& b : cls->bases)
+      if (b.type && b.type->kind == NodeKind::NamedType && !static_cast<const NamedType*>(b.type)->name.parts.empty() &&
+          static_cast<const NamedType*>(b.type)->name.last().symbol == n.last().symbol)
+        return true;
+  return false;
+}

@@ -670,6 +670,79 @@
         remove(lineStart, to - lineStart); // (`case A: x(); break;`, `{ x(); break; }`)
     }
 
+    // A function declared in a body (`int32 UObjectTestOverload(const volatile UObject*);` and `int16
+    // UObjectTestOverload(...);` in SharedPointer.h's TSharedFromThis(), for a sizeof's overload resolution): a body
+    // declares no function in kpp (design.md 22), so the declaration goes before the outermost declaration around it
+    // that is no namespace's or `extern "C"` block's, private in a source file's global scope. True when moved.
+    bool hoistLocalFunctionDeclarations(DeclStmt* s)
+    {
+      if (s->decls.empty())
+        return false;
+      for (Decl* d : s->decls)
+        if (d->kind != NodeKind::FunctionDecl || static_cast<FunctionDecl*>(d)->body || !static_cast<FunctionDecl*>(d)->templateParams.empty())
+          return false;
+      uint32_t semi = s->token;
+      for (int depth = 0; semi < toks.size(); ++semi)
+        if (toks[semi].is(P::LParen) || toks[semi].is(P::LBracket) || toks[semi].is(P::LBrace))
+          ++depth;
+        else if (toks[semi].is(P::RParen) || toks[semi].is(P::RBracket) || toks[semi].is(P::RBrace))
+          --depth;
+        else if (depth == 0 && toks[semi].is(P::Semi))
+          break;
+      if (semi >= toks.size())
+        return false;
+      // (the braces open at the statement, the outermost that is no namespace's or extern "C" block's)
+      std::vector<uint32_t> open;
+      for (uint32_t k = 0; k < s->token; ++k)
+        if (toks[k].is(P::LBrace))
+          open.push_back(k);
+        else if (toks[k].is(P::RBrace) && !open.empty())
+          open.pop_back();
+      size_t outer = 0;
+      int namespaces = 0;
+      while (outer < open.size())
+      {
+        uint32_t b = open[outer];
+        bool externBlock = b >= 2 && toks[b - 1].getKind() == TokenKind::String && toks[b - 2].is(Kw::extern_);
+        bool namespaceBlock = false;
+        for (uint32_t k = b; k > 0 && !namespaceBlock;)
+        {
+          --k;
+          if (toks[k].is(Kw::namespace_))
+            namespaceBlock = true;
+          else if (toks[k].getKind() != TokenKind::Identifier && !toks[k].is(P::ColonColon) && !toks[k].is(Kw::inline_))
+            break;
+        }
+        if (!externBlock && !namespaceBlock)
+          break;
+        namespaces += namespaceBlock;
+        ++outer;
+      }
+      if (outer >= open.size())
+        return false;
+      // (the outermost declaration's first token: after the `;`, `{` or `}` before it at its depth)
+      uint32_t first = open[outer];
+      for (int depth = 0; first > 0; --first)
+      {
+        const Token& t = toks[first - 1];
+        if (depth == 0 && (t.is(P::Semi) || t.is(P::LBrace) || t.is(P::RBrace)))
+          break;
+        if (t.is(P::RBrace) || t.is(P::RParen) || t.is(P::RBracket))
+          ++depth;
+        else if (t.is(P::LBrace) || t.is(P::LParen) || t.is(P::LBracket))
+          --depth;
+      }
+      size_t lineStart = text.rfind('\n', toks[first].offset);
+      lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+      uint32_t from = toks[s->token].offset;
+      std::string declaration(text.substr(from, endOffset(semi) - from));
+      bool fileOwn = !in.c && !isHeader() && !includedElsewhere && namespaces == 0;
+      insert(uint32_t(lineStart), (fileOwn ? "private " : "") + declaration + "\n");
+      removeWholeLine(from, endOffset(semi));
+      counts.add("functions declared in a body moved before the declaration around it");
+      return true;
+    }
+
     void walkStmt(Stmt* s, Decl* owner)
     {
       if (!s)
@@ -682,6 +755,8 @@
           break;
         case NodeKind::ExprStmt: walkExpr(static_cast<ExprStmt*>(s)->expr, owner); break;
         case NodeKind::DeclStmt:
+          if (hoistLocalFunctionDeclarations(static_cast<DeclStmt*>(s)))
+            break;
           for (Decl* d : static_cast<DeclStmt*>(s)->decls)
             if (d->kind == NodeKind::VariableDecl)
               walkExpr(static_cast<VariableDecl*>(d)->init, owner);

@@ -75,6 +75,10 @@
 
   // The entity a namespace's using-declaration names (`using Colors::Red;`), else d itself.
   Decl* throughUsing(Decl* d, int depth);
+  // What a using-declaration names, its name looked up where it is written; nothing while that lookup is under way,
+  // where the lookup finds the using-declaration again (`using BaseType::Base;` inheriting a base's constructors
+  // through an alias, whose type names Base, which the using-declaration declares in the class).
+  Lookup usingTarget(const UsingNameDecl* u, int depth);
 
   // One name found twice at one level (a namespace's own declaration and a using-directive's, or
   // two directives'): the same entity (also when one of them is a using-declaration of it, `using

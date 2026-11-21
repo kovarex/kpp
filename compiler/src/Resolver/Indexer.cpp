@@ -317,7 +317,7 @@ auto GlobalScope::Impl::indexDecl(Decl* d, Scope* scope) -> void
         scopesWithUsingEnums.push_back(scope); // resolved by finishIndex
       }
       else if (!u->name.empty() && u->name.last().special == 0 &&
-               !(u->name.parts.size() >= 2 && u->name.last().symbol == u->name.parts[u->name.parts.size() - 2].symbol))
+               !inheritsConstructors(u, scope->owner && scope->owner->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(scope->owner) : nullptr))
       {
         // (`using Base::Base;` inherits Base's constructors and names no member: `Base::` inside
         // the class still reaches the base class.)

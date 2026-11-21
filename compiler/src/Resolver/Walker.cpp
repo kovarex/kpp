@@ -3014,7 +3014,7 @@ auto GlobalScope::Impl::bareNameOutside(const QualifiedName& name, const Lookup&
     return l;
   Decl* d = l.decl;
   if (d && d->kind == NodeKind::UsingNameDecl && !static_cast<UsingNameDecl*>(d)->isEnum) // (`using Base::f;`, then `f()`)
-    d = lookupQualified(static_cast<UsingNameDecl*>(d)->name, lexicalScopeOf(d), nullptr, 0).decl;
+    d = usingTarget(static_cast<UsingNameDecl*>(d), 0).decl; // (none while it is looked up: `using BaseType::Base;`)
   if (!d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) || (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
     return l; // (types, enumerators and nested classes need no `this.`)
   const NamePart& part = name.parts[0];
