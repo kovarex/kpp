@@ -793,6 +793,14 @@ auto codegen::Emitter::store(Value v, const std::string& addr, const Ty* ty, Nod
 
 auto codegen::Emitter::thisPointer(Node* at) -> std::string
 {
+  if (auto self = locals.find(nullptr); self != locals.end() && self->second.addr == "<no object>" && initializerAloneAt)
+  {
+    // `m.initializer` of a member whose default member initializer names this: there is no object to read it in.
+    auto* v = static_cast<VariableDecl*>(initializerAloneOf);
+    std::string name = sym(v->name.last().symbol);
+    fail(initializerAloneAt, "m.initializer is " + (currentClassTy ? types.toString(types.unqualified(currentClassTy), &symbols) + "::" : std::string()) + name +
+                                 "'s default member initializer alone, with no object, and it names this");
+  }
   auto it = locals.find(nullptr);
   if (it == locals.end())
     unsupported(at, "a member used outside a method");

@@ -18,6 +18,10 @@
     // in it are typed from its declaration (the class's member aliases are in scope there), not
     // from the function that happens to be emitted (none, for a startup function).
     Decl* initializerOf = nullptr;
+    // The `m.initializer` whose member's default member initializer is being emitted alone, with no
+    // object (design.md 8.3), and that member: `this` in it is an error. Null otherwise.
+    Node* initializerAloneAt = nullptr;
+    Decl* initializerAloneOf = nullptr;
     // The class whose implicit construction is being emitted where its object is made (not in a
     // constructor of its own): the constructors it calls are its to call (--access-warnings).
     Decl* implicitConstructionOf = nullptr;

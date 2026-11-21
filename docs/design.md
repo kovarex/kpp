@@ -651,7 +651,7 @@ a `const` array, bodies at namespace or class scope.
 
 **8.3 Reflection.** `members(T)` is the list of T's non-static data members, bases first, in
 declaration order; each member `m` has `m.name` (a string literal), `m.type` (usable where a
-type is written), `m.offset`, and `object.[m]` is that member of `object`. `enumerators(E)`
+type is written), `m.offset`, `m.initializer` (its default value alone, below), and `object.[m]` is that member of `object`. `enumerators(E)`
 lists an enum's values with `e.name` and `e.value`. `nameof(x)` is the last name of `x` as a
 string literal (`nameof(this->sprite)` is `"sprite"`, `nameof(Direction)` is `"Direction"`).
 In `if constexpr`, types compare with `==` (`if constexpr (m.type == bool)`).
@@ -669,6 +669,16 @@ Done 2026-10-25: `for constexpr (auto m : members(T))` with `m.name`, `m.offset`
 descriptor is a compile-time value the loop binds, like a template argument). Done 2026-10-29:
 `m.type`, written where a type is (`m.type copy = object.[m];`), and `alternatives(U)` (8.5). Not
 yet: `enumerators(E)`, comparing types with `==` in `if constexpr`.
+*m.initializer* (kovarex, 2026-11-21, for InputActionTestMaker's VariableToCode: "you read the defaults by constructing
+the whole class"): the member's default value alone, a prvalue of `m.type`, made in a temporary of its own without the
+object: its default member initializer as typed for the class (a class template's instance's, evaluated at each use: a
+call in it runs each time), else its default construction as the class would make it (zero, then a class's default
+constructor or a kpp enum's). `if (!(value.[m] == m.initializer))` compares a member with its default and builds nothing
+else. Errors: an initializer that names `this` (a member) has no object to read it in ("m.initializer is Range::end's
+default member initializer alone, with no object, and it names this"); a reference member has no value of its own. An
+object the initializer makes has its own `this`. Not a constant expression yet (the interpreter does not read
+descriptors). Specs kpp/reflection_member_initializer, reflection_member_initializer_in_class_template,
+reflection_member_initializer_naming_this_is_error, reflection_member_initializer_of_a_reference_is_error.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```

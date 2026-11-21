@@ -4190,6 +4190,13 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
                                          : unknown(Why::Member);
     if (which == "offset")
       return types.sizeType();
+    if (which == "initializer" && descriptor->inner && descriptor->decl && descriptor->decl->kind == NodeKind::VariableDecl)
+    {
+      // The member's default value alone (its default member initializer, else its default construction), as a
+      // value of its type: no object is made (kovarex, 2026-11-21, design.md 8.3). A reference member's is an error,
+      // the code generator's (Emitter::memberInitializerAlone).
+      return types.unqualified(types.stripRef(descriptor->inner));
+    }
     return unknown(Why::Member);
   }
   MemberResult r = memberOf(object, symbol, &m->member, m->token);

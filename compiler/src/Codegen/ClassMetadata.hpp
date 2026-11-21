@@ -237,6 +237,11 @@
       emit(init);
     }
 
+    // `m.initializer` (design.md 8.3): the default value of field, a data member of the class the descriptor bt
+    // names, made alone in a temporary of its own: its default member initializer as typed for that class (an
+    // error where it names this: there is no object), else its default construction, as the class would make it.
+    Value memberInitializerAlone(const Ty* bt, VariableDecl* field, Expr* at);
+
     // A reference member (of type refTy) bound to what source names: the field holds its address, of
     // its base subobject for a reference to a base (EntityAndIndex's `UpdatableEntity& entity` from an
     // InfinityContainer, whose UpdatableEntity comes after its LogisticContainer). listElement: source

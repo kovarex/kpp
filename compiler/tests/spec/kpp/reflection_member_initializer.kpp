@@ -1,0 +1,49 @@
+// spec: m.initializer is the member's default value alone, without building the object: its default member initializer, or its default construction when it has none (kovarex, 2026-11-21, for InputActionTestMaker's VariableToCode)
+// design.md 8.3
+enum class Mode : u8 { { Normal, Forced } };
+struct Pos
+{
+  i32 x = 0;
+  i32 y = 0;
+};
+i32 counted = 0;
+i32 next() { counted += 1; return 40 + counted; }
+class Build
+{
+public:
+  Build(Pos position) : position(position) { std::println("Build's constructor ran"); }
+  Pos position;
+  Mode mode = Mode::Normal;
+  i32 count = 3;
+  i32 numbered = next();
+  std::String label = "none";
+  Pos at = Pos{1, 2};
+  f32 ratio;
+  bool flag : 1 = true;
+};
+template<typename T> std::String changed(const T& value)
+{
+  std::String result;
+  for constexpr (auto m : members(T))
+    if (!(value.[m] == m.initializer))
+    {
+      result << std::StringView(m.name);
+      result << " ";
+    }
+  return result;
+}
+int main()
+{
+  Build b(Pos{5, 6});
+  std::println("[", changed(b), "]");
+  b.mode = Mode::Forced;
+  b.label = "x";
+  b.at.y = 3;
+  b.ratio = 1.5f;
+  b.flag = false;
+  std::println("[", changed(b), "]");
+  for constexpr (auto m : members(Pos))
+    std::println(std::StringView(m.name), " ", m.initializer);
+  std::println(counted);
+  return 0;
+}

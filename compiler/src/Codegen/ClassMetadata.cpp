@@ -2112,6 +2112,74 @@ auto codegen::Emitter::initializeAggregateMember(const std::string& addr, const 
     parts.built(fieldAddr, ft);
 }
 
+auto codegen::Emitter::memberInitializerAlone(const Ty* bt, VariableDecl* field, Expr* at) -> Value
+{
+  const Ty* t = at->ty ? types.unqualified(types.stripRef(at->ty)) : nullptr;
+  if (!t || !t->isKnown() || t->kind == TyKind::Void)
+    unsupported(at, "m.initializer of a member of unknown type");
+  if (bt->inner && bt->inner->isReference())
+  {
+    const Ty* cls = bt->args.empty() ? nullptr : bt->args[0];
+    fail(at, "m.initializer of " + (cls ? types.toString(types.unqualified(cls), &symbols) + "::" : std::string()) + sym(field->name.last().symbol) +
+                 ", a reference member: a reference has no default value of its own");
+  }
+  std::string slot = newObjectSlot(t, at);
+  storeZero(t, slot, at); // (a member without an initializer is zero, then constructed, as in the class)
+  if (field->init)
+  {
+    const Ty* cls = bt->args.empty() ? nullptr : canonicalClass(bt->args[0], at);
+    if (!cls)
+      unsupported(at, "m.initializer of a member of an unknown class");
+    TemplateArgs classArgs = global.classArgsOf(cls);
+    Expr* init = global.instanceInitializer(field, classArgs);
+    struct Restore
+    {
+      ~Restore()
+      {
+        if (self)
+          e.locals[nullptr] = *self;
+        else
+          e.locals.erase(nullptr);
+        e.currentClassTy = classTy;
+        e.currentArgs = args;
+        e.currentFile = file;
+        e.initializerOf = initializer;
+        e.initializerAloneAt = aloneAt;
+        e.initializerAloneOf = aloneOf;
+      }
+
+      Emitter& e;
+      std::optional<Local> self;
+      const Ty* classTy;
+      const TemplateArgs* args;
+      ParsedFile* file;
+      Decl* initializer;
+      Node* aloneAt;
+      Decl* aloneOf;
+    } restore{*this, locals.count(nullptr) ? std::optional<Local>(locals[nullptr]) : std::nullopt, currentClassTy, currentArgs, currentFile,
+              initializerOf, initializerAloneAt, initializerAloneOf};
+    locals[nullptr] = {"<no object>", nullptr, false}; // `this` in the initializer is an error (thisPointer); a nested object's own is its own
+    currentClassTy = cls;
+    currentArgs = &classArgs;
+    currentFile = field->file;
+    initializerOf = field;
+    initializerAloneAt = at;
+    initializerAloneOf = field;
+    initializeFrom(slot, t, init, field, scalarContext(t, field->bracedInit));
+  }
+  else if (isClass(t))
+    defaultConstruct(slot, t, at);
+  else if (global.enumWithConstructors(t))
+    constructEnum(slot, t, {}, at); // a kpp enum's default constructor
+  else if (t->kind == TyKind::Array && (needsDestruction(t, at) || needsConstruction(t, at)))
+    constructArray(slot, t, at);
+  if (!isClass(t))
+    return load(slot, t, at);
+  if (needsDestruction(t, at))
+    statementTemps.push_back({slot, t});
+  return {slot, t};
+}
+
 auto codegen::Emitter::aggregateMemberType(const Ty* t, const StructInfo& info, Decl* d, Node* at) -> const Ty*
 {
   const Ty* declared = d->kind == NodeKind::VariableDecl ? global.typeOfDecl(d) : nullptr;

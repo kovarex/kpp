@@ -1,0 +1,12 @@
+// spec: a reference member has no value of its own, so its m.initializer is an error (design.md 8.3)
+// error: reflection_member_initializer_of_a_reference_is_error.kpp:7: error: m.initializer of View::target, a reference member: a reference has no default value of its own
+struct View
+{
+  const i32& target;
+};
+template<typename T> void each() { for constexpr (auto m : members(T)) auto value = m.initializer; }
+int main()
+{
+  each<View>();
+  return 0;
+}

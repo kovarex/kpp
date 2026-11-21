@@ -1,0 +1,12 @@
+// spec: m.initializer reads the default member initializer alone, with no object, so one that names a member (this) is an error (design.md 8.3)
+// error: reflection_member_initializer_naming_this_is_error.kpp:8: error: m.initializer is Range::end's default member initializer alone, with no object, and it names this
+struct Range
+{
+  i32 start = 0;
+  i32 end = this.start + 1;
+};
+template<typename T> i32 sum() { i32 total = 0; for constexpr (auto m : members(T)) total += m.initializer; return total; }
+int main()
+{
+  return sum<Range>();
+}

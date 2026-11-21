@@ -1,0 +1,23 @@
+// spec: m.initializer of a class template's instance is its initializer as typed for that instance, and an object its initializer makes has its own this (design.md 8.3)
+struct Node
+{
+  i32 value = 7;
+  i32 twice = this.value * 2;
+};
+template<typename T, i32 N> struct Holder
+{
+  T item = T(N);
+  Node node = Node();
+  std::Array<T, 2> pair = {T(N + 1), T(N + 2)};
+};
+int main()
+{
+  for constexpr (auto m : members(Holder<i64, 5>))
+    if constexpr (std::isSame<m.type, i64>)
+      std::println(m.initializer);
+    else if constexpr (std::isSame<m.type, Node>)
+      std::println(m.initializer.value, " ", m.initializer.twice);
+    else
+      std::println(m.initializer[0], " ", m.initializer[1]);
+  return 0;
+}

@@ -719,7 +719,9 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           fn += "  " + r + " = ptrtoint ptr " + addr + " to i64\n";
           return {r, e->ty};
         }
-        unsupported(e, "a member descriptor has name and offset only");
+        if (which == "initializer")
+          return memberInitializerAlone(bt, field, e);
+        unsupported(e, "a member descriptor has name, offset and initializer only");
       }
       std::string addr = lvalue(e);
       // Use the field's declared type when the expression type is unknown.
