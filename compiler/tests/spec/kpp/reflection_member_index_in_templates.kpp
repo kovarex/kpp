@@ -1,0 +1,22 @@
+// spec: members(T)[i] and alternatives(U)[i] with an index a template gives, in a class template's member's return type, alternatives(U).size, members(T).size as a loop's bound at run time
+// design.md 8.3
+union enum class Shape : u8 { { {Circle, f32}, {Square, i32}, {Empty, void} } };
+struct Pos { i32 x = 1; i32 y = 2; };
+template<typename T, u64 I> std::String nth(const T& v) { return std::toString(std::StringView(members(T)[I].name), ":", v.[members(T)[I]]); }
+template<typename T> struct Holder
+{
+  T value;
+  members(T)[0].type first() const { return this.value.[members(T)[0]]; }
+};
+template<typename T> u64 count() { return members(T).size; }
+int main()
+{
+  std::println(std::StringView(alternatives(Shape)[1].name), " ", alternatives(Shape).size, " ", std::isSame<alternatives(Shape)[0].type, f32>);
+  std::println(nth<Pos, 1>(Pos{}), " ", nth<Pos, 0>(Pos{}));
+  Holder<Pos> h{Pos{7, 8}};
+  std::println(h.first(), " ", count<Pos>());
+  for (u64 i = 0; i < members(Pos).size; ++i)
+    std::print(i);
+  std::println();
+  return 0;
+}

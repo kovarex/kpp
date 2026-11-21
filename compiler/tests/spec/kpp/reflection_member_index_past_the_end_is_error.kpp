@@ -1,0 +1,9 @@
+// spec: members(T)[i] past the last member is an error naming the count
+// design.md 8.3
+// error: reflection_member_index_past_the_end_is_error.kpp:7: error: members(Pos)[2] is past its last member: Pos has 2
+struct Pos { i32 x = 0; i32 y = 0; };
+int main()
+{
+  std::println(std::StringView(members(Pos)[2].name));
+  return 0;
+}

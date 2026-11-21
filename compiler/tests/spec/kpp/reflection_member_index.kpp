@@ -1,0 +1,40 @@
+// spec: members(T)[i] is T's i-th member's descriptor, as the loop's m (name, type, offset, initializer, object.[d]), and members(T).size their count; outside a for constexpr too (kovarex, 2026-11-22, for InputActionTestMaker's VariableToCode: "can't I just check for the first member?")
+// design.md 8.3
+struct Pos { i32 x = 0; i32 y = 0; };
+class Drag { public: i32 v = 0; };
+class Info
+{
+public:
+  Info() = default;
+  implicit Info(Drag drag, Pos at = Pos()) : drag(drag), at(at) {}
+  Drag drag;
+  Pos at;
+};
+class Plain
+{
+public:
+  Plain(Drag drag, Pos at = Pos()) : drag(drag), at(at) {}
+  Drag drag;
+  Pos at;
+};
+struct Base { i32 id = 7; };
+struct Derived : Base { f32 ratio = 0.5f; };
+template<typename T> constexpr bool firstConvertsImplicitly = std::isConvertible<members(T)[0].type, T>;
+template<typename T> std::String last(const T& value)
+{
+  constexpr u64 count = members(T).size;
+  return std::toString(std::StringView(members(T)[count - 1].name), "=", value.[members(T)[count - 1]]);
+}
+int main()
+{
+  static_assert(firstConvertsImplicitly<Info>);
+  static_assert(!firstConvertsImplicitly<Plain>);
+  static_assert(members(Info).size == 2 && members(Derived).size == 2 && members(Pos).size == 2);
+  static_assert(std::isSame<members(Derived)[1].type, f32>);
+  Derived d;
+  d.[members(Derived)[0]] = 9;
+  members(Pos)[1].type y = members(Pos)[1].initializer + 4;
+  std::println(std::StringView(members(Derived)[0].name), " ", d.id, " ", members(Derived)[1].offset, " ", y);
+  std::println(last(Pos{3, 5}), " ", last(d));
+  return 0;
+}

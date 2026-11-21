@@ -143,41 +143,90 @@ auto GlobalScope::Impl::Walker::forConstexprElements(ForConstexprStmt* f, std::v
     }
     return true;
   }
+  if (v->isType)
+    return false;
+  bool dependent = false;
+  return reflectionElements(list, false, out, dependent);
+}
+
+auto GlobalScope::Impl::Walker::reflectionElements(Node* list, bool withBases, std::vector<const Ty*>& out, bool& dependent) -> bool
+{
+  // The descriptors `members(T)` or `alternatives(U)` lists (design.md 8.3, 8.5), for a T known here; dependent: T is a
+  // template's parameter yet. A class with bases lists theirs first only withBases (`members(T)[i]`): a for constexpr's
+  // walk leaves such a class's elements to the code generator, as it always has.
+  dependent = false;
   bool alternatives = list && list->kind == NodeKind::CallExpr && static_cast<CallExpr*>(list)->callee &&
                       static_cast<CallExpr*>(list)->callee->kind == NodeKind::NameExpr &&
                       symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(list)->callee)->name.last().symbol) == "alternatives";
-  Expr* subject = reflectionSubject(list);
-  if (!subject || subject->kind != NodeKind::NameExpr || v->isType)
+  const Ty* cls = reflectedType(reflectionSubject(list));
+  dependent = cls && types.isDependent(cls);
+  if (!cls || cls->kind != TyKind::Class || dependent)
     return false;
+  if (!alternatives && !withBases)
+    if (ClassDecl* def = impl.classDefinition(cls); !def || !def->bases.empty())
+      return false;
+  return impl.reflectedElementsOf(cls, alternatives, out, 0);
+}
+
+auto GlobalScope::Impl::Walker::typeOfReflectionSize(MemberExpr* m) -> const Ty*
+{
+  // `members(T).size`: how many members(T)[i] there are, a constant (the interpreter's constReflectionSize).
+  walkExpr(reflectionSubject(m->base));
+  std::vector<const Ty*> elements;
+  bool dependent = false;
+  if (!reflectionElements(m->base, true, elements, dependent) && !dependent && !inGenericTemplate())
+    reportHere(m->token, "members(T).size of a type that is no class, or alternatives(U).size of one that is no typed union");
+  m->resolved = nullptr;
+  ++stats.membersBound;
+  return types.sizeType();
+}
+
+auto GlobalScope::Impl::Walker::reflectedType(Expr* subject) -> const Ty*
+{
+  if (!subject || subject->kind != NodeKind::NameExpr)
+    return nullptr;
   NamedType named{};
   named.kind = NodeKind::NamedType;
   named.token = subject->token;
   named.name = static_cast<NameExpr*>(subject)->name;
-  const Ty* cls = typeOf(&named);
-  cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
-  if (!cls || cls->kind != TyKind::Class || types.isDependent(cls))
-    return false;
-  Subst s = cls->args.empty() ? Subst{} : impl.substFor(cls);
-  if (alternatives)
+  const Ty* t = typeOf(&named);
+  return t ? types.unqualified(types.stripRef(t)) : nullptr;
+}
+
+auto GlobalScope::Impl::Walker::typeOfReflectionIndex(IndexExpr* i) -> const Ty*
+{
+  // `members(T)[i]`: T's i-th member's descriptor, the for constexpr's m for that member, anywhere (kovarex, 2026-11-22,
+  // design.md 8.3: "can't I just check for the first member?"); `alternatives(U)[i]` the i-th alternative's.
+  Expr* subject = reflectionSubject(i->base);
+  walkExpr(subject); // (the type reflected on, as the for constexpr walks it)
+  walkExpr(i->args[0]);
+  std::vector<const Ty*> elements;
+  bool dependent = false;
+  bool known = reflectionElements(i->base, true, elements, dependent);
+  if (!known && (dependent || inGenericTemplate()))
+    return types.param(nullptr); // (typed per instantiation)
+  std::string list(symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(i->base)->callee)->name.last().symbol));
+  if (!known)
   {
-    ClassDecl* u = typedUnionOf(cls);
-    if (!u)
-      return false;
-    for (Decl* alt : u->alternatives)
-    {
-      // (a void alternative's a.type is void, its storage the union's own empty __Void: design.md 8.5)
-      bool isVoid = alt->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(alt)->voidAlternative;
-      out.push_back(types.member(isVoid ? types.voidType() : impl.declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0), alt, cls));
-    }
-    return true;
+    reportHere(i->token, list == "members" ? "members(T)[i] of a type that is no class" : "alternatives(U)[i] of a type that is no typed union");
+    return unknown(Why::Unsupported);
   }
-  ClassDecl* def = impl.classDefinition(cls);
-  if (!def || !def->bases.empty())
-    return false;
-  for (Decl* d : membersRead(def))
-    if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(d)->name.empty())
-      out.push_back(types.member(impl.declaredTypeOf(d, s.pairs.empty() ? nullptr : &s, 0), d, cls));
-  return true;
+  std::optional<int64_t> at = impl.constEval(i->args[0], ctx());
+  if (!at)
+  {
+    if (inGenericTemplate())
+      return types.param(nullptr);
+    reportHere(i->token, list + "(T)[i] needs an index the compiler can evaluate");
+    return unknown(Why::Unsupported);
+  }
+  if (*at < 0 || uint64_t(*at) >= elements.size())
+  {
+    std::string named = types.toString(reflectedType(subject), &symbols);
+    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" ? "member" : "alternative") +
+                           ": " + named + " has " + std::to_string(elements.size()));
+    return unknown(Why::Unsupported);
+  }
+  return elements[size_t(*at)];
 }
 
 auto GlobalScope::Impl::Walker::decltypeOf(Expr* e, const Ty* t) -> const Ty*
@@ -4124,6 +4173,9 @@ auto GlobalScope::Impl::Walker::hasUnknownBase(Scope* cls, int depth) -> bool
 auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
 {
   checkPostfixAfterParenthesisedType(m->base, m->token);
+  if (!m->dynamicMember && m->op == P::Dot && m->member.parts.size() == 1 && reflectionSubject(m->base) &&
+      symbols.name(m->member.parts[0].symbol) == "size")
+    return typeOfReflectionSize(m);
   const Ty* base = walkExpr(m->base);
   if (m->dynamicMember)
   {
@@ -12859,6 +12911,8 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
     case NodeKind::IndexExpr:
     {
       auto* i = static_cast<IndexExpr*>(e);
+      if (i->args.size() == 1 && reflectionSubject(i->base))
+        return record(e, typeOfReflectionIndex(i));
       checkPostfixAfterParenthesisedType(i->base, i->token);
       const Ty* base = walkExpr(i->base);
       const Ty* firstIndex = nullptr;

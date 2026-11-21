@@ -1299,6 +1299,8 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         subStatement(i->ifConsteval == 1 ? i->else_ : i->then);
         break;
       }
+      if (i->isConstexpr)
+        GlobalScope::clearConstantReason();
       if (std::optional<bool> known = constexprTaken(i))
       {
         // Only the taken branch exists. When that is the next link of an `else if constexpr` chain, decided
@@ -1321,7 +1323,12 @@ auto codegen::Emitter::statement(Stmt* s) -> void
         break;
       }
       if (i->isConstexpr) // ([stmt.if] 2: never a test at run time; here, with the layouts `sizeof` may need that the resolver has not)
-        fail(s, "the condition of an if constexpr is not a constant expression");
+      {
+        // As a static assertion's: why the evaluation stopped, the interpreter's reason (kovarex, 2026-11-22: a constexpr
+        // function the evaluator could not run said nothing of what it met).
+        std::string why = GlobalScope::constantReason();
+        fail(s, "the condition of an if constexpr is not a constant expression" + (why.empty() ? std::string() : ": " + why));
+      }
       ifChain(i);
       break;
     }

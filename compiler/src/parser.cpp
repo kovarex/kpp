@@ -72,6 +72,8 @@ namespace
       kwTagField = symbols.intern("__tag");
       kwTagMethod = symbols.intern("tag");
       kwTypeMember = symbols.intern("type");
+      kwMembers = symbols.intern("members");
+      kwAlternatives = symbols.intern("alternatives");
       kwImplicit = symbols.intern("implicit");
       kwFallthrough = symbols.intern("fallthrough");
       kwBothConst = symbols.intern("both_const");
@@ -1292,6 +1294,13 @@ namespace
         d->expr = m;
         type = d;
       }
+      else if (atIndexedDescriptorType())
+      {
+        // `members(T)[i].type`: read as `decltype(members(T)[i].type)`, as `m.type` is above.
+        DecltypeType* d = node<DecltypeType>(typeToken);
+        d->expr = parsePostfix(parsePrimary());
+        type = d;
+      }
       else if (atBuiltinTypeIdent())
       {
         NamedType* n = node<NamedType>(pos);
@@ -2211,6 +2220,35 @@ namespace
       bool present = false;
       Expr* requiresClause = nullptr;
     };
+
+    // `members(T)[i].type` (or alternatives(U)'s) where a type is written: the type of T's i-th member (design.md 8.3).
+    bool atIndexedDescriptorType()
+    {
+      if (!(atIdent(kwMembers) || atIdent(kwAlternatives)) || !at(P::LParen, 1))
+        return false;
+      int close = balancedClose(1);
+      if (close < 0 || !at(P::LBracket, close + 1))
+        return false;
+      int indexClose = balancedClose(close + 1);
+      return indexClose >= 0 && at(P::Dot, indexClose + 1) && atIdent(kwTypeMember, indexClose + 2);
+    }
+
+    // The token closing the bracket group that opens `ahead` tokens on, as an offset from here; -1 at the end.
+    int balancedClose(int ahead) const
+    {
+      P open = P(tok(ahead).id);
+      P close = open == P::LParen ? P::RParen : P::RBracket;
+      int level = 0;
+      for (int k = ahead;; ++k)
+      {
+        if (at(TokenKind::End, k))
+          return -1;
+        if (at(open, k))
+          ++level;
+        else if (at(close, k) && --level == 0)
+          return k;
+      }
+    }
 
     bool atDescriptorType()
     {
@@ -8534,7 +8572,7 @@ namespace
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCheckValid, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
-             kwTagMethod, kwTypeMember, kwSuite, kwFlags;
+             kwTagMethod, kwTypeMember, kwMembers, kwAlternatives, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
     std::vector<ClassDecl::Flag> pendingFlags;
     uint32_t pendingFlagsAt = UINT32_MAX;

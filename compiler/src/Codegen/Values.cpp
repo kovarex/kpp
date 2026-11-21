@@ -972,6 +972,8 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       // value is not known here", the descriptor itself asked for its place: InputActionTestMaker).
       if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Member && !m->dynamicMember)
         break;
+      if (!m->dynamicMember && reflectionSubject(m->base))
+        break; // (`members(T).size` bound to a reference: a constant as well)
       std::string object;
       const Ty* baseTy;
       if (m->op == P::Arrow)

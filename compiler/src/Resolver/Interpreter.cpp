@@ -678,6 +678,19 @@ auto GlobalScope::Impl::constDescriptorTag(MemberExpr* m, const TypeContext& ctx
   return constValueOfDecl(enumerators[index], ctx, depth + 1);
 }
 
+auto GlobalScope::Impl::constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  // `members(T).size`, `alternatives(U).size`: how many descriptors the list holds (design.md 8.3), a u64.
+  if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "size")
+    return std::nullopt;
+  const Ty* cls = nullptr;
+  bool alternatives = false;
+  std::vector<const Ty*> elements;
+  if (!reflectionListType(m->base, ctx, cls, alternatives, depth + 1) || !reflectedElementsOf(cls, alternatives, elements, depth + 1))
+    return std::nullopt;
+  return ConstValue::integer(int64_t(elements.size()), types.sizeType());
+}
+
 auto GlobalScope::Impl::constSteps() -> uint64_t&
 {
   static thread_local uint64_t steps = 0;
@@ -794,6 +807,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return std::nullopt;
       if (std::optional<ConstValue> tag = constDescriptorTag(m, ctx, depth))
         return tag;
+      if (std::optional<ConstValue> size = constReflectionSize(m, ctx, depth))
+        return size;
       if (m->member.parts.size() != 1)
         return m->base && m->resolved && m->resolved->kind == NodeKind::VariableDecl && !(m->resolved->flags & (DF_Static | DF_Typedef))
                  ? constMemberRead(m, ctx, depth) // `b.A::v`: the data member of the base the qualifier names
@@ -9467,6 +9482,150 @@ auto GlobalScope::Impl::constRangeForIterators(RangeForStmt* r, const TypeContex
   return ConstFlow::Next;
 }
 
+auto GlobalScope::Impl::constForConstexpr(ForConstexprStmt* f, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth) -> ConstFlow
+{
+  // `for constexpr` in a function run at compile time: its body once per element, the variable bound to the element
+  // as the code generator binds it; break and continue as there (kovarex, 2026-11-22: "The constexpr for should actually
+  // be allowed in constexpr functions"; `for constexpr (auto m : members(T)) return std::isConvertible<m.type, T>;` made
+  // its function no constant).
+  auto* v = static_cast<TemplateParamDecl*>(f->var);
+  std::vector<const Ty*> elements;
+  if (!v || !constForConstexprElements(f, ctx, elements, depth + 1))
+  {
+    if (constWhy().empty())
+      constWhy() = "a for constexpr whose elements are not known here";
+    return ConstFlow::Failed;
+  }
+  Subst bound = ctx.subst ? *ctx.subst : Subst{};
+  bound.pairs.push_back({v, nullptr});
+  LocalStack locals = ctx.locals ? *ctx.locals : LocalStack{};
+  locals.push(v->name, v); // (`m.type`: the loop's variable, a template parameter bound to the element)
+  TypeContext inner = ctx;
+  inner.subst = &bound;
+  inner.locals = &locals;
+  bool copies = f->elementBodies.size() == elements.size();
+  for (size_t i = 0; i < elements.size(); ++i)
+  {
+    bound.pairs.back().type = elements[i];
+    ConstFlow flow = constStatement(copies ? f->elementBodies[i] : f->body, inner, env, result, depth + 1);
+    if (flow == ConstFlow::Break)
+      break;
+    if (flow != ConstFlow::Next && flow != ConstFlow::Continue)
+      return flow; // a return or a failure
+  }
+  return ConstFlow::Next;
+}
+
+auto GlobalScope::Impl::constForConstexprElements(ForConstexprStmt* f, const TypeContext& ctx, std::vector<const Ty*>& out, int depth) -> bool
+{
+  // The elements as Walker::forConstexprElements and the code generator list them.
+  auto* v = static_cast<TemplateParamDecl*>(f->var);
+  Node* list = f->list;
+  if (list && list->kind == NodeKind::NamedType && static_cast<NamedType*>(list)->name.parts.size() == 1 &&
+      static_cast<NamedType*>(list)->name.parts[0].hasTemplateArgs && symbols.name(static_cast<NamedType*>(list)->name.parts[0].symbol) == "types")
+  {
+    if (!v->isType)
+      return false;
+    for (Node* arg : static_cast<NamedType*>(list)->name.parts[0].templateArgs)
+    {
+      const Ty* t = arg && uint8_t(arg->kind) <= uint8_t(NodeKind::PackType) ? convertType(static_cast<Type*>(arg), ctx, depth + 1) : nullptr;
+      if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+        return false;
+      if (arg->kind == NodeKind::PackType && t->kind == TyKind::Pack)
+        out.insert(out.end(), t->args.begin(), t->args.end());
+      else
+        out.push_back(t);
+    }
+    return true;
+  }
+  if (v->isType || !list)
+    return false;
+  if (list->kind == NodeKind::BraceInitExpr)
+  {
+    const Ty* declared = v->valueType ? convertType(v->valueType, ctx, depth + 1) : nullptr;
+    if (!declared)
+      return false;
+    for (Expr* e : static_cast<BraceInitExpr*>(list)->args)
+    {
+      std::optional<ConstValue> c = constValue(e, ctx, depth + 1);
+      const Ty* t = declared->kind == TyKind::Auto ? (c && c->type ? types.unqualified(types.stripRef(c->type)) : nullptr) : declared;
+      if (!c || !t)
+        return false;
+      if (c->kind == ConstValue::Kind::Int && t->isIntegral())
+        out.push_back(types.valueType(t, c->i));
+      else if (c->isFloat() && t->kind == TyKind::Float && declared->kind == TyKind::Auto)
+        out.push_back(types.valueType(t, TypeTable::floatBits(c->f, t->bits)));
+      else
+        return false;
+    }
+    return true;
+  }
+  const Ty* cls = nullptr;
+  bool alternatives = false;
+  return reflectionListType(list, ctx, cls, alternatives, depth + 1) && reflectedElementsOf(cls, alternatives, out, depth + 1);
+}
+
+auto GlobalScope::Impl::reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, bool& alternatives, int depth) -> bool
+{
+  // `members(T)` or `alternatives(U)`: the class it reflects on, when known here.
+  if (!list || list->kind != NodeKind::CallExpr)
+    return false;
+  auto* c = static_cast<CallExpr*>(list);
+  if (!c->callee || c->callee->kind != NodeKind::NameExpr || c->args.size() != 1 || !c->args[0] || c->args[0]->kind != NodeKind::NameExpr)
+    return false;
+  const QualifiedName& callee = static_cast<NameExpr*>(c->callee)->name;
+  std::string_view which = callee.parts.size() == 1 && !callee.parts[0].hasTemplateArgs ? symbols.name(callee.parts[0].symbol) : std::string_view();
+  if (which != "members" && which != "alternatives")
+    return false;
+  alternatives = which == "alternatives";
+  NamedType named{};
+  named.kind = NodeKind::NamedType;
+  named.token = c->args[0]->token;
+  named.name = static_cast<NameExpr*>(c->args[0])->name;
+  cls = convertType(&named, ctx, depth + 1);
+  cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
+  return cls && cls->kind == TyKind::Class && !types.isDependent(cls) && !mentionsUnknown(cls);
+}
+
+auto GlobalScope::Impl::reflectedElementsOf(const Ty* cls, bool alternatives, std::vector<const Ty*>& out, int depth) -> bool
+{
+  // The descriptors members(T) or alternatives(U) lists: a typed union's alternatives in order; a class's bases'
+  // members first, then its own non-static named data members (design.md 8.3, 8.5).
+  if (depth > maxNestedLevels)
+    return false;
+  if (alternatives)
+  {
+    ClassDecl* u = Walker::typedUnionOf(cls);
+    if (!u)
+      return false;
+    Subst s = cls->args.empty() ? Subst{} : substFor(cls);
+    for (Decl* alt : u->alternatives)
+    {
+      bool isVoid = alt->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(alt)->voidAlternative;
+      out.push_back(types.member(isVoid ? types.voidType() : declaredTypeOf(alt, s.pairs.empty() ? nullptr : &s, 0), alt, cls));
+    }
+    return true;
+  }
+  ClassDecl* def = classDefinition(cls);
+  if (!def)
+    return false;
+  if (!def->bases.empty())
+  {
+    ClassDecl* own = nullptr;
+    for (const Ty* b : classBasesOf(cls, own, depth))
+    {
+      const Ty* bt = b ? types.unqualified(types.stripRef(b)) : nullptr;
+      if (!own || !bt || bt->kind != TyKind::Class || types.isDependent(bt) || !reflectedElementsOf(bt, false, out, depth + 1))
+        return false;
+    }
+  }
+  Subst s = cls->args.empty() ? Subst{} : substFor(cls);
+  for (Decl* d : membersRead(def))
+    if (d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(d)->name.empty())
+      out.push_back(types.member(declaredTypeOf(d, s.pairs.empty() ? nullptr : &s, 0), d, cls));
+  return true;
+}
+
 auto GlobalScope::Impl::constRangeFor(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth) -> ConstFlow
 {
   if (!r->var || r->var->kind != NodeKind::VariableDecl || !r->range || !r->body)
@@ -10213,6 +10372,8 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
     {
       return constRangeFor(static_cast<RangeForStmt*>(s), ctx, env, result, depth);
     }
+    case NodeKind::ForConstexprStmt:
+      return constForConstexpr(static_cast<ForConstexprStmt*>(s), ctx, env, result, depth);
     case NodeKind::BreakStmt: return ConstFlow::Break;
     case NodeKind::ContinueStmt: return ConstFlow::Continue;
     case NodeKind::CaseStmt:

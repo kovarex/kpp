@@ -689,6 +689,14 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           rvalue(m->base); // `make().E` calls make, as `make().staticMember` does
         return {std::to_string(enumeratorNamed(static_cast<EnumeratorDecl*>(m->resolved), e)), e->ty};
       }
+      if (!m->dynamicMember && m->member.parts.size() == 1 && reflectionSubject(m->base) && sym(m->member.last().symbol) == "size")
+      {
+        // `members(T).size`: the number of descriptors, a constant (design.md 8.3).
+        std::optional<int64_t> count = evalConst(e);
+        if (!count)
+          unsupported(e, "members(T).size or alternatives(U).size of a type the compiler cannot list");
+        return {std::to_string(*count), types.sizeType()};
+      }
       if (const Ty* bt = m->base->ty ? types.stripRef(m->base->ty) : nullptr; bt && bt->kind == TyKind::Member && !m->dynamicMember)
       {
         // A reflection descriptor: m.name is the member's name, m.offset its offset in the class;

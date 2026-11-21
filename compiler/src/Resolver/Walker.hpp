@@ -126,6 +126,10 @@
     // `types<A, B>`, the constants of `{1, 2}`, the descriptors of `alternatives(U)` and of
     // `members(T)` (a class without bases). False when one cannot be told yet.
     bool forConstexprElements(ForConstexprStmt* f, std::vector<const Ty*>& out);
+    bool reflectionElements(Node* list, bool withBases, std::vector<const Ty*>& out, bool& dependent);
+    const Ty* reflectedType(Expr* subject);
+    const Ty* typeOfReflectionIndex(IndexExpr* i);
+    const Ty* typeOfReflectionSize(MemberExpr* m);
 
     // Per lambda / auto function this walk entered: whether it returns `decltype(auto)`, so that
     // its returns record their expression's decltype (`f(x)` returning int& stays int&).

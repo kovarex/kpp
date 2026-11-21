@@ -107,6 +107,9 @@
   // `a.tag` of a descriptor of alternatives(U) in a for constexpr body (design.md 8.5): its U::Tag enumerator's
   // value, a constant expression (a case label, an if constexpr, a constexpr variable); none for another member.
   std::optional<ConstValue> constDescriptorTag(MemberExpr* m, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth);
+  bool reflectedElementsOf(const Ty* cls, bool alternatives, std::vector<const Ty*>& out, int depth);
+  bool reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, bool& alternatives, int depth);
 
   // Bounds of one evaluation: the steps it takes and the calls nested in it.
   static uint64_t& constSteps();
@@ -1201,6 +1204,8 @@
   ConstFlow constRangeForIterators(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth, const ConstValue& begin, const ConstValue& end, const Ty* declared, uint32_t name);
 
   ConstFlow constRangeFor(RangeForStmt* r, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth);
+  ConstFlow constForConstexpr(ForConstexprStmt* f, const TypeContext& ctx, std::vector<ConstBinding>& env, std::optional<ConstValue>& result, int depth);
+  bool constForConstexprElements(ForConstexprStmt* f, const TypeContext& ctx, std::vector<const Ty*>& out, int depth);
 
   // A local's declaration run: its binding pushed on env (a reference's to the place it refers to),
   // a structured binding's hidden object and names (constBindNames).

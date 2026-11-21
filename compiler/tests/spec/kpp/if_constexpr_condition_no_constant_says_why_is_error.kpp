@@ -1,0 +1,19 @@
+// spec: an if constexpr whose condition is no constant says why, as a static assertion does: what the evaluation met in the constexpr function it called (kovarex, 2026-11-22: a constexpr function the evaluator could not run was "not a constant expression" at its use, with no word of why)
+// design.md 7.4
+// error: if_constexpr_condition_no_constant_says_why_is_error.kpp:11: error: the condition of an if constexpr is not a constant expression: a call to elsewhere, whose body the program does not have
+i32 elsewhere(i32 x);
+template<typename T> constexpr bool check()
+{
+  return elsewhere(2) == 3;
+}
+template<typename T> i32 use()
+{
+  if constexpr (check<T>())
+    return 1;
+  return 0;
+}
+int main()
+{
+  std::println(use<i32>());
+  return 0;
+}

@@ -1,0 +1,67 @@
+// spec: a for constexpr runs in a constant evaluation: a constexpr function looping over members(T), alternatives(U), types<...> or a list of constants, with return, break and continue, is a constant (kovarex, 2026-11-22: "The constexpr for should actually be allowed in constexpr functions")
+// design.md 8.2
+struct Pos { i32 x = 0; i32 y = 0; };
+class Drag { public: i32 v = 0; };
+class Info
+{
+public:
+  implicit Info(Drag drag, Pos at = Pos()) : drag(drag), at(at) {}
+  Drag drag;
+  Pos at;
+};
+struct Empty {};
+union enum class Shape : u8 { { {Circle, f32}, {Square, i32}, {Nothing, void} } };
+template<typename T> constexpr bool firstMemberConvertsImplicitly()
+{
+  for constexpr (auto m : members(T))
+    return std::isConvertible<m.type, T>;
+  return false;
+}
+template<typename T> constexpr i32 intMembers()
+{
+  i32 count = 0;
+  for constexpr (auto m : members(T))
+  {
+    if constexpr (!std::isSame<m.type, i32>)
+      continue;
+    count += 1;
+  }
+  return count;
+}
+template<typename U> constexpr i32 firstVoidAlternative()
+{
+  i32 index = 0;
+  for constexpr (auto a : alternatives(U))
+  {
+    if constexpr (std::isSame<a.type, void>)
+      break;
+    index += 1;
+  }
+  return index;
+}
+constexpr u64 totalSize()
+{
+  u64 size = 0;
+  for constexpr (typename T : types<u8, u16, u64>)
+    size += sizeof(T);
+  for constexpr (i32 v : {1, 2, 3})
+    size += u64(v);
+  return size;
+}
+template<typename T> std::String describe()
+{
+  if constexpr (firstMemberConvertsImplicitly<T>())
+    return "implicit";
+  return "no";
+}
+int main()
+{
+  static_assert(firstMemberConvertsImplicitly<Info>());
+  static_assert(!firstMemberConvertsImplicitly<Pos>());
+  static_assert(!firstMemberConvertsImplicitly<Empty>());
+  static_assert(intMembers<Pos>() == 2 && intMembers<Info>() == 0);
+  static_assert(firstVoidAlternative<Shape>() == 2);
+  static_assert(totalSize() == 17);
+  std::println(describe<Info>(), " ", describe<Pos>(), " ", describe<Empty>());
+  return 0;
+}

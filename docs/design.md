@@ -642,7 +642,16 @@ switch (type)
 ```
 A static_assert or constexpr variable in the body is checked once per element, in a function that
 is no template as in an instance (2026-11-09); an `if constexpr` whose condition is no constant is
-an error, never a test at run time.
+an error, never a test at run time, and says why, as a static assertion does: what the evaluation met (kovarex,
+2026-11-22: "the condition of an if constexpr is not a constant expression" said nothing of the constexpr function it
+called).
+A compile-time evaluation runs a for constexpr (kovarex, 2026-11-22: "The constexpr for should actually be allowed in
+constexpr functions"): the body once per element, the variable bound as the code generator binds it, `break`,
+`continue` and `return` as at run time, over `types<...>`, a list of constants, `members(T)` and `alternatives(U)`.
+`template<typename T> constexpr bool firstMemberConvertsImplicitly() { for constexpr (auto m : members(T)) return
+std::isConvertible<m.type, T>; return false; }` is a constant, in `if constexpr` and `static_assert`. Until then the
+evaluation stopped at the loop, and the function was no constant at each use. Specs kpp/for_constexpr_in_constexpr_function,
+if_constexpr_condition_no_constant_says_why_is_error.
 As in C++26's expansion statements ([stmt.expand], 2026-11-10, E's battery a3): `break` in the body leaves the
 statement and `continue` goes on to the next element, each destroying the element's objects; a list of constants
 for an `auto` variable (`for constexpr (auto v : {1, 'c', 2.5})`) gives each element its own type, as a
@@ -694,6 +703,15 @@ default member initializer alone, with no object, and it names this"); a referen
 object the initializer makes has its own `this`. Not a constant expression yet (the interpreter does not read
 descriptors). Specs kpp/reflection_member_initializer, reflection_member_initializer_in_class_template,
 reflection_member_initializer_naming_this_is_error, reflection_member_initializer_of_a_reference_is_error.
+*members(T)[i] and members(T).size* (kovarex, 2026-11-22, option A, for InputActionTestMaker's VariableToCode: "can't I
+just check for the first member?"): `members(T)[i]` is the descriptor the loop's `m` is for T's i-th member, anywhere an
+expression is, with `.name`, `.type` (`members(T)[0].type` where a type is written: `std::isConvertible<members(T)[0].type, T>`
+asks whether T converts implicitly from its first member's type), `.offset`, `.initializer` and `object.[members(T)[i]]`;
+`alternatives(U)[i]` an alternative's alike. `members(T).size` (and `alternatives(U).size`) is how many, a `u64` constant.
+The index is a constant expression (a template's parameter, a constexpr local); one past the last is an error naming the
+count ("members(Pos)[2] is past its last member: Pos has 2"). In a template whose T is still open the descriptor is typed
+per instance. Specs kpp/reflection_member_index, reflection_member_index_in_templates,
+reflection_member_index_past_the_end_is_error.
 *qualifiednameof(T)* (kovarex, 2026-11-21: "Basically getting string name of type, how do we do it in kpp?", for a generic
 VariableToCode writing `<enum type>::<value>`): a string literal, T as kpp source names it from anywhere, to paste back into
 code: its namespaces and enclosing classes (`RidingState::Direction`, `ActionData::BuildParameters`), kpp's names of the
