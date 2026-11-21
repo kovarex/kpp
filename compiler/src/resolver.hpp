@@ -513,6 +513,11 @@ public:
   // unindexMember, indexMembers): what definitionOf answers for a function stands while it is the same, a body's edit
   // keeping it (codegen keeps its answers for the instances it emitted between builds, Shared::Definition::Asked).
   uint64_t indexVersion() const;
+  // qualifiednameof's alias of a template's instance (design.md 8.3): of the `using X = Instance;` that name t (without const)
+  // at namespace or class scope, the one closest to the global scope, X as written from anywhere (`EntityID`, `Game::ItemID`,
+  // `Surface::Index`); empty when there is none or two are closest. An alias template, one in a function, in a class
+  // template, private or protected or private to its file does not count. Made at the first ask, again after the index changed.
+  std::string aliasNameOf(const Ty* t);
   Decl* initializerListDecl();                   // The library's InitializerList class, or null.
   const Ty* textType();                          // The library's Text class (design.md 14), or null.
   // Which of the library's compiler intrinsics f is (Text.kpp: 1 kppEnumeratorName, 2

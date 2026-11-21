@@ -690,6 +690,20 @@ type with no such name is an error: one local to a function, a lambda's closure,
 declared in a class template, a function type ("qualifiednameof(Local): a type local to a function has no name to write
 outside where it is declared"). Specs kpp/qualifiednameof, qualifiednameof_local_class_is_error,
 qualifiednameof_anonymous_alternative_is_error.
+A template's instance an alias names is written by the alias (kovarex, 2026-11-21, option A; `using DragBuild =
+NamedBool<class DragBuildTag>;` and `using EntityID = ID<EntityPrototype>;` give `DragBuild` and `EntityID`, not
+`NamedBool<DragBuildTag>` and `ID<EntityPrototype>`), inside other types too (`std::Vector<EntityID>`, `const EntityID*`),
+with the alias's namespaces and classes (`Game::ItemID`, `Surface::Index`). Of several aliases the one closest to the
+global scope is the name (kovarex: "When there is a global one that one is used, even when there is some specific one in a
+class or a namespace ... if 2 use it, and one is closer to global scope, use the one that is closer"): a top-level alias
+before one in a namespace or a class, one namespace or class deep before two. Two names at that closest depth (an alias of
+the alias beside it is one more) decide nothing, and the template and its arguments stay, as they do with no alias. An
+alias counts when it is a `using X = ...;` at namespace or class scope that code outside may name: not an alias template,
+not one in a function or in a class template, not private or protected, not private to its file. An alias of a type that
+is no template's instance changes nothing (`using Number = i32;` leaves `i32`). An alias declared again under the same name
+is one. The table (GlobalScope::aliasNameOf) is made at the first qualifiednameof codegen writes, from the scopes as
+indexed, and again after the index changed: a program that uses no qualifiednameof pays nothing.
+Specs kpp/qualifiednameof_alias, server_alias_edited_read_by_qualifiednameof.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```

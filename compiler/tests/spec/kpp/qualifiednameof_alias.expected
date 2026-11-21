@@ -1,0 +1,7 @@
+DragBuild::True DragBuild::False NamedBool<OtherTag>::True
+EntityID EntityID EntityID
+std::Vector<EntityID> const EntityID* std::Vector<EntityID>
+Game::ItemID Surface::Index ID<Secret>
+ID<Fluid> ID<Tile> OreID ID<Water>
+Plain i32
+ID<Wrapped> ID<Local>

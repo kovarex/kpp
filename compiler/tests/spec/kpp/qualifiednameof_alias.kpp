@@ -1,0 +1,74 @@
+// spec: qualifiednameof names a template's instance by its alias, the way code writes it (`DragBuild`, `EntityID`, `std::Vector<EntityID>`): of the `using X = Instance;` at namespace or class scope that name it, the one closest to the global scope (a top-level one before one in a namespace or a class, kovarex: "if 2 use it, and one is closer to global scope, use the one that is closer"); two names at that closest depth, or none, leave the template and its arguments. An alias template, a private one, one in a function or in a class template does not count, nor an alias of a type that is no template's instance (kovarex, 2026-11-21, option A, for InputActionTestMaker's VariableToCode writing `EntityID("tree")`)
+// design.md 8.3
+template<class Tag>
+enum class NamedBool : u8
+{
+  {False, True};
+};
+using DragBuild = NamedBool<class DragBuildTag>;
+struct OtherTag {};
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+using EntityID = ID<EntityPrototype>;
+struct Entity
+{
+  using PrototypeID = ::ID<EntityPrototype>;
+};
+namespace Game
+{
+  struct ItemPrototype {};
+  using ItemID = ID<ItemPrototype>;
+  struct Inventory
+  {
+    using Item = ID<ItemPrototype>;
+  };
+}
+struct Surface
+{
+  using Index = ID<Surface>;
+};
+class Secret
+{
+  using Hidden = ID<Secret>;
+public:
+  i32 x = 0;
+};
+struct Fluid {};
+using FluidID = ID<Fluid>;
+using FluidKey = ID<Fluid>;
+struct Tile {};
+using TileID = ID<Tile>;
+using TileKey = TileID;
+struct Ore {};
+namespace Mining { using OreID = ID<Ore>; }
+namespace Smelting { using Input = ID<Ore>; }
+using OreID = ID<Ore>;
+struct Water {};
+namespace Pumps { using WaterID = ID<Water>; }
+struct Boiler { using Input = ID<Water>; };
+struct Plain {};
+using PlainAlias = Plain;
+using Number = i32;
+template<typename T> using Ids = std::Vector<ID<T>>;
+struct Wrapped {};
+template<typename T> struct Wrapper { using Self = ID<T>; };
+struct Local {};
+template<typename T> std::String code(const T& value)
+{
+  if constexpr (std::isEnum<T>)
+    return std::toString(qualifiednameof(T), "::", value.str());
+  else
+    return std::String(qualifiednameof(T));
+}
+int main()
+{
+  using LocalID = ID<Local>;
+  std::println(code(DragBuild::True), " ", code(DragBuild::False), " ", code(NamedBool<OtherTag>::True));
+  std::println(qualifiednameof(EntityID), " ", qualifiednameof(Entity::PrototypeID), " ", code(EntityID()));
+  std::println(qualifiednameof(std::Vector<EntityID>), " ", qualifiednameof(const EntityID*), " ", qualifiednameof(Ids<EntityPrototype>));
+  std::println(qualifiednameof(Game::Inventory::Item), " ", qualifiednameof(Surface::Index), " ", qualifiednameof(ID<Secret>));
+  std::println(qualifiednameof(FluidID), " ", qualifiednameof(TileID), " ", qualifiednameof(Smelting::Input), " ", qualifiednameof(Boiler::Input));
+  std::println(qualifiednameof(PlainAlias), " ", qualifiednameof(Number));
+  std::println(qualifiednameof(Wrapper<Wrapped>::Self), " ", qualifiednameof(LocalID));
+  return 0;
+}

@@ -3166,6 +3166,85 @@ namespace
 
 uint64_t GlobalScope::indexVersion() const { return impl->indexVersion; }
 
+std::string GlobalScope::aliasNameOf(const Ty* t)
+{
+  if (!t)
+    return {};
+  t = impl->types.unqualified(t);
+  std::lock_guard lock(impl->aliasNamesMutex);
+  if (!impl->aliasNamesMade || impl->aliasNamesVersion != impl->indexVersion)
+  {
+    // Every namespace's and class's entries, from the global scope down (classes that are no template's), with each alias
+    // declaration once. Of an instance's aliases the one closest to the global scope is its name (kovarex, 2026-11-21: "if 2
+    // use it, and one is closer to global scope, use the one that is closer"): a top-level one before one in a namespace or
+    // a class, and so on; two names at that closest depth decide nothing, and the template's own spelling stays.
+    impl->aliasNames.clear();
+    std::unordered_set<Scope*> seen;
+    std::unordered_set<Decl*> aliases;
+    std::vector<Scope*> pending{&impl->root};
+    seen.insert(&impl->root);
+    while (!pending.empty())
+    {
+      Scope* s = pending.back();
+      pending.pop_back();
+      std::vector<Entry> entries;
+      for (uint32_t i = 0; i < s->shardCount; ++i)
+      {
+        std::lock_guard shardLock(s->shards[i].mutex);
+        for (const auto& [symbol, list] : s->shards[i].map)
+          entries.insert(entries.end(), list.begin(), list.end());
+      }
+      for (const Entry& e : entries)
+      {
+        Decl* d = e.decl;
+        if (!d)
+          continue;
+        if (e.scope && (e.scope->kind == ScopeKind::Namespace ||
+                        (e.scope->kind == ScopeKind::Class && d->kind == NodeKind::ClassDecl && d->templateParams.empty() && !d->isTemplate)))
+          if (seen.insert(e.scope).second)
+            pending.push_back(e.scope);
+        if (d->kind == NodeKind::UsingAliasDecl && d->templateParams.empty() && !d->isTemplate && !d->filePrivate && d->whenKnown != 0)
+          aliases.insert(d);
+      }
+    }
+    // By the instance: the depth of its closest aliases (the namespaces and classes around them) and their names (an alias
+    // declared again, in two files, is one name).
+    std::unordered_map<const Ty*, std::pair<size_t, std::set<std::string>>> found;
+    for (Decl* d : aliases)
+    {
+      if (d->access == Access::Private || d->access == Access::Protected)
+        continue; // (a name code outside the class cannot write)
+      if (d->parent && d->parent->kind == NodeKind::ClassDecl && d->access == Access::Default &&
+          static_cast<ClassDecl*>(d->parent)->keyword == Kw::class_)
+        continue;
+      std::string why;
+      std::string path = TypeTable::enclosingSourcePath(d, impl->symbols, why);
+      if (!why.empty())
+        continue;
+      const Ty* aliased = impl->declaredTypeOf(d, nullptr, 0);
+      if (!aliased || (aliased->kind != TyKind::Class && aliased->kind != TyKind::Enum) || aliased->args.empty() || aliased->isConst ||
+          aliased->isVolatile || !aliased->isKnown() || impl->types.isDependent(aliased))
+        continue;
+      size_t depth = 0;
+      for (const Decl* p = d->parent; p; p = p->parent)
+        if (p->kind != NodeKind::NamespaceDecl || static_cast<const NamespaceDecl*>(p)->name != UINT32_MAX)
+          ++depth; // (an anonymous namespace adds no name)
+      auto [it, made] = found.try_emplace(aliased, depth, std::set<std::string>());
+      if (!made && depth > it->second.first)
+        continue;
+      if (!made && depth < it->second.first)
+        it->second = {depth, {}};
+      it->second.second.insert(path + std::string(impl->symbols.name(static_cast<UsingAliasDecl*>(d)->name)));
+    }
+    for (auto& [aliased, closest] : found)
+      impl->aliasNames[aliased] = closest.second.size() == 1 ? *closest.second.begin() : std::string();
+    impl->aliasNamesMade = true;
+    impl->aliasNamesVersion = impl->indexVersion;
+  }
+  auto it = impl->aliasNames.find(t);
+  return it == impl->aliasNames.end() ? std::string() : it->second;
+}
+
 void GlobalScope::unindexFunction(FunctionDecl* f)
 {
   ++impl->indexVersion;

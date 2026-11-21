@@ -812,6 +812,12 @@
   std::atomic<size_t> instanceChecksStanding{0};
   // GlobalScope::indexVersion: one more for each edit's indexing or unindexing of declarations.
   uint64_t indexVersion = 0;
+  // GlobalScope::aliasNameOf: each template instance one alias names, by its type, with the alias as qualifiednameof writes
+  // it; an instance two or more name has an empty one. Made at the first ask, again after the index changed.
+  std::mutex aliasNamesMutex;
+  bool aliasNamesMade = false;
+  uint64_t aliasNamesVersion = 0;
+  std::unordered_map<const Ty*, std::string> aliasNames;
   // A declaration's declared type's: on the declaration, made once (asked for constantly).
   std::mutex typeDependenciesMutex;
   std::vector<std::unique_ptr<Dependencies>> typeDependencies;

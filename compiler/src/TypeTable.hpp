@@ -3,6 +3,7 @@
 // pointer equality, from any number of threads.
 #include "Ty.hpp"
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -140,7 +141,14 @@ public:
   // classes (`ActionData::BuildParameters`, `std::Vector<i32>`, `const RidingState::Direction*`). Empty, with why
   // set, for a type that has no such name (a class local to a function, a lambda's closure, an anonymous struct
   // alternative, a class nested in a class template, a function type).
-  std::string sourceName(const Ty* t, const SymbolTable& symbols, std::string& why) const;
+  // aliasOf: a template's instance's alias to write in place of the template and its arguments (`EntityID` for
+  // ID<EntityPrototype>), empty for none (GlobalScope::aliasNameOf).
+  std::string sourceName(const Ty* t, const SymbolTable& symbols, std::string& why,
+                         const std::function<std::string(const Ty*)>& aliasOf = {}) const;
+  // The namespaces and classes d is declared in as sourceName writes them, each followed by `::` (`RidingState::`), empty
+  // at the top level; empty with why set when d is declared where no name reaches it from outside (a function, a class
+  // template, an unnamed class).
+  static std::string enclosingSourcePath(const Decl* d, const SymbolTable& symbols, std::string& why);
   size_t size() const;
   // The types made that mention no unknown one: the report's count, the same at every thread count.
   // (A lookup another thread has not finished yet answers unknown for a moment, and a type made of

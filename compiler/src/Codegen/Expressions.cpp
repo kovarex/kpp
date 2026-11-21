@@ -784,7 +784,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         if (!named || !named->isKnown() || types.isDependent(named))
           unsupported(e, "qualifiednameof of an unknown type");
         std::string why;
-        std::string text = types.sourceName(named, symbols, why);
+        // A template's instance one alias names is written by it (`EntityID`, not `ID<EntityPrototype>`).
+        std::string text = types.sourceName(named, symbols, why, [&](const Ty* t) { return global.aliasNameOf(t); });
         if (!why.empty())
           fail(e, "qualifiednameof(" + types.toString(named, &symbols) + "): " + why + " has no name to write outside where it is declared");
         return {cStringConstant(text), e->ty};

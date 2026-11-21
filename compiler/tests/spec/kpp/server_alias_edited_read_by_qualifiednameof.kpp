@@ -1,0 +1,76 @@
+// spec: a compile server follows the aliases qualifiednameof names an instance by: a second alias added in another file makes it write the template and its arguments, the alias renamed or taken out again its new name or the template's, as a build from scratch writes (kovarex, 2026-11-21, option A: an instance named by exactly one alias is written by it)
+//--- step: one alias
+int main()
+{
+  std::println(entityName());
+  return 0;
+}
+// expect: EntityID
+//--- file: id.kpp
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+using EntityID = ID<EntityPrototype>;
+//--- file: name.kpp
+const char* entityName() { return qualifiednameof(ID<EntityPrototype>); }
+//--- file: other.kpp
+int other() { return 1; }
+//--- step: a second alias in another file
+int main()
+{
+  std::println(entityName());
+  return 0;
+}
+// expect: ID<EntityPrototype>
+//--- file: id.kpp
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+using EntityID = ID<EntityPrototype>;
+//--- file: name.kpp
+const char* entityName() { return qualifiednameof(ID<EntityPrototype>); }
+//--- file: other.kpp
+using EntityKey = ID<EntityPrototype>;
+int other() { return 1; }
+//--- step: the first one taken out
+int main()
+{
+  std::println(entityName());
+  return 0;
+}
+// expect: EntityKey
+//--- file: id.kpp
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+//--- file: name.kpp
+const char* entityName() { return qualifiednameof(ID<EntityPrototype>); }
+//--- file: other.kpp
+using EntityKey = ID<EntityPrototype>;
+int other() { return 1; }
+//--- step: renamed
+int main()
+{
+  std::println(entityName());
+  return 0;
+}
+// expect: EntityRef
+//--- file: id.kpp
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+//--- file: name.kpp
+const char* entityName() { return qualifiednameof(ID<EntityPrototype>); }
+//--- file: other.kpp
+using EntityRef = ID<EntityPrototype>;
+int other() { return 1; }
+//--- step: none
+int main()
+{
+  std::println(entityName());
+  return 0;
+}
+// expect: ID<EntityPrototype>
+//--- file: id.kpp
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+//--- file: name.kpp
+const char* entityName() { return qualifiednameof(ID<EntityPrototype>); }
+//--- file: other.kpp
+int other() { return 1; }
