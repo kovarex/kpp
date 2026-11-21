@@ -1406,6 +1406,9 @@ namespace
     {
       const std::vector<Token>& tokens = *f.tokens;
       uint32_t n = uint32_t(tokens.size());
+      // An implicit else: the statements after the if, to the block's `}` or the next case label.
+      if (s->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(s)->implicitElse)
+        return std::min(static_cast<BlockStmt*>(s)->endToken, n);
       if (s->token < n && tokens[s->token].is(P::LBrace))
       {
         int depth = 0;

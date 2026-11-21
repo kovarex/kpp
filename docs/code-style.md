@@ -76,8 +76,9 @@ way.
 ## Control flow
 
 - Return early when a condition for going on is not met, rather than nesting the rest deeper.
-- No `else` after a `return` (except in an `if constexpr`, or an `if ... else if` chain where a
-  branch before does not return).
+- No `else` after a `return` (except in an `if ... else if` chain where a branch before does not
+  return). In an `if constexpr` too: the statements after a branch that leaves are its implicit
+  else (design.md 7.4).
 - A pointer is tested as itself: `if (pointer)`, not `if (pointer != nullptr)`. An Optional or a
   smart pointer likewise: `if (value)`.
 - A container is tested with `empty()`, not `size() == 0`.

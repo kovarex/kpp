@@ -1,0 +1,15 @@
+Point(x=1,y=2)
+false
+throwing for a struct
+caught 7
+3
+1 2
+-1 2
+7
+1
+10 20 4
+destroy before
+rest runs
+destroy after
+destroy before
+3

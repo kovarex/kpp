@@ -5941,6 +5941,103 @@ namespace
       return block;
     }
 
+    // Whether a statement always leaves, by the statements alone (as Walker::checkCaseEnds judges a case's end).
+    static bool alwaysLeaves(const Stmt* s)
+    {
+      if (!s)
+        return false;
+      switch (s->kind)
+      {
+        case NodeKind::ReturnStmt: case NodeKind::BreakStmt: case NodeKind::ContinueStmt: case NodeKind::GotoStmt:
+          return true;
+        case NodeKind::ExprStmt:
+          return static_cast<const ExprStmt*>(s)->expr && static_cast<const ExprStmt*>(s)->expr->kind == NodeKind::ThrowExpr;
+        case NodeKind::BlockStmt:
+        {
+          auto* b = static_cast<const BlockStmt*>(s);
+          return !b->stmts.empty() && alwaysLeaves(b->stmts[b->stmts.size() - 1]);
+        }
+        case NodeKind::IfStmt:
+        {
+          auto* i = static_cast<const IfStmt*>(s);
+          return i->else_ && alwaysLeaves(i->then) && alwaysLeaves(i->else_);
+        }
+        default:
+          return false;
+      }
+    }
+
+    // An `if constexpr` (an `else if constexpr` chain) of which every branch but one always leaves makes the
+    // statements after it in its block, up to a case label, that branch's continuation: its implicit else (kovarex,
+    // 2026-11-21, design.md 7.4). The instances that take a leaving branch discard them, so neither check nor
+    // instantiate them; the others run them as before. The statements of scratch from mark, end the block's `}`.
+    void implicitElses(size_t mark, uint32_t end)
+    {
+      std::vector<Stmt*> stmts;
+      for (size_t i = mark; i < scratch.size(); ++i)
+        stmts.push_back(static_cast<Stmt*>(scratch[i]));
+      bool changed = false;
+      uint32_t segmentEnd = end;    // the token the statements after an if end before
+      size_t segmentLast = stmts.size(); // their index's end
+      for (size_t i = stmts.size(); i-- > 0;)
+      {
+        Stmt* s = stmts[i];
+        if (s->kind == NodeKind::CaseStmt || s->kind == NodeKind::DefaultStmt)
+        {
+          segmentEnd = s->token;
+          segmentLast = i;
+          continue;
+        }
+        if (s->kind != NodeKind::IfStmt || !static_cast<IfStmt*>(s)->isConstexpr || i + 1 >= segmentLast)
+          continue;
+        // The chain's branches; the missing final else is a branch that does not leave.
+        Stmt** open = nullptr; // where the one branch that does not leave is
+        int notLeaving = 0;
+        bool allConstexpr = true;
+        IfStmt* link = static_cast<IfStmt*>(s);
+        for (;;)
+        {
+          allConstexpr &= link->isConstexpr && !link->ifConsteval;
+          if (!alwaysLeaves(link->then))
+            ++notLeaving, open = &link->then;
+          if (link->else_ && link->else_->kind == NodeKind::IfStmt)
+          {
+            link = static_cast<IfStmt*>(link->else_);
+            continue;
+          }
+          if (!alwaysLeaves(link->else_))
+            ++notLeaving, open = &link->else_;
+          break;
+        }
+        if (!allConstexpr || notLeaving != 1)
+          continue;
+        BlockStmt* rest = node<BlockStmt>(*open ? (*open)->token : stmts[i + 1]->token);
+        rest->implicitElse = true;
+        rest->endToken = segmentEnd;
+        std::vector<Stmt*> body;
+        if (*open)
+          body.push_back(*open);
+        body.insert(body.end(), stmts.begin() + i + 1, stmts.begin() + segmentLast);
+        for (size_t k = i + 1; k < segmentLast; ++k)
+          forEachNode(stmts[k], [&](Node* n)
+          {
+            if (n->kind == NodeKind::LabelStmt)
+              errorAt(n->token, "a label after an `if constexpr` whose branch always leaves: the statements after it are its "
+                                "implicit else (design.md 7.4), which a goto from before it may not enter; write the else");
+          });
+        rest->stmts = makeSpanOf(body);
+        *open = rest;
+        stmts.erase(stmts.begin() + i + 1, stmts.begin() + segmentLast);
+        segmentLast = i + 1;
+        changed = true;
+      }
+      if (!changed)
+        return;
+      scratch.resize(mark);
+      for (Stmt* s : stmts)
+        scratch.push_back(s);
+    }
+
     Stmt* parseBlockAfter(BlockStmt* b)
     {
       if (!expect(P::LBrace, "expected '{'"))
@@ -5952,6 +6049,8 @@ namespace
         if (s)
           scratch.push_back(s);
       }
+      if (isKpp())
+        implicitElses(mark, pos);
       b->stmts = makeSpan<Stmt*>(mark);
       b->endToken = pos;
       expect(P::RBrace, "expected '}'");

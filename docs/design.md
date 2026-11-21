@@ -450,6 +450,21 @@ replacements, in the order of how much code they remove:
    statement outside templates; kpp does not, so that one source holds both configurations.) A
    conversion's resolve of the C++ walks both branches, as C++ does (the converter rewrites
    both). Spec language/discarded_branch_in_plain_function.
+   **Implicit else after a leaving branch (kovarex, 2026-11-21, option A of three).** When every
+   branch of an `if constexpr` (or of an `else if constexpr` chain, every link constexpr) but one
+   always leaves, the statements after it in its block, up to the next case label, are the
+   continuation of the one that does not: its implicit else. "Always leaves" is judged by the
+   statements alone, as a switch case's end is: `return`, `throw`, `break`, `continue`, `goto`, a
+   block whose last statement leaves, an if/else whose both branches leave. So
+   `if constexpr (!std::isStruct<T>) return {};` discards the rest of the function for the
+   instances that are no struct, and `if constexpr (!cond) continue;` the rest of a `for
+   constexpr` element. The parser writes the rest as that branch (BlockStmt::implicitElse, kpp text
+   only, not a conversion's C++), so the checker, codegen, the evaluator and the language server's
+   inactive code treat it as any discarded branch. Its objects are destroyed at the block's end,
+   as before. A label among those statements is an error (a goto from before the if could not
+   enter them): write the else. C++ instantiates the rest; code that compiles as C++ means the
+   same in kpp, which only accepts more. Specs kpp/if_constexpr_early_exit_discards_the_rest,
+   if_constexpr_early_exit_label_in_the_rest_is_error.
 5. Typed unions (`union enum`, section 6).
 6. Real enums with `str()`, `fromStr()`, `count` and iteration (section 6). Done 2026-10-24
    except `fromStr()`, see 8.4.

@@ -9,6 +9,9 @@ struct BlockStmt : Stmt
 {
   Span<Stmt*> stmts;
   uint32_t endToken = 0; // Its closing brace, where its objects are destroyed; 0 in a block the parser made up.
+  // An implicit else (design.md 7.4): the statements after an `if constexpr` whose branch always leaves, which the
+  // parser made into the branch that does not; endToken is then the enclosing block's `}` or the next case label.
+  bool implicitElse = false;
 };
 struct ExprStmt : Stmt { Expr* expr; };
 struct DeclStmt : Stmt { Span<Decl*> decls; };

@@ -1,0 +1,20 @@
+// spec: the statements after an `if constexpr` whose branch always leaves are its implicit else (design.md 7.4), which a goto from before the if may not enter: a label among them is an error naming the fix, written as the else
+// error: if_constexpr_early_exit_label_in_the_rest_is_error.kpp:13: error: a label after an `if constexpr` whose branch always leaves: the statements after it are its implicit else (design.md 7.4), which a goto from before it may not enter; write the else
+template<typename T> i32 retry(const T& value)
+{
+  i32 tries = 0;
+  if (value > 0)
+    goto again;
+  ++tries;
+  if constexpr (std::isSame<T, f64>)
+    return -1;
+  ++tries;
+  if (tries > 3)
+  again:
+    return tries;
+  return tries + 1;
+}
+int main()
+{
+  return retry(1);
+}

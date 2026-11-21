@@ -1,0 +1,131 @@
+// spec: when the branch an `if constexpr` takes always leaves (`return`, `throw`, `break`, `continue`, `goto`, a block or an if/else that always does), the statements after it in its block are its implicit else: discarded, so neither checked nor instantiated, for the instances that leave (kovarex, 2026-11-21, option A). Both ways round (`else return;` discards the rest when the condition is false), in an all-constexpr `else if` chain, in a `for constexpr` element (`continue`), in a loop (`break`), in a switch group (up to the next label), outside a template with a config condition; an object declared in the rest is destroyed at the block's end, after one declared before the if
+// design.md 7.4 (discarded branches); differences-from-cpp.md: C++ instantiates the rest after an `if constexpr` that returns
+// kpp: --release
+struct Point
+{
+  i32 x = 0;
+  i32 y = 0;
+};
+template<typename T> std::Optional<std::String> structToCode(const T& value)
+{
+  if constexpr (!std::isStruct<T>)
+    return std::Optional<std::String>();
+  std::Vector<std::String> parameters;
+  for constexpr (auto m : members(T))
+    parameters.emplace_back(m.name + "=" + std::toString(value.[m]));
+  return qualifiednameof(T) + "(" + parameters[0] + "," + parameters[1] + ")";
+}
+template<typename T> i32 sizeOrThrow(const T& value)
+{
+  if constexpr (std::isStruct<T>)
+  {
+    // a block that ends in a throw leaves too
+    std::println("throwing for a struct");
+    throw 7;
+  }
+  return value.size();
+}
+template<typename T> i32 kind(const T& value)
+{
+  if constexpr (std::isSame<T, i32>)
+    return 1;
+  else if constexpr (std::isSame<T, f64>)
+    return 2;
+  return value.kind();
+}
+template<typename T> i32 sizeUnlessNumber(const T& value)
+{
+  if constexpr (!std::isSame<T, i32>)
+    (void)value;
+  else
+    return -1;
+  return value.size();
+}
+template<typename T> i32 sumNumbers(const T& value)
+{
+  i32 sum = 0;
+  for constexpr (auto m : members(T))
+  {
+    if constexpr (!std::isSame<m.type, i32>)
+      continue;
+    sum += value.[m];
+  }
+  return sum;
+}
+struct Mixed
+{
+  i32 a = 2;
+  std::String text = "x";
+  i32 b = 5;
+};
+template<typename T> i32 firstLoop(const T& value)
+{
+  i32 rounds = 0;
+  while (true)
+  {
+    ++rounds;
+    if constexpr (std::isSame<T, i32>)
+      break;
+    if (value.done())
+      break;
+  }
+  return rounds;
+}
+template<typename T> i32 inSwitch(const T& value, i32 which)
+{
+  switch (which)
+  {
+    case 1:
+      if constexpr (std::isSame<T, i32>)
+        return 10;
+      return value.size();
+    case 2:
+      return 20;
+    default:
+      return 30;
+  }
+}
+class Noisy
+{
+public:
+  const char* name;
+  Noisy(const char* name) : name(name) {}
+  ~Noisy() { std::println("destroy ", this.name); }
+};
+template<typename T> void order()
+{
+  Noisy before("before");
+  if constexpr (std::isSame<T, i32>)
+    return;
+  Noisy after("after");
+  std::println("rest runs");
+}
+i32 configExit()
+{
+  if constexpr (!config::debug)
+    return 3;
+  return debugOnlyFunction();
+}
+int main()
+{
+  std::println(structToCode(Point{1, 2}).value());
+  std::println(structToCode(5).hasValue());
+  try
+  {
+    sizeOrThrow(Point{});
+  }
+  catch (i32 e)
+  {
+    std::println("caught ", e);
+  }
+  std::println(sizeOrThrow(std::String("abc")));
+  std::println(kind(1), " ", kind(2.0));
+  std::println(sizeUnlessNumber(4), " ", sizeUnlessNumber(std::String("ab")));
+  std::println(sumNumbers(Mixed{}));
+  std::println(firstLoop(1));
+  std::println(inSwitch(1, 1), " ", inSwitch(1, 2), " ", inSwitch(std::String("abcd"), 1));
+  order<i32>();
+  order<f64>();
+  std::println(configExit());
+  return 0;
+}

@@ -171,6 +171,29 @@ struct Line
 };
 ```
 
+### The rest after an `if constexpr` that leaves is its implicit else (built)
+
+- **C++:** only the `else` of an `if constexpr` is discarded; the statements after
+  `if constexpr (c) return x;` are instantiated for every instance, so they must compile for the
+  types that return early too, or be written inside an `else`.
+- **kpp:** when every branch but one always leaves (`return`, `throw`, `break`, `continue`, `goto`),
+  the statements after the if in its block, up to the next case label, belong to the one that does
+  not, and are discarded with it. A label among them is an error.
+- **Why:** an early return for the types a template does not handle, without nesting the rest in an
+  `else` (kovarex, 2026-11-21). C++ code means the same; kpp only accepts more.
+- **See:** [design 7][d7]; specs `kpp/if_constexpr_early_exit_discards_the_rest`,
+  `kpp/if_constexpr_early_exit_label_in_the_rest_is_error`.
+
+```cpp
+template<class T> std::Optional<std::String> structToCode(const T& value)
+{
+  if constexpr (!std::isStruct<T>)
+    return {};
+  // not instantiated for an i32
+  for constexpr (auto m : members(T)) ...
+}
+```
+
 ### `when`: a declaration that exists under a condition (built)
 
 - **C++:** `#ifdef` around a declaration; `if constexpr` opens a scope of its own.

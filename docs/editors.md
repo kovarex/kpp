@@ -109,7 +109,8 @@ Status (2026-11-03):
   `textDocument.inactiveRegionsCapabilities.inactiveRegions` or passes `inactiveRegions: true` in
   initializationOptions. The regions are:
   - an `if constexpr` branch the walk discarded in a function body, the braces included, from its
-    first token to its `}` or `;` (the `if constexpr (...)` and `else` stay);
+    first token to its `}` or `;` (the `if constexpr (...)` and `else` stay); an implicit else (design.md 7.4)
+    from the first statement after the if to the block's `}` or the next case label;
   - a declaration-scope `if constexpr` branch the parser skipped and a false `when` at namespace or
     class scope, the `when (...)` included: the parser keeps their tokens (ParsedFile::droppedTokens);
   - a local's false `when`.
