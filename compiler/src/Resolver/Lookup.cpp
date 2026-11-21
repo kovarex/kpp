@@ -1545,6 +1545,21 @@ auto GlobalScope::Impl::matchSpecialization(const Lookup& l, const std::vector<c
   for (const Ty* a : args)
     if (!a || !a->isKnown() || types.isDependent(a))
       return nullptr;
+  // A specialisation whose pattern names the class being matched (Unreal Engine's IsUECoreType.h:
+  // `TIsUECoreVariant<T, TC, enable_if<TIsUECoreVariant<T>::Value && ...>::type>`): that class is incomplete
+  // while it is matched, which C++ takes as a substitution failure. Matched again within, it recursed to
+  // the nesting limit each time: 28 million matches in 4 minutes of checking the converted Core, which
+  // now takes 5 s. Asked again for while it is matched, the arguments pick the primary template.
+  static thread_local std::vector<std::vector<const void*>> beingMatched;
+  std::vector<const void*> matchKey{primary};
+  matchKey.insert(matchKey.end(), args.begin(), args.end());
+  if (std::find(beingMatched.begin(), beingMatched.end(), matchKey) != beingMatched.end())
+    return nullptr;
+  beingMatched.push_back(std::move(matchKey));
+  struct Done
+  {
+    ~Done() { beingMatched.pop_back(); }
+  } done;
   struct Candidate
   {
     ClassDecl* decl;
