@@ -688,8 +688,11 @@ a template parameter, bound) or an expression, not evaluated, whose type without
 names. `nameof(T)` stays the last name as written (`"T"` in a template); `typeid(T).name()` stays the short name. A
 type with no such name is an error: one local to a function, a lambda's closure, an anonymous struct alternative, one
 declared in a class template, a function type ("qualifiednameof(Local): a type local to a function has no name to write
-outside where it is declared"). Specs kpp/qualifiednameof, qualifiednameof_local_class_is_error,
-qualifiednameof_anonymous_alternative_is_error.
+outside where it is declared"). A requirement asks it (kovarex, 2026-11-21, option A): `requires { qualifiednameof(T); }` is
+false for such a type, true for one it names, so `if constexpr (requires { qualifiednameof(T); })` guards a generic
+VariableToCode against InputAction::AdjustBlueprintSnapping's anonymous struct. Specs kpp/qualifiednameof,
+qualifiednameof_local_class_is_error, qualifiednameof_anonymous_alternative_is_error,
+qualifiednameof_requires_false_without_name.
 A template's instance an alias names is written by the alias (kovarex, 2026-11-21, option A; `using DragBuild =
 NamedBool<class DragBuildTag>;` and `using EntityID = ID<EntityPrototype>;` give `DragBuild` and `EntityID`, not
 `NamedBool<DragBuildTag>` and `ID<EntityPrototype>`), inside other types too (`std::Vector<EntityID>`, `const EntityID*`),

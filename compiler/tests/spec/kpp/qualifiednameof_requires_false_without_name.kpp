@@ -1,0 +1,47 @@
+// spec: `requires { qualifiednameof(T); }` is false for a type qualifiednameof has no name for (an anonymous struct alternative, a
+// class local to a function, a lambda's closure) and true for one it names, so `if constexpr` guards qualifiednameof (kovarex,
+// 2026-11-21: InputActionTestMaker's VariableToCode met InputAction::AdjustBlueprintSnapping); design.md 8.3
+union enum class Act : u8
+{
+  {
+    {Nothing, void},
+    {Open, i32},
+    {Close, struct { i32 sound = 3; }}
+  }
+};
+namespace Ns
+{
+  struct Named { i32 x = 0; };
+}
+template<class T> constexpr bool hasQualifiedName = requires { qualifiednameof(T); };
+template<class T>
+void writeType()
+{
+  if constexpr (requires { qualifiednameof(T); })
+    std::println(qualifiednameof(T));
+  else
+    std::println("(no name)");
+}
+template<class T>
+void write(const T&) { writeType<T>(); }
+int main()
+{
+  struct Local { i32 y = 0; };
+  auto lambda = [] { return 1; };
+  std::println(hasQualifiedName<Ns::Named>, " ", hasQualifiedName<Local>, " ", hasQualifiedName<decltype(lambda)>, " ", hasQualifiedName<i32>);
+  for constexpr (auto a : alternatives(Act))
+    if constexpr (!std::isSame<a.type, void>)
+    {
+      std::println(a.name, " ", hasQualifiedName<a.type>);
+      writeType<a.type>();
+      if constexpr (requires { qualifiednameof(a.type); })
+        std::println(qualifiednameof(a.type));
+      else
+        std::println("(no name)");
+    }
+  write(Ns::Named());
+  write(Local());
+  write(lambda);
+  write(Act::Close());
+  return 0;
+}

@@ -13456,7 +13456,20 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           t->operandType = typeOf(static_cast<Type*>(t->operand));
       }
       if (t->qualifiedName)
-        return record(e, types.pointer(types.qualified(types.charType(), true, false))); // `qualifiednameof(x)`: a string literal (design.md 8.3)
+      {
+        // `qualifiednameof(x)`: a string literal (design.md 8.3). Probed by a requirement, a type with no name to write makes
+        // it not met (`if constexpr (requires { qualifiednameof(T); })`); built, the code generator reports it.
+        if (probing)
+        {
+          const Ty* named = t->operandDecl || (t->operand && uint8_t(t->operand->kind) <= uint8_t(NodeKind::PackType)) ? t->operandType
+                          : t->operand ? static_cast<Expr*>(t->operand)->ty : nullptr;
+          named = named ? types.unqualified(types.stripRef(named)) : nullptr;
+          std::string why;
+          if (named && named->isKnown() && !types.isDependent(named) && (types.sourceName(named, impl.symbols, why), !why.empty()))
+            return record(e, unknown(Why::Unsupported));
+        }
+        return record(e, types.pointer(types.qualified(types.charType(), true, false)));
+      }
       if (Decl* info = impl.typeInfoDecl())
         return record(e, types.classType(info, {})); // the library's TypeInfo; the code generator fills in the name
       return record(e, unknown(Why::Unsupported));
