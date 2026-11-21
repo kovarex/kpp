@@ -254,6 +254,19 @@ $ErrorActionPreference = 'Continue'
 & $copy --stop-all-servers 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
 
+# 6. A client never reaches a server of another kpp, whatever the two files' stamps are (kovarex, 2026-11-21: Visual Studio's
+# builds of a newly installed kpp kept reaching the old one's server until he ended it by hand): kpp's version and commit are
+# in the key. KPP_SERVER_VERSION_TEST stands in for another version of the same file: a server of its own, two running.
+Build 'one'
+$env:KPP_SERVER_VERSION_TEST = '0.0.0-another'
+Build 'one'
+Remove-Item env:KPP_SERVER_VERSION_TEST
+$running = @(RunningServers 2 | ForEach-Object { $_.Value } | Sort-Object -Unique)
+if ($running.Count -ne 2) { Fail "$($running.Count) servers running after the same build by two versions of kpp, 2 expected (one served both): $script:lastReport$(ServerState)" }
+$ErrorActionPreference = 'Continue'
+& $copy --stop-all-servers 2>&1 | Out-Null
+$ErrorActionPreference = 'Stop'
+
 # A client that reaches no server builds in its own process and says why (kovarex's obyvak, 2026-11-10: the
 # message alone said nothing of the reason). A TEMP that cannot be written; a KEY.exe that is no program; a
 # pipe of the key that this client may not open (a server run elevated).
@@ -285,7 +298,22 @@ else
   & $copy --stop-all-servers 2>&1 | Out-Null
   $image = "$work\tmp\kpp-server\kpp-server-$key.exe"
   for ($try = 0; $try -lt 100 -and (Test-Path $image); $try++) { try { Remove-Item -Force $image } catch { Start-Sleep -Milliseconds 100 } }
-  Set-Content -Encoding ascii $image 'no program'
+  # 7. A copy of another kpp left under the key (its size and time not this kpp's) is never run: the client deletes it, copies
+  # itself and reaches the server it starts.
+  Set-Content -Encoding ascii $image 'another kpp'
+  $ErrorActionPreference = 'Continue'
+  $output = (& $copy --server --quiet --std $std --exe "$unreachable\one.exe" "$work\one.kpp" 2>&1 | ForEach-Object { "$_" }) -join "`n"
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = 'Stop'
+  if ($code -ne 0 -or $output -match 'no compile server could be reached') { Fail "a copy of another kpp under the key: the client ran it, no server reached (exit $code): $output" }
+  elseif (-not (Select-String -Path "$work\tmp\kpp-server\$key.log" -SimpleMatch "was another kpp's, deleted" -Quiet)) { Fail "a copy of another kpp under the key: the server's log does not say it was deleted: $(Get-Content "$work\tmp\kpp-server\$key.log" -Tail 6)" }
+  $ErrorActionPreference = 'Continue'
+  & $copy --stop-all-servers 2>&1 | Out-Null
+  $ErrorActionPreference = 'Stop'
+  for ($try = 0; $try -lt 100 -and (Test-Path $image); $try++) { try { Remove-Item -Force $image } catch { Start-Sleep -Milliseconds 100 } }
+  # A server image that is no program, of kpp's size and time (so taken for its copy).
+  [IO.File]::WriteAllBytes($image, (New-Object byte[] (Get-Item $copy).Length))
+  (Get-Item $image).LastWriteTimeUtc = (Get-Item $copy).LastWriteTimeUtc
   Unreachable 'a server image that is no program' 'could not be started'
   Remove-Item -Force $image
   $security = New-Object IO.Pipes.PipeSecurity
@@ -300,5 +328,5 @@ else
 }
 
 StopLeftovers
-if ($failed -eq 0) { "ok   servers: one exits when its kpp changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form, Visual Studio's own variables leave a replay a replay, a client waits for a server that starts slowly" }
+if ($failed -eq 0) { "ok   servers: one exits when its kpp changes, --stop-all-servers stops them all, stale server files go, one server writes each client's diagnostic form, Visual Studio's own variables leave a replay a replay, a client waits for a server that starts slowly, no client reaches another kpp's server or runs another kpp's copy" }
 exit $failed

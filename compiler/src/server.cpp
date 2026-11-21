@@ -428,9 +428,20 @@ namespace
 #endif
   }
 
+  // What kpp a client is, beside its file's stamp: its version and commit (docs/build.md, "Versions"). In the key, so
+  // that a client never reaches a server of another kpp whatever the two files' stamps are: an install that keeps a
+  // file's time, a copy of the same size (kovarex, 2026-11-21: Visual Studio's builds of a newly installed kpp kept
+  // reaching the old one's server, which did not know qualifiednameof, until he ended it by hand).
+  // KPP_SERVER_VERSION_TEST (servers.ps1) stands in for the version: another kpp of the same file.
+  std::string kppIdentity()
+  {
+    const char* version = getenv("KPP_SERVER_VERSION_TEST");
+    return std::string(version && *version ? version : kppVersion()) + " " + kppCommit();
+  }
+
   std::string serverKey(const std::string& exe, const std::string& cwd, const std::vector<std::string>& args)
   {
-    std::string text = "kpp server 1\n" + exe + "\n" + stampOf(exe) + "\n";
+    std::string text = "kpp server 2\n" + kppIdentity() + "\n" + exe + "\n" + stampOf(exe) + "\n";
     for (char c : cwd) // (Windows' file names ignore case; POSIX's do not: two directories there)
       text += host::pathsIgnoreCase ? char(tolower(static_cast<unsigned char>(c))) : c;
     for (const std::string& arg : args)
@@ -585,6 +596,21 @@ namespace
     // client's pruneServerDirectory cannot delete it in between.
     auto hold = [&] { return CreateFileA(copy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr); };
     HANDLE held = hold();
+    // A copy already there is this kpp's (CopyFile keeps the file's size and time: the stamps are alike), else it goes:
+    // never a server of another kpp from a copy an earlier one left under the key.
+    if (held != INVALID_HANDLE_VALUE && stampOf(copy) != stampOf(exe))
+    {
+      CloseHandle(held);
+      held = INVALID_HANDLE_VALUE;
+      if (DeleteFileA(copy.c_str()))
+        startSteps.push_back("copy: " + copy + " was another kpp's, deleted");
+      else
+      {
+        why = copy + " is another kpp's and cannot be deleted (" + errorText(GetLastError()) + ")";
+        startSteps.push_back("copy: " + why);
+        return false;
+      }
+    }
     if (held != INVALID_HANDLE_VALUE)
       startSteps.push_back("copy: " + copy + " is already there");
     else

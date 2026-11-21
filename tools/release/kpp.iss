@@ -240,9 +240,11 @@ end;
 
 // The language servers an editor started from this folder's kpp.exe (`kpp --lsp`) are stopped before the files are
 // replaced (kovarex, 2026-11-17: Visual Studio kept showing the old kpp's errors after an upgrade). The editors start
-// the new one: VS Code's client by itself, Visual Studio's extension when its server stops (KppLanguageClient). A
-// build running from this folder is left alone; the compile servers (copies in %TEMP%\kpp-server) stop by
-// themselves once their kpp changes.
+// the new one: VS Code's client by itself, Visual Studio's extension when its server stops (KppLanguageClient). So are
+// the compile servers this kpp.exe started, every user's (copies of it in %TEMP%\kpp-server, `kpp-server-KEY.exe
+// --serve KEY "<this kpp.exe>" STAMP`; kovarex, 2026-11-21: Visual Studio's builds of a newly installed kpp kept
+// reaching the old one's server until he ended it by hand): a server also exits by itself once its kpp changes, but
+// only between builds. A build running from this folder is left alone.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Exe, Command: string;
@@ -252,11 +254,12 @@ begin
   Exe := AddBackslash(ExpandConstant('{app}')) + 'kpp.exe';
   if not FileExists(Exe) then
     exit;
-  Command := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter ''Name=''''kpp.exe'''''' | ' +
-    'Where-Object { $_.ExecutablePath -eq ''' + Exe + ''' -and $_.CommandLine -match ''--lsp'' } | ' +
+  Command := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and (' +
+    '($_.ExecutablePath -eq ''' + Exe + ''' -and $_.CommandLine -match ''--lsp'') -or ' +
+    '($_.CommandLine.IndexOf('' --serve '') -ge 0 -and $_.CommandLine.IndexOf([char]34 + ''' + Exe + ''' + [char]34, [StringComparison]::OrdinalIgnoreCase) -ge 0)) } | ' +
     'ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"';
   if not Exec('powershell.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
-    Log('Could not stop the language servers of ' + Exe + ' (exit ' + IntToStr(Code) + ')');
+    Log('Could not stop the language and compile servers of ' + Exe + ' (exit ' + IntToStr(Code) + ')');
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

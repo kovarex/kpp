@@ -80,10 +80,10 @@ clang-cl's default put them in until 2026-11-04. tests\lto.ps1 builds a program 
 and windows-gnu; tests\project.ps1 builds a configuration with `--lto full` and C flags of its own.
 
 **The compile server.** `--server` anywhere on the line makes kpp a client. The server is keyed by
-kpp's path, the working directory and the argument list, so every distinct argument list has its
-own server. A server keeps the last build's program in memory, rebuilds only what an edit touched,
+kpp's version, commit and path, the working directory and the argument list, so every distinct argument list has its
+own server, and no kpp reaches another kpp's server. A server keeps the last build's program in memory, rebuilds only what an edit touched,
 and ends after an hour idle, or as soon as the kpp it was started from changes (a rebuild, an
-install). `--stop-server` with the same arguments stops it; `--stop-all-servers` alone (kpp's or
+install; the installer also stops the compile servers its kpp.exe started before it replaces the files). `--stop-server` with the same arguments stops it; `--stop-all-servers` alone (kpp's or
 kpp's) stops every compile server of this user. `--msvc-diagnostics` is left out of the key: it changes
 only the form a diagnostic's place is printed in, which the client gives it (the server marks each
 place), so a Visual Studio build and the command line's share one server and its kept build, each

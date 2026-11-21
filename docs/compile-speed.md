@@ -848,7 +848,7 @@ set (they are in its key, or hashed and checked per build).
   `kpp --stop-server ARGS` stops the server of ARGS; `kpp --stop-all-servers` (`kpp
   --stop-all-servers`, in a project's directory too) stops every server of this user, of any
   arguments and any kpp: each runs from its `%TEMP%\kpp-server\kpp-server-KEY.exe` (named so in a process list; KEY.exe before 2026-11-17), which it finds them by.
-- **Key:** FNV-1a of the kpp binary's path, size and write time, the working directory
+- **Key:** FNV-1a of kpp's version and commit (`kpp --version`'s), the kpp binary's path, size and write time, the working directory
   (lowercased) and the arguments, all but `--msvc-diagnostics` and `--verify-incremental`. The
   server writes each diagnostic's place marked (`\1path:line[\2column]\3`), and the client prints
   it as its own `--msvc-diagnostics` asks (renderDiagnostics, source.hpp): kept errors and a
@@ -857,9 +857,15 @@ set (they are in its key, or hashed and checked per build).
   `\\.\pipe\kpp-server-KEY` (one instance, local clients only). Another binary, directory or
   argument list is another server, so a server never serves a build it did not start for; the
   files' contents and the stdlib are read again on every build at step 1, and from step 3 on are
-  checked by hash on every build.
+  checked by hash on every build. The version and commit are there since 2026-11-21 (kovarex: Visual Studio's
+  builds of a newly installed kpp kept reaching the old kpp's server, which did not know qualifiednameof, until he
+  ended it by hand): no client reaches another kpp's server whatever the two files' stamps are, and the installer
+  stops every compile server and language server its kpp.exe started before it replaces the files
+  (tools/release/kpp.iss, PrepareToInstall). servers.ps1 checks both kinds of other kpp (KPP_SERVER_VERSION_TEST
+  stands in for another version of the same file).
 - **Starting:** a client that finds no pipe copies kpp to `%TEMP%\kpp-server\kpp-server-KEY.exe` (Windows
-  locks a running executable, and kpp must stay rebuildable) and starts the copy as
+  locks a running executable, and kpp must stay rebuildable; a copy already there is used only when its size and
+  write time are the client's kpp's, which CopyFile keeps, else it is deleted and made again) and starts the copy as
   `kpp-server-KEY.exe --serve KEY ORIGIN STAMP` (ORIGIN the kpp the client ran, STAMP its size and write
   time, as the key has them) in a new process group with a console of its own and no window
   (CREATE_NO_WINDOW), in the client's directory, inheriting no handles; it then waits
