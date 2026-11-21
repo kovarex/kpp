@@ -1,0 +1,30 @@
+// spec: a printf format checked at compile time as it is passed, Unreal's TCheckedFormatString: a consteval constructor template taking `const wchar_t (&Fmt)[N]` that counts the format's conversions against the arguments, the parameter non-deduced through an alias, given a wide literal (`2`)
+// found by thread UE (2026-11-21): the evaluator's wide literal was made with its type after its elements were moved away (arguments evaluated right to left), an array of no length, and every FString::Printf of converted Core was "no constant" (469 errors)
+template<typename CharType, typename... ArgTypes>
+struct Checked
+{
+  const CharType* FormatString;
+  template<int N>
+  consteval implicit Checked(const CharType (&Fmt)[N]) : FormatString{Fmt}
+  {
+    int percents = 0;
+    for (int i = 0; i < N; ++i)
+      if (Fmt[i] == '%')
+        ++percents;
+    if (percents != sizeof...(ArgTypes))
+      throw "wrong argument count";
+  }
+};
+template<typename T> struct Identity { using Type = T; };
+template<typename... Args>
+int printfLike(typename Identity<Checked<wchar_t, Args...>>::Type format, Args... args)
+{
+  (void)format;
+  return sizeof...(Args);
+}
+
+int main()
+{
+  std::println(printfLike(L"%d and %s", 1, L"x"));
+  return 0;
+}

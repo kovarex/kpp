@@ -1,0 +1,18 @@
+// spec: a constexpr or consteval body's own alias names its type wherever the body uses it: `typedef int T;` declares nothing to run, and a static member called through a local alias, `using Ch = Checker<C>; Ch::check(s)` (Unreal's TCheckedFormatStringPrivate: `using Checker = TCheckFormatString<CharType, Ts...>;`), is the alias's class's, in a template's body too (`2 2 3`)
+// found by thread UE (2026-11-21): a local typedef stopped the evaluation, and the call through the alias lost the class's arguments (the evaluator's names have no local alias), both no constant
+template<typename C> struct Checker { static constexpr int check(const C* f) { return f[0] == 'x' ? 1 : 2; } };
+constexpr int plainAlias(const char* s) { using Ch = Checker<char>; return Ch::check(s); }
+template<typename C> constexpr int viaAlias(const C* s) { using Ch = Checker<C>; return Ch::check(s); }
+constexpr int withTypedef(int x) { typedef int T; T y = x; return y + 1; }
+static_assert(plainAlias("ab") == 2);
+static_assert(viaAlias("ab") == 2);
+static_assert(withTypedef(2) == 3);
+
+int main()
+{
+  constexpr int a = plainAlias("ab");
+  constexpr int b = viaAlias(L"ab");
+  constexpr int c = withTypedef(2);
+  std::println(a, " ", b, " ", c);
+  return 0;
+}

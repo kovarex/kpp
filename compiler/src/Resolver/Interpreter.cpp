@@ -472,6 +472,24 @@ auto GlobalScope::Impl::constCondition(Expr* e, const TypeContext& ctx, int dept
   return v ? constTruth(*v, depth) : std::nullopt;
 }
 
+// A function body's own aliases, `using Checker = TCheckFormatString<CharType, Ts...>;` and `typedef int T;` among its
+// statements: names of the context its body runs in, where a qualified name finds them (`Checker::Check(...)`, Unreal's
+// format check; the class's arguments were lost and the call no constant).
+static void pushLocalAliases(const Stmt* body, LocalStack& names)
+{
+  if (!body || body->kind != NodeKind::BlockStmt)
+    return;
+  for (const Stmt* s : static_cast<const BlockStmt*>(body)->stmts)
+    if (s && s->kind == NodeKind::DeclStmt)
+      for (Decl* d : static_cast<const DeclStmt*>(s)->decls)
+      {
+        if (d->kind == NodeKind::UsingAliasDecl)
+          names.push(static_cast<UsingAliasDecl*>(d)->name, d);
+        else if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef) && static_cast<VariableDecl*>(d)->name.parts.size() == 1)
+          names.push(static_cast<VariableDecl*>(d)->name.last().symbol, d);
+      }
+}
+
 auto GlobalScope::Impl::constConverted(std::optional<ConstValue> v, const Ty* t) -> std::optional<ConstValue>
 {
   if (!v || !t)
@@ -2298,6 +2316,7 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   for (Decl* p : effectiveParams(f->parent && f->parent->kind == NodeKind::ClassDecl ? f->parent : nullptr))
     if (!bound.find(p))
       return std::nullopt; // a member of a class template named with no instance
+  pushLocalAliases(f->body ? f->body : (constDefinition(f) ? constDefinition(f)->body : nullptr), params);
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   // `size()` called in a member function: on the same object, whose changes stay.
@@ -2464,6 +2483,7 @@ auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int
     }
   if (!f->templateParams.empty() && !constBindTemplate(f, given, c, values, ctx, depth, bound, params, &categories, &elementTypes))
     return std::nullopt; // a member function template (`emplace_back(Args&&...)`, `value_or(U&&)`): its own parameters deduced
+  pushLocalAliases(f->body ? f->body : (constDefinition(f) ? constDefinition(f)->body : nullptr), params);
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   // The object, when the evaluation holds it (a local, a constant, a temporary): the function
@@ -3821,7 +3841,10 @@ auto GlobalScope::Impl::constString(LiteralExpr* l, const TypeContext& ctx) -> s
     for (uint32_t u : units)
       chars.push_back(ConstValue::integer(int64_t(u), unit));
     chars.push_back(ConstValue::integer(0, unit));
-    return ConstValue::object(types.array(types.qualified(unit, true, false), uint32_t(chars.size())), std::move(chars));
+    // (the type first, as below: clang-cl evaluates the arguments right to left, and the move emptied chars before
+    // its size was read, the array's length 0)
+    const Ty* type = types.array(types.qualified(unit, true, false), uint32_t(chars.size()));
+    return ConstValue::object(type, std::move(chars));
   }
   if (!constMayMake(bytes.size() + 1))
     return std::nullopt;
@@ -5996,6 +6019,7 @@ auto GlobalScope::Impl::constCallThrough(const ConstValue& fn, CallExpr* c, cons
   LocalStack params;
   for (const Subst::Pair& p : bound.pairs)
     params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+  pushLocalAliases(f->body ? f->body : (constDefinition(f) ? constDefinition(f)->body : nullptr), params);
   TypeContext fctx{lexicalScopeOf(f), params.items.empty() ? nullptr : &params, bound.empty() ? nullptr : &bound,
                    f->file ? f->file->tokens : nullptr, f->file ? f->file->text : std::string_view()};
   return constRun(f, values, fctx, depth, nullptr, &places, &categories);
@@ -6201,6 +6225,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
   LocalStack params;
   for (const Subst::Pair& p : subst.pairs)
     params.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+  pushLocalAliases(ctor->body, params);
   TypeContext fctx{lexicalScopeOf(declared ? declared : ctor), params.items.empty() ? nullptr : &params, subst.empty() ? nullptr : &subst,
                    ctor->file ? ctor->file->tokens : nullptr, ctor->file ? ctor->file->text : std::string_view()};
   // A class template's constructor: its instance's (constInstanceBody).
@@ -8956,15 +8981,6 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
                    : args[i].type                                                     ? types.unqualified(types.stripRef(args[i].type))
                                                                                       : nullptr;
-    // (a place typed as an array of no length, a wide string literal's `const wchar_t[]`: the value's own length,
-    // `L"ab"` for `const wchar_t (&)[3]`)
-    if (have && have->kind == TyKind::Array && !have->count && args[i].type)
-      if (const Ty* sized = types.unqualified(types.stripRef(args[i].type)); sized->kind == TyKind::Array && sized->count)
-        have = sized;
-    // (and one whose value holds as many elements as the reference's array, of its element type: that array)
-    if (have && have->kind == TyKind::Array && !have->count && want->kind == TyKind::Array && want->count && args[i].isObject() && args[i].parts &&
-        args[i].parts->size() == want->count && have->inner && want->inner && types.unqualified(have->inner) == types.unqualified(want->inner))
-      have = want;
     // (An array's const is its elements': `const int (&a)[3]` refers to an int[3] as it is.)
     if (have && (have == want || want->kind == TyKind::Void || (have->kind == TyKind::Array && unqualifiedDeep(have) == unqualifiedDeep(want))))
       basePart = std::vector<size_t>{};
@@ -10175,6 +10191,9 @@ auto GlobalScope::Impl::constStatementIn(Stmt* s, const TypeContext& ctx, std::v
         // A local class or enumeration (`struct L { int a; int b = 9; };`): a type, nothing to run
         // (D, 2026-11-06: it stopped the evaluation, every constexpr function declaring one no constant).
         if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl)
+          continue;
+        // (a local typedef, `typedef int T;`, names a type as a local alias does: nothing to run; it stopped the evaluation)
+        if (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
           continue;
         if (d->kind != NodeKind::VariableDecl || constDeclare(static_cast<VariableDecl*>(d), ctx, env, depth) != ConstFlow::Next)
           return ConstFlow::Failed;

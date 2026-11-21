@@ -1,5 +1,5 @@
 // spec: a wide string literal passed to a `const wchar_t (&)[N]` parameter in a constant evaluation, `len(L"ab")` (Unreal's `consteval TCheckedFormatStringPrivate(const TCHAR (&Fmt)[N])`): the array, N 3 (`3`)
-// found by thread UE (2026-11-21): the literal's value came typed `const wchar_t[]`, no length, and the reference did not bind where wchar_t is 16 bits (Windows; Linux's 32-bit one bound); constBindParameter takes an array of no length whose elements are as many as the reference's array's as that array
+// found by thread UE (2026-11-21): the evaluator made the wide literal's type after its elements were moved away (clang-cl evaluates the arguments right to left), an array of no length, and the reference did not bind (where wchar_t is 16 bits; GCC and clang on Linux evaluate left to right)
 template<int N> constexpr int len(const wchar_t (&s)[N]) { (void)s; return N; }
 
 int main()
