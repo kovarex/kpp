@@ -148,6 +148,10 @@ foreach ($f in $earlier) { $t = (Get-Date).AddHours(-2); $f.CreationTime = $t; $
 $replaced = @(Select-String -Path "$dir\*.log" -SimpleMatch 'changed: exiting' | ForEach-Object Path)
 if ($replaced.Count -ne 1) { Fail "$($replaced.Count) logs of a server whose kpp changed, 1 expected" }
 $replaced += $replaced | ForEach-Object { Join-Path $dir ('kpp-server-' + [IO.Path]::GetFileNameWithoutExtension($_) + '.exe') }
+# The copies of this kpp keep its write time, as CopyFile leaves it (a copy whose size and time are not its kpp's is
+# another kpp's, deleted and made again: 7.): old by their creation time alone.
+$replacedNames = @($replaced | ForEach-Object { Split-Path -Leaf $_ })
+foreach ($f in $earlier) { if ($f.Name -like 'kpp-server-*.exe' -and $replacedNames -notcontains $f.Name) { $f.LastWriteTimeUtc = (Get-Item $copy).LastWriteTimeUtc } }
 # (ffffffffffffffff.exe: an older kpp's copy, named by its key alone)
 $gone = 'kpp-server-aaaaaaaaaaaaaaaa.exe', 'aaaaaaaaaaaaaaaa.log', 'aaaaaaaaaaaaaaaa.args', 'dddddddddddddddd.log', 'verify.4242.out', 'verify.4242.err', 'kpp-server-eeeeeeeeeeeeeeee.exe.999', 'ffffffffffffffff.exe', 'ffffffffffffffff.log'
 $stay = 'kpp-server-bbbbbbbbbbbbbbbb.exe', 'bbbbbbbbbbbbbbbb.log', 'kpp-server-cccccccccccccccc.exe', 'cccccccccccccccc.log'
