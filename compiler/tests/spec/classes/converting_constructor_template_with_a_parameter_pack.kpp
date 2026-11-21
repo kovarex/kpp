@@ -1,0 +1,33 @@
+// spec: a variadic converting constructor template (`template<typename... A> implicit(sizeof...(A) == 1) NotNull(A&&... args)`, Unreal's TNotNull) converts one argument to its class, so a constructor or a function taking that class by value takes the argument (`Lock lock(&mutex)` with `Lock(NotNull<Mutex*>)`), as C++ converts through such a constructor
+// found by thread UE (2026-11-22): the check whether the argument converts compared it with the parameter pack itself, which nothing matches, so `FScopeLock Lock(&Mutex)` had "no constructor of FScopeLock takes (FWindowsRecursiveMutex*)" (140 errors in converted Core)
+template<typename T>
+struct NotNull
+{
+  T val;
+  template<typename... A>
+    requires (std::isConstructible<T, A...>)
+  implicit(sizeof...(A) == 1) NotNull(A&&... args) : val((A&&)args...) {}
+};
+
+struct Mutex
+{
+  int n = 0;
+};
+
+class Lock
+{
+public:
+  Mutex* m;
+  [[nodiscard]] Lock(NotNull<Mutex*> in) : m(in.val) { ++this.m->n; }
+};
+
+int take(NotNull<Mutex*> n) { return n.val->n; }
+
+int main()
+{
+  Mutex mutex;
+  Lock lock(&mutex);
+  Lock other = Lock(&mutex);
+  std::println(take(&mutex), " ", lock.m == other.m);
+  return 0;
+}

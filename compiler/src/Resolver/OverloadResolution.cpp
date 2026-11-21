@@ -1059,6 +1059,15 @@ auto GlobalScope::Impl::conversionRank(const Ty* arg, const Ty* param, int depth
           if (!constraintsHold(f, d))
             continue; // `template<typename F> Wrapper(F f) requires(!isPointer<F>)` given a pointer: no conversion
           const Ty* pt = declaredTypeOf(f->params[0], &d, 0);
+          // A parameter pack (`template<typename... A> NotNull(A&&... args)`, Unreal's TNotNull): the one element
+          // the argument deduced, `Mutex*&&` (the pack itself took nothing, and `Lock(&mutex)` with Lock's
+          // `Lock(NotNull<Mutex*>)` had no constructor).
+          if (pt && pt->kind == TyKind::Pack)
+          {
+            if (pt->args.size() != 1)
+              continue;
+            pt = pt->args[0];
+          }
           if (pt && types.stripRef(pt)->kind == TyKind::Class && types.unqualified(types.stripRef(pt)) == types.unqualified(ownerTy))
             continue; // The copy constructor is not a conversion (ReverseIterator<const T> from ReverseIterator<T> is).
           // (its argument by a standard conversion only: no second user-defined one, [over.best.ics] 4)
