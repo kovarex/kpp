@@ -3172,8 +3172,66 @@ std::string GlobalScope::aliasNameOf(const Ty* t)
     return {};
   t = impl->types.unqualified(t);
   std::lock_guard lock(impl->aliasNamesMutex);
+  makeAliasNames();
+  auto it = impl->aliasNames.find(t);
+  return it == impl->aliasNames.end() ? std::string() : it->second;
+}
+
+std::string GlobalScope::withAliasNames(const std::string& message)
+{
+  if (message.find('<') == std::string::npos)
+    return message; // (no instance's name in it: the table is not made for it)
+  std::lock_guard lock(impl->aliasNamesMutex);
+  makeAliasNames();
+  if (!impl->messageAliasesMade)
+  {
+    // The names messages print (TypeTable::toString, the short form): an aliased instance's is replaced only when no other
+    // class instance, made so far, prints alike (two ID<ItemPrototype> of two namespaces' ItemPrototype stay as printed).
+    std::unordered_map<std::string, const Ty*> printed;
+    std::unordered_set<std::string> alike;
+    auto note = [&](const Ty* t)
+    {
+      std::string name = impl->types.toString(t, &impl->symbols);
+      auto [it, made] = printed.try_emplace(name, t);
+      if (!made && it->second != t)
+        alike.insert(name);
+    };
+    for (const Ty* t : impl->types.classInstances())
+      if (!t->isConst && !t->isVolatile)
+        note(t);
+    for (const auto& [t, alias] : impl->aliasNames)
+      note(t);
+    impl->messageAliases.clear();
+    for (const auto& [t, alias] : impl->aliasNames)
+      if (std::string name = impl->types.toString(t, &impl->symbols); !alias.empty() && !alike.count(name) && name != alias)
+        impl->messageAliases.emplace_back(std::move(name), alias);
+    // Longest first: an aliased instance whose arguments hold another is replaced whole (`Pair<ID<A>, B>`), and by name
+    // within a length, as the same at every thread count.
+    std::sort(impl->messageAliases.begin(), impl->messageAliases.end(),
+              [](const auto& a, const auto& b) { return a.first.size() != b.first.size() ? a.first.size() > b.first.size() : a.first < b.first; });
+    impl->messageAliasesMade = true;
+  }
+  std::string out = message;
+  for (const auto& [name, alias] : impl->messageAliases)
+    for (size_t at = out.find(name); at != std::string::npos; at = out.find(name, at))
+    {
+      char before = at ? out[at - 1] : ' ';
+      if (std::isalnum(uint8_t(before)) || before == '_' || before == ':')
+      {
+        at += name.size(); // (part of a longer name: `Game::ID<A>`, `MyID<A>`)
+        continue;
+      }
+      out.replace(at, name.size(), alias);
+      at += alias.size();
+    }
+  return out;
+}
+
+void GlobalScope::makeAliasNames()
+{
   if (!impl->aliasNamesMade || impl->aliasNamesVersion != impl->indexVersion)
   {
+    impl->messageAliasesMade = false;
     // Every namespace's and class's entries, from the global scope down (classes that are no template's), with each alias
     // declaration once. Of an instance's aliases the one closest to the global scope is its name (kovarex, 2026-11-21: "if 2
     // use it, and one is closer to global scope, use the one that is closer"): a top-level one before one in a namespace or
@@ -3223,8 +3281,8 @@ std::string GlobalScope::aliasNameOf(const Ty* t)
         continue;
       const Ty* aliased = impl->declaredTypeOf(d, nullptr, 0);
       if (!aliased || (aliased->kind != TyKind::Class && aliased->kind != TyKind::Enum) || aliased->args.empty() || aliased->isConst ||
-          aliased->isVolatile || !aliased->isKnown() || impl->types.isDependent(aliased))
-        continue;
+          aliased->isVolatile || Impl::mentionsUnknown(aliased) || impl->types.isDependent(aliased))
+        continue; // (`using Named = Imm<opaqueLength("...")>;`, whose argument is no constant, names no instance)
       size_t depth = 0;
       for (const Decl* p = d->parent; p; p = p->parent)
         if (p->kind != NodeKind::NamespaceDecl || static_cast<const NamespaceDecl*>(p)->name != UINT32_MAX)
@@ -3241,8 +3299,6 @@ std::string GlobalScope::aliasNameOf(const Ty* t)
     impl->aliasNamesMade = true;
     impl->aliasNamesVersion = impl->indexVersion;
   }
-  auto it = impl->aliasNames.find(t);
-  return it == impl->aliasNames.end() ? std::string() : it->second;
 }
 
 void GlobalScope::unindexFunction(FunctionDecl* f)

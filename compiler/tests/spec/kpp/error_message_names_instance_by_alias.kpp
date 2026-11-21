@@ -1,0 +1,13 @@
+// spec: an error names a template's instance by its alias, as qualifiednameof chooses it, inside other types too: `std::Vector<EntityID>`, not `std::Vector<ID<EntityPrototype>>` (kovarex, 2026-11-21: "use this in error messages as well, this would make them much more readable")
+// error: error_message_names_instance_by_alias.kpp:12: error: a class (std::Vector<EntityID>) does not convert to int32: it has no implicit conversion operator to a scalar
+// design.md 8.3
+template<typename T> struct ID { i32 index = 0; };
+struct EntityPrototype {};
+using EntityID = ID<EntityPrototype>;
+i32 take(i32 x) { return x; }
+int main()
+{
+  std::Vector<EntityID> list;
+  list.pushBack(EntityID());
+  return take(list);
+}

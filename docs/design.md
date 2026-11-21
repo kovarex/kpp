@@ -704,6 +704,13 @@ is no template's instance changes nothing (`using Number = i32;` leaves `i32`). 
 is one. The table (GlobalScope::aliasNameOf) is made at the first qualifiednameof codegen writes, from the scopes as
 indexed, and again after the index changed: a program that uses no qualifiednameof pays nothing.
 Specs kpp/qualifiednameof_alias, server_alias_edited_read_by_qualifiednameof.
+Error messages name instances the same way (kovarex, 2026-11-21: "use this in error messages as well, this would make them
+much more readable"): the build's errors and warnings as printed (the checker's, codegen's, debugValue's) have each
+aliased instance's printed name replaced by its alias (`std::Vector<EntityID>`, not `std::Vector<ID<EntityPrototype>>`).
+A message writes a class by its own name (`ID<P>` for both `ID<A::P>` and `ID<B::P>`), so a name another class instance
+prints alike stays as printed, and so does one that is part of a longer name. The rewrite is of the finished text
+(GlobalScope::withAliasNames), as the printer's text also makes the IR's names; its table is made at the first message
+with a `<`. Specs kpp/error_message_names_instance_by_alias, error_message_keeps_instance_printed_alike.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```

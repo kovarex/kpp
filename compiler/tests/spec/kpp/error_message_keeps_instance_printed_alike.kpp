@@ -1,0 +1,13 @@
+// spec: an error keeps a template's instance as printed when another instance prints alike, as messages write a class by its own name: A::PID is ID<A::P>, B's ID<B::P> prints `ID<P>` too, so neither is written `PID` (kovarex, 2026-11-21, alias names in error messages)
+// error: error_message_keeps_instance_printed_alike.kpp:12: error: a class (ID<P>) does not convert to int32: it has no implicit conversion operator to a scalar
+// design.md 8.3
+template<typename T> struct ID { i32 index = 0; };
+namespace A { struct P {}; using PID = ID<P>; }
+namespace B { struct P {}; }
+i32 take(i32 x) { return x; }
+int main()
+{
+  ID<B::P> other;
+  other.index = 1;
+  return take(A::PID()) + other.index;
+}

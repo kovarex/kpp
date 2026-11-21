@@ -123,11 +123,11 @@ std::string withUnwindTables(const std::string& text, const char* attributes)
 size_t reportCheckerErrors(GlobalScope& global, bool laidOut, size_t instancesChecked)
 {
   for (const std::string& w : global.checkerWarnings())
-    fprintf(stderr, "%s\n", w.c_str()); // (no error: the build goes on)
+    fprintf(stderr, "%s\n", global.withAliasNames(w).c_str()); // (no error: the build goes on)
   size_t errors = 0;
   for (const std::string& e : global.checkerErrors(instancesChecked))
   {
-    fprintf(stderr, "%s\n", e.c_str());
+    fprintf(stderr, "%s\n", global.withAliasNames(e).c_str()); // (`EntityID`, not `ID<EntityPrototype>`: design.md 8.3)
     codegenExit = 1;
     ++errors;
   }
@@ -634,14 +634,14 @@ void runCodegen(Build& build)
   // access on a non-class object" came before "E has no member 'str'").
   reportCheckerErrors(global, true, cg.instanceAssertsChecked);
   for (const std::string& e : cg.errors)
-    fprintf(stderr, "%s\n", e.c_str());
+    fprintf(stderr, "%s\n", global.withAliasNames(e).c_str());
   if (!cg.errors.empty())
     codegenExit = 1;
   // A debugValue() the debugger cannot compute is the build's error, in every build and the language
   // server's check (docs/debugging.md, "debugValue").
   for (const std::string& error : debugValueErrors(global, symbols, cg.debugValueClasses))
   {
-    fprintf(stderr, "%s\n", error.c_str());
+    fprintf(stderr, "%s\n", global.withAliasNames(error).c_str());
     codegenExit = 1;
   }
   reportAccessWarnings(build);

@@ -818,6 +818,10 @@
   bool aliasNamesMade = false;
   uint64_t aliasNamesVersion = 0;
   std::unordered_map<const Ty*, std::string> aliasNames;
+  // GlobalScope::withAliasNames: each aliased instance's name as a message prints it (`ID<EntityPrototype>`) with its alias,
+  // longest first, for the aliasNames it was made from (made again with them); none where two types print alike.
+  bool messageAliasesMade = false;
+  std::vector<std::pair<std::string, std::string>> messageAliases;
   // A declaration's declared type's: on the declaration, made once (asked for constantly).
   std::mutex typeDependenciesMutex;
   std::vector<std::unique_ptr<Dependencies>> typeDependencies;

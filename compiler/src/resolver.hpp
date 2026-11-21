@@ -518,6 +518,11 @@ public:
   // `Surface::Index`); empty when there is none or two are closest. An alias template, one in a function, in a class
   // template, private or protected or private to its file does not count. Made at the first ask, again after the index changed.
   std::string aliasNameOf(const Ty* t);
+  // A message with each template instance's name replaced by its alias as aliasNameOf chooses it (`EntityID` for
+  // `ID<EntityPrototype>`, `std::Vector<EntityID>`; kovarex, 2026-11-21: "use this in error messages as well, this would make
+  // them much more readable"): the build's errors and warnings as printed. A name another class instance prints alike, or
+  // part of a longer name, is left as it is. Not for IR names, which TypeTable::toString's text keeps.
+  std::string withAliasNames(const std::string& message);
   Decl* initializerListDecl();                   // The library's InitializerList class, or null.
   const Ty* textType();                          // The library's Text class (design.md 14), or null.
   // Which of the library's compiler intrinsics f is (Text.kpp: 1 kppEnumeratorName, 2
@@ -830,6 +835,8 @@ public:
   std::optional<bool> typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args);
 private:
   struct Impl;
+  // aliasNameOf's table, made again after the index changed (under Impl::aliasNamesMutex).
+  void makeAliasNames();
   // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f;
   // returns what the body's returns deduced (an `auto` function's return type), or null.
   // retypingElements: a type pack bound to one element (retypeFor), whose static_asserts are not
