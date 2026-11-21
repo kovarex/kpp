@@ -730,8 +730,11 @@ namespace
       bool typeAfterQualifier = (atIdent(2) && (atIdent(3) || at(P::Star, 3) || at(P::Amp, 3) || at(P::AndAnd, 3) || at(P::ColonColon, 3) || at(P::Less, 3))) ||
                                 (at(TokenKind::Keyword, 2) && isBuiltinTypeKeyword(Kw(tok(2).id)));
       // (`UTF32CHAR operator*() const`, Unreal's Utf8Iterator.h: the return type of an operator
-      // function, which a macro before a conversion function, `MACRO operator bool()`, is not)
-      bool operatorFunction = at(Kw::operator_, 1) && at(TokenKind::Punctuator, 2);
+      // function, which a macro before a conversion function, `MACRO operator bool()`, is not; nor
+      // one after a type, the game's SSE.hpp `int32x4& VCALL operator+=(int32x4 right)`)
+      bool afterType = atIdent(-1) || at(P::Greater, -1) || at(P::Shr, -1) || at(P::Star, -1) || at(P::Amp, -1) || at(P::AndAnd, -1) ||
+                       (at(TokenKind::Keyword, -1) && isBuiltinTypeKeyword(Kw(tok(-1).id)));
+      bool operatorFunction = at(Kw::operator_, 1) && at(TokenKind::Punctuator, 2) && !afterType;
       if (at(TokenKind::Keyword, 1) && isDeclStartKeyword(Kw(tok(1).id)) && (!qualifier || typeAfterQualifier) && !operatorFunction)
       {
         advance();
