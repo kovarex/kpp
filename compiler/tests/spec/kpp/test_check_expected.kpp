@@ -1,0 +1,30 @@
+// spec: a failed `==` in a check says the right side as the expected value and the left as what it was (kovarex, 2026-11-21): `(expected "B", but was "A")`; a value that is text is quoted, its quotes and backslashes escaped, also among a call's values; the other comparisons keep `(left op right)`
+// test:
+// exit: 1
+enum class Mode : u8 { { Normal, SuperForced } };
+
+std::String toCode(Mode mode)
+{
+  if (mode == Mode::Normal)
+    return "Mode::Normal";
+  return "/* Missing toCode */";
+}
+
+bool startsWith(std::StringView text, std::StringView start, int count)
+{
+  return count < 0 && text.size() >= start.size();
+}
+
+test fails
+{
+  check(toCode(Mode::SuperForced) == "Mode::SuperForced");
+  int x = 2;
+  check(x + 1 == 4);
+  check(Mode::Normal == Mode::SuperForced);
+  std::String quoted("say \"hi\"\\");
+  check(quoted == "say hi");
+  check(std::StringView("b") < "a");
+  check(x != 2);
+  check(startsWith("value", "va", x));
+  check(toCode(Mode::Normal) == "Mode::Normal");
+}

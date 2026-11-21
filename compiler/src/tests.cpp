@@ -147,8 +147,11 @@ struct __KppTestState
   bool hasValues = false;
   std::String left;
   std::String right;
+  bool leftText = false; // left is text: shown quoted
+  bool rightText = false;
   const char* op = "";
   std::Vector<std::String> arguments; // a failed call's
+  std::Vector<bool> argumentText;     // each is text: shown quoted
   bool argumentUnshown = false;       // one of them has no text: then none is shown
   bool working = false;     // in a worker process of --jobs: what the runner says goes to workerOut
   i64 workerOut = 0;
@@ -251,8 +254,9 @@ int __kppRegisterSuite(const char* name, const char* depends, const char* tags)
   return 0;
 }
 
-// The value as text, when its appendTo or a str() method can say it.
-template<typename T> bool __kppShow(const T& value, std::String& text)
+// The value as text, when its appendTo or a str() method can say it; *isText when the value is text
+// itself (a failure shows it quoted).
+template<typename T> bool __kppShow(const T& value, std::String& text, bool* isText = nullptr)
 {
   if constexpr (std::isPointer<T>)
   {
@@ -271,6 +275,8 @@ template<typename T> bool __kppShow(const T& value, std::String& text)
   {
     std::StringView view = value;
     text = std::String(view);
+    if (isText)
+      *isText = true;
     return true;
   }
   else if constexpr (requires { value.appendTo(text); })
@@ -283,6 +289,8 @@ template<typename T> bool __kppShow(const T& value, std::String& text)
   {
     // C text (`s == "abd"`'s literal), which is no piece of a Text (design.md 14)
     text = std::String(std::StringView((const char*)value));
+    if (isText)
+      *isText = true;
     return true;
   }
   else if constexpr (requires { value.str(); })
@@ -297,7 +305,9 @@ template<typename T> bool __kppShow(const T& value, std::String& text)
 template<typename L, typename R> bool __kppNote(const L& l, const R& r, const char* op)
 {
   __KppTestState& state = __kppTestState();
-  state.hasValues = __kppShow(l, state.left) && __kppShow(r, state.right);
+  state.leftText = false;
+  state.rightText = false;
+  state.hasValues = __kppShow(l, state.left, &state.leftText) && __kppShow(r, state.right, &state.rightText);
   state.op = op;
   return false;
 }
@@ -374,11 +384,16 @@ template<typename T> void __kppCallValue(const T& value)
 {
   __KppTestState& state = __kppTestState();
   std::String text;
-  if (__kppShow(value, text))
+  bool isText = false;
+  if (__kppShow(value, text, &isText))
+  {
     state.arguments.push_back(text);
+    state.argumentText.push_back(isText);
+  }
   else
   {
     state.arguments.push_back(std::String());
+    state.argumentText.push_back(false);
     state.argumentUnshown = true;
   }
 }
@@ -387,6 +402,7 @@ void __kppCallValue()
 {
   __KppTestState& state = __kppTestState();
   state.arguments.push_back(std::String());
+  state.argumentText.push_back(false);
   state.argumentUnshown = true;
 }
 
@@ -518,6 +534,12 @@ void __kppSay(const std::String& line)
   __kppSend('P', text);
 }
 
+// A value in a failure: text quoted, its quotes, backslashes and line breaks escaped as in JSON.
+std::String __kppQuoted(const std::String& value, bool isText)
+{
+  return isText ? __kppJson(value) : value;
+}
+
 // A failure: `file:line:column: what: text (values): message`, each part when there is one.
 void __kppFail(const char* file, int line, int column, const char* kind, const char* text, const char* what)
 {
@@ -536,7 +558,14 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   {
     failure.left = state.left;
     failure.right = state.right;
-    shown << " (" << state.left << " " << std::StringView(state.op) << " " << state.right << ")";
+    std::String left = __kppQuoted(state.left, state.leftText);
+    std::String right = __kppQuoted(state.right, state.rightText);
+    // `==` (kovarex, 2026-11-21): the right side is the expected value, as in nearly all of the game's
+    // checks against a literal
+    if (std::StringView(state.op) == "==")
+      shown << " (expected " << right << ", but was " << left << ")";
+    else
+      shown << " (" << left << " " << std::StringView(state.op) << " " << right << ")";
   }
   else if (!state.arguments.empty() && !state.argumentUnshown)
   {
@@ -552,7 +581,7 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
         shown.append(", ");
       if (labelled && !__kppIsLiteral(texts[i]))
         shown << texts[i] << " = ";
-      shown << state.arguments[i];
+      shown << __kppQuoted(state.arguments[i], state.argumentText[i]);
     }
     shown << ")";
   }
@@ -569,6 +598,7 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   }
   state.hasValues = false;
   state.arguments.clear();
+  state.argumentText.clear();
   state.argumentUnshown = false;
   state.note = std::String();
   state.hasMessage = false;

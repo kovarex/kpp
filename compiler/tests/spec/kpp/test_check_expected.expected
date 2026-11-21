@@ -1,0 +1,9 @@
+test_check_expected.kpp:20:3: check failed: toCode(Mode::SuperForced) == "Mode::SuperForced" (expected "Mode::SuperForced", but was "/* Missing toCode */")
+test_check_expected.kpp:22:3: check failed: x + 1 == 4 (expected 4, but was 3)
+test_check_expected.kpp:23:3: check failed: Mode::Normal == Mode::SuperForced (expected SuperForced, but was Normal)
+test_check_expected.kpp:25:3: check failed: quoted == "say hi" (expected "say hi", but was "say \"hi\"\\")
+test_check_expected.kpp:26:3: check failed: std::StringView("b") < "a" ("b" < "a")
+test_check_expected.kpp:27:3: check failed: x != 2 (2 != 2)
+test_check_expected.kpp:28:3: check failed: startsWith("value", "va", x) ("value", "va", x = 2)
+failed: test_check_expected.kpp > fails
+1 test, 1 failed (root failures: test_check_expected.kpp > fails)

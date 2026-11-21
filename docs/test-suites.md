@@ -21,7 +21,7 @@ Section 8.6 of design.md, implemented 2026-10-30 (`compiler/src/tests.cpp`, `par
   The message is in the compiler's error format, with both operand
   values for a top-level comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`) when `toString` or `str()`
   can show them:
-  `square.kpp:7:3: check failed: square(-2) == 5 (4 == 5)`.
+  `square.kpp:7:3: check failed: square(-2) == 5 (expected 5, but was 4)`.
 - A failing `assert` or `release_assert` inside a test fails the test, and so does an exception
   that leaves it (`test failed: an exception left the test: <what()>`).
 - The runner runs the tests in one process, in registration order. Its options are
@@ -276,7 +276,7 @@ and may use `check`, `require` and `fail`. A failure reports the check's own loc
 one `called from` line for each test-function frame up to the test:
 
 ```
-GameViewFixture.kpp:212:5: check failed: entity->name == expected (inserter == fast-inserter)
+GameViewFixture.kpp:212:5: check failed: entity->name == expected (expected fast-inserter, but was inserter)
 TestInserter.kpp:48:3: called from here
 ```
 

@@ -4872,7 +4872,7 @@ int square(int x) { return x * x; }
 test square
 {
   check(square(3) == 9);
-  check(square(-2) == 5);    // fails: square.kpp:7:3: check failed: square(-2) == 5 (4 == 5)
+  check(square(-2) == 5);    // fails: square.kpp:7:3: check failed: square(-2) == 5 (expected 5, but was 4)
   require(square(0) == 0);   // a failed require ends the test
 }
 ```
@@ -4973,9 +4973,13 @@ statistics pass. `kpp --run hello.kpp a b` means the same in a project's directo
   `core/Vector.kpp > push_back grows`.
 - **Checks.** `check(expr)` records a failure and continues; `require(expr)` records it and ends
   the test. The message is in the compiler's error format, so editors jump to it:
-  `file:line:column: check failed: v.size() == 3 (2 == 3)`: the expression text and, for a
+  `file:line:column: check failed: v.size() == 3 (expected 3, but was 2)`: the expression text and, for a
   comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`), both operands' values when `toString` or a
-  `str()` method can say them (the text alone otherwise). The same values then go into `assert` messages (7.2's "operand
+  `str()` method can say them (the text alone otherwise). A failed `==` names its right side the
+  expected value and its left what it was; the other comparisons show `(2 < 1)` (kovarex,
+  2026-11-21). A value that is text (a string, a `StringView`, C text) is quoted, its quotes,
+  backslashes and line breaks escaped: `(expected "abd", but was "abc")`, among a call's values too;
+  `--report` lists the values unquoted. The same values then go into `assert` messages (7.2's "operand
   values: later"). Inside a test, a failing `assert` or `release_assert` fails the test (the
   runner's `kpp_assert_failed` ends the test by throwing, section 9).
 - **One command.** `kpp [options] --test ROOTS... [-- runner arguments]` builds the tests under
