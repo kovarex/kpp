@@ -1,0 +1,35 @@
+// The language server's scopes test (tests/lsp.ps1, scopes.jsonl): completion after a class's `::`
+// and its nested enum class's, in a line being typed (an unclosed call), and go to definition of a constructor.
+class RidingState
+{
+public:
+  enum class Direction
+  {
+    Left = 0,
+    None = 1,
+    Right = 2
+  };
+
+  enum class AccelerationState
+  {
+    Nothing = 0,
+    Accelerating = 1
+  };
+
+  RidingState() = default;
+  implicit RidingState(Direction direction, AccelerationState accelerationState = AccelerationState::Nothing)
+    : direction(direction)
+    , accelerationState(accelerationState) {}
+
+  static Direction oppositeDirection(Direction direction) { return Direction(2 - u8(direction)); }
+
+  Direction direction = Direction::None;
+  AccelerationState accelerationState = AccelerationState::Nothing;
+};
+
+int main()
+{
+  RidingState state(RidingState::Direction::Left);
+  int other = int(RidingState(RidingState::Direction::Right).direction);
+  return int(state.direction) + other - 2;
+}

@@ -1,0 +1,25 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\scopes: completion after `RidingState::` and
+// `RidingState::Direction::` in a line being typed (an unclosed call, as an editor leaves it), and go to definition of a constructor.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"// The language server's scopes test (tests/lsp.ps1, scopes.jsonl): completion after a class's `::`\n// and its nested enum class's, in a line being typed (an unclosed call), and go to definition of a constructor.\nclass RidingState\n{\npublic:\n  enum class Direction\n  {\n    Left = 0,\n    None = 1,\n    Right = 2\n  };\n\n  enum class AccelerationState\n  {\n    Nothing = 0,\n    Accelerating = 1\n  };\n\n  RidingState() = default;\n  implicit RidingState(Direction direction, AccelerationState accelerationState = AccelerationState::Nothing)\n    : direction(direction)\n    , accelerationState(accelerationState) {}\n\n  static Direction oppositeDirection(Direction direction) { return Direction(2 - u8(direction)); }\n\n  Direction direction = Direction::None;\n  AccelerationState accelerationState = AccelerationState::Nothing;\n};\n\nint main()\n{\n  RidingState state(RidingState::Direction::Left);\n  int other = int(RidingState(RidingState::Direction::Right).direction);\n  return int(state.direction) + other - 2;\n}\n"}}}
+// The constructor `RidingState state(...)` calls: its definition.
+{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":31,"character":4}}}
+// The constructor `RidingState(...)` calls in an expression: its definition.
+{"jsonrpc":"2.0","id":8,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":32,"character":20}}}
+// The class's name in `RidingState::Direction::Left`: the class.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":31,"character":22}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":31,"character":0},"end":{"line":31,"character":0}},"text":"  int typed = int(RidingState(RidingState::));\n"}]}}
+// `RidingState::` typed in an unclosed call: the class's nested types and statics.
+{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":31,"character":43},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":3},"contentChanges":[{"range":{"start":{"line":31,"character":0},"end":{"line":32,"character":0}},"text":"  int typed = int(RidingState(RidingState::Direction::));\n"}]}}
+// `RidingState::Direction::`: the enum class's enumerators and built-ins.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":31,"character":54},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+// The constructor in the line being typed: its definition.
+{"jsonrpc":"2.0","id":6,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":31,"character":21}}}
+// `Direction` in the line being typed: the nested enum class.
+{"jsonrpc":"2.0","id":9,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":31,"character":45}}}
+// `state` on the next line: what the check resolved, as before.
+{"jsonrpc":"2.0","id":10,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":32,"character":15}}}
+{"jsonrpc":"2.0","id":7,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

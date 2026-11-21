@@ -2169,6 +2169,47 @@ namespace
     // definition: a class's definition, a member function's out-of-line definition, else the
     // declaration itself; declaration: a definition's in-class declaration. In a template's own body, where
     // its instances call different overloads, each of them.
+    // The constructor a construction written with the class's name at token calls (`RidingState(direction)`,
+    // `T{a}`, `new T(a)`): the one overload resolution gives it, when the class declares it; else null.
+    Decl* constructorAt(const KeptProgram& program, const ParsedFile* file, uint32_t token)
+    {
+      std::vector<Cache::Construction> constructions;
+      knowConstructions(program, file, &constructions);
+      for (const Cache::Construction& c : constructions)
+        if (c.token == token && !c.copyInit)
+          if (FunctionDecl* chosen = program.global->chooseConstructor(c.cls, c.args, nullptr, nullptr, false))
+            if (locationOf(chosen).kind != Json::Null)
+              return chosen;
+      return nullptr;
+    }
+
+    // A name in code the parser could not read (a line being typed, `RidingState(RidingState::|));`), which
+    // the compiler resolved nowhere: what the name means there, by its spelling, as completion finds it;
+    // after `A::B::`, a member of a scope so named. Null when nothing is so named, or more than one scope's.
+    Decl* declarationByName(const KeptProgram& program, const ParsedFile* f, uint32_t token)
+    {
+      const std::vector<Token>& tokens = *f->tokens;
+      if (tokens[token].getKind() != TokenKind::Identifier)
+        return nullptr;
+      std::string_view name = program.symbols->name(tokens[token].id);
+      if (token < 2 || !tokens[token - 1].is(P::ColonColon) || tokens[token - 2].getKind() != TokenKind::Identifier)
+        return lookupBefore(program, f, tokens[token].id, token, enclosingFunction(f->decls, token));
+      std::string scope(program.symbols->name(tokens[token - 2].id));
+      for (uint32_t j = token - 2; j >= 2 && tokens[j - 1].is(P::ColonColon) && tokens[j - 2].getKind() == TokenKind::Identifier; j -= 2)
+        scope = std::string(program.symbols->name(tokens[j - 2].id)) + "::" + scope;
+      knowSymbols(program);
+      Decl* found = nullptr;
+      for (const Cache::Symbol& s : cache.symbols)
+        if (s.name == name && s.container.size() >= scope.size() && s.container.compare(s.container.size() - scope.size(), scope.size(), scope) == 0 &&
+            (s.container.size() == scope.size() || s.container.compare(s.container.size() - scope.size() - 2, 2, "::") == 0))
+        {
+          if (found && canonical(*program.global, found) != canonical(*program.global, s.decl))
+            return nullptr;
+          found = s.decl;
+        }
+      return found;
+    }
+
     Json definition(const Json& params, bool declaration)
     {
       Json result;
@@ -2176,8 +2217,6 @@ namespace
       {
         const ParsedFile* file = nullptr;
         const Occurrence* o = occurrenceAt(program, params, &file);
-        if (!o)
-          return;
         auto targetOf = [&](Decl* d)
         {
           if (declaration)
@@ -2185,6 +2224,17 @@ namespace
           Decl* defined = program.global->definitionOf(d);
           return defined ? defined : d;
         };
+        if (!o)
+        {
+          if (!file || file->diagnostics.empty()) // (only in a file with parse errors: elsewhere no name is unresolved so)
+            return;
+          uint32_t t = tokenAt(*file->tokens, offsetOf(file->text, startsOf(file), params["position"]));
+          if (t == UINT32_MAX)
+            return;
+          if (Decl* d = declarationByName(program, file, t))
+            result = locationOf(targetOf(d));
+          return;
+        }
         if (o->overloaded)
         {
           result = Json::array();
@@ -2196,6 +2246,10 @@ namespace
         Decl* d = o->decl;
         if (Decl* base = superBase(program, d)) // (`super` is its first base: go to that class)
           d = base;
+        // A class's name in a construction: the constructor it calls (kovarex, 2026-11-21).
+        if (!o->declaration && d->kind == NodeKind::ClassDecl)
+          if (Decl* constructor = constructorAt(program, file, o->token))
+            d = constructor;
         result = locationOf(targetOf(d));
       });
       return result;
@@ -2395,11 +2449,13 @@ namespace
     // value or an assignment's right side. An instance's body (a library's `new T(forward<Ts>(values)...)`
     // in UniquePointer<T>::construct) gives its constructions at the place the program's own code asked
     // for the instance in the end (`this->context.emplace(this)`: Walker::rootFile).
-    void knowConstructions(const KeptProgram& program)
+    // With only: that file's written constructions, into *onlyOut, the cache left as it is (definition's).
+    void knowConstructions(const KeptProgram& program, const ParsedFile* only = nullptr, std::vector<Cache::Construction>* onlyOut = nullptr)
     {
-      if (cache.constructionsKnown)
+      if (!only && cache.constructionsKnown)
         return;
-      cache.constructionsKnown = true;
+      if (!only)
+        cache.constructionsKnown = true;
       auto started = std::chrono::steady_clock::now();
       GlobalScope& global = *program.global;
       TypeTable& types = global.types();
@@ -2660,8 +2716,16 @@ namespace
       };
       std::vector<Part> parts;
       for (const ParsedFile* file : program.files)
-        if (file && file->tokens)
+        if (file && file->tokens && (!only || file == only))
           parts.push_back({file, nullptr, nullptr, UINT32_MAX});
+      if (only)
+      {
+        Found found;
+        for (const Part& part : parts)
+          scan(found, *part.file, nullptr, part.file->decls, nullptr, UINT32_MAX);
+        *onlyOut = std::move(found.constructions);
+        return;
+      }
       // The instances' bodies, at the call that asked for them: the name it calls (`emplace` in
       // `this->context.emplace(this)`), the first name before a `(` or `<` from the request's token.
       global.forEachInstanceRoot([&](Node* copy, const ParsedFile& file, const ParsedFile* rootFile, uint32_t rootToken)
@@ -3309,8 +3373,9 @@ namespace
           return;
         const std::vector<Token>& tokens = *f->tokens;
         size_t offset = offsetOf(f->text, startsOf(f), params["position"]);
-        // The token the cursor is in or after, and the prefix of a name typed so far.
-        auto it = std::upper_bound(tokens.begin(), tokens.end(), offset, [](size_t o, const Token& t) { return o < t.offset; });
+        // The token the cursor is in or after, and the prefix of a name typed so far: one that starts
+        // at the cursor is after it (`RidingState::|)`, the `)` an editor closed the call with).
+        auto it = std::lower_bound(tokens.begin(), tokens.end(), offset, [](const Token& t, size_t o) { return t.offset < o; });
         if (it == tokens.begin())
           return;
         uint32_t k = uint32_t(it - tokens.begin()) - 1;

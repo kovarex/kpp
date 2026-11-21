@@ -29,8 +29,10 @@
 # check of the last state), a caret request answered from the last checked program, a cancelled request answered so.
 # reopened: tests\lsp\reopened, a closed file's error published in the client's URI style ($VSROOT, Visual Studio's
 # file:///C:/dir), then cleared from that URI when the file is opened by another one.
-# -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
-param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update)
+# scopes: tests\lsp\scopes, completion after a class's and its nested enum class's `::` in a line being typed (an unclosed
+# call), and go to definition of a constructor, in the checked file and in the line being typed.
+# -Only NAME runs one session. -Update writes the expected files from this run (read them before committing). run_tests.cmd runs it.
+param([string]$KppExe = "$PSScriptRoot\..\build\kpp.exe", [switch]$Update, [string]$Only)
 $ErrorActionPreference = 'Stop'
 $work = Join-Path $PSScriptRoot '..\build\tests\lsp'
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
@@ -51,11 +53,13 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'merge'; Program = 'merge'; Args = '--stdio' },
                       @{ Name = 'templates'; Program = 'templates'; Args = '--stdio' },
                       @{ Name = 'unions'; Program = 'unions'; Args = '--stdio' },
+                      @{ Name = 'scopes'; Program = 'scopes'; Args = '--stdio' },
                       @{ Name = 'constants'; Program = 'constants'; Args = '--stdio' },
                       @{ Name = 'reopened'; Program = 'reopened'; Args = '--stdio' },
                       @{ Name = 'queue'; Program = 'program'; Args = '--stdio --read-input-first'; Queued = $true }))
 {
   $name = $session.Name
+  if ($Only -and $name -ne $Only) { continue }
   $program = Join-Path $work $session.Program
   if (Test-Path $program) { Remove-Item -Recurse -Force $program }
   Copy-Item "$PSScriptRoot\lsp\$($session.Program)" $program -Recurse
