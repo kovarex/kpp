@@ -878,7 +878,7 @@ instances.
 - **The hand-over.** At level 0's barrier, codegen hands the driver each program piece it has whole
   (PieceStream). That happens only when no error came before; a late piece is not handed over.
 - **The pool.** The driver's BackEndPool compiles each piece with LLVM's back end in kpp, on
-  `options.threads` threads below normal priority while codegen runs. Once codegen ends, the other
+  `options.threads` threads below normal priority while codegen runs (normal since 2026-11-21, below). Once codegen ends, the other
   modules follow on the same threads at normal priority.
 - **The check at the end.** The end assembles every program piece again and compares it with what it
   handed over, by size and FNV-1a hash.
@@ -914,6 +914,35 @@ instances.
   - `--dump-data` 7/7 equal;
   - on the first base (b83dbe94), the 45 menu maps and the unit tests 9,501/9,501 with 0 CRC mismatches
     against C++ Debug.
+
+**Step 4's P2 at normal priority (2026-11-21).** kovarex's build of the game took 18 s where the readme
+says 11 to 14. Today's commits were not it: yesterday's kpp (f098f191b) and master (ccea2e331) built
+yesterday's game (8cd8320d04) in the same time, and master built yesterday's and today's game
+(8cd00415e0) in the same time, 12.4 to 14.0 s on a quiet machine. What made 18 s was a stall:
+- **Seen.** In 8 of 62 clean builds on a quiet machine, every codegen thread stopped at the same moment for
+  about 5 s (twice that once): in the level after the barrier, in the barrier's own piece assembly, or
+  in the back end after codegen. Timing points in codegen (not landed) showed it: level 1's 47,590
+  functions took 5.6 s instead of 0.5 s, every thread's user CPU in it was 3.0 s instead of 0.2 s, and 32
+  functions took 4.9 to 5.5 s each, all ending together.
+- **Why.** The pool's threads ran below normal priority beside codegen's 32 threads at normal priority on
+  32 cores. A pool thread preempted while it held a lock that codegen's threads take spinning (LLVM's
+  allocator, rpmalloc, which a kpp with LLVM takes as its malloc, spins without sleeping) waits until
+  Windows boosts a thread starved for about 4 s: priority inversion.
+- **What.** The pool's threads keep normal priority (BackEndPool); setThreadBelowNormal is gone.
+- **Measured:** `kpp factorio debug --no-server --verbose`, clean (build\debug removed), 20 interleaved
+  pairs of one kpp (ccea2e331 with an environment switch for the priority), each round started at 3 to
+  11% load:
+
+  | | below normal (before) | normal (now) |
+  |---|---:|---:|
+  | total, median | 13.7 s | 14.0 s |
+  | total, mean | 14.59 s | 14.07 s |
+  | total, worst | 21.6 s | 14.8 s |
+  | builds over 15 s | 4 of 20 (15.5, 17.9, 18.4, 21.6 s) | 0 of 20 |
+  | codegen, median | 5.80 s | 6.46 s |
+  | back end after codegen, median | 2.99 s | 2.86 s |
+
+  The pieces now take cores from codegen while it runs, 0.3 s of the median build; the stalls are gone.
 
 **Step 5: codegen's mutexes spin before they sleep (item 6's first lever; thread D, 2026-11-04).**
 - **Why.** A's profile of the clean build (A-clean-build-profile.md in the coordinator's notes) had

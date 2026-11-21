@@ -34,8 +34,6 @@ namespace host
   const char* executableSuffix();
   // The program name finds on PATH (name with executableSuffix); empty when none.
   std::filesystem::path findOnPath(const std::string& name);
-  // The calling thread's priority below normal (the compile server's background work), or normal.
-  void setThreadBelowNormal(bool below);
   // Starts fn(arg) on a thread of its own whose stack is `bytes` (reserved, committed as used: the code
   // generator recurses as deep as the code it walks), without waiting; false when no thread started.
   // joinThread waits for the one started.

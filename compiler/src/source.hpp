@@ -167,9 +167,6 @@ std::string programPath(const std::string& path);
 // ..\..\stdlib from compiler\build\ in this repository. A compile server runs from a copy of kpp
 // elsewhere, so it is given its client's path (main makes argv[0] that).
 std::filesystem::path compilerPath();
-// The calling thread below normal priority (true) or at normal priority (false): step 4's P2 runs the
-// back end below codegen's threads (main.cpp, BackEndPool).
-void setThreadBelowNormal(bool below);
 std::filesystem::path defaultStdlib(const std::filesystem::path& compiler);
 // A target's sysroot (its C headers and libraries) that comes with kpp: sysroots\NAME next to it,
 // NAME freebsd-x86_64 or linux-x86_64 (a release brings FreeBSD's; tools\sysroot\freebsd.ps1 and

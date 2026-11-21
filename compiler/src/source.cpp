@@ -859,11 +859,6 @@ std::string visualStudioToolchain(std::string& missing)
   return clang;
 }
 
-void setThreadBelowNormal(bool below)
-{
-  host::setThreadBelowNormal(below);
-}
-
 std::string headerCaseOverlay(const std::string& clang, const std::string& triple)
 {
   if (host::pathsIgnoreCase || clang.empty() || (triple.find("windows") == std::string::npos && triple.find("mingw") == std::string::npos))

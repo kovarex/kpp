@@ -560,7 +560,7 @@ void runCodegen(Build& build)
   };
   // Step 4's P2 (docs/codegen-speed.md): a debug build of several modules whose objects LLVM's back end
   // in this process makes has its program pieces compiled while codegen emits the instances, on
-  // backEnd's threads below normal priority: codegen hands each over at level 0's barrier
+  // backEnd's threads (at normal priority, BackEndPool): codegen hands each over at level 0's barrier
   // (PieceStream). The other modules are compiled once codegen ends, on the same threads.
   std::unique_ptr<BackEndPool> backEnd;
   std::vector<char> handedOver(outputModules);
@@ -606,7 +606,7 @@ void runCodegen(Build& build)
     cg = generateLLVM(parsed, global, symbols, codegenOptions, servingBuild() ? &build.codegen : nullptr, backEnd ? &stream : nullptr);
     cg.changedModules.clear();
     if (backEnd)
-      backEnd->raise(); // (codegen ended: the back end has every core)
+      backEnd->codegenEnded();
   }
   double t = seconds(Clock::now() - start);
   // Errors assemble no module, nor does a check; a session kept across them keeps the sizes of the modules the last

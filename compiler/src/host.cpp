@@ -21,7 +21,6 @@
 #include <pthread.h>
 #include <spawn.h>
 #include <sys/file.h>
-#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -241,8 +240,6 @@ namespace host
     CharLowerBuffW(w.data(), DWORD(w.size()));
     return fs::path(w).string();
   }
-
-  void setThreadBelowNormal(bool below) { SetThreadPriority(GetCurrentThread(), below ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_NORMAL); }
 
   bool startOnLargeStack(size_t bytes, void (*fn)(void*), void* arg, LargeStackThread& thread)
   {
@@ -623,16 +620,6 @@ namespace host
   const char* executableSuffix() { return ""; }
 
   std::string pathKey(const fs::path& path) { return path.string(); }
-
-  // (Linux's nice applies to a thread, its own task; elsewhere the call changes nothing)
-  void setThreadBelowNormal(bool below)
-  {
-#if defined(__linux__)
-    setpriority(PRIO_PROCESS, 0, below ? 5 : 0);
-#else
-    (void)below;
-#endif
-  }
 
   // (glibc's and FreeBSD's thread stacks are mappings that take memory as they are touched, as a
   // Windows reservation does: the default 8 MB is less than the game's deepest code needs)
