@@ -2114,7 +2114,9 @@
         {"LOG_VERBOSE", 0}, {"LOG_AND_ABORT", 0}, {"LOG_AND_ABORT_NEVER_THROW", 0}, {"LOG", 1}, {"SAVING_TAG", 2}};
       std::string to;
       size_t formatIndex = 0;
-      bool trio = true; // (formatted through CommonUtil's vssprintf: trio's floating text)
+      // (formatted through CommonUtil's vssprintf: trio's floating text, where the program has trio, the game's
+      // `--convert-library trio`; elsewhere, Unreal Engine's, printf's, the library's fixed and significant)
+      bool trio = scopedLibraries && scopedLibraries->count("trio");
       // (C: printf and fprintf, the converted C libraries' too; their own variadic interfaces,
       // trio's, gzprintf, stb's writef, keep C's `...`, and a write into a buffer, snprintf and its
       // relatives, has no piece)
