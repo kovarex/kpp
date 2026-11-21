@@ -843,6 +843,31 @@ auto GlobalScope::Impl::constDeclaredAlign(ClassDecl* cls, Expr* alignment, cons
   DeclContext dc;
   declContextFor(cls, dc);
   TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
+  // `alignas(uint32)`, `alignas(T)`: a name of a type (a class, an enumeration, an alias, a typedef, a type
+  // parameter) is C++'s alignas(alignof(type)) ([dcl.align] 3), as the code generator's alignmentValue reads
+  // it (until 2026-11-22 no constant: the size of Unreal's `class alignas(uint32) FIoHash` was unknown, and
+  // `requires (sizeof(T) > 0)` of every MemoryOps function could not be evaluated for it). Its own lookup:
+  // the walk that resolves the name may not have run yet.
+  Expr* named = alignment;
+  while (named && named->kind == NodeKind::ParenExpr)
+    named = static_cast<ParenExpr*>(named)->inner;
+  if (named && named->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(named)->name.last().hasTemplateArgs)
+  {
+    const QualifiedName& name = static_cast<NameExpr*>(named)->name;
+    Decl* d = lookupQualified(name, ctx2.scope, ctx2.locals, depth + 1, sp).decl;
+    if (d && ((d->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(d)->isType) || d->kind == NodeKind::ClassDecl ||
+              d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))))
+    {
+      NamedType written{};
+      written.kind = NodeKind::NamedType;
+      written.token = named->token;
+      written.name = name;
+      const Ty* t = convertType(&written, ctx2, depth + 1);
+      if (!t || !t->isKnown() || types.isDependent(t) || t->kind == TyKind::Pack)
+        return std::nullopt;
+      return constAlignOf(types.stripRef(t), depth + 1);
+    }
+  }
   std::optional<ConstValue> v = constValue(alignment, ctx2, depth + 1);
   if (!v || v->kind != ConstValue::Kind::Int || v->i <= 0)
     return std::nullopt;

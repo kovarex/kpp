@@ -643,6 +643,10 @@ namespace
               default:
                 break;
             }
+          // kpp's number names and the built-in ones (`alignas(u32)`, `alignas(size_t)`), which nothing declares:
+          // types too (an expression of the name had no value).
+          if (!typeFirst && at(P::RParen, 1) && (atBuiltinTypeIdent() || (atIdent() && isKppNumberName(spelling()))))
+            typeFirst = true;
           Type* alignedAs = typeFirst ? parseType() : nullptr;
           if (alignedAs && at(P::LBracket))
             alignedAs = parseArraySuffixes(alignedAs);

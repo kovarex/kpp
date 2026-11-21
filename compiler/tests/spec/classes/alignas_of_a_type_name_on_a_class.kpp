@@ -1,0 +1,56 @@
+// spec: `class alignas(uint32) X` with uint32 a typedef, `alignas(u32)` with a kpp number name, `alignas(size_t)` and `alignas(T)` of a class template's parameter take that type's alignment (alignas(alignof(type)), [dcl.align] 3), on a class and on a member; the size they give is known at compile time, so `requires (sizeof(T) > 0)` holds for them (Unreal's MemoryOps.h guards every function so); clang prints the same
+// found by thread UE (2026-11-22): the size of Unreal's `class alignas(uint32) FIoHash` was no constant, so DestructItems, RelocateConstructItems and the other MemoryOps functions had no candidate for it (about 200 errors in converted Core), and codegen said "the alignment of Hash, which is not a constant power of two"
+typedef unsigned int uint32;
+
+class alignas(uint32) Hash
+{
+public:
+  u8 bytes[20] = {};
+};
+
+class alignas(u32) Number
+{
+public:
+  u8 bytes[6] = {};
+};
+
+struct alignas(size_t) Sized
+{
+  u8 b = 0;
+};
+
+struct Member
+{
+  u8 c = 0;
+  alignas(uint32) u8 bytes[5] = {};
+};
+
+template<typename T>
+struct alignas(T) Box
+{
+  u8 b = 0;
+};
+
+template<typename T>
+  requires (sizeof(T) > 0)
+int sizeOf(T*)
+{
+  return int(sizeof(T));
+}
+
+static_assert(alignof(Hash) == 4 && sizeof(Hash) == 20);
+static_assert(alignof(Number) == 4 && sizeof(Number) == 8);
+static_assert(alignof(Sized) == 8);
+static_assert(alignof(Member) == 4 && sizeof(Member) == 12);
+static_assert(alignof(Box<u64>) == 8);
+
+int main()
+{
+  Hash h;
+  Number k;
+  Sized s;
+  Member m;
+  Box<u64> b;
+  std::println(sizeOf(&h), " ", sizeOf(&k), " ", sizeOf(&s), " ", sizeOf(&m), " ", sizeOf(&b), " ", alignof(Hash), " ", alignof(Member));
+  return 0;
+}

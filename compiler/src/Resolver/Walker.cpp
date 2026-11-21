@@ -11481,6 +11481,9 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
           impl.reportCheckerError(file, b.type->token, "virtual base classes are not supported (" + base + ", a base of " + of + ")");
         }
       }
+      // `class alignas(uint32) FIoHash`: its name resolved, a type's or a constant's, for codegen's alignmentValue
+      // (as a data member's; a typedef's name was no constant there).
+      walkExpr(c->alignment);
       // A specialization's arguments (`template<typename T> struct Describe<Vector<T>>`), named from where its bases are: a
       // name in them that nothing declares is an error, as anywhere (it was a specialization no instance matched, silently).
       if ((c->flags & DF_Specialization) && !c->name.empty() && c->name.last().hasTemplateArgs)
