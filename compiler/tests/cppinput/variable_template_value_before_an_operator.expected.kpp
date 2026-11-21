@@ -1,0 +1,8 @@
+// cppinput: a variable template's value with `*` after it (Unreal's TVariantMeta.h: `TVariantSize_V<Variant0> *
+// EncodeIndices(Rest...)`), which kpp would read as the comparisons `a < b > *c`: written in parentheses
+template <typename T>
+constexpr i32 sizeOf = sizeof(T);
+
+template <typename T>
+i32 scaled(i32 n) { return 1 + (sizeOf<T>) * n; }
+i32 main() { return scaled<i32>(2) == 9 ? 0 : 1; }

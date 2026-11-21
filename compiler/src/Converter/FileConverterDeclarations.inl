@@ -44,14 +44,47 @@
       return false;
     }
 
+    // Whether d declares a function through a function type's alias (`typedef void AesFunc(const uint8* Key);`
+    // then `static AesFunc AesEncryptSW;`, which C++ reads as a function's declaration, not a variable's)
+    // that one of decls defines with a body.
+    bool functionDeclaredByType(Decl* d, Span<Decl*> decls)
+    {
+      if (d->kind != NodeKind::VariableDecl || (d->flags & DF_Typedef))
+        return false;
+      auto* v = static_cast<VariableDecl*>(d);
+      if (v->init || v->name.parts.size() != 1 || v->name.last().symbol == UINT32_MAX)
+        return false;
+      Type* t = v->type;
+      for (int depth = 0; t && t->kind == NodeKind::NamedType && depth < 8; ++depth)
+      {
+        Decl* alias = static_cast<NamedType*>(t)->resolved;
+        t = !alias ? nullptr
+            : alias->kind == NodeKind::UsingAliasDecl ? static_cast<UsingAliasDecl*>(alias)->type
+            : alias->kind == NodeKind::VariableDecl && (alias->flags & DF_Typedef) ? static_cast<VariableDecl*>(alias)->type
+            : nullptr;
+      }
+      if (!t || t->kind != NodeKind::FunctionType)
+        return false;
+      for (Decl* other : decls)
+        if (other->kind == NodeKind::FunctionDecl)
+        {
+          auto* f = static_cast<FunctionDecl*>(other);
+          if (f->body && f->name.parts.size() == 1 && f->name.last().symbol == v->name.last().symbol)
+            return true;
+        }
+      return false;
+    }
+
     void convertDecls(Span<Decl*> decls, bool namespaceScope, const std::string& prefix = "")
     {
       if (!in.c)
         for (Decl* d : decls)
           if (isFormatFunction(d))
             convertFormatFunction(static_cast<FunctionDecl*>(d));
+      size_t position = 0;
       for (Decl* d : decls)
       {
+        size_t index = position++;
         if (namespaceScope && prefix.empty() && redeclaresScopedName(d))
         {
           // (ZipPackage.hpp's `struct unz_file_info64_s;` and `using unz_file_info64 = ...;`, written
@@ -82,13 +115,21 @@
           counts.add("deduction guides removed");
           continue;
         }
+        if (namespaceScope && functionDeclaredByType(d, decls))
+        {
+          // `static AesFunc AesEncryptSW;` (a typedef of a function type): a function's forward declaration,
+          // defined further on (AES.cpp), which goes as one written with its parameters does
+          removeDecl(d);
+          counts.add("forward declarations removed");
+          continue;
+        }
         // C++: a source file's names of its own, a `static` at the global namespace's scope and what
         // an anonymous namespace there declares, are `private` (design.md 15: a file's names; not in
         // a named namespace, where private is no kpp, nor in a header, which other files include).
         if (!in.c && namespaceScope && !isHeader() && (d->flags & DF_Static) && prefix.empty() &&
             (d->kind == NodeKind::VariableDecl || d->kind == NodeKind::FunctionDecl) && cDeclName(d).size() &&
             !(d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1))
-          writePrivate(d);
+          writePrivate(d, &decls, index);
         if (!in.c && namespaceScope && !isHeader() && prefix == "::" &&
             (d->kind == NodeKind::FunctionDecl || d->kind == NodeKind::VariableDecl || d->kind == NodeKind::ClassDecl ||
              d->kind == NodeKind::EnumDecl || d->kind == NodeKind::UsingAliasDecl) &&
@@ -150,6 +191,27 @@
           case NodeKind::ClassDecl:
           {
             auto* c = static_cast<ClassDecl*>(d);
+            // `static struct FForceInitAtBootFStats2 : TForceInitAtBoot<...> {} FForceInitAtBootFStats2;` (Unreal's
+            // StatsSystemTypes.cpp): a class and its one object of one name, the object's hiding the class's after it,
+            // one name twice in kpp: the class goes unnamed (`struct : TForceInitAtBoot<...> {} FForceInitAtBootFStats2;`),
+            // when nothing in it names it (no constructor, no destructor).
+            if (c->isDefinition && namespaceScope && c->name.parts.size() == 1 && c->name.last().symbol != UINT32_MAX && index + 1 < decls.size() &&
+                decls[index + 1]->kind == NodeKind::VariableDecl && !(decls[index + 1]->flags & DF_Typedef) &&
+                static_cast<VariableDecl*>(decls[index + 1])->name.parts.size() == 1 &&
+                static_cast<VariableDecl*>(decls[index + 1])->name.last().symbol == c->name.last().symbol &&
+                std::none_of(c->members.begin(), c->members.end(),
+                             [](Decl* m) { return m->kind == NodeKind::FunctionDecl && (m->flags & (DF_Constructor | DF_Destructor)); }))
+            {
+              uint32_t k = c->token;
+              while (k < toks.size() && !toks[k].is(P::LBrace) && !toks[k].is(P::Colon) &&
+                     !(toks[k].getKind() == TokenKind::Identifier && toks[k].id == c->name.last().symbol))
+                ++k;
+              if (k < toks.size() && toks[k].getKind() == TokenKind::Identifier && k > 0)
+              {
+                remove(endOffset(k - 1), endOffset(k) - endOffset(k - 1));
+                counts.add("classes named as their one object written unnamed");
+              }
+            }
             if (c->isDefinition && packedAt(toks[c->token].offset))
             {
               // The class keyword, after any `template<...>`.
@@ -452,6 +514,18 @@
           default: break;
         }
       }
+      // (the `extern "C" {` blocks writePrivate closed before a run of private declarations, opened again after it)
+      // (the block's last declaration: its `}` goes instead, which would close nothing)
+      for (size_t i = 0; i < decls.size(); ++i)
+        if (privateInExternC.count(decls[i]) && decls[i]->endToken > decls[i]->token &&
+            !(i + 1 < decls.size() && privateInExternC.count(decls[i + 1]) && !braceBetween(decls[i], decls[i + 1])))
+        {
+          uint32_t after = decls[i]->endToken;
+          if (after < toks.size() && toks[after].is(P::RBrace))
+            removeWholeLine(toks[after].offset, endOffset(after));
+          else
+            insert(endOffset(after - 1), "\n\nextern \"C\" {");
+        }
     }
 
     // A namespace- or class-scope object initialized by parentheses, `Widget w(Size(x));`: at those
@@ -1805,6 +1879,13 @@
           prev.remove_suffix(1);
         bool header = prev.size() > 8 && prev.substr(0, 8) == "template" && prev.back() == '>';
         bool attribute = prev.size() > 4 && prev.substr(0, 2) == "[[" && prev.substr(prev.size() - 2) == "]]";
+        // (`__declspec(noinline) // To help profiling`, Unreal's FORCENOINLINE, with or without a comment after it)
+        if (std::string_view spec = prev.substr(0, prev.find("//")); spec.substr(0, 11) == "__declspec(")
+        {
+          while (!spec.empty() && isspace((unsigned char)spec.back()))
+            spec.remove_suffix(1);
+          attribute = attribute || (spec.back() == ')' && spec.find(';') == std::string_view::npos && spec.find('{') == std::string_view::npos);
+        }
         if (!header && !attribute)
           break;
         start = prevStart;

@@ -692,7 +692,7 @@
                 continue;
               }
             }
-            auto kf = knownFunctionMacros.find(name);
+            auto kf = declaresFunction(name) ? knownFunctionMacros.end() : knownFunctionMacros.find(name);
             size_t close = kf != knownFunctionMacros.end() && j < result.size() && result[j] == '(' ? closingParen(result, j) : std::string::npos;
             if (close != std::string::npos)
             {
@@ -707,7 +707,7 @@
               i = close + 1;
               continue;
             }
-            auto am = argumentMacros.find(name);
+            auto am = declaresFunction(name) ? argumentMacros.end() : argumentMacros.find(name);
             close = am != argumentMacros.end() && j < result.size() && result[j] == '(' ? closingParen(result, j) : std::string::npos;
             if (close != std::string::npos)
             {
@@ -2514,6 +2514,7 @@
     // scan first (`Vector<Vector<i32>>`), and one whose argument shifts stays C++ in them.
     void parenthesizeShiftsAfterLess()
     {
+      std::set<uint32_t> wrappedArguments; // (by their first token: one `<` before another wraps them once)
       for (uint32_t op = 1; op + 1 < toks.size(); ++op)
       {
         // (a `<` with space before it, as an operator is written: a template-id's is not, `V<V<i32>>`)
@@ -2549,6 +2550,50 @@
           else if (depth == 0 && k.is(P::Shr))
             shift = true;
         }
+        // (a comparison that is one argument of a list: a later argument's `>>` would close `name<...`, read as a
+        // template-id's arguments, Unreal's `checkf(Block < MaxBlocks, TEXT("..."), MaxBlocks * Size >> 20)`; each
+        // such argument goes in parentheses, which no template-id's argument list closes)
+        if (!shift && end < toks.size() && toks[end].is(P::Comma))
+        {
+          uint32_t item = end;
+          bool itemShift = false;
+          for (int depth = 0; end < toks.size(); ++end)
+          {
+            const Token& k = toks[end];
+            if (k.getKind() == TokenKind::End || k.getKind() == TokenKind::Directive)
+              break;
+            bool split = k.is(P::Greater) && end + 1 < toks.size() && toks[end + 1].is(P::Greater) && toks[end + 1].offset == k.offset + 1;
+            bool close = k.is(P::RParen) || k.is(P::RBracket) || k.is(P::RBrace);
+            if (depth == 0 && (k.is(P::Comma) || close || k.is(P::Semi)))
+            {
+              if (itemShift && end > item + 1 && wrappedArguments.insert(item).second)
+              {
+                uint32_t after = toks[item].offset + toks[item].length;
+                if (after < text.size() && text[after] == ' ')
+                  replace(after, 1, " (");
+                else
+                  insert(after, "(");
+                insert(toks[end - 1].offset + toks[end - 1].length, ")");
+                counts.add("arguments with a >> after a < in their list written in parentheses");
+              }
+              if (!k.is(P::Comma))
+                break;
+              item = end;
+              itemShift = false;
+              continue;
+            }
+            if (k.is(P::LParen) || k.is(P::LBracket) || k.is(P::LBrace))
+              ++depth;
+            else if (close)
+              --depth;
+            else if (depth == 0 && (k.is(P::Shr) || split))
+            {
+              itemShift = true;
+              end += split;
+            }
+          }
+          continue;
+        }
         if (!shift || end >= toks.size() || end <= op + 1)
           continue;
         // (at the `<`'s end and the right side's last token's end: no other edit starts there)
@@ -2562,9 +2607,44 @@
       }
     }
 
+    // A variable template's value with an operator after it that kpp's parse takes for a comparison's
+    // (`TVariantSize_V<Variant0> * EncodeIndices(Rest...)`, Unreal's TVariantMeta.h: `a < b > *c`, design.md 22;
+    // C++ knows the name for a template's, kpp's parse reads no declarations): in parentheses, after which the
+    // `>` ends the template-id. By the names the program declares variable templates by.
+    void parenthesizeVariableTemplatesBeforeOperators()
+    {
+      if (!variableTemplateNames || variableTemplateNames->empty())
+        return;
+      for (uint32_t i = 0; i + 1 < toks.size(); ++i)
+      {
+        if (toks[i].getKind() != TokenKind::Identifier || !toks[i + 1].is(P::Less) || (i > 0 && (toks[i - 1].is(P::Dot) || toks[i - 1].is(P::Arrow))) ||
+            !variableTemplateNames->count(std::string(spelling(i))))
+          continue;
+        uint32_t start = i;
+        while (start >= 2 && toks[start - 1].is(P::ColonColon) && toks[start - 2].getKind() == TokenKind::Identifier)
+          start -= 2;
+        if (start >= 1 && toks[start - 1].is(P::ColonColon))
+          --start;
+        uint32_t close = templateIdEnd(start);
+        if (close == UINT32_MAX || close + 1 >= toks.size() || templateIdEnd(i) != close)
+          continue;
+        // (not a fold's `(width<Ts> + ...)`, which kpp's parse reads as one)
+        const Token& next = toks[close + 1];
+        if ((next.is(P::Star) || next.is(P::Plus) || next.is(P::Minus) || next.is(P::Amp) || next.is(P::GreaterEq)) &&
+            !(close + 2 < toks.size() && toks[close + 2].is(P::Ellipsis)))
+        {
+          insert(toks[start].offset, "(");
+          insert(endOffset(close), ")");
+          counts.add("variable templates' values before an operator written in parentheses");
+        }
+        i = close;
+      }
+    }
+
     void convertTokens()
     {
       parenthesizeShiftsAfterLess();
+      parenthesizeVariableTemplatesBeforeOperators();
       for (uint32_t i = 0; i + 2 < toks.size(); ++i)
       {
         const Token& t = toks[i];
@@ -3838,7 +3918,7 @@
               }
             }
           }
-          auto am = argumentMacros.find(name);
+          auto am = declaresFunction(name) ? argumentMacros.end() : argumentMacros.find(name);
           if (am != argumentMacros.end() && toks[i + 1].is(P::LParen))
           {
             // Recorded with its arguments' token ranges; the tokens inside stay in the stream for
@@ -3873,7 +3953,7 @@
               todo(t.offset, name + " with arguments it does not take: left as written");
             continue;
           }
-          auto kf = knownFunctionMacros.find(name);
+          auto kf = declaresFunction(name) ? knownFunctionMacros.end() : knownFunctionMacros.find(name);
           if (kf != knownFunctionMacros.end() && toks[i + 1].is(P::LParen))
           {
             int depth = 0;

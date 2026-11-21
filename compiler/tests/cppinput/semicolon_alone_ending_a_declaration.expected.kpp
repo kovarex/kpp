@@ -1,0 +1,22 @@
+// cppinput: a `;` alone on its line that ends what is above it (Unreal's ConfigCacheIni.cpp: an #if's `|| y` between
+// `bool b = x // comment` and its `;`; GenericPlatformAtomics.h's `} GCC_ALIGN(16)` then `;`) stays, an empty
+// statement's goes
+struct Pair
+{
+  i32 first;
+  i32 second;
+}
+;
+
+i32 main()
+{
+  bool b = true // first
+    && true // second
+    ;
+  Pair p{1, 2};
+  if (b)
+  {
+    p.first = 3;
+  }
+  return b && p.first + p.second == 5 ? 0 : 1;
+}

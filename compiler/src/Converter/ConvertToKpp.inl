@@ -443,6 +443,39 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         functionMacroNames.insert(std::string(t.substr(n, e - n)));
     }
   }
+  // The inputs another input includes (FileConverter::includedElsewhere).
+  std::vector<bool> includedElsewhere(inputs.size(), false);
+  for (const std::vector<size_t>& included : includedInputs)
+    for (size_t j : included)
+      includedElsewhere[j] = true;
+  // The names the converted files declare functions by (FileConverter::declaredFunctionNames): those declared with a
+  // return type, in namespaces and classes (a macro's use at a class's scope, `FOO(x);`, is read as a declaration
+  // without one).
+  std::set<std::string> declaredFunctionNames;
+  std::set<std::string> variableTemplateNames; // (FileConverter::variableTemplateNames)
+  auto collectFunctionNames = [&](auto& self, Span<Decl*> decls) -> void
+  {
+    for (Decl* d : decls)
+      if (d->kind == NodeKind::NamespaceDecl)
+        self(self, static_cast<NamespaceDecl*>(d)->decls);
+      else if (d->kind == NodeKind::ClassDecl)
+        self(self, static_cast<ClassDecl*>(d)->members);
+      else if (d->kind == NodeKind::FunctionDecl)
+      {
+        auto* f = static_cast<FunctionDecl*>(d);
+        if (f->returnType && !f->name.empty() && f->name.last().symbol != UINT32_MAX && f->name.last().special == 0)
+          declaredFunctionNames.insert(std::string(symbols.name(f->name.last().symbol)));
+      }
+      else if (d->kind == NodeKind::VariableDecl && d->isTemplate && !(d->flags & DF_Typedef))
+      {
+        auto* v = static_cast<VariableDecl*>(d);
+        if (!v->name.empty() && v->name.last().symbol != UINT32_MAX)
+          variableTemplateNames.insert(std::string(symbols.name(v->name.last().symbol)));
+      }
+  };
+  for (const ConvertInput& input : inputs)
+    if (input.parsed)
+      collectFunctionNames(collectFunctionNames, input.parsed->decls);
   // C: every macro constant of a C library is written out at its uses, in the files that see it,
   // as the preprocessor does. A C macro holds in one translation unit, a kpp constant is a name of
   // the whole program: gzguts.h's `#define COPY 1` met inflate.h's enumerator COPY, inftrees.h's
@@ -1043,6 +1076,8 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
     fc.scopedHeaderImports = &scopedHeaderImports;
     fc.leftOutFiles = &leftOutFiles;
     fc.functionMacroNames = &functionMacroNames;
+    fc.declaredFunctionNames = &declaredFunctionNames;
+    fc.variableTemplateNames = &variableTemplateNames;
     fc.classesByName = &classesByName;
     fc.leftOutTests = &leftOutTests;
     fc.leftOutTestsFound = &leftOutTestsFound;
@@ -1094,6 +1129,7 @@ std::string convertToKpp(const std::vector<ConvertInput>& inputs, GlobalScope& g
         for (const auto& [name, body] : configuration->impl->cNameDefines)
           fc.objectMacros.emplace(name, body);
       fc.siblingIncludes = &siblingIncludes[ip->second];
+      fc.includedElsewhere = includedElsewhere[ip->second];
       for (const auto& [name, body] : headerObjects)
         if (!knownMacros.count(name)) // the converter's own rewrite (SDL_PRIs64) stands
           fc.objectMacros.emplace(name, body);

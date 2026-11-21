@@ -1,0 +1,12 @@
+// cppinput: a static function in an `extern "C" {` block of a source file (Unreal's xxhash.cpp: XXH_malloc) is its
+// file's own, written private outside the block, which closes before it and opens again after it
+
+private i32 twice(i32 x) { return 2 * x; }
+private i32 thrice(i32 x) { return 3 * x; }
+
+extern "C" {
+int scaled(int x) { return twice(x) + thrice(x); }
+}
+
+private i32 offset() { return 1; }
+i32 main() { return scaled(2) + offset() == 11 ? 0 : 1; }

@@ -470,6 +470,37 @@ inline std::string withOneLiners(const std::string& input)
         return true;
     return false;
   };
+  // Whether line i's `;` alone is an empty statement or declaration: the code above it ends with `;` or `{`, or
+  // with a `}` whose `{` opens no class, struct, union or enum, no initializer (`= {`) and no lambda (`= [...]`).
+  auto emptyStatement = [&](size_t i)
+  {
+    size_t p = i;
+    while (p > 0 && (inside[p - 1] || trimmed(code[p - 1]).empty()))
+      --p;
+    if (p == 0)
+      return true;
+    std::string_view above = trimmed(code[--p]);
+    if (endsWith(above, ";") || endsWith(above, "{"))
+      return true;
+    if (!endsWith(above, "}"))
+      return false;
+    int depth = 0;
+    for (size_t k = p + 1; k-- > 0;)
+      for (size_t j = k == p ? code[k].rfind('}') + 1 : code[k].size(); j-- > 0;)
+        if (code[k][j] == '}')
+          ++depth;
+        else if (code[k][j] == '{' && --depth == 0)
+        {
+          size_t head = headOf(lines, code, k, j);
+          std::string headCode;
+          for (size_t m = head; m <= k; ++m)
+            headCode += (m > head ? " " : "") + (m == k ? code[m].substr(0, j) : code[m]);
+          std::string_view h = trimmed(headCode);
+          return !(hasWord(h, "class") || hasWord(h, "struct") || hasWord(h, "union") || hasWord(h, "enum") || endsWith(h, "=") ||
+                   endsWith(h, "return") || h.find("= [") != std::string_view::npos || h.find("=[") != std::string_view::npos);
+        }
+    return false;
+  };
   auto declarator = [&](size_t i)
   {
     if (inside[i] || trimmed(lines[i]) != trimmed(code[i]))
@@ -536,17 +567,13 @@ inline std::string withOneLiners(const std::string& input)
   for (size_t i = 0; i < lines.size(); ++i)
   {
     // A statement a macro left empty (`SAVE_FILE(...);` of a macro that is nothing, `do {} while (0)`,
-    // in this configuration and every other): its `;` alone on its line goes, unless it is a statement's
-    // body (`if (x)` or `else` above it).
-    if (!inside[i] && trimmed(lines[i]) == ";" && trimmed(code[i]) == ";" && !out.empty())
-    {
-      size_t previous = out.size();
-      while (previous > 0 && trimmed(out[previous - 1]).empty())
-        --previous;
-      std::string_view above = previous > 0 ? trimmed(out[previous - 1]) : std::string_view();
-      if (!endsWith(above, ")") && !endsWith(above, "else") && !endsWith(above, "do"))
-        continue;
-    }
+    // in this configuration and every other): its `;` alone on its line goes, where the code above it
+    // ends a statement or opens a block, or closes a block that is no declaration's. Not where it ends
+    // what is above (Unreal's `bool b = x // comment` then an #if's `|| y`, then `;`; a struct's
+    // `} GCC_ALIGN(16)` then `;`; a macro's `enum class E {...}` then `;`), nor where it is a
+    // statement's body (`if (x)` or `else` above it).
+    if (!inside[i] && trimmed(lines[i]) == ";" && trimmed(code[i]) == ";" && !out.empty() && emptyStatement(i))
+      continue;
     // The configurations' `if constexpr (!config::finalRelease)` (convertMerge's, for an #if group)
     // around one short statement: without braces, the statement on the next line, indented, as
     // Factorio writes an if's one statement (kovarex 2026-11-11); not before an `else`.

@@ -1,0 +1,5 @@
+// cppinput: a source file's static function whose `__declspec(noinline)` is on the line above it, a comment after it
+// (Unreal's UnrealNames.cpp, FORCENOINLINE): its `private` goes before the __declspec
+private __declspec(noinline) // not inlined
+i32 twice(i32 x) { return 2 * x; }
+i32 main() { return twice(3) == 6 ? 0 : 1; }

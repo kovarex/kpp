@@ -65,6 +65,87 @@
 
   struct FileConverter
   {
+    // Whether another converted file includes this one (a source included by another: its macros are that file's too).
+    bool includedElsewhere = false;
+    // The `>` (or `>>`) that ends the template arguments of the qualified name starting at token k (`TVariantSize_V<T>`,
+    // `A::B<C<D>>`), its last part's; UINT32_MAX where its last part has none.
+    uint32_t templateIdEnd(uint32_t k) const
+    {
+      uint32_t last = UINT32_MAX;
+      if (k < toks.size() && toks[k].is(P::ColonColon))
+        ++k;
+      while (k < toks.size() && toks[k].getKind() == TokenKind::Identifier)
+      {
+        last = UINT32_MAX;
+        ++k;
+        if (k < toks.size() && toks[k].is(P::Less))
+        {
+          int angle = 0, nested = 0;
+          for (; k < toks.size(); ++k)
+          {
+            const Token& t = toks[k];
+            if (t.is(P::LParen) || t.is(P::LBracket) || t.is(P::LBrace))
+              ++nested;
+            else if (t.is(P::RParen) || t.is(P::RBracket) || t.is(P::RBrace))
+            {
+              if (--nested < 0)
+                return UINT32_MAX;
+            }
+            else if (nested == 0 && t.is(P::Less))
+              ++angle;
+            else if (nested == 0 && t.is(P::Greater) && --angle == 0)
+              break;
+            else if (nested == 0 && t.is(P::Shr) && (angle -= 2) <= 0)
+            {
+              if (angle < 0)
+                return UINT32_MAX;
+              break;
+            }
+            else if (nested == 0 && t.is(P::Semi))
+              return UINT32_MAX;
+          }
+          if (k >= toks.size())
+            return UINT32_MAX;
+          last = k++;
+        }
+        if (k < toks.size() && toks[k].is(P::ColonColon))
+        {
+          ++k;
+          continue;
+        }
+        break;
+      }
+      return last;
+    }
+    // The `extern` of the outermost `extern "C" {` block open at offset, where every brace open there is such a block's;
+    // UINT32_MAX otherwise.
+    uint32_t outermostExternCAt(uint32_t offset) const
+    {
+      std::vector<uint32_t> open;
+      for (uint32_t k = 0; k < toks.size() && toks[k].offset < offset; ++k)
+        if (toks[k].is(P::LBrace))
+          open.push_back(k);
+        else if (toks[k].is(P::RBrace) && !open.empty())
+          open.pop_back();
+      if (open.empty())
+        return UINT32_MAX;
+      for (uint32_t k : open)
+        if (k < 2 || toks[k - 1].getKind() != TokenKind::String || !toks[k - 2].is(Kw::extern_))
+          return UINT32_MAX;
+      return open.front() - 2;
+    }
+    // How many braces are open before offset (0: the file's top level, outside any namespace, class or function).
+    int braceDepthAt(uint32_t offset) const
+    {
+      int depth = 0;
+      for (const Token& t : toks)
+      {
+        if (t.offset >= offset)
+          break;
+        depth += t.is(P::LBrace) ? 1 : t.is(P::RBrace) ? -1 : 0;
+      }
+      return depth;
+    }
     bool isHeader() const
     {
       std::string ext = in.path.extension().string();
@@ -1517,6 +1598,9 @@
     // two declarations)
     const std::set<std::string>* cPrivate = nullptr;
     std::set<uint32_t> cPrivateAt;
+    // C++: the declarations of an `extern "C" {` block written private (xxhash's `static void* XXH_malloc`), which
+    // the block closes before and opens again after (a private declaration is no extern "C" one)
+    std::set<const Decl*> privateInExternC;
     const std::map<std::string, std::string>* cConfiguredImports = nullptr; // and what an include of one imports instead
     const CMacros* cMacros = nullptr; // C: the macros the parse saw through, also inside macro expansions
     const std::set<std::string>* cWrittenOutMacros = nullptr; // C: macro constants written out at their uses, not made constants ("*": all)
@@ -1540,6 +1624,14 @@
     // Every function-like macro's name (callsFunction): an object-like macro that calls something else
     // is written out at its uses.
     const std::set<std::string>* functionMacroNames = nullptr;
+    // The names the converted files declare functions by, members' too (convertToKpp): where the program declares
+    // one, the macro of that name the conversion knows (knownFunctionMacros, argumentMacros) is not defined, as C++
+    // could not declare it otherwise (Unreal's FWindowsPlatformAtomics::InterlockedIncrement, after winnt.h's macro
+    // is undefined), and its uses are the program's function.
+    const std::set<std::string>* declaredFunctionNames = nullptr;
+    bool declaresFunction(const std::string& name) const { return declaredFunctionNames && declaredFunctionNames->count(name); }
+    // The names the converted files declare variable templates by (parenthesizeVariableTemplatesBeforeOperators).
+    const std::set<std::string>* variableTemplateNames = nullptr;
     // The converted files' classes and aliases by their own name (convertToKpp), for the fixture of a
     // fixture test.
     const std::map<std::string, std::vector<Decl*>>* classesByName = nullptr;

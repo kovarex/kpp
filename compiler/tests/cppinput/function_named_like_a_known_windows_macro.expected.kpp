@@ -1,0 +1,17 @@
+// cppinput: a function the program declares by the name of a Windows macro the conversion knows (Unreal's
+// FWindowsPlatformAtomics::InterlockedIncrement, declared once winnt.h's macro is undefined) is the program's function
+struct Atomics
+{
+  static i32 InterlockedIncrement(i32* value) { return ++*value; }
+  static i32 incrementTwice(i32* value)
+  {
+    InterlockedIncrement(value);
+    return InterlockedIncrement(value);
+  }
+};
+
+i32 main()
+{
+  i32 count = 1;
+  return Atomics::InterlockedIncrement(&count) == 2 && Atomics::incrementTwice(&count) == 4 ? 0 : 1;
+}

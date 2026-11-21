@@ -351,7 +351,16 @@
     // macro writes (zstd's FORCE_INLINE_TEMPLATE, `static inline`), which drops the word from that
     // rewrite. Not a function's prototype or a type's forward declaration: the conversion removes
     // those, kpp needs none.
-    void writePrivate(Decl* d)
+    // scope, index: d's place among its scope's declarations, for one in an `extern "C" {` block, which closes before
+    // it and opens again after it (privateInExternC), a run of private declarations taken together.
+    bool braceBetween(const Decl* a, const Decl* b) const
+    {
+      for (uint32_t k = a->endToken; k < b->token && k < toks.size(); ++k)
+        if (toks[k].is(P::LBrace) || toks[k].is(P::RBrace))
+          return true;
+      return false;
+    }
+    void writePrivate(Decl* d, const Span<Decl*>* scope = nullptr, size_t index = 0)
     {
       if ((d->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(d)->body) ||
           (d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->isDefinition) ||
@@ -365,8 +374,18 @@
       uint32_t k = d->token;
       while (k > 0 && toks[k - 1].offset >= start)
         --k;
+      uint32_t first = k;
       for (; k < toks.size() && !toks[k].is(P::LParen) && !toks[k].is(P::Assign) && !toks[k].is(P::LBrace) && !toks[k].is(P::Semi); ++k)
-        if (toks[k].is(Kw::static_))
+        if (spelling(k) == "__declspec" && k + 1 < toks.size() && toks[k + 1].is(P::LParen))
+        {
+          // (`__declspec(noinline) static int f()`: the static after it)
+          for (int depth = 0; ++k < toks.size();)
+            if (toks[k].is(P::LParen))
+              ++depth;
+            else if (toks[k].is(P::RParen) && --depth == 0)
+              break;
+        }
+        else if (toks[k].is(Kw::static_))
         {
           bool rewritten = false;
           for (Edit& e : edits)
@@ -396,7 +415,21 @@
           }
           break;
         }
-      cInsertBefore(start, "private ");
+      std::string before;
+      if (scope && !in.c && (d->flags & DF_ExternC))
+      {
+        privateInExternC.insert(d);
+        if (!(index > 0 && privateInExternC.count((*scope)[index - 1]) && !braceBetween((*scope)[index - 1], d)))
+        {
+          // (the block's first declaration: its `extern "C" {` goes instead, which would hold nothing)
+          if (first >= 3 && toks[first - 1].is(P::LBrace) && toks[first - 2].getKind() == TokenKind::String && toks[first - 3].is(Kw::extern_))
+            removeWholeLine(toks[first - 3].offset, endOffset(first - 1));
+          else
+            before = "}\n\n";
+          counts.add("extern \"C\" blocks closed around private declarations");
+        }
+      }
+      cInsertBefore(start, before + "private ");
       counts.add(in.c ? "C names kept to their file written private" : "C++ names kept to their file written private");
     }
     // A rewrite of the token at offset, which another rewrite of it (a keyword macro written out:

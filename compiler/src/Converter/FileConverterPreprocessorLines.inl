@@ -518,6 +518,28 @@
             counts.add("C macros defined in a struct written before it");
             return std::string();
           }
+          // A source file's, at its top level: its own, as no other file sees a .cpp file's macros (TraceLog's Codec.cpp
+          // and Core's lz4hc.cpp, two copies of LZ4, each with its LZ4_VERSION_RELEASE), unless another file includes it.
+          if (!in.c && !isHeader() && !includedElsewhere && !innermost)
+          {
+            if (braceDepthAt(offset) == 0)
+            {
+              counts.add("macro constants of a source file written private");
+              return indent + "private const auto " + name + " = " + body + ";" + trailing;
+            }
+            // (in an `extern "C" {` block, where no declaration is private: before the block, Codec.cpp's LZ4)
+            if (uint32_t externAt = outermostExternCAt(offset); externAt != UINT32_MAX)
+            {
+              size_t lineStart = text.rfind('\n', toks[externAt].offset);
+              std::string constant = "private const auto " + name + " = " + body + ";" + trailing;
+              if (lineStart == std::string_view::npos)
+                insert(0, constant + "\n");
+              else
+                insert(uint32_t(lineStart), "\n" + constant);
+              counts.add("macro constants of a source file written private");
+              return std::string();
+            }
+          }
           return indent + (innermost && innermost->classBody ? "static constexpr auto " : "const auto ") + name + " = " + body + ";" + trailing;
         }
       }

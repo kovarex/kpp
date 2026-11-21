@@ -1,0 +1,8 @@
+// cppinput: a #define constant inside an `extern "C" {` block of a source file (TraceLog's Codec.cpp, its copy of
+// LZ4's lz4.h): the file's own, written private before the block, where no declaration is private
+private const auto VERSION_RELEASE = 2 /* for tweaks */;
+extern "C" {
+int release() { return VERSION_RELEASE; }
+}
+
+i32 main() { return release() == 2 ? 0 : 1; }

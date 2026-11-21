@@ -1,0 +1,11 @@
+// cppinput: a comparison that is one argument of a call, a later argument shifting (Unreal's UnrealNames.cpp:
+// `checkf(CurrentBlock < FNameMaxBlocks, TEXT("..."), FNameMaxBlocks * BlockSizeBytes >> 20)`): kpp would read
+// `CurrentBlock<FNameMaxBlocks, ...>` closed by the `>>`, so the shifting argument is written in parentheses
+i32 pick(bool first, i32 second, i32 third) { return first ? second + third : 0; }
+
+i32 main()
+{
+  i32 block = 1, maxBlocks = 4, size = 64;
+  i32 scale = 2;
+  return pick(block < maxBlocks, scale < size, (maxBlocks * size >> 4)) == 17 ? 0 : 1;
+}
