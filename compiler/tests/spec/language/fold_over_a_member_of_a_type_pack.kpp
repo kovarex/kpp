@@ -1,0 +1,35 @@
+// spec: a fold over a member of each type of a pack (`(B::value && ...)`, `(... || B::value)`, `(0 + ... + B::size)`, std::conjunction's form) is a constant: the qualifier names the pack, so the fold expands it, in a variable template, a class's static member and a static_assert; clang prints the same
+// found by thread UE (2026-11-22): the evaluator took a fold's pattern to name a pack only where the pack was the whole name, so `conjunction_v<A, B>` was no constant ("static assertion whose condition the compiler cannot evaluate yet")
+struct Yes
+{
+  static constexpr bool value = true;
+  static constexpr int size = 2;
+};
+
+struct No
+{
+  static constexpr bool value = false;
+  static constexpr int size = 5;
+};
+
+template<typename... B>
+constexpr bool all = (B::value && ...);
+
+template<typename... B>
+constexpr bool any = (... || B::value);
+
+template<typename... B>
+struct Total
+{
+  static constexpr int value = (0 + ... + B::size);
+};
+
+static_assert(all<Yes, Yes> && !all<Yes, No> && all<>);
+static_assert(any<No, Yes> && !any<No, No>);
+static_assert(Total<Yes, No, Yes>::value == 9);
+
+int main()
+{
+  std::println(all<Yes, Yes>, " ", all<Yes, No>, " ", any<No, Yes>, " ", Total<Yes, No>::value);
+  return 0;
+}

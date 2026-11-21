@@ -1201,7 +1201,8 @@ auto GlobalScope::Impl::packNamedIn(Node* n, const Subst& s, int depth) -> Decl*
   if (!n || depth > maxNestedLevels)
     return nullptr;
   auto named = [&](const QualifiedName& name) -> Decl* {
-    if (name.parts.size() == 1 && !name.global)
+    // (`Ts` alone, or the qualifier of `Ts::value`: `(Ts::value && ...)`, which was no fold of the pack)
+    if (!name.parts.empty() && !name.global && !name.typeQualifier)
       for (const Subst::Pair& p : s.pairs)
         if (p.param && p.param->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(p.param)->isPack && p.type &&
             p.type->kind == TyKind::Pack && static_cast<TemplateParamDecl*>(p.param)->name == name.parts[0].symbol)
