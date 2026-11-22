@@ -530,6 +530,8 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
   if (name == "isArray") return one() && one()->kind == TyKind::Array;
   if (name == "isPointer") return one() && one()->kind == TyKind::Pointer;
   if (name == "isEnum") return one() && one()->kind == TyKind::Enum;
+  if (name == "isStrong") // (design.md 33: `using X = strong u16;`)
+    return one() && one()->kind == TyKind::Enum && one()->decl && one()->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(one()->decl)->isStrong;
   if (name == "isClass")
   {
     // (A union is none, [meta.unary.cat]; a `union enum` is a class of kpp's, a closure a class.)
@@ -1008,7 +1010,7 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
 auto GlobalScope::Impl::isBoolTraitName(uint32_t symbol) -> bool
 {
   std::string_view n = symbols.name(symbol);
-  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isClass" || n == "isStruct" || n == "hasConstructor" || n == "isInstanceOf" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
+  return n == "isArray" || n == "isPointer" || n == "isEnum" || n == "isStrong" || n == "isClass" || n == "isStruct" || n == "hasConstructor" || n == "isInstanceOf" || n == "isTypedUnion" || n == "isVoid" || n == "isReference" || n == "isConst" ||
          n == "isNullPointer" || n == "isIntegral" || n == "isFloatingPoint" || n == "isArithmetic" || n == "isSigned" ||
          n == "isUnsigned" || n == "isFunction" || n == "isTriviallyCopyable" || n == "isSame" || n == "isBaseOf" || n == "isConvertible" ||
          n == "isConstructible" || n == "isFundamental" || n == "isTriviallyDestructible" || n == "isTriviallyCopyAssignable" ||

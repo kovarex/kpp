@@ -3939,6 +3939,21 @@ namespace
             currentParent = savedParent;
             e->enumerators = makeSpanOf(values);
           }
+          // Its text is its value's (design.md 33; the library's appendTo writes the underlying value), and str() is that
+          // text, as appendTo makes str() of other types: `index.str()` is "9", a strong bool's "true".
+          if (at(P::Semi))
+          {
+            std::vector<Token> made = synthesize("std::String str() const { return std::toString(this); }", start);
+            toks.insert(toks.begin() + pos, made.begin(), made.end());
+            Decl* savedParent = currentParent;
+            currentParent = e;
+            size_t mark = scratch.size();
+            ++enumBodies;
+            parseDeclaration(Scope::Enum);
+            --enumBodies;
+            e->members = makeSpan<Decl*>(mark);
+            currentParent = savedParent;
+          }
           expect(P::Semi, "expected ';'");
           pushDecl(e);
           return;

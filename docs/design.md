@@ -3786,10 +3786,13 @@ had deleted `i8` and `u8` constructors), and `using PlaySound = strong bool;` is
   with its own type. Any other operand is an error naming both types.
 - `strong bool` has the values False and True, no arithmetic, and is a condition's bool (`if`, `?:`, `!`, `&&`, `||`),
   as a class's explicit operator bool is; `bool(x)` and `PlaySound(b)` convert.
+- Its text is its value's, as every type's is through appendTo (design.md 14): the library's appendTo of an enumeration
+  writes a strong type's underlying value, so a piece, `toString`, `<<` and `println` write `9`, a strong bool `true` or
+  `false`; and it has `String str() const`, that text (the parser writes it, `std::toString(this)`). NamedBool's
+  `fromBool(b)` is the cast `PlaySound(b)` (kovarex, 2026-11-22), its `str()` this one.
 - Inside a class or a function too. Not a template (`template<class T> using X = strong T;` is an error). Hover shows
-  the declaration, "strong type X". It is still an enum to the library (`isEnum`), and prints as one
-  (`ItemStackIndex(9)`).
-- Not yet: the game's NamedBool and its typedefs moved to it (fromBool, str(), its serialisers), which is a game change.
+  the declaration, "strong type X". It is still an enum to the library (`isEnum`); `isStrong<T>` tells it.
+- Not yet: the game's NamedBool and its typedefs moved to it (its serialisers), which is a game change.
 
 Specs: kpp/strong_type, kpp/strong_type_overloads, kpp/strong_bool, kpp/strong_type_conversions_need_a_cast.
 docs/differences-from-cpp.md, "Strong types".

@@ -112,6 +112,12 @@ template<typename E>
   requires isEnum<E>
 void appendTo(E value, String& out)
 {
+  // A strong type (design.md 33: `using Index = strong u16;`) is its value's text: `9`, a strong bool's `true`.
+  if constexpr (isStrong<E>)
+  {
+    appendTo(static_cast<UnderlyingType<E>>(value), out);
+    return;
+  }
   if (const char* name = kppEnumeratorName(value))
   {
     out.append(name);
