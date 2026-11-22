@@ -283,7 +283,7 @@ void findConfigDeclarations(std::string_view text, std::vector<ConfigDeclaration
   collectConfigDeclarations(lexed.tokens, text, out, errors);
 }
 
-void dropConfigDeclarations(std::vector<Token>& tokens, std::string_view text)
+void dropConfigDeclarations(std::vector<Token>& tokens, std::string_view text, std::vector<uint32_t>* words)
 {
   // Every .kpp file comes here before it is parsed: most have no `config` before a name at all.
   bool any = false;
@@ -301,6 +301,8 @@ void dropConfigDeclarations(std::vector<Token>& tokens, std::string_view text)
     if (declarationAt(tokens, text, i, d, end, error) != Found::Declared)
       return i;
     dropped.push_back({i, end});
+    if (words)
+      words->push_back(tokens[i].offset);
     return end;
   });
   if (dropped.empty())

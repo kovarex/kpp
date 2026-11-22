@@ -34,7 +34,7 @@ struct ParsedFile
   // The source offsets of kpp's own words where the parser takes them as such (the language server
   // colors them: docs/ide.md): check, require, fail, requireThrows, checkThrows, assert,
   // release_assert, fallthrough, nameof, test, suite, depends, tags, generate, implicit, both_const,
-  // class_const, accumulate, conditional, caller, import; in test code skipped without --tests, by
+  // class_const, accumulate, conditional, caller, import, strong, a config declaration's config; in test code skipped without --tests, by
   // their neighbours. Not sorted; a speculative parse may repeat one. Offsets, as a test's tokens
   // are spliced.
   std::vector<uint32_t> kppWords;

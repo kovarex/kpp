@@ -45,7 +45,7 @@
           "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
         },
         { "name": "keyword.other.kpp-word.kpp", "match": "(?<![.>:])\\b(?:requireThrows|checkThrows)\\b(?=\\s*<)" },
-        { "name": "keyword.other.kpp-word.kpp", "match": "(?<![.>:])\\bnameof\\b(?=\\s*\\()" },
+        { "name": "keyword.other.kpp-word.kpp", "match": "(?<![.>:])\\b(?:qualified)?nameof\\b(?=\\s*\\()" },
         { "name": "keyword.other.kpp-word.kpp", "match": "\\bfallthrough\\b(?=\\s*;)" },
         {
           "match": "^\\s*(test|generate)\\b(?=\\s+[A-Za-z_])",
@@ -62,6 +62,14 @@
         },
         { "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:implicit|both_const|class_const|accumulate|when|This|super)\\b" },
         { "name": "keyword.other.kpp-word.kpp", "match": "\\bimport\\b(?=\\s*\")" },
+        {
+          "match": "\\busing\\s+[A-Za-z_]\\w*\\s*=\\s*(strong)\\b(?=\\s+[A-Za-z_])",
+          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
+        },
+        {
+          "match": "^\\s*(config)\\b(?=\\s+[A-Za-z_])",
+          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
+        },
         {
           "match": "(?<==)\\s*\\b(caller)\\b(?=\\s*[,)])",
           "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }

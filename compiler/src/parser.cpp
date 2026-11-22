@@ -3918,6 +3918,7 @@ namespace
           e->isStrong = true;
           e->attributes = u->attributes;
           numberType(e, false);
+          noteWord(pos);
           advance();
           e->underlying = parseType();
           if (!e->underlying)
@@ -9047,7 +9048,7 @@ void parseFile(std::vector<Token>& tokens, std::string_view text, SymbolTable& s
     tokens = std::move(kept);
   }
   if (dialect == Dialect::KppSource)
-    dropConfigDeclarations(tokens, text); // read before parsing (config.cpp)
+    dropConfigDeclarations(tokens, text, &out.kppWords); // read before parsing (config.cpp)
   out.tokens = &tokens;
   out.text = text;
   out.arena.reserve(tokens.size() * 40 + 4096); // Measured: about 30 bytes of AST per token.

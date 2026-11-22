@@ -40,3 +40,8 @@ suite gaugeWords depends gaugeBasics
     requireThrows<i32>(gaugeStep(9));
   }
 }
+
+// A strong type's `strong` and a config declaration's `config` are kpp's words too.
+config i32 gaugeLimit = 3;
+using GaugeIndex = strong u16;
+GaugeIndex nextGauge(GaugeIndex index) { return index + GaugeIndex(u16(config::gaugeLimit)); }

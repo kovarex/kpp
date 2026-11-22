@@ -43,4 +43,5 @@ void findConfigDeclarations(std::string_view text, std::vector<ConfigDeclaration
 
 // Takes the well-formed config declarations out of a .kpp file's tokens before it is parsed: they are
 // read by collectConfigDeclarations, and the parser never sees one (a `config` it meets is an error).
-void dropConfigDeclarations(std::vector<Token>& tokens, std::string_view text);
+// words: the `config` word's offset of each, kpp's own word (ParsedFile::kppWords: the editor colors it).
+void dropConfigDeclarations(std::vector<Token>& tokens, std::string_view text, std::vector<uint32_t>* words = nullptr);
