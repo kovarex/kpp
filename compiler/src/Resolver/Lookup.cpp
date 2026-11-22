@@ -628,11 +628,13 @@ auto GlobalScope::Impl::lookupUnqualified(uint32_t symbol, Scope* context, const
   Lookup out;
   // `This` in kpp code (design.md 23c): the class lexically around the code, as its injected name would be (a
   // class template's current instance, a base's member its base), or the enum around an enum's method. Nothing
-  // may be named `This` there (Walker::checkNotThis); imported C keeps it a name.
+  // may be named `This` there (Walker::checkNotThis); imported C keeps it a name. An enumerator's value is in no
+  // method: there the class around the enum (`enum { Value = sizeof(This::test((From*)nullptr)) - 1 }`, as the
+  // converter writes a static member; until 2026-11-22 the enum, and Unreal's TPointerIsConvertibleFromTo was no constant).
   if (symbol == symThisType && !(lookupFile && lookupFile->isImported))
   {
     for (Scope* s = context; s; s = s->parent)
-      if ((s->kind == ScopeKind::Class || s->kind == ScopeKind::Enum) && s->owner &&
+      if ((s->kind == ScopeKind::Class || (s->kind == ScopeKind::Enum && !(locals && locals->enumeratorValuesOf == s))) && s->owner &&
           (s->owner->kind == NodeKind::ClassDecl || s->owner->kind == NodeKind::EnumDecl))
       {
         out.decl = s->owner;

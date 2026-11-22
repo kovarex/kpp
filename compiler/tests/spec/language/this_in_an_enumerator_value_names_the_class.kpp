@@ -1,0 +1,36 @@
+// spec: `This` in an enumerator's value names the class around the enum (design.md 23c: the enum only in an enum's methods, and a value is in none; a scoped enum's methods are built in), as the converter writes a static member there: `enum { Value = sizeof(This::test((From*)nullptr)) - 1 }`
+// found by: Unreal's TPointerIsConvertibleFromTo (converted Core): the enum's own scope answered `This`, its enumerators were no constants, and seven static assertions could not be evaluated
+class Base {};
+class Derived : public Base {};
+class Unrelated {};
+template<typename From, typename To> class Converts
+{
+  static u8 test(...);
+  static u16 test(To*);
+public:
+  enum { Value = sizeof(This::test((From*)nullptr)) - 1 };
+};
+class Plain
+{
+  static u16 one(Base*);
+public:
+  static constexpr int k = 3;
+  enum { A = sizeof(This::one((Derived*)nullptr)), B = This::k + 1 };
+  enum class Scoped { C = This::k * 2 };
+};
+enum class Direction
+{
+  { North, East }
+  Direction turned() const { return this == This::North ? This::East : Direction::North; }
+};
+static_assert(Converts<Derived, Base>::Value);
+static_assert(!Converts<Unrelated, Base>::Value);
+static_assert(!Converts<Base, Derived>::Value);
+static_assert(Plain::A == 2 && Plain::B == 4 && int(Plain::Scoped::C) == 6);
+int main()
+{
+  int values[Plain::B] = {};
+  std::println(int(Converts<Derived, Base>::Value), " ", int(Converts<Unrelated, Base>::Value), " ", int(Plain::A), " ", int(Plain::B), " ",
+               int(Plain::Scoped::C), " ", int(sizeof(values) / sizeof(int)), " ", Direction::North.turned() == Direction::East);
+  return 0;
+}

@@ -3095,7 +3095,9 @@ kovarex, 2026-11-07:
 - **`This`**, a type keyword (Q9, after Rust's and Swift's `Self` and PHP's `self::`): the class lexically
   enclosing the code. In a class template it is the current instance (`Vector<T>`, the arguments not
   repeated); in a base class it is the base, never the class deriving from it; in an enum's methods the
-  enum (`This::North`); it works in a static member function. Built 2026-11-07: the token stays an
+  enum (`This::North`), and in an enumerator's value, which is in no method, the class around the enum (`enum { Value =
+  sizeof(This::test((From*)nullptr)) - 1 }`, a static member as the converter writes it; 2026-11-22, spec
+  language/this_in_an_enumerator_value_names_the_class); it works in a static member function. Built 2026-11-07: the token stays an
   identifier, and the unqualified lookup binds `This` to the class around the code as its injected name
   would be (so `This::x` is a qualified member name: hover, go-to-definition and rename through it, F); in
   kpp code nothing may be named `This` ("`This` is a keyword: it names the class the code is in"), and

@@ -1700,6 +1700,8 @@
     for (Decl* p = paramsOf; p; p = p->parent)
       for (Decl* tp : p->templateParams)
         w.locals.push(static_cast<TemplateParamDecl*>(tp)->name, tp);
+    if (key->kind == NodeKind::EnumeratorDecl)
+      w.locals.enumeratorValuesOf = scope; // (`This` in a value: the class around, design.md 23c)
     w.scope = scope;
     if (!s.empty())
       w.activeSubst = &s;

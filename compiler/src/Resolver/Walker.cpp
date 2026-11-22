@@ -11856,9 +11856,12 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         scope = e->ownScope;
         thisType = computeThisType(); // the enum's methods see `this` as the value
       }
+      const Scope* savedValuesOf = locals.enumeratorValuesOf;
+      locals.enumeratorValuesOf = e->ownScope; // (`This` in a value: the class around, design.md 23c)
       for (Decl* en : e->enumerators)
         if (en->kind == NodeKind::EnumeratorDecl)
           walkExpr(static_cast<EnumeratorDecl*>(en)->value);
+      locals.enumeratorValuesOf = savedValuesOf;
       walkDecls(e->members);
       scope = saved;
       thisType = savedThis;

@@ -727,6 +727,7 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
       for (const Subst::Pair& p : instance->pairs) // (in a function's instance: `enum { a = sizeof(T), b = a + 1 };`)
         if (p.param->kind == NodeKind::TemplateParamDecl)
           enumParams.push(static_cast<TemplateParamDecl*>(p.param)->name, p.param);
+    enumParams.enumeratorValuesOf = e->ownScope; // (`This` in a value: the class around, design.md 23c)
     TypeContext ectx{e->ownScope ? e->ownScope : lexicalScopeOf(e), &enumParams, instance, e->file ? e->file->tokens : nullptr,
                      e->file ? e->file->text : std::string_view()};
     // An enumeration with no instance's arguments to depend on: all its enumerators' values, kept

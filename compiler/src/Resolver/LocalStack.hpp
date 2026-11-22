@@ -57,4 +57,7 @@ struct LocalStack
   // Manager's): its body's names see that file's private names (design.md 15), though its scope is its
   // class's, which is another file's (privateScopeFor). Null: the scope's file.
   const ParsedFile* writtenIn = nullptr;
+  // The scope of the enum whose enumerators' values are walked or evaluated: `This` there names the class around the
+  // enum (design.md 23c: the enum only in its methods), as the converter writes a static member there.
+  const Scope* enumeratorValuesOf = nullptr;
 };
