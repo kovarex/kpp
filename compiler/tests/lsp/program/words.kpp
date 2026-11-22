@@ -41,7 +41,7 @@ suite gaugeWords depends gaugeBasics
   }
 }
 
-// A strong type's `strong` and a config declaration's `config` are kpp's words too.
+// A config declaration's `config` is a kpp word too, and an explicit type's `explicit` a keyword.
 config i32 gaugeLimit = 3;
-using GaugeIndex = strong u16;
+using GaugeIndex = explicit u16;
 GaugeIndex nextGauge(GaugeIndex index) { return index + GaugeIndex(u16(config::gaugeLimit)); }

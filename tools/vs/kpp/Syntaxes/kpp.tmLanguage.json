@@ -63,10 +63,6 @@
         { "name": "keyword.other.kpp-word.kpp", "match": "\\b(?:implicit|both_const|class_const|accumulate|when|This|super)\\b" },
         { "name": "keyword.other.kpp-word.kpp", "match": "\\bimport\\b(?=\\s*\")" },
         {
-          "match": "\\busing\\s+[A-Za-z_]\\w*\\s*=\\s*(strong)\\b(?=\\s+[A-Za-z_])",
-          "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
-        },
-        {
           "match": "^\\s*(config)\\b(?=\\s+[A-Za-z_])",
           "captures": { "1": { "name": "keyword.other.kpp-word.kpp" } }
         },

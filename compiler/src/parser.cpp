@@ -46,7 +46,6 @@ namespace
       kwDefine = symbols.intern("define");
       kwSuite = symbols.intern("SUITE");
       kwFlags = symbols.intern("flags");
-      kwStrong = symbols.intern("strong");
       kwAssert = symbols.intern("assert");
       kwReleaseAssert = symbols.intern("release_assert");
       kwCaller = symbols.intern("caller");
@@ -3902,28 +3901,27 @@ namespace
         }
         advance();
         skipAttributes();
-        // `using ItemStackIndex = strong u16;`: a type of its own, an enum class of that underlying type with no
-        // values of its own (design.md 33): `strong bool`'s are False and True. Not `strong` named as a type
-        // (`using S = strong;`, `strong::X`, `strong<T>`).
-        if (isKpp() && atIdent(kwStrong) && !at(P::Semi, 1) && !at(P::ColonColon, 1) && !at(P::Less, 1) && !at(P::LBracket, 1))
+        // `using ItemStackIndex = explicit u16;`: a type of its own, an enum class of that underlying type with no
+        // values of its own (design.md 33): `explicit bool`'s are False and True. Two such aliases of one type are two
+        // types (kovarex, 2026-11-22: `explicit`, a keyword already, says what it is; it was `strong` until then).
+        if (isKpp() && at(Kw::explicit_))
         {
           if (templ.present)
-            error("a strong type is no template: `template<...> using X = strong T;` is not supported (design.md 33)");
+            error("an explicit type is no template: `template<...> using X = explicit T;` is not supported (design.md 33)");
           EnumDecl* e = decl<EnumDecl>(start);
           NamePart part;
           part.symbol = u->name;
           e->name.parts = makeSpanOf(std::vector<NamePart>{part});
           e->isClass = true;
           e->isDefinition = true;
-          e->isStrong = true;
+          e->isExplicitType = true;
           e->attributes = u->attributes;
           numberType(e, false);
-          noteWord(pos);
           advance();
           e->underlying = parseType();
           if (!e->underlying)
           {
-            error("expected the strong type's underlying type");
+            error("expected the explicit type's underlying type");
             return;
           }
           if (e->underlying->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(e->underlying)->keyword == Kw::bool_)
@@ -3941,7 +3939,7 @@ namespace
             e->enumerators = makeSpanOf(values);
           }
           // Its text is its value's (design.md 33; the library's appendTo writes the underlying value), and str() is that
-          // text, as appendTo makes str() of other types: `index.str()` is "9", a strong bool's "true".
+          // text, as appendTo makes str() of other types: `index.str()` is "9", an explicit bool's "true".
           // (written after the declaration's `;`, so its own tokens stay the declaration's: hover shows them)
           if (expect(P::Semi, "expected ';'"))
           {
@@ -8633,7 +8631,7 @@ namespace
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCheckValid, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
-             kwTagMethod, kwTypeMember, kwMembers, kwAlternatives, kwSuite, kwFlags, kwStrong;
+             kwTagMethod, kwTypeMember, kwMembers, kwAlternatives, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
     std::vector<ClassDecl::Flag> pendingFlags;
     uint32_t pendingFlagsAt = UINT32_MAX;

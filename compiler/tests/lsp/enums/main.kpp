@@ -22,5 +22,5 @@ int main()
   int first = int(action.tag().str()[0]) - 'M';
   return first + int(Color::count) + Mode::count + int(mode.str()[0]) + Action::Tag::count + ActionType::count + int(tag.str()[0]) - 'O' - 'M' - 8;
 }
-using ItemStackIndex = strong u16; // a strong type's hover is its whole declaration (design.md 33)
+using ItemStackIndex = explicit u16; // an explicit type's hover is its whole declaration (design.md 33)
 ItemStackIndex next(ItemStackIndex index) { return index + ItemStackIndex(1); }

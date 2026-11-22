@@ -192,8 +192,8 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   // scoped one (enum class) converts to nothing; an unscoped one to a number is implicit. Until
   // 2026-11-05 `Color c = 1;`, `int x = Scoped::A;` and `Color c = Scoped::A;` compiled. Imported C
   // keeps C's rule.
-  // A strong bool is a condition's, !'s, &&'s and ||'s bool, as a class's explicit operator bool is (design.md 33).
-  if (const Ty* s = strongType(from); s && context == ConversionContext::Direct && types.unqualified(to)->kind == TyKind::Bool &&
+  // An explicit bool is a condition's, !'s, &&'s and ||'s bool, as a class's explicit operator bool is (design.md 33).
+  if (const Ty* s = explicitType(from); s && context == ConversionContext::Direct && types.unqualified(to)->kind == TyKind::Bool &&
                                        enumUnderlying(s)->kind == TyKind::Bool)
     explicitCast = true;
   if (!explicitCast && !operandConversion && !(currentFile && currentFile->isImported))
@@ -203,9 +203,9 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     auto scoped = [](const Ty* t) { return t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass; };
     bool sameEnum = sameEnumeration(uf, ut);
     if (!sameEnum && ut->kind == TyKind::Enum && (uf->kind == TyKind::Enum || number(uf)))
-      fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the " + (strongType(ut) ? "strong type " : "enumeration ") + types.toString(to, &symbols) + " without a cast");
+      fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the " + (explicitType(ut) ? "explicit type " : "enumeration ") + types.toString(to, &symbols) + " without a cast");
     if (!sameEnum && uf->kind == TyKind::Enum && scoped(uf) && number(ut))
-      fail(at, std::string("a value of the ") + (strongType(uf) ? "strong type " : "enum class ") + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
+      fail(at, std::string("a value of the ") + (explicitType(uf) ? "explicit type " : "enum class ") + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
   }
   // (`enum class E : bool`: converts as a bool does, `(E)2` to true, and reads as 0 or 1, never -1.)
   auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? (enumUnderlying(t)->kind == TyKind::Bool ? TyKind::Bool : TyKind::Int) : t->kind; };

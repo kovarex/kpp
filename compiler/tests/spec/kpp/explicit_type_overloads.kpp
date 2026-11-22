@@ -1,8 +1,8 @@
-// spec: strong types of one underlying type are different types to overloading (design.md 33, kovarex 2026-11-22: "tests of overloading of the same underlying strong types"): f(ItemStackIndex), f(InventoryIndex) and f(u16) are three overloads, each argument picks its own exactly, a number picks the u16 one and never a strong one, two strong bools overload as two types, and a function template deduces the strong type, not its underlying one
-using ItemStackIndex = strong u16;
-using InventoryIndex = strong u16;
-using PlaySound = strong bool;
-using DragBuild = strong bool;
+// spec: explicit types of one underlying type are different types to overloading (design.md 33, kovarex 2026-11-22: "tests of overloading of the same underlying explicit types"): f(ItemStackIndex), f(InventoryIndex) and f(u16) are three overloads, each argument picks its own exactly, a number picks the u16 one and never a strong one, two explicit bools overload as two types, and a function template deduces the explicit type, not its underlying one
+using ItemStackIndex = explicit u16;
+using InventoryIndex = explicit u16;
+using PlaySound = explicit bool;
+using DragBuild = explicit bool;
 const char* kind(u16) { return "number"; }
 const char* kind(ItemStackIndex) { return "stack"; }
 const char* kind(InventoryIndex) { return "inventory"; }

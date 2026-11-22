@@ -1,6 +1,6 @@
-// spec: `using X = strong u16;` declares a type of its own with u16's representation (design.md 33, kovarex 2026-11-22: NamedInt, ItemStackIndex against InventoryIndex): made from a number and turned back into one by a cast; +, -, *, /, %, &, |, ^ between two of it, unary -, + and ~, ++, -- and compound assignment, wrapped to the underlying type and typed X; a shift by an integer; ==, <, <=> with its own type; usable in constant expressions, as a struct member compared by its implicit ==, in a template, a Vector, a Map key, a switch, a class's own strong type and a local one; its text is its value's (a piece, toString, `<<`, str()), and std::isStrong tells it
-using ItemStackIndex = strong u16;
-using Count = strong i32;
+// spec: `using X = explicit u16;` declares a type of its own with u16's representation (design.md 33, kovarex 2026-11-22: NamedInt, ItemStackIndex against InventoryIndex): made from a number and turned back into one by a cast; +, -, *, /, %, &, |, ^ between two of it, unary -, + and ~, ++, -- and compound assignment, wrapped to the underlying type and typed X; a shift by an integer; ==, <, <=> with its own type; usable in constant expressions, as a struct member compared by its implicit ==, in a template, a Vector, a Map key, a switch, a class's own explicit type and a local one; its text is its value's (a piece, toString, `<<`, str()), and std::isExplicitType tells it
+using ItemStackIndex = explicit u16;
+using Count = explicit i32;
 struct Slot
 {
   ItemStackIndex index;
@@ -9,7 +9,7 @@ struct Slot
 class Inventory
 {
 public:
-  using Index = strong u8;
+  using Index = explicit u8;
   Index first() const { return Index(1); }
 };
 template<class T> T twice(T value) { return value + value; }
@@ -18,7 +18,7 @@ static_assert(LAST > ItemStackIndex(6) && LAST - ItemStackIndex(2) == ItemStackI
 static_assert(sizeof(ItemStackIndex) == 2 && sizeof(Count) == 4 && sizeof(Inventory::Index) == 1);
 static_assert(std::isSame<decltype(LAST + LAST), ItemStackIndex> && std::isSame<decltype(-LAST), ItemStackIndex> &&
               std::isSame<decltype(LAST << 1), ItemStackIndex> && std::isSame<decltype(LAST < LAST), bool>);
-static_assert(!std::isSame<ItemStackIndex, u16> && std::isStrong<ItemStackIndex> && !std::isStrong<u16> && std::isEnum<ItemStackIndex>);
+static_assert(!std::isSame<ItemStackIndex, u16> && std::isExplicitType<ItemStackIndex> && !std::isExplicitType<u16> && std::isEnum<ItemStackIndex>);
 int main()
 {
   ItemStackIndex a = ItemStackIndex(3);
@@ -46,7 +46,7 @@ int main()
     default: std::println("other");
   }
   Inventory inventory;
-  using Local = strong u32;
+  using Local = explicit u32;
   std::println(u8(inventory.first()), " ", u32(Local(5) * Local(5)));
   std::String text;
   text << a << "," << Count(-5);

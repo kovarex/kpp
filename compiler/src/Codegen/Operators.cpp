@@ -385,9 +385,9 @@ auto codegen::Emitter::memberCall(Value object, FunctionDecl* f, const Ty* found
 
 auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
 {
-  // A strong type's arithmetic (design.md 33): two of one strong type, or a shift of one by an integer, computed as its
-  // underlying type and wrapped to it, typed the strong type. Never with another type, a strong bool's never.
-  if (const Ty* ls = strongType(l.ty), *rs = strongType(r.ty); ls || rs)
+  // An explicit type's arithmetic (design.md 33): two of one explicit type, or a shift of one by an integer, computed as its
+  // underlying type and wrapped to it, typed the explicit type. Never with another type, an explicit bool's never.
+  if (const Ty* ls = explicitType(l.ty), *rs = explicitType(r.ty); ls || rs)
   {
     std::string spelling(punctuatorSpelling(op));
     const Ty* s = ls ? ls : rs;
@@ -395,9 +395,9 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
     bool shift = op == P::Shl || op == P::Shr;
     bool integer = r.ty->kind == TyKind::Int || r.ty->kind == TyKind::Char;
     if (u->kind == TyKind::Bool)
-      fail(at, spelling + " on a strong bool (" + types.toString(s, &symbols) + "): it has no arithmetic, only !, &&, || and comparisons");
+      fail(at, spelling + " on an explicit bool (" + types.toString(s, &symbols) + "): it has no arithmetic, only !, &&, || and comparisons");
     if (!(ls && rs && ls == rs) && !(shift && ls && integer))
-      fail(at, spelling + " of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": a strong type's arithmetic is with its own type only; convert the other by a cast");
+      fail(at, spelling + " of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": an explicit type's arithmetic is with its own type only; convert the other by a cast");
     Value result = arithmetic(op, convert(l, u, at, true), shift ? r : convert(r, u, at, true), at);
     return convert(convert(result, u, at, true), s, at, true);
   }
@@ -545,11 +545,11 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
 
 auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
 {
-  // A strong type compares with its own type only (design.md 33), as its underlying type.
-  if (const Ty* ls = strongType(l.ty), *rs = strongType(r.ty); ls || rs)
+  // An explicit type compares with its own type only (design.md 33), as its underlying type.
+  if (const Ty* ls = explicitType(l.ty), *rs = explicitType(r.ty); ls || rs)
   {
     if (ls != rs)
-      fail(at, "a comparison of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": a strong type compares with its own type only; convert the other by a cast");
+      fail(at, "a comparison of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": an explicit type compares with its own type only; convert the other by a cast");
     const Ty* u = enumUnderlying(ls);
     return compare(op, convert(l, u, at, true), convert(r, u, at, true), at);
   }

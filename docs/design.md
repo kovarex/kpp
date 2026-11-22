@@ -3768,34 +3768,37 @@ over `loadArg` overloads: 1,046 calls in about 86 argument-type combinations, ea
 one such pattern in wube/kpp-factorio kpp e66c75eaf3d). Specs: language/arguments_matched_by_type,
 language/arguments_matched_by_type_memberwise, language/arguments_matched_by_type_errors_is_error. docs/differences-from-cpp.md, "Arguments matched by type".
 
-### 33. Strong types (decided 2026-11-22, built)
+### 33. Explicit types (decided 2026-11-22, built)
 kovarex, 2026-11-22, after the NamedBool/NamedInt cost study (option C): "the strong keyword variant seems to be most
-optimal when it comes to compile time, and also the cleanest". `using ItemStackIndex = strong u16;` and
-`using InventoryIndex = strong u16;` are two types, so one is never passed for the other (the reason SelectSlotParameters
-had deleted `i8` and `u8` constructors), and `using PlaySound = strong bool;` is the built-in NamedBool.
+optimal when it comes to compile time, and also the cleanest"; the word is `explicit` (kovarex, 2026-11-22: "it is
+already a keyword" and "it explains better what it is"; it was `strong` that day). `using ItemStackIndex = explicit u16;`
+and `using InventoryIndex = explicit u16;` are two types, separate though their underlying type is one, so one is never
+passed for the other (the reason SelectSlotParameters had deleted `i8` and `u8` constructors), and
+`using PlaySound = explicit bool;` is the built-in NamedBool.
 
-- A strong type is an enum class of the underlying type with no values of its own (the parser writes an EnumDecl with
-  isStrong, `strong` a word only after `using X =`): a type of its own for overloads, deduction and `isSame`, its
+- An explicit type is an enum class of the underlying type with no values of its own (the parser writes an EnumDecl with
+  isExplicitType, for `explicit` right after `using X =`): a type of its own for overloads, deduction and `isSame`, its
   underlying type's size, ABI (a register), debug info and constant evaluation, at the cost of one declaration. No
   template instance, no function: the study measured a class template NamedInt at about 0.3 ms of build per type and an
   operator call per use in a debug build.
 - Made from a number, and turned back into one, only by a cast (`ItemStackIndex(3)`, `u16(index)`); a literal too, and
-  another strong type of the same underlying type too.
+  another explicit type of the same underlying type too.
 - Arithmetic of its own type: `+ - * / % & | ^` between two of it, unary `- + ~`, `++`, `--` and compound assignment,
-  computed as the underlying type, wrapped to it and typed the strong type; a shift by any integer. `== != < <= > >= <=>`
+  computed as the underlying type, wrapped to it and typed the explicit type; a shift by any integer. `== != < <= > >= <=>`
   with its own type. Any other operand is an error naming both types.
-- `strong bool` has the values False and True, no arithmetic, and is a condition's bool (`if`, `?:`, `!`, `&&`, `||`),
+- `explicit bool` has the values False and True, no arithmetic, and is a condition's bool (`if`, `?:`, `!`, `&&`, `||`),
   as a class's explicit operator bool is; `bool(x)` and `PlaySound(b)` convert.
 - Its text is its value's, as every type's is through appendTo (design.md 14): the library's appendTo of an enumeration
-  writes a strong type's underlying value, so a piece, `toString`, `<<` and `println` write `9`, a strong bool `true` or
+  writes an explicit type's underlying value, so a piece, `toString`, `<<` and `println` write `9`, an explicit bool `true` or
   `false`; and it has `String str() const`, that text (the parser writes it, `std::toString(this)`). NamedBool's
   `fromBool(b)` is the cast `PlaySound(b)` (kovarex, 2026-11-22), its `str()` this one.
-- Inside a class or a function too. Not a template (`template<class T> using X = strong T;` is an error). Hover shows
-  the declaration, "strong type X". It is still an enum to the library (`isEnum`); `isStrong<T>` tells it.
-- Not yet: the game's NamedBool and its typedefs moved to it (its serialisers), which is a game change.
+- Inside a class or a function too. Not a template (`template<class T> using X = explicit T;` is an error). Hover shows
+  the declaration, "explicit type X". It is still an enum to the library (`isEnum`); `isExplicitType<T>` tells it.
+- The game's NamedBool aliases are `explicit bool` (wube/kpp-factorio PR 21), its serialisers and Lua push taking any explicit
+  type as its underlying value.
 
-Specs: kpp/strong_type, kpp/strong_type_overloads, kpp/strong_bool, kpp/strong_type_conversions_need_a_cast.
-docs/differences-from-cpp.md, "Strong types".
+Specs: kpp/explicit_type, kpp/explicit_type_overloads, kpp/explicit_bool, kpp/explicit_type_conversions_need_a_cast.
+docs/differences-from-cpp.md, "Explicit types".
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 

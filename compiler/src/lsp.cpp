@@ -1728,7 +1728,7 @@ namespace
       {
       case NodeKind::NamespaceDecl: return "namespace";
       case NodeKind::ClassDecl: return static_cast<const ClassDecl*>(d)->keyword == Kw::class_ ? "class" : static_cast<const ClassDecl*>(d)->keyword == Kw::union_ ? "union" : "struct";
-      case NodeKind::EnumDecl: return static_cast<const EnumDecl*>(d)->isStrong ? "strong type" : "enum";
+      case NodeKind::EnumDecl: return static_cast<const EnumDecl*>(d)->isExplicitType ? "explicit type" : "enum";
       case NodeKind::EnumeratorDecl: return "enumerator";
       case NodeKind::FunctionDecl:
       {
@@ -1879,8 +1879,8 @@ namespace
         else if (p == P::RParen || p == P::RBracket || p == P::Greater)
           --depth;
         // A class's or enum's body, an initializer, the next declarator, the end.
-        // (a strong type's whole `using X = strong u16`, design.md 33)
-        bool strong = d->kind == NodeKind::EnumDecl && static_cast<const EnumDecl*>(d)->isStrong;
+        // (an explicit type's whole `using X = explicit u16`, design.md 33)
+        bool strong = d->kind == NodeKind::EnumDecl && static_cast<const EnumDecl*>(d)->isExplicitType;
         if (depth <= 0 && (p == P::LBrace || p == P::Semi || ((p == P::Assign || p == P::Comma) && d->kind != NodeKind::FunctionDecl && d->kind != NodeKind::ClassDecl && !strong)))
         {
           end = k;
