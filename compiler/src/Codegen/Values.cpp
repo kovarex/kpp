@@ -185,11 +185,14 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     const Ty* uf = types.unqualified(from), *ut = types.unqualified(to);
     auto number = [](const Ty* t) { return t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool || t->kind == TyKind::Float; };
     auto scoped = [](const Ty* t) { return t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass; };
-    // One declaration is one enumeration only when one side's instance is unknown (no arguments), as
-    // OverloadResolution ranks it: two instances of an enumeration template (NamedBool<SoundTag> and
-    // NamedBool<DragTag>) are two types (until 2026-11-22 one converted to the other silently).
+    // One declaration is one enumeration only when one side's instance is unknown (no arguments, or
+    // the pattern's own: an enumerator of a class template's member enum named through an instance,
+    // `Fast::Enum::True`, is still typed Enum<Tag>), as OverloadResolution ranks it: two instances of
+    // an enumeration template (NamedBool<SoundTag> and NamedBool<DragTag>) are two types (until
+    // 2026-11-22 one converted to the other silently).
+    auto unknownInstance = [&](const Ty* t) { return t->args.empty() || types.isDependent(t); };
     bool sameEnum = uf->kind == TyKind::Enum && ut->kind == TyKind::Enum &&
-                    (uf == ut || (uf->decl == ut->decl && (uf->args.empty() || ut->args.empty())));
+                    (uf == ut || (uf->decl == ut->decl && (unknownInstance(uf) || unknownInstance(ut))));
     if (!sameEnum && ut->kind == TyKind::Enum && (uf->kind == TyKind::Enum || number(uf)))
       fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the enumeration " + types.toString(to, &symbols) + " without a cast");
     if (!sameEnum && uf->kind == TyKind::Enum && scoped(uf) && number(ut))
