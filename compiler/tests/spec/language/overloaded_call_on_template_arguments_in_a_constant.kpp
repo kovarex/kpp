@@ -1,4 +1,4 @@
-// spec: a call of an overloaded function whose arguments depend on a class template's parameters, in a constant of the template (`isRoot((U*)nullptr)` beside `isRoot(...)`, Unreal's `static_assert(!IsUObjectPtr((UserClass*)nullptr), ...)`), runs the overload the instance's arguments choose, a C-variadic one too: true for a class derived from Root, false for another and for an incomplete base; clang prints the same
+// spec: a call of an overloaded function whose arguments depend on a class template's parameters, in a constant of the template (`isRoot((U*)nullptr)` beside `isRoot(...)`, a namespace's as `Detail::isIncomplete(...)`, Unreal's `static_assert(!IsUObjectPtr((UserClass*)nullptr), ...)`), runs the overload the instance's arguments choose, a C-variadic one too: true for a class derived from Root, false for another and for an incomplete base; clang prints the same
 // found by thread UE (2026-11-22): the template's own walk could choose no overload without U, and the evaluator then ran the first function of the name with as many parameters, the pointer one, so the value was true for any U, silently (17 failing static assertions of Unreal's raw method delegates); a C-variadic function was no constant
 struct Root
 {
@@ -16,15 +16,18 @@ class Incomplete;
 
 constexpr bool isRoot([[maybe_unused]] const volatile Root* p) { return true; }
 constexpr bool isRoot(...) { return false; }
-constexpr bool isIncomplete([[maybe_unused]] const volatile Incomplete* p) { return true; }
-constexpr bool isIncomplete(...) { return false; }
+namespace Detail
+{
+  constexpr bool isIncomplete([[maybe_unused]] const volatile Incomplete* p) { return true; }
+  constexpr bool isIncomplete(...) { return false; }
+}
 
 template<typename U>
 struct Holder
 {
   static constexpr bool value = isRoot((U*)nullptr);
-  static constexpr bool other = isIncomplete((U*)nullptr);
-  static_assert(!isIncomplete((U*)nullptr), "no U is the incomplete class here");
+  static constexpr bool other = Detail::isIncomplete((U*)nullptr);
+  static_assert(!Detail::isIncomplete((U*)nullptr), "no U is the incomplete class here");
 };
 
 static_assert(Holder<Child>::value && !Holder<Plain>::value && !Holder<Child>::other);

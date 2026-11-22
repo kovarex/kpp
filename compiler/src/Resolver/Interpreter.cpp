@@ -2117,10 +2117,13 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   // node's is the one the template's own walk chose without them (the pointer overload for any U, so true, silently).
   // (none on the node either, where that walk could choose none: the first of the name's functions with as many parameters
   // was run below)
-  if ((!d || d->kind == NodeKind::FunctionDecl) && ctx.subst && !ctx.subst->empty() && callee->name.parts.size() == 1 && !callee->name.last().hasTemplateArgs &&
-      !c->args.empty() && std::any_of(c->args.begin(), c->args.end(), [&](Expr* a) { return a && mentionsBound(a, *ctx.subst); }))
+  // (a namespace's function too: `UE::Delegates::Private::IsUObjectPtr(...)`; a class's member has its class's arguments)
+  if ((!d || d->kind == NodeKind::FunctionDecl) && ctx.subst && !ctx.subst->empty() && !callee->name.last().hasTemplateArgs && !c->args.empty() &&
+      std::any_of(c->args.begin(), c->args.end(), [&](Expr* a) { return a && mentionsBound(a, *ctx.subst); }))
   {
     Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
+    if (callee->name.parts.size() > 1 && (!l.foundIn || l.foundIn->kind != ScopeKind::Namespace))
+      l.overloads = nullptr;
     std::vector<const Ty*> argTypes;
     for (Expr* a : c->args)
     {
