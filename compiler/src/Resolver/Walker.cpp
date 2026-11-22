@@ -1802,11 +1802,28 @@ auto GlobalScope::Impl::Walker::checkDefinedOnce(FunctionDecl* f) -> void
   // definition before an unchanged one is not reported by the server's build: clang rejects the
   // two definitions, a build from scratch reports them.)
   RecordInto none(nullptr);
-  uint32_t symbol = impl.functionSymbol(f->name);
   Scope* home = impl.homeScope(f);
-  Lookup look;
-  if (symbol == UINT32_MAX || !home || !impl.lookupInScope(home, symbol, look, 0, false) || !look.overloads)
+  if (!home)
     return;
+  // A constructor is no entry of its class's name: its overloads are the class's constructors
+  // (`C(int a)` and `C(int b)` reached clang as an "invalid redefinition" until 2026-11-22).
+  std::vector<Entry> constructors;
+  Lookup look;
+  if (f->flags & DF_Constructor)
+  {
+    if (home->kind != ScopeKind::Class || !home->owner || home->owner->kind != NodeKind::ClassDecl)
+      return;
+    for (Decl* m : static_cast<ClassDecl*>(home->owner)->members)
+      if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+        constructors.push_back({m, nullptr});
+    look.overloads = &constructors;
+  }
+  else
+  {
+    uint32_t symbol = impl.functionSymbol(f->name);
+    if (symbol == UINT32_MAX || !impl.lookupInScope(home, symbol, look, 0, false) || !look.overloads)
+      return;
+  }
   auto before = [](const FunctionDecl* a, const FunctionDecl* b) // a's definition comes first
   {
     uint32_t fa = a->file ? a->file->index : 0, fb = b->file ? b->file->index : 0;

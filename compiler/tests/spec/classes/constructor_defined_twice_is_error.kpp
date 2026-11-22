@@ -1,0 +1,31 @@
+// spec: a constructor defined twice (one parameter list, other parameter names) is an error at the second definition, as any function's (language/function_defined_twice_is_error), never two bodies clang rejects; constructors of other parameter types, one declared in the class and defined outside it, and a class template's are fine
+// error: constructor_defined_twice_is_error.kpp:7: error: the function Twice is defined twice (first at line 6)
+class Twice
+{
+public:
+  Twice(int a) : x(a) {}
+  Twice(int b) : x(b + 1) {}
+  int x;
+};
+class Fine
+{
+public:
+  Fine(int a) : x(a) {}
+  Fine(long a) : x(int(a) + 1) {}
+  Fine(char a);
+  int x;
+};
+Fine::Fine(char a) : x(a + 2) {}
+template<class T>
+class Holder
+{
+public:
+  Holder(T a) : x(a) {}
+  Holder(T a, T b) : x(a + b) {}
+  T x;
+};
+int main()
+{
+  Holder<int> h(1, 2);
+  return Twice(1).x + Fine(1).x + Fine('a').x + h.x;
+}
