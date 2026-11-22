@@ -1,0 +1,9 @@
+// spec: an imported C macro whose body adds a sizeof of a typedef to another constant (`AA_MSGRESULT + sizeof(my_result)`) is that constant, `sizeof(` no call (`0 4 12`)
+// found by thread UE (2026-11-22): `sizeof(` read as a call of a function-like macro, no constant: "'DWLP_USER' is not declared" (Unreal's Windows message boxes, 2)
+extern "C" import "c_macro_constant_with_sizeof.h";
+
+int main()
+{
+  std::println(AA_MSGRESULT, " ", AA_DLGPROC, " ", AA_USER);
+  return 0;
+}

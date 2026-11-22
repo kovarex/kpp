@@ -514,7 +514,9 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
         size_t j = i;
         while (j > 0 && body[j - 1] == ' ')
           --j;
-        if (j > 0 && (isalnum((unsigned char)body[j - 1]) || body[j - 1] == '_'))
+        // (`sizeof(DLGPROC)` is no call: winuser.h's `#define DWLP_USER DWLP_DLGPROC + sizeof(DLGPROC)`)
+        bool isSizeof = j >= 6 && body.compare(j - 6, 6, "sizeof") == 0 && (j == 6 || !(isalnum((unsigned char)body[j - 7]) || body[j - 7] == '_'));
+        if (j > 0 && (isalnum((unsigned char)body[j - 1]) || body[j - 1] == '_') && !isSizeof)
           call = true; // `name(`: a function-like macro or a call, not a constant; `)(` in casts is fine
       }
     }
