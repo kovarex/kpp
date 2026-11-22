@@ -235,6 +235,9 @@ auto GlobalScope::Impl::Walker::decltypeOf(Expr* e, const Ty* t) -> const Ty*
     return types.stripRef(t); // `decltype(auto) x = a;` of a tuple-like binding a: what get gives, no reference
   if (e && t && e->kind == NodeKind::MemberExpr)
     return Impl::declaredMemberType(static_cast<MemberExpr*>(e), t, types); // `decltype(auto) r = c.key;` of a const c: the member's type
+  if (t && t->kind == TyKind::Pointer)
+    if (const Ty* array = stringLiteralArray(e, t, types))
+      return types.lref(array); // `decltype(auto) s = "abc";`: an lvalue of its array, const char(&)[4]
   if (!e || !t || !t->isKnown() || e->kind == NodeKind::NameExpr)
     return t;
   if (t->kind == TyKind::RRef && isLvalueExpression(e))

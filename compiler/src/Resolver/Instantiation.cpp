@@ -2261,6 +2261,12 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         const Expr* e = d->expr;
         if (!d->isAuto && e && e->kind == NodeKind::MemberExpr && walked && walked->kind == NodeKind::MemberExpr && typed)
           return declaredMemberType(static_cast<const MemberExpr*>(walked), typed, types);
+        // A string literal is an lvalue of its array, which the walk types as a pointer to its characters: `decltype("abc")`
+        // is const char(&)[4] (until 2026-11-22 const char*, silently: Unreal's `TIsArrayOrRefOfTypeByPredicate<decltype(L"..."),
+        // ...>` was false, "Formatting string must be a TCHAR array.").
+        if (!d->isAuto && e && typed && typed->kind == TyKind::Pointer)
+          if (const Ty* array = stringLiteralArray(e, typed, types))
+            return types.lref(array);
         if (d->isAuto || !e || !typed || !typed->isKnown() || typed->kind == TyKind::Pack ||
             e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr || typed->kind == TyKind::Void)
           return typed;

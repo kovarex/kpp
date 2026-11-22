@@ -1,0 +1,22 @@
+// spec: decltype of a string literal is an lvalue reference to its array of const characters ([expr.prim.literal] 1, [dcl.type.decltype] 1.5): `decltype("abc")` is const char(&)[4], `decltype(L"ab")` const wchar_t(&)[3], two literals written together one array, parenthesized the same, and decltype(auto) of one the same reference; clang prints the same
+// found by thread UE (2026-11-22): it was const char*, silently (Unreal's `TIsArrayOrRefOfTypeByPredicate<decltype(L"..."), TIsCharEncodingCompatibleWithTCHAR>` was false: "Formatting string must be a TCHAR array.")
+template<typename T> struct ArrayLength
+{
+  static constexpr usize value = 0;
+};
+
+template<typename T, usize N> struct ArrayLength<T (&)[N]>
+{
+  static constexpr usize value = N;
+};
+
+static_assert(std::isSame<decltype("abc"), const char (&)[4]> && std::isSame<decltype(L"ab"), const wchar_t (&)[3]>);
+static_assert(std::isSame<decltype(("abc")), const char (&)[4]> && ArrayLength<decltype("ab" "cd")>::value == 5);
+
+int main()
+{
+  decltype(auto) text = "hello";
+  static_assert(std::isSame<decltype(text), const char (&)[6]>);
+  std::println(sizeof(text), " ", ArrayLength<decltype(L"wide")>::value, " ", text[1]);
+  return 0;
+}
