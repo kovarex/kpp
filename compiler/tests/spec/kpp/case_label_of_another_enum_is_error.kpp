@@ -1,0 +1,30 @@
+// spec: a case label of another enum in a switch on an enum class, a kpp enum or a union enum's tag is an error, as C++'s scoped enums convert to no other type ([stmt.switch] 2), and the switch says no second error that its function's end is reached (kovarex, 2026-11-22: UpgradeIDBase's `switch (this.tag()) { case Type::Item: ... }` compared Type::Item's number with the tag and ran the Entity case); two C enums keep C++'s meaning
+// error: case_label_of_another_enum_is_error.kpp:17: error: this case label is a Type, and the switch is on U::Tag: a label is a value of the switched enum ([stmt.switch] 2)
+// error: case_label_of_another_enum_is_error.kpp:18: error: this case label is a Type, and the switch is on U::Tag: a label is a value of the switched enum ([stmt.switch] 2)
+// error: case_label_of_another_enum_is_error.kpp:27: error: this case label is a Type, and the switch is on Mode: a label is a value of the switched enum ([stmt.switch] 2)
+// no-warning: control can reach the end
+enum class Type { Item, Entity };
+enum class Mode { Slow, Fast };
+struct EntityID { bool isUnknown() const { return true; } };
+struct ItemID { bool isUnknown() const { return false; } };
+union enum class U
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  bool isUnknown() const
+  {
+    switch (this.tag())
+    {
+      case Type::Item: return this[Item].isUnknown();
+      case Type::Entity: return this[Entity].isUnknown();
+    }
+  }
+};
+int speed(Mode m)
+{
+  switch (m)
+  {
+    case Mode::Slow: return 1;
+    case Type::Entity: return 2;
+  }
+}
+int main() { U u; return (u.isUnknown() ? 1 : 0) + speed(Mode::Fast); }

@@ -1,0 +1,22 @@
+// spec: a qualified name whose qualifier names nothing is an error naming the part that is not declared, in an expression and in a case label, and a switch with such a label says no second error that its function's end is reached (kovarex, 2026-11-22: `case Type::Item:` with no Type said only "control can reach the end of isUnknown", and codegen "an unresolved name")
+// error: qualified_name_of_an_undeclared_qualifier_is_error.kpp:12: error: 'Nope' is not declared
+// error: qualified_name_of_an_undeclared_qualifier_is_error.kpp:18: error: 'Type' is not declared
+// error: qualified_name_of_an_undeclared_qualifier_is_error.kpp:19: error: 'Type' is not declared
+// error: qualified_name_of_an_undeclared_qualifier_is_error.kpp:22: error: 'ns::Missing' is not declared
+// no-warning: control can reach the end
+namespace ns { int present = 1; }
+enum class Tag { Item, Entity };
+int value()
+{
+  int y = 3;
+  return int(Nope::A) + y;
+}
+int kind(Tag t)
+{
+  switch (t)
+  {
+    case Type::Item: return 1;
+    case Type::Entity: return 2;
+  }
+}
+int main() { return value() + kind(Tag::Item) + ns::present + ns::Missing::deeper; }

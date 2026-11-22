@@ -418,6 +418,22 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
     QualifiedName qualifier = name;
     qualifier.parts.count -= 1;
     Lookup q = lookupHere(qualifier);
+    if (q.found == Found::No && !name.global && !(inGenericTemplate() && !activeSubst))
+    {
+      // (A template's own walk leaves it to its instances: an enum's generated checkValid names std::toString, which a
+      // --no-std build has not, and is never instantiated there.)
+      // `Nope::A`, whose qualifier names nothing (kovarex, 2026-11-22: `case Type::Item:`, Type undeclared, said nothing
+      // until codegen's "an unresolved name"): the shortest part of it that names nothing is what is not declared.
+      QualifiedName prefix = name;
+      for (prefix.parts.count = 1; prefix.parts.count < name.parts.size(); ++prefix.parts.count)
+        if (lookupHere(prefix).found == Found::No)
+          break;
+      if (prefix.parts.count < name.parts.size())
+      {
+        reportUndeclared(prefix, token, nullptr, dependentCall);
+        return;
+      }
+    }
     if (q.found == Found::No || !q.decl || q.decl->kind != NodeKind::NamespaceDecl || q.ambiguousWith)
       return;
     std::string spelledName;
@@ -722,9 +738,12 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
         return false;
       bool hasDefault = false, inGroup = false, statements = false, groupEnds = false, fallsThrough = false;
       std::unordered_set<Decl*> named;
+      bool undeclaredLabel = false; // (a label naming nothing: its error is said, and no second one that the end is reached)
       auto name = [&](Expr* v)
       {
         v = strip(v);
+        if (v && v->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(v)->resolved)
+          undeclaredLabel = true;
         if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved && static_cast<NameExpr*>(v)->resolved->kind == NodeKind::EnumeratorDecl)
           named.insert(static_cast<NameExpr*>(v)->resolved);
       };
@@ -769,6 +788,13 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
           switched = u->tagEnum; // (a typed union's switch names its alternatives: its tag's enumerators)
       if (!switched || switched->kind != NodeKind::EnumDecl || static_cast<EnumDecl*>(switched)->enumerators.empty())
         return false;
+      if (undeclaredLabel)
+        return true;
+      // A label of another enum where checkCaseTypes says so: that error alone.
+      auto scoped = [](Decl* d) { return d && d->kind == NodeKind::EnumDecl && (static_cast<EnumDecl*>(d)->isClass || static_cast<EnumDecl*>(d)->isKpp); };
+      for (Decl* d : named)
+        if (d->parent && d->parent != switched && d->parent->kind == NodeKind::EnumDecl && (scoped(switched) || scoped(d->parent)))
+          return true;
       for (Decl* d : static_cast<EnumDecl*>(switched)->enumerators)
       {
         if (d->kind != NodeKind::EnumeratorDecl || named.count(d))
@@ -7303,6 +7329,47 @@ auto GlobalScope::Impl::Walker::checkCaseValues(Stmt* body) -> void
   }
 }
 
+auto GlobalScope::Impl::Walker::checkCaseTypes(SwitchStmt* w) -> void
+{
+  // A label of another enum in a switch on an enum class, a kpp enum or a typed union's tag (`case Type::Item:` in a
+  // switch on UpgradeIDBase::Tag, kovarex 2026-11-22) is an error, as C++'s scoped enum converts to no other type
+  // ([stmt.switch] 2): it was compared by its number, and ran the case of whatever enumerator had it. Two C enums
+  // keep C++'s meaning (each converts to its integer).
+  if (probing || retypePath || !file || file->isImported || !w || !w->cond || !w->body || w->body->kind != NodeKind::BlockStmt ||
+      uint8_t(w->cond->kind) < uint8_t(NodeKind::NameExpr) || (inGenericTemplate() && !activeSubst))
+    return;
+  const Ty* ct = static_cast<Expr*>(w->cond)->ty;
+  if (!ct || !ct->isKnown() || types.isDependent(ct) || Impl::mentionsUnknown(ct))
+    return;
+  ct = types.unqualified(types.stripRef(ct));
+  Decl* switched = ct->kind == TyKind::Enum ? ct->decl : nullptr;
+  if (ct->kind == TyKind::Class)
+    if (ClassDecl* u = impl.classDefinition(ct); u && u->isTypedUnion)
+      switched = u->tagEnum;
+  if (!switched || switched->kind != NodeKind::EnumDecl)
+    return;
+  auto scoped = [](Decl* d) { return d && d->kind == NodeKind::EnumDecl && (static_cast<EnumDecl*>(d)->isClass || static_cast<EnumDecl*>(d)->isKpp); };
+  for (Stmt* s : static_cast<BlockStmt*>(w->body)->stmts)
+  {
+    if (!s || s->kind != NodeKind::CaseStmt)
+      continue;
+    auto* c = static_cast<CaseStmt*>(s);
+    for (size_t k = 0; k <= c->moreValues.size() + (c->rangeEnd ? 1 : 0); ++k)
+    {
+      Expr* e = k == 0 ? c->value : k <= c->moreValues.size() ? c->moreValues[k - 1] : c->rangeEnd;
+      const Ty* lt = e ? e->ty : nullptr;
+      if (!lt || !lt->isKnown() || types.isDependent(lt) || Impl::mentionsUnknown(lt))
+        continue;
+      lt = types.unqualified(types.stripRef(lt));
+      if (lt->kind != TyKind::Enum || !lt->decl || lt->decl == switched || !(scoped(switched) || scoped(lt->decl)))
+        continue;
+      reportCheck(e->token, "this case label is a " + types.toString(lt, &symbols, true) + ", and the switch is on " +
+                                (ct->kind == TyKind::Enum ? types.toString(ct, &symbols, true) : "the tag of " + types.toString(ct, &symbols, true)) +
+                                ": a label is a value of the switched enum ([stmt.switch] 2)");
+    }
+  }
+}
+
 auto GlobalScope::Impl::Walker::checkCaseEnds(Stmt* body, bool kppRules) -> void
 {
   // The first step of no implicit fallthrough (design.md): what a case runs on into the next by is written, so
@@ -13201,6 +13268,7 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       else
         walkSwitchBody(w->body);
       checkCaseValues(w->body);
+      checkCaseTypes(w);
       locals.pop(mark);
       break;
     }

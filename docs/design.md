@@ -6506,7 +6506,11 @@ and before a body's `{` it keeps that brace on its own line under `braces = end-
      game's runs of labels side by side as such labels (903 of them, joining 3,631 labels). `case A: fallthrough; case B: build();`
      (rule 2) stays legal, and `fallthrough;` stays for a group with statements of its own running on. A value that
      two labels of a switch share, or one label lists twice, is an error, as C++'s duplicate case value ([stmt.switch]
-     2; Walker::checkCaseValues: until then codegen gave LLVM a switch of two cases of one value, which it refused).
+     2; Walker::checkCaseValues: until then codegen gave LLVM a switch of two cases of one value, which it refused). A label of
+     another enum in a switch on an enum class, a kpp enum or a union enum's tag is an error too, as C++'s scoped enums
+     convert to no other type (2026-11-22, Walker::checkCaseTypes: `case Type::Item:` in a switch on UpgradeIDBase::Tag was
+     compared by its number), and a qualified name whose qualifier names nothing says which part is not declared; neither
+     adds "control can reach the end". Specs kpp/case_label_of_another_enum_is_error, qualified_name_of_an_undeclared_qualifier_is_error.
      The C++ a conversion reads keeps C++'s meaning. Specs kpp/case_label_list, _under_no_implicit_fallthrough and
      _duplicates_is_error.
   2. `fallthrough;` is the last statement of a group with another group after it (Go's rule), a group of `fallthrough;`
