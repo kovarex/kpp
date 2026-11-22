@@ -4414,6 +4414,15 @@ namespace
       {
         currentParent = tag;
         size_t tagMark = scratch.size();
+        // The Tag's checkValid, as every kpp enum's (kpp/typed_union_tag_check_valid): its tokens parsed here, before
+        // the union's own members.
+        insertCheckValid(start);
+        uint32_t savedTagClassName = currentClassName;
+        currentClassName = kwTag;
+        ++enumBodies;
+        parseDeclaration(Scope::Enum);
+        --enumBodies;
+        currentClassName = savedTagClassName;
         addEnumBuiltins(tag, start, tagMark);
         addEnumIsValid(tag, start, tagMark);
         tag->members = makeSpan<Decl*>(tagMark);
@@ -4735,6 +4744,17 @@ namespace
     // The tokens of source, which the parser writes (identifiers, keywords and punctuators), each
     // located at token `like`. Each `__kpp_text_slot` becomes the next of texts: after `__kpp_text`,
     // parsePrimary reads it as its spelling as a string literal (a NameofExpr of a text).
+    // Inserts at pos the tokens of an enum's generated `template<class X> E checkValid() const` (design.md 8.4), at start's place.
+    void insertCheckValid(uint32_t start)
+    {
+      std::vector<Token> made = synthesize(
+        "template<typename __KppException> This checkValid() const { if (!this.isValid()) throw __KppException(std::toString("
+        "__kpp_text __kpp_text_slot, qualifiednameof(This), __kpp_text __kpp_text_slot, i64(std::UnderlyingType<This>(this)), "
+        "__kpp_text __kpp_text_slot)); return this; }",
+        start, {"Invalid ", " value: ", "."});
+      toks.insert(toks.begin() + pos, made.begin(), made.end());
+    }
+
     std::vector<Token> synthesize(const std::string& source, uint32_t like, const std::vector<std::string>& texts = {})
     {
       LexResult lexed = lex(source, symbols);
@@ -5960,12 +5980,7 @@ namespace
       bool written = !e->name.empty() && e->name.last().symbol != UINT32_MAX && symbols.name(e->name.last().symbol).substr(0, 5) == "__Kpp";
       if ((e->isKpp || e->isClass) && isKpp() && at(P::RBrace) && !written && !declaresMember(mark, kwCheckValid))
       {
-        std::vector<Token> made = synthesize(
-          "template<typename __KppException> This checkValid() const { if (!this.isValid()) throw __KppException(std::toString("
-          "__kpp_text __kpp_text_slot, qualifiednameof(This), __kpp_text __kpp_text_slot, i64(std::UnderlyingType<This>(this)), "
-          "__kpp_text __kpp_text_slot)); return this; }",
-          start, {"Invalid ", " value: ", "."});
-        toks.insert(toks.begin() + pos, made.begin(), made.end());
+        insertCheckValid(start);
         while (!at(P::RBrace) && !at(TokenKind::End))
         {
           ++enumBodies;

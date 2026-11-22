@@ -1,0 +1,24 @@
+// spec: a union enum's Tag is a kpp enum as any other: it has isValid() and the generated `template<class X> Tag checkValid() const`,
+// the value when it is one of the alternatives, else a throw of X("Invalid <U>::Tag value: <its number>.") (kovarex, 2026-11-22:
+// UpgradeIDBase's deserialiser, `Tag(input.load<Tag::UnderlyingType>()).checkValid<DeserialiserException>()`, failed with "Tag has no
+// member 'checkValid'"), with a scoped Tag (union enum class) and a plain one
+// design.md 8.4, 8.5
+struct RuntimeError { std::String text; RuntimeError(std::String text) : text(text) {} };
+namespace Upgrade
+{
+  union enum class ID : u8
+  {
+    { {Entity, int}, {Item, std::String}, {Nothing, void} }
+    static Tag readTag(u8 raw) { return Tag(raw).checkValid<RuntimeError>(); }
+  };
+}
+union enum Plain : u16 { { {Number, int}, {Text, std::String} } };
+int main()
+{
+  std::println(Upgrade::ID::Tag(u8(2)).isValid(), " ", Upgrade::ID::Tag(u8(3)).isValid());
+  try { std::println(Upgrade::ID::readTag(u8(1)) == Upgrade::ID::Tag::Item); Upgrade::ID::readTag(u8(9)); }
+  catch (const RuntimeError& e) { std::println(e.text); }
+  try { std::println(int(Plain::Tag(u16(1)).checkValid<RuntimeError>())); Plain::Tag(u16(300)).checkValid<RuntimeError>(); }
+  catch (const RuntimeError& e) { std::println(e.text); }
+  return 0;
+}
