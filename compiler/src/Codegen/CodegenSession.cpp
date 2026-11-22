@@ -1762,15 +1762,27 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       owners.insert(e.functionName(f, {}, nullptr));
       level.push_back(programFunction(f));
     }
+  // A registration the parser wrote (ATTR_Startup: a test's, added, removed or renamed) changes module 0's list of the
+  // startup functions (ctorsText): an added one's emission puts it in, a removed one goes here.
+  bool startupsChanged = false;
   for (FunctionDecl* f : removed)
     if (e.isProgramFunction(f))
     {
-      owners.insert(e.functionName(f, {}, nullptr));
-      sh.programFunctions.erase(e.functionName(f, {}, nullptr)); // (an added one's name comes back with its emission)
+      std::string name = e.functionName(f, {}, nullptr);
+      owners.insert(name);
+      sh.programFunctions.erase(name); // (an added one's name comes back with its emission)
+      if ((f->attributes & ATTR_Startup) && sh.startupFunctions.erase(name))
+      {
+        std::erase_if(sh.startups, [&](const Shared::Startup& s) { return s.function == name; });
+        startupsChanged = true;
+      }
     }
   for (FunctionDecl* f : added)
     if (e.isProgramFunction(f))
+    {
       level.push_back(programFunction(f));
+      startupsChanged |= (f->attributes & ATTR_Startup) != 0;
+    }
   // Kept functions whose lines moved (--debug-info): emitted again for their line tables; their callers stay.
   for (FunctionDecl* f : movedLines)
     if (e.isProgramFunction(f) && owners.insert(e.functionName(f, {}, nullptr)).second)
@@ -2945,6 +2957,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     sh.moduleDecls[k].text.clear();
     sh.moduleDecls[k].finish();
   }
+  // (module 0 lists the startup functions: one added or removed changes its text)
+  if (startupsChanged && sh.moduleCount > 0 && std::find(which.begin(), which.end(), 0u) == which.end())
+    which.insert(which.begin(), 0u);
   // --debug-info: a global defined in a file whose lines an edit moved has its DIGlobalVariable's line made again
   // (Emitter::debugGlobal); one that changed changes its home module's text, in its debug metadata alone (a
   // DIGlobalVariable's line is in no CodeView record: its object stays the one it has, patched). Until

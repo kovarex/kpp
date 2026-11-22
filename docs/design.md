@@ -5233,9 +5233,12 @@ human output.
 1. `--run` and `--test`: `compiler/src/run.cpp`; `main.cpp` hands them over before anything else.
 2. The parser (A's file, `parseTest`): with `config::tests` (set by `--tests`), `test "name" { }`
    becomes a function `void __kpp_test_<name>__<file hash>_<n>()` (static in a class; the
-   debug information names it `Suite::name()`, docs/debugging.md) and a variable
-   `int __kpp_test_registered_<...> = __kppRegisterTest(&__kpp_test_<...>, "name");`, whose
-   initializer registers the test at startup. Its caller location is the test's, which gives the
+   debug information names it `Suite::name()`, docs/debugging.md) and a function
+   `void __kpp_test_registered_<...>() { __kppRegisterTest(&__kpp_test_<...>, "name"); }` that runs
+   at startup in its place among the globals' constructors (`[[__kpp_startup]]`, which the parser
+   alone writes; until 2026-11-22 a variable whose initializer registered the test, which a compile
+   server could not add or remove: a test added built the program from scratch). `<n>` counts the
+   tests of that name in the file, so a test added leaves the others' names. Its caller location is the test's, which gives the
    file and line. So there is no table to generate, and a test in a class or a namespace needs
    no qualified name. In a test's body, `check(cond);` and `require(cond);` are assert statements
    (`AssertStmt::testKind` 1 and 2). A comparison `a OP b` becomes `__kppEqual(a, b)` (or

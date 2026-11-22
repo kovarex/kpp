@@ -585,6 +585,28 @@ bool plainDataMember(const DeclaredMember& d)
            !v->structuredBindings.empty());
 }
 
+// A declaration's first token with the attributes written before it (`[[nodiscard]] int f()`, a test's registration
+// `[[maybe_unused]] [[__kpp_startup]] void ...`: parseTest), which its node's token is after.
+uint32_t withAttributes(const std::vector<Token>& tokens, uint32_t start)
+{
+  while (start >= 4 && start <= tokens.size() && tokens[start - 1].is(P::RBracket) && tokens[start - 2].is(P::RBracket))
+  {
+    uint32_t k = start - 2, depth = 2;
+    while (k > 0 && depth > 0)
+    {
+      --k;
+      if (tokens[k].is(P::RBracket))
+        ++depth;
+      else if (tokens[k].is(P::LBracket))
+        --depth;
+    }
+    if (depth != 0 || k + 1 >= tokens.size() || !tokens[k].is(P::LBracket) || !tokens[k + 1].is(P::LBracket))
+      break;
+    start = k;
+  }
+  return start;
+}
+
 bool plainFunction(const DeclaredFunction& d, const std::vector<Token>& tokens)
 {
   FunctionDecl* f = d.f;
@@ -657,7 +679,7 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
       continue;
     }
     removed.push_back(&d);
-    for (uint32_t k = s; k < e && k < oldCovered.size(); ++k)
+    for (uint32_t k = withAttributes(oldTokens, s); k < e && k < oldCovered.size(); ++k)
       oldCovered[k] = true;
   }
   std::vector<const DeclaredFunction*> added;
@@ -665,7 +687,7 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
     if (!pairedNew.count(d.f))
     {
       added.push_back(&d);
-      for (uint32_t k = d.f->token; k < d.f->endToken && k < newCovered.size(); ++k)
+      for (uint32_t k = withAttributes(out.tokens, d.f->token); k < d.f->endToken && k < newCovered.size(); ++k)
         newCovered[k] = true;
     }
   // Data members likewise (a class's layout edit), a declaration at a time: its declarators all

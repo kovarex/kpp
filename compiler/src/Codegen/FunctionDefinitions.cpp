@@ -218,6 +218,13 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     if (sh.splitPieces && currentDepth == 0 && currentRequestedBy.empty() && args.empty() && !classTy && nameOverride.empty() &&
         isProgramFunction(original))
       programFunctionsNow.push_back(currentFunctionName);
+    // A registration the parser wrote (a test's: ATTR_Startup) runs at startup, in its place among the globals' constructors.
+    if ((original->attributes & ATTR_Startup) && currentDepth == 0 && args.empty() && !classTy && nameOverride.empty())
+    {
+      auto lock = sharedLock();
+      if (sh.startupFunctions.insert(currentFunctionName).second) // (once: a server's build emits it again)
+        startups.push_back(Shared::Startup{original->file ? original->file->index : 0, original->token, 0, currentFunctionName, original});
+    }
   }
   try
   {

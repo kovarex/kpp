@@ -1327,7 +1327,7 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
       threadLocalInits[name] = fnName;
     else if (sh.startupFunctions.insert(fnName).second) // (once: a server's build emits it again)
       startups.push_back(startupAt ? Shared::Startup{startupAt->file, startupAt->token, def->token, fnName}
-                                   : Shared::Startup{def->file ? def->file->index : 0, def->token, 0, fnName});
+                                   : Shared::Startup{def->file ? def->file->index : 0, def->token, 0, fnName, def});
   }
   catch (Unsupported&)
   {
@@ -1354,7 +1354,7 @@ auto codegen::Emitter::ctorsText(unsigned k) -> std::string
     return table;
   std::vector<Shared::Startup> order = startups;
   std::sort(order.begin(), order.end(), [](const Shared::Startup& a, const Shared::Startup& b) {
-    return std::tie(a.file, a.token, a.member, a.function) < std::tie(b.file, b.token, b.member, b.function);
+    return std::tuple(a.file, a.place(), a.member, std::string_view(a.function)) < std::tuple(b.file, b.place(), b.member, std::string_view(b.function));
   });
   std::string s = "@llvm.global_ctors = appending global [" + std::to_string(order.size()) + " x { i32, ptr, ptr }] [";
   for (size_t i = 0; i < order.size(); ++i)

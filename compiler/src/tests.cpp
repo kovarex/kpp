@@ -3,9 +3,9 @@
 
 // The runner, in kpp. What the compiler generates calls into it (parser.cpp, parseTest and
 // parseSuite; design.md 8.6, 8.7):
-// - `int __kpp_test_registered_N = __kppRegisterTest(&__kpp_test_N, "name", "Suite");` per test
-//   (the call's caller location is the test's; the suite "" outside a suite);
-// - `int __kpp_suite_registered_N = __kppRegisterSuite("Suite", "A,B", "t,u");` per suite: its
+// - `__kppRegisterTest(&__kpp_test_N, "name", "Suite");` per test, in a function the parser writes that runs at
+//   startup, `__kpp_test_registered_N` (the call's caller location is the test's; the suite "" outside a suite);
+// - `__kppRegisterSuite("Suite", "A,B", "t,u");` per suite, likewise (`__kpp_suite_registered_N`): its
 //   dependencies and tags;
 // - a test with a fixture calls `__kppRunFixture<Class>("Fixture")`, which builds the fixture,
 //   runs the body and destroys it;
@@ -2958,20 +2958,31 @@ std::string readableGeneratedName(std::string_view name)
         ++end;
       std::string_view id = name.substr(i, end - i);
       std::string shown(id);
-      if (id.starts_with("__kpp_suite_") && !id.starts_with("__kpp_suite_registered_"))
+      // `Name__<16 hex digits>_<count>`: Name, which may hold `__` itself
+      auto written = [](std::string_view rest)
+      {
+        size_t last = rest.rfind('_');
+        size_t mark = last != std::string_view::npos && last >= 18 ? last - 18 : std::string_view::npos;
+        return mark != std::string_view::npos && rest.substr(mark, 2) == "__" ? rest.substr(0, mark) : rest;
+      };
+      bool registration = false;
+      for (std::string_view prefix : {"__kpp_test_registered_", "__kpp_generator_registered_", "__kpp_suite_registered_"})
+        if (id.starts_with(prefix))
+        {
+          // (a test's, a generator's or a suite's registration, which runs at startup: `registered_Name`)
+          shown = "registered_" + std::string(written(id.substr(prefix.size())));
+          registration = true;
+          break;
+        }
+      if (!registration && id.starts_with("__kpp_suite_"))
         shown = id.substr(12);
-      else if (id == "__kpp_body" || id == "__kpp_generate")
+      else if (!registration && (id == "__kpp_body" || id == "__kpp_generate"))
         shown = id.substr(6); // (a fixture's body, a generator's function: `body`, `generate`)
-      else
+      else if (!registration)
         for (std::string_view prefix : {"__kpp_test_", "__kpp_fixture_", "__kpp_generator_", "__kpp_generate_"})
-          if (id.starts_with(prefix) && !id.starts_with("__kpp_test_registered_") && !id.starts_with("__kpp_generator_registered_"))
+          if (id.starts_with(prefix))
           {
-            // `Name__<16 hex digits>_<count>`: Name, which may hold `__` itself
-            std::string_view rest = id.substr(prefix.size());
-            size_t last = rest.rfind('_');
-            size_t mark = last != std::string_view::npos && last >= 18 ? last - 18 : std::string_view::npos;
-            if (mark != std::string_view::npos && rest.substr(mark, 2) == "__")
-              shown = rest.substr(0, mark);
+            shown = written(id.substr(prefix.size()));
             break;
           }
       out += shown;

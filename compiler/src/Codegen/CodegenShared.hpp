@@ -193,7 +193,18 @@ namespace codegen
     // defined (ctorsText runs them in that order).
     // (An explicit instantiation's static data member is at the `template class` line, then in
     // its definitions' order: member is the definition's token there, 0 for any other global.)
-    struct Startup { uint32_t file; uint32_t token; uint32_t member; std::string function; };
+    // A global's, and a function the parser wrote to run at startup (ATTR_Startup: a test's registration), also has its
+    // declaration (at), whose token orders it: a compile server's build moves the tokens of an edited file's kept
+    // declarations, and adds and removes the registrations of the tests added and removed (Emitter::ctorsText).
+    struct Startup
+    {
+      uint32_t file;
+      uint32_t token;
+      uint32_t member;
+      std::string function;
+      const Decl* at = nullptr;
+      uint32_t place() const { return at ? at->token : token; }
+    };
     // What a global's startup function does: builds it and registers its destruction; builds it alone
     // (one built before everything else, whose destruction is registered in its place: ExitOnly); or
     // registers it alone (one of constant data).

@@ -585,7 +585,7 @@ namespace
           advance();
           if (atIdent())
           {
-            std::string_view a = spelling();
+            std::string_view a = symbols.name(tok().id); // (by its name: a token the parser wrote has its test's place, parseTest)
             if (a == "noinline")
               pendingAttributes |= ATTR_NoInline;
             else if (a == "forceinline")
@@ -607,6 +607,8 @@ namespace
               pendingAttributes |= ATTR_NoUniqueAddress;
             else if (a == "maybe_unused" || a == "__maybe_unused__")
               pendingAttributes |= ATTR_MaybeUnused;
+            else if (a == "__kpp_startup")
+              pendingAttributes |= ATTR_Startup;
             else if (a == "deprecated")
             {
               pendingAttributes |= ATTR_Deprecated;
@@ -3672,7 +3674,9 @@ namespace
           beginNumbering(f, pos);
         Decl* savedParent = currentParent;
         currentParent = f;
-        if (!roles && (inTest || testBodies.count(pos)))
+        if (!roles && (f->attributes & ATTR_Startup))
+          f->testCode = 1; // (a test's registration, which the parser wrote: test code, no test frame)
+        else if (!roles && (inTest || testBodies.count(pos)))
           markTestFunction(f);
         f->body = parseBlock();
         currentParent = savedParent;
@@ -4714,7 +4718,7 @@ namespace
       return c;
     }
 
-    // The suffix that names a file's next test-related declaration: the hash of its path and a count, after the
+    // The suffix that names a file's next test-related declaration: the hash of its path and a count of that name, after the
     // test's (or generator's) own name and `__` when it has one, `Name__<hash>_<n>`: the debugger and a stack trace
     // show that name alone (readableGeneratedName, tests.hpp; kovarex, 2026-11-22: "Why is the test name some random
     // hexdec?").
@@ -4724,7 +4728,7 @@ namespace
       for (unsigned char c : out.path)
         h = (h ^ c) * 1099511628211ull;
       char suffix[40];
-      snprintf(suffix, sizeof suffix, "%016llx_%u", (unsigned long long)h, testCount++);
+      snprintf(suffix, sizeof suffix, "%016llx_%u", (unsigned long long)h, testNames[name]++);
       return name.empty() ? std::string(suffix) : name + "__" + suffix;
     }
 
@@ -5125,8 +5129,11 @@ namespace
     // namespace scope (in a suite or not) or in a class (no fixture there). Without --tests
     // (config::tests) it is skipped. With it the parser writes, in tokens it then reads:
     //   void __kpp_test_S() { body }
-    //   int __kpp_test_registered_S = __kppRegisterTest(&__kpp_test_S, "Name", "Suite");
-    // (static in a class), whose caller location (the registration's) is the test's. With a fixture
+    //   [[maybe_unused]] [[__kpp_startup]] void __kpp_test_registered_S() { __kppRegisterTest(&__kpp_test_S, "Name", "Suite"); }
+    // (static in a class), whose caller location (the registration's) is the test's. The registration runs at startup
+    // (ATTR_Startup, Emitter::ctorsText), and is a whole function a compile server adds and removes with the test (until
+    // 2026-11-22 a global: a test added, removed or renamed built the program from scratch, 18 s of the game's tests).
+    // S is the test's name and a count of that name in the file (testSuffix): one test added leaves the others' as they were. With a fixture
     // the body is a member of a class derived from it, which the test function builds and runs:
     //   class __kpp_fixture_S : public Fixture { public: __kpp_fixture_S() : Fixture(arguments) {}
     //     void __kpp_body() { body } };
@@ -5194,8 +5201,8 @@ namespace
       std::string isStatic = scope == Scope::Class ? "static " : "";
       std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
       // (`This::` in a class: a bare name is never a member under --this-reference, design.md 23c)
-      std::string registration = isStatic + "int __kpp_test_registered_" + suffix + " = __kppRegisterTest(&" + (scope == Scope::Class ? "This::" : "") + "__kpp_test_" + suffix +
-                                 ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);";
+      std::string registration = "[[maybe_unused]] [[__kpp_startup]] " + isStatic + "void __kpp_test_registered_" + suffix + "() { __kppRegisterTest(&" +
+                                 (scope == Scope::Class ? "This::" : "") + "__kpp_test_" + suffix + ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot); }";
       std::vector<Token> head, tail;
       if (!fixtureFrom)
       {
@@ -5303,7 +5310,7 @@ namespace
     // is skipped. With it the parser writes, in tokens it then reads:
     //   class __kpp_generator_S : public __KppGenerator { public: void __kpp_generate() { body } };
     //   void __kpp_generate_S() { __kpp_generator_S generator; generator.__kpp_generate(); }
-    //   int __kpp_generator_registered_S = __kppRegisterGenerator(&__kpp_generate_S, "Name", "Suite");
+    //   [[__kpp_startup]] void __kpp_generator_registered_S() { __kppRegisterGenerator(&__kpp_generate_S, "Name", "Suite"); }
     // The runner calls it when it starts; the body's addTest (__KppGenerator's) adds the tests.
     void parseGenerate()
     {
@@ -5333,8 +5340,8 @@ namespace
       std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
       std::vector<Token> head = synthesize("class __kpp_generator_" + suffix + " : public __KppGenerator { public: void __kpp_generate()", from);
       std::vector<Token> tail = synthesize("}; void __kpp_generate_" + suffix + "() { __kpp_generator_" + suffix + " generator; generator.__kpp_generate(); } " +
-                                             "int __kpp_generator_registered_" + suffix + " = __kppRegisterGenerator(&__kpp_generate_" + suffix +
-                                             ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);",
+                                             "[[maybe_unused]] [[__kpp_startup]] void __kpp_generator_registered_" + suffix + "() { __kppRegisterGenerator(&__kpp_generate_" + suffix +
+                                             ", __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot); }",
                                            from, {name, suite});
       spliceAround(from, open, head, tail);
     }
@@ -5342,8 +5349,8 @@ namespace
     // `suite Name [depends A, B] [tags t, u] { declarations }` (design.md 8.7) at namespace scope.
     // Without --tests it is skipped. With it, its declarations are those of a namespace
     // `__kpp_suite_Name` (a name no program writes: the suite's name hides nothing), the first a
-    // registration the parser writes: `int __kpp_suite_registered_S = __kppRegisterSuite("Name",
-    // "A,B", "t,u");`. The names are recorded (ParsedFile::testSuites) for driver::checkTestSuites.
+    // registration the parser writes, run at startup: `[[__kpp_startup]] void __kpp_suite_registered_S() {
+    // __kppRegisterSuite("Name", "A,B", "t,u"); }`. The names are recorded (ParsedFile::testSuites) for driver::checkTestSuites.
     void parseSuite()
     {
       uint32_t start = pos;
@@ -5411,8 +5418,8 @@ namespace
       if (currentSuite)
         error("a suite inside a suite");
       std::vector<Token> registration =
-        synthesize("int __kpp_suite_registered_" + testSuffix() +
-                     " = __kppRegisterSuite(__kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot);",
+        synthesize("[[maybe_unused]] [[__kpp_startup]] void __kpp_suite_registered_" + testSuffix(std::string(symbols.name(name))) +
+                     "() { __kppRegisterSuite(__kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot, __kpp_text __kpp_text_slot); }",
                    nameToken, {std::string(symbols.name(name)), depends, tags});
       toks.insert(toks.begin() + pos + 1, registration.begin(), registration.end());
       advance();
@@ -8626,7 +8633,9 @@ namespace
     bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
     std::unordered_set<uint32_t> testBodies; // The '{' of the bodies spliceAround wrote around (a test's).
     ParsedFile::TestSuite* currentSuite = nullptr; // The suite being parsed (design.md 8.7).
-    uint32_t testCount = 0;   // Tests parsed so far in this file.
+    // The test-related declarations parsed so far in this file, by name (testSuffix): a count of their own, so that a test added,
+    // removed or renamed leaves the others' names as they were (a compile server's build adds and removes the test alone).
+    std::unordered_map<std::string, uint32_t> testNames;
     uint32_t kwThisType;
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCheckValid, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,

@@ -1,0 +1,89 @@
+// spec: a compile server's builds after a test is added, renamed and removed, and after a suite and a test outside suites are added, are what a build from scratch gives, and a suite's tests run in their declaration order: each test's registration is a function the parser writes, run at startup (ATTR_Startup), which the server adds and removes as a whole function, in its place among the startup functions (kovarex, 2026-11-22: an incremental build of the game's tests after adding a test took 18 s, a build from scratch; until then the registration was a global, and its file could not be built incrementally). (The steps with more than one suite print nothing of their own: workers print a test's output as it runs.)
+// kpp: --tests
+//--- step: the program
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { std::println("Belts.Moves ", speed()); }
+  test Stops { std::println("Belts.Stops"); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Stops
+// expect: 2 tests, 0 failed
+//--- step: a test added between the two
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { std::println("Belts.Moves ", speed()); }
+  test Turns { std::println("Belts.Turns ", speed() * 2); }
+  test Stops { std::println("Belts.Stops"); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Turns 30
+// expect: Belts.Stops
+// expect: 3 tests, 0 failed
+//--- step: that test renamed
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { std::println("Belts.Moves ", speed()); }
+  test Bends { std::println("Belts.Bends ", speed() * 2); }
+  test Stops { std::println("Belts.Stops"); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Bends 30
+// expect: Belts.Stops
+// expect: 3 tests, 0 failed
+//--- step: the tests print nothing
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { check(speed() == 15); }
+  test Bends { check(speed() * 2 == 30); }
+  test Stops { check(speed() > 0); }
+}
+// expect: 3 tests, 0 failed
+//--- step: a test added outside the suite, first in the file
+test First { check(1 + 1 == 2); }
+
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { check(speed() == 15); }
+  test Bends { check(speed() * 2 == 30); }
+  test Stops { check(speed() > 0); }
+}
+// expect: 4 tests, 0 failed
+//--- step: a suite added
+test First { check(1 + 1 == 2); }
+
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { check(speed() == 15); }
+  test Bends { check(speed() * 2 == 30); }
+  test Stops { check(speed() > 0); }
+}
+
+suite Arms
+{
+  test Swing { check(2 * 2 == 4); }
+}
+// expect: 5 tests, 0 failed
+//--- step: the suite and the test outside taken out, a test removed
+suite Belts
+{
+  int speed() { return 15; }
+
+  test Moves { std::println("Belts.Moves ", speed()); }
+  test Stops { std::println("Belts.Stops"); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Stops
+// expect: 2 tests, 0 failed
