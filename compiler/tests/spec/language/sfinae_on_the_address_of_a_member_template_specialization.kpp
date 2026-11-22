@@ -1,0 +1,27 @@
+// spec: a function template whose parameter is `decltype(&Shift::Requires<T>)*`, Requires a member function template of a class that is no template, is a candidate when Requires<T>'s signature forms under T (`choose<int>(nullptr)` takes it, the `(...)` overload beside it only for a T without `w << v`); clang prints the same
+// pending: the generic walk types `&Shift::Requires<T>` with Requires' own parameter V left in its return type, and the candidate's parameter is not typed anew under T, so `(...)` is chosen for an int too, silently (`1` where `2`); Unreal's TModels_V goes through a variable template, which works. Found by thread UE (2026-11-22)
+struct Writer
+{
+  Writer& operator<<([[maybe_unused]] int v) { return this; }
+};
+
+struct Shift
+{
+  template<typename V>
+  auto Requires(Writer& w, V&& v) -> decltype(w << v);
+};
+
+struct Nope
+{
+};
+
+template<typename T>
+char (&choose(decltype(&Shift::Requires<T>)*))[2];
+template<typename T>
+char (&choose(...))[1];
+
+int main()
+{
+  std::println(sizeof(choose<int>(nullptr)), " ", sizeof(choose<Nope>(nullptr)));
+  return 0;
+}

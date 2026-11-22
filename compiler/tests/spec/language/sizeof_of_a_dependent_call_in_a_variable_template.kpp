@@ -1,0 +1,39 @@
+// spec: `sizeof(call)` in a variable template's initializer, the call naming its parameters (`sizeof(Resolve<C, Args...>(nullptr))`, Unreal's TModels_V concept check), is the size of what the call gives under the variable template's arguments: the overload chosen with them (`Resolve(decltype(&C::Requires<Ts...>)*)` where C::Requires<Ts...> forms, `Resolve(...)` where it does not); clang prints the same
+// found by thread UE (2026-11-22): the operand kept the type the template's own walk gave it, the overload it could judge without the arguments (`Resolve(...)`, a char(&)[1]), so the trait was false for every concept, silently (FString was no CSerializableForLog, 30 errors in converted Core)
+struct Writer
+{
+  Writer& operator<<([[maybe_unused]] int v) { return this; }
+};
+
+struct CShift
+{
+  template<typename V>
+  auto Requires(Writer& w, V&& v) -> decltype(w << v);
+};
+
+struct Nope
+{
+};
+
+namespace Private
+{
+  template<typename C, typename... Ts>
+  char (&Resolve(decltype(&C::template Requires<Ts...>)*))[2];
+  template<typename C, typename... Ts>
+  char (&Resolve(...))[1];
+}
+
+template<typename C, typename... Args>
+constexpr bool models = sizeof(Private::Resolve<C, Args...>(nullptr)) == 2;
+
+template<typename T>
+constexpr int sizeOfMade = int(sizeof(T(1)));
+
+static_assert(models<CShift, int>);
+static_assert(!models<CShift, Nope>);
+
+int main()
+{
+  std::println(models<CShift, int>, " ", models<CShift, Nope>, " ", sizeOfMade<char>, " ", sizeOfMade<long long>);
+  return 0;
+}

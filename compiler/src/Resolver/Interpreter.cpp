@@ -1167,6 +1167,16 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
           return ConstValue::integer(int64_t(chars->parts->size()) * *each, types.sizeType());
         return std::nullopt; // (a literal's size, never its pointer's)
       }
+      // `sizeof(Resolve<C, Args...>(nullptr))` in a variable template under its arguments (Unreal's TModels_V): the operand
+      // typed anew with them, as a decltype is; the walk's type is the generic one, its call the overload it could judge
+      // without them (`Resolve(...)`, a char(&)[1]), so the trait was false for every concept, silently.
+      if (!t && s->operand && ctx.subst && !ctx.subst->empty() && mentionsBound(s->operand, *ctx.subst))
+      {
+        const Ty* typed = typeOfSignatureExpression(s->operand, ctx, nullptr, nullptr, nullptr, true);
+        if (!typed || !typed->isKnown() || types.isDependent(typed))
+          return std::nullopt; // (no constant, never the generic type)
+        t = typed;
+      }
       if (!t && s->operand && s->operand->ty)
         t = s->operand->ty;
       // `sizeof(V)` of a value template parameter (the name read as a type, bound to a value): its type's (until
