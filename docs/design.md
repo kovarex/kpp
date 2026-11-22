@@ -901,6 +901,8 @@ arguments), so `NamedBool<A>` and `NamedBool<B>` overload, a static method calle
 (`DragBuild::fromBool(b)`) is that instance's and returns it, and a function template deduces Tag from
 `const NamedBool<Tag>&`. Inside its body the name alone is the instance it is in. Named without arguments outside it,
 or with the wrong number, it is no type (a compile error). Spec kpp/enum_template.
+Neither instance converts to the other without a cast (`DragBuild d = PlaySound::True;` is an error, as between two
+enumerations; until 2026-11-22 codegen compared only the declaration and let it through). Spec kpp/enum_template_instances_do_not_convert.
 
 **8.5 Typed unions**, the proposal's `union enum`: an enum whose every value carries a typed
 payload, stored as the tag plus storage for the largest alternative.
