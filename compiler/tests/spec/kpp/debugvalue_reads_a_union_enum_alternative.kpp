@@ -1,4 +1,4 @@
-// spec: a debugValue (design.md 26) may read a union enum's alternative, `this[Entity]`, and its tag(), as the debugger reads the alternative's storage and the tag (kovarex, 2026-11-22: UpgradeIDBase's debugValue, "an index of a class without one const operator[]"); a class holding one calls its debugValue (IDWithQuality's `this.baseID.debugValue()`)
+// spec: a debugValue (design.md 26) may read a union enum's alternative, `this[Entity]`, and its tag(), in an `if` or in an exhaustive switch on the tag as the body's last statement, as the debugger reads the alternative's storage and the tag (kovarex, 2026-11-22: UpgradeIDBase's debugValue, "an index of a class without one const operator[]"); a class holding one calls its debugValue (IDWithQuality's `this.baseID.debugValue()`)
 struct EntityID
 {
   int index = 0;
@@ -19,6 +19,18 @@ union enum class Upgrade : u8
     return this[Item].debugValue();
   }
 };
+union enum class Switched : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  std::String debugValue() const
+  {
+    switch (this.tag())
+    {
+      case Tag::Item: return this[Item].debugValue();
+      case Tag::Entity: return this[Entity].debugValue();
+    }
+  }
+};
 struct WithQuality
 {
   Upgrade base;
@@ -33,5 +45,9 @@ int main()
   std::println(w.debugValue());
   w.base[Entity] = EntityID(3);
   std::println(w.debugValue());
+  Switched s;
+  std::println(s.debugValue());
+  s[Item] = ItemID(5);
+  std::println(s.debugValue());
   return 0;
 }

@@ -823,6 +823,15 @@ namespace
           return fail(v, s, "a case label without its `return EXPRESSION;`");
         if (fallback)
           cases.push_back({nullptr, fallback});
+        else if (todo.empty() && cases.size() > switchFirst && !noReturnEnd)
+        {
+          // The body's last statement, a switch on a kpp enum (a union enum's tag among them) without a default: the
+          // checker took it as exhaustive, every enumerator a case (else "control can reach the end"), so its last case
+          // is the rule's last, unconditional (kovarex, 2026-11-22: UpgradeIDBase's `switch (this.tag())`).
+          const Ty* ct = static_cast<Expr*>(sw->cond)->ty ? v.global.types().unqualified(v.global.types().stripRef(static_cast<Expr*>(sw->cond)->ty)) : nullptr;
+          if (ct && ct->kind == TyKind::Enum && ct->decl && ct->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(ct->decl)->isKpp)
+            cases.back().text.clear();
+        }
         if (!v.known.empty())
         {
           // What is known picks the case (`X == 2`: that case alone) or leaves cases out (`!(X == 0)`).
