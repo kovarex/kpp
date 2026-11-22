@@ -1,0 +1,215 @@
+// spec: the size of a class nested deep in another's layout (a member of a member ... 30 levels down) whose innermost class has a base named through its template's arguments (`Alloc<N>::Any`) is a constant, as near the top: `sizeof(Level30) > 0` holds in a requires clause; clang prints the same
+// found by thread UE (2026-11-22): the size's own nesting was counted against the conversion of each base's and member's type, which stops at 40 levels, so a base 22 levels down was unknown and no size came: "the requires clause of RelocateConstructItems cannot be evaluated" for Unreal's TTuple<FString, FConfigSection>, its FString's allocator ForAnyElementType 22 levels into FConfigSection
+template <int N>
+struct Alloc
+{
+  struct Any
+  {
+    int count = N;
+  };
+
+  template <typename E>
+  struct ForElement : Alloc<N>::Any
+  {
+    E* data = nullptr;
+  };
+};
+
+struct Level0
+{
+  Alloc<4>::ForElement<char> chars;
+};
+
+struct Level1
+{
+  Level0 inner;
+  int extra1 = 1;
+};
+
+struct Level2
+{
+  Level1 inner;
+  int extra2 = 2;
+};
+
+struct Level3
+{
+  Level2 inner;
+  int extra3 = 3;
+};
+
+struct Level4
+{
+  Level3 inner;
+  int extra4 = 4;
+};
+
+struct Level5
+{
+  Level4 inner;
+  int extra5 = 5;
+};
+
+struct Level6
+{
+  Level5 inner;
+  int extra6 = 6;
+};
+
+struct Level7
+{
+  Level6 inner;
+  int extra7 = 7;
+};
+
+struct Level8
+{
+  Level7 inner;
+  int extra8 = 8;
+};
+
+struct Level9
+{
+  Level8 inner;
+  int extra9 = 9;
+};
+
+struct Level10
+{
+  Level9 inner;
+  int extra10 = 10;
+};
+
+struct Level11
+{
+  Level10 inner;
+  int extra11 = 11;
+};
+
+struct Level12
+{
+  Level11 inner;
+  int extra12 = 12;
+};
+
+struct Level13
+{
+  Level12 inner;
+  int extra13 = 13;
+};
+
+struct Level14
+{
+  Level13 inner;
+  int extra14 = 14;
+};
+
+struct Level15
+{
+  Level14 inner;
+  int extra15 = 15;
+};
+
+struct Level16
+{
+  Level15 inner;
+  int extra16 = 16;
+};
+
+struct Level17
+{
+  Level16 inner;
+  int extra17 = 17;
+};
+
+struct Level18
+{
+  Level17 inner;
+  int extra18 = 18;
+};
+
+struct Level19
+{
+  Level18 inner;
+  int extra19 = 19;
+};
+
+struct Level20
+{
+  Level19 inner;
+  int extra20 = 20;
+};
+
+struct Level21
+{
+  Level20 inner;
+  int extra21 = 21;
+};
+
+struct Level22
+{
+  Level21 inner;
+  int extra22 = 22;
+};
+
+struct Level23
+{
+  Level22 inner;
+  int extra23 = 23;
+};
+
+struct Level24
+{
+  Level23 inner;
+  int extra24 = 24;
+};
+
+struct Level25
+{
+  Level24 inner;
+  int extra25 = 25;
+};
+
+struct Level26
+{
+  Level25 inner;
+  int extra26 = 26;
+};
+
+struct Level27
+{
+  Level26 inner;
+  int extra27 = 27;
+};
+
+struct Level28
+{
+  Level27 inner;
+  int extra28 = 28;
+};
+
+struct Level29
+{
+  Level28 inner;
+  int extra29 = 29;
+};
+
+struct Level30
+{
+  Level29 inner;
+  int extra30 = 30;
+};
+
+template <typename T>
+  requires(sizeof(T) > 0)
+int sized(T* p)
+{
+  return p ? 2 : 1;
+}
+
+int main()
+{
+  Level30* deep = nullptr;
+  std::println(sized(deep), " ", sizeof(Level30) > sizeof(Level0));
+  return 0;
+}

@@ -1156,7 +1156,11 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
           declContextFor(cls, dc);
           TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr,
                           cls->file ? cls->file->text : std::string_view()};
-          for (const Ty* bt : baseInstances(b.type, ctx2, depth + 1)) // (a pack of bases: each element)
+          // (a fresh depth for the conversion of a base's or a member's type: the layout's own nesting is no type's, and a
+          // class 22 levels into another's layout (FString in Unreal's TTuple<FString, FConfigSection>) had its allocator's
+          // base past convertType's 40 levels, unknown, so no size: "the requires clause of RelocateConstructItems cannot be
+          // evaluated", for `sizeof(T) > 0`)
+          for (const Ty* bt : baseInstances(b.type, ctx2, 0)) // (a pack of bases: each element)
           {
             if (!bt || !bt->isKnown() || types.isDependent(bt))
               return std::nullopt;
@@ -1171,13 +1175,13 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
       {
         const Ty* ft = nullptr;
         if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
-          ft = declaredTypeOf(m, sp, depth + 1);
+          ft = declaredTypeOf(m, sp, 0);
         else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() &&
                  static_cast<ClassDecl*>(m)->isDefinition)
           // (an anonymous union of a class template's instance: with the instance's arguments, its `T value` a T;
           // until 2026-11-22 dependent, so the size was none where the walk had not made it already: Unreal's
           // TOptional<FText> in a requires clause, "the requires clause of DestructItems cannot be evaluated")
-          ft = sp ? substitute(selfType(m), *sp, depth + 1) : types.classType(m, {});
+          ft = sp ? substitute(selfType(m), *sp, 0) : types.classType(m, {});
         else
           continue;
         if (!ft || !ft->isKnown() || types.isDependent(ft))
@@ -1262,7 +1266,7 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
       declContextFor(cls, dc);
       TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr,
                       cls->file ? cls->file->text : std::string_view()};
-      for (const Ty* bt : baseInstances(b.type, ctx2, depth + 1)) // (a pack of bases: each element)
+      for (const Ty* bt : baseInstances(b.type, ctx2, 0)) // (a pack of bases: each element; a fresh depth, as constSizeOf's)
       {
         if (!bt || !bt->isKnown()) return std::nullopt;
         auto ba = constAlignOf(bt, depth + 1);
@@ -1274,10 +1278,10 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
     {
       const Ty* ft = nullptr;
       if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef | DF_Friend)))
-        ft = declaredTypeOf(m, sp, depth + 1);
+        ft = declaredTypeOf(m, sp, 0);
       else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() &&
                static_cast<ClassDecl*>(m)->isDefinition)
-        ft = sp ? substitute(selfType(m), *sp, depth + 1) : types.classType(m, {}); // (as constSizeOf has it)
+        ft = sp ? substitute(selfType(m), *sp, 0) : types.classType(m, {}); // (as constSizeOf has it)
       else
         continue;
       if (!ft || !ft->isKnown()) return std::nullopt;
@@ -1344,7 +1348,7 @@ auto GlobalScope::Impl::constFieldOffset(const Ty* t, Decl* m, int depth) -> std
       DeclContext dc;
       declContextFor(cls, dc);
       TypeContext ctx2{dc.scope, &dc.params, sp, cls->file ? cls->file->tokens : nullptr, cls->file ? cls->file->text : std::string_view()};
-      for (const Ty* bt : baseInstances(b.type, ctx2, depth + 1)) // (a pack of bases: each element)
+      for (const Ty* bt : baseInstances(b.type, ctx2, 0)) // (a pack of bases: each element; a fresh depth, as constSizeOf's)
       {
         if (!bt || !bt->isKnown() || types.isDependent(bt))
           return std::nullopt;

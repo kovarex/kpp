@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2446 pass, 2 pending, 0 failing, 0 fixed** (2448 snippets, 276.1 s).
+**2447 pass, 2 pending, 0 failing, 0 fixed** (2449 snippets, 276.1 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1603,6 +1603,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/sfinae_type_trait_in_a_result_or_parameter_type.kpp` | a function template whose result or parameter type is a type trait that gives no type under the deduced arguments (`std::EnableIf<std::isIntegral<T>, bool>` for a float, `std::EnableIf<std::isIntegral<typename T::IntType>, bool>` for a class whose IntType does not exist, in a defaulted parameter too) is no candidate ([temp.deduct] 8), so the other overload is chosen; Conditional too; clang prints the same | pass |  |  |
 | `templates/short_circuit_consteval.kpp` | short-circuit evaluation in constant expressions (true || <unknown> is true) | pass | is_memcpy_saveable<T> = isFundamental<T> && !isPointer<T> || force_memcpy_save<T> |  |
 | `templates/single_function_call_keeps_its_result_type.kpp` | a call of a single function whose argument does not convert is that error alone, in a template's instance too: the call's type is the function's result, so a call around it (`std::println(take(t))`) takes the overload for that (until 2026-11-10 the call's type was unknown and codegen's error was about the println: "passing int32 where a pointer is expected") | pass |  |  |
+| `templates/size_of_a_class_deep_in_another_layout_is_a_constant.kpp` | the size of a class nested deep in another's layout (a member of a member ... 30 levels down) whose innermost class has a base named through its template's arguments (`Alloc<N>::Any`) is a constant, as near the top: `sizeof(Level30) > 0` holds in a requires clause; clang prints the same | pass |  |  |
 | `templates/size_of_an_instance_with_an_anonymous_union_in_a_requires_clause.kpp` | the size and alignment of a class template's instance with an anonymous union of its parameter (`union { char unset; T value; };`, as Unreal's TOptional) are constants wherever they are asked, a requires clause too: `requires (sizeof(T) > 0)` holds for it; clang prints the same | pass |  |  |
 | `templates/sizeof_of_a_value_template_parameter.kpp` | `sizeof(V)` of a value template parameter is its type's size (`template<int V>` 4, `template<long long V>` 8, `template<auto A>` given 'q' 1 and 7LL 8), in a function, a static member's initializer and an array bound of a class template (`int arr[sizeof(C) + 1]`). clang's and g++'s output | pass |  |  |
 | `templates/sizeof_pack_in_a_pack_expansion_of_bases.kpp` | `sizeof...(Types)` in the pattern of a pack expansion of base classes (`Element<Types, sizeof...(Types)>...`, Unreal's TTupleBaseElement<Types, Indices, sizeof...(Types)>) is the whole pack's length in every element, beside the pack the pattern expands (`Pair<sizeof...(Ts), Ts>...`); clang prints the same | pass |  |  |
