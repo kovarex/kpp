@@ -1,0 +1,15 @@
+// spec: a function template's result whose array bound is computed from its parameters (`char (&countHelper(const T (&)[N]))[N + 1]`, `char (&padded())[N * 2]`) is that array once the arguments are known, deduced or given: sizeof of the call is the computed bound, decltype of it the array reference; clang prints the same
+// found by thread UE (2026-11-22): the result was an array of no bound, so sizeof of the call was 0, silently (Unreal's UE_ARRAY_COUNT, `sizeof(UEArrayCountHelper(array)) - 1`, was SIZE_MAX: 12 static assertions failed in converted Core, and `Strncpy(name, source, UE_ARRAY_COUNT(name))` would have copied without a bound)
+template<typename T, u32 N> char (&countHelper(const T (&)[N]))[N + 1];
+template<u32 N> char (&padded())[N * 2];
+const int bins[] = {1, 2, 3, 4, 5};
+static_assert(sizeof(countHelper(bins)) - 1 == 5 && sizeof(padded<3>()) == 6);
+static_assert(std::isSame<decltype(countHelper(bins)), char(&)[6]>);
+
+int main()
+{
+  char name[12] = {};
+  usize count = sizeof(countHelper(name)) - 1;
+  std::println(count, " ", sizeof(countHelper(bins)), " ", sizeof(padded<4>()));
+  return 0;
+}

@@ -2023,6 +2023,20 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
           return target;
       }
     }
+    // An alias of a class template's instance (an alias template with its arguments: Unreal's `TTupleIndex<Type, Tuple>`, an
+    // alias of `TCVTupleIndex<Type, const volatile Tuple>`): the rest of the name inside the specialization the instance's
+    // arguments pick, as the instance written out finds it. Until 2026-11-22 the primary's scope its entry has, so
+    // `using P = Pick<...>;` then `P::value` was the primary's member, silently (TTupleIndex<...>::Value 0).
+    if (step.scope && step.scope->kind == ScopeKind::Class && step.decl && step.decl->kind == NodeKind::UsingAliasDecl)
+      if (const Ty* at = typeOfTypeDecl(step.decl, step, part, own, depth + 1); at && at->kind == TyKind::Class && at->decl && !types.isDependent(at))
+        if (const Ty* picked = resolveSpecialization(types.unqualified(at), depth + 1); picked && picked->decl)
+          if (Scope* inside = classScopeOf(picked); inside && inside != step.scope)
+          {
+            current = inside;
+            currentTy = picked;
+            out = step;
+            continue;
+          }
     if (!step.scope)
     {
       // A variable/function used as a qualifier, or an alias we could not follow.

@@ -1948,18 +1948,23 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
         return types.unknown(); // a local a false `when` declares: no type (the walk said so where it is used)
       if (l.decl && l.decl->kind == NodeKind::UsingAliasDecl && static_cast<UsingAliasDecl*>(l.decl)->type == t && n->name.parts.size() == 1)
         l = lookupPastAlias(static_cast<UsingAliasDecl*>(l.decl), n->name.parts[0].symbol, depth + 1); // `using Option = Option<DataType>;`
-      if (n->name.parts.size() == 2 && !n->name.parts[1].hasTemplateArgs && n->name.parts[0].hasTemplateArgs)
+      if (n->name.parts.size() >= 2 && !n->name.last().hasTemplateArgs && n->name.parts[n->name.parts.size() - 2].hasTemplateArgs)
       {
         // `Num<I>::Type` with I still a parameter: the member of whichever specialisation the
-        // arguments pick once they are known; the primary's member must not stand in for it.
+        // arguments pick once they are known; the primary's member must not stand in for it. Through
+        // a namespace too (`Priv::Helper<T>::Type`, Unreal's TVectorRegisterType): until 2026-11-22 a
+        // name of two parts only, so a namespace's template gave its primary's member, silently.
         QualifiedName prefix = n->name;
         prefix.parts.count -= 1;
         Lookup pl = lookupQualified(prefix, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
-        if (pl.decl && pl.decl->kind == NodeKind::ClassDecl)
+        // (a namespace's template, through the namespace; a class's member template keeps the qualifier's arguments, which
+        // typeOfTypeDecl of the last part alone has not: `Outer<long long>::Inner<char>::a`)
+        if (pl.decl && pl.decl->kind == NodeKind::ClassDecl &&
+            (n->name.parts.size() == 2 || !pl.decl->parent || pl.decl->parent->kind == NodeKind::NamespaceDecl))
         {
           const Ty* q = typeOfTypeDecl(pl.decl, pl, prefix.last(), ctx, depth + 1);
           if (q && q->kind == TyKind::Class && types.isDependent(q))
-            return types.dependentMember(q, n->name.parts[1].symbol);
+            return types.dependentMember(q, n->name.last().symbol);
         }
       }
       if (l.found == Found::No && n->name.parts.size() > 1 && !n->name.last().hasTemplateArgs && depth < 64)
@@ -3253,6 +3258,18 @@ auto GlobalScope::Impl::astNeedsArguments(Node* n, Scope* scope, const LocalStac
     case NodeKind::PointerType: return astNeedsArguments(static_cast<PointerType*>(n)->pointee, scope, locals, depth + 1);
     case NodeKind::LRefType: return astNeedsArguments(static_cast<LRefType*>(n)->referenced, scope, locals, depth + 1);
     case NodeKind::RRefType: return astNeedsArguments(static_cast<RRefType*>(n)->referenced, scope, locals, depth + 1);
+    case NodeKind::ArrayType:
+    {
+      // `char (&f(const T (&)[N]))[N + 1]`: a bound computed from the parameters, which the generic type has as none (an
+      // array of no bound). Until 2026-11-22 the call's result was that type substituted, a zero-length array, so its
+      // sizeof was 0, silently (Unreal's UE_ARRAY_COUNT, `sizeof(UEArrayCountHelper(array)) - 1`, was SIZE_MAX).
+      auto* a = static_cast<ArrayType*>(n);
+      if (a->size && a->size->kind != NodeKind::LiteralExpr &&
+          !(a->size->kind == NodeKind::NameExpr && static_cast<NameExpr*>(a->size)->name.parts.size() == 1 &&
+            !static_cast<NameExpr*>(a->size)->name.parts[0].hasTemplateArgs))
+        return true;
+      return astNeedsArguments(a->element, scope, locals, depth + 1);
+    }
     case NodeKind::NamedType:
     {
       auto* named = static_cast<NamedType*>(n);

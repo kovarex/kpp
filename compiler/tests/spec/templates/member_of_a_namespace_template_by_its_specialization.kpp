@@ -1,0 +1,59 @@
+// spec: a member type of a namespace's class template named with a template's parameters (`typename Priv::Helper<T>::Type`, through an alias template too) is the member of whichever specialization the arguments pick once they are known, an explicit or a partial one, as `Helper<T>::Type` without the namespace is; the primary's member never stands in for it; a class's member template keeps the class's arguments (`Outer<i64>::Inner<char>::Type`); clang prints the same
+// found by thread UE (2026-11-22): it was the primary's `void`, silently (Unreal's TVectorRegisterType<T>, so VectorLoadAligned of an FVector4 returned void: 14 in converted Core)
+struct RegF
+{
+  float x;
+};
+
+struct RegD
+{
+  double x;
+};
+
+namespace Priv
+{
+  template<typename T> struct Helper
+  {
+    using Type = void;
+  };
+
+  template<> struct Helper<f32>
+  {
+    using Type = RegF;
+  };
+
+  template<> struct Helper<f64>
+  {
+    using Type = RegD;
+  };
+
+  template<typename T> struct Helper<T*>
+  {
+    using Type = int;
+  };
+}
+
+template<typename T> struct Outer
+{
+  template<typename U> struct Inner
+  {
+    using Type = T;
+    static constexpr int size = sizeof(T) + sizeof(U);
+  };
+};
+
+template<typename T> using RegOf = Priv::Helper<T>::Type;
+template<typename T> typename Priv::Helper<T>::Type direct(T v) { return {v}; }
+template<typename T> RegOf<T> aliased(T v) { return {v}; }
+template<typename T> typename ::Priv::Helper<T*>::Type pointed(T v) { return int(v) + 1; }
+static_assert(std::isSame<decltype(direct(1.5)), RegD> && std::isSame<decltype(direct(1.5f)), RegF>);
+static_assert(std::isSame<decltype(aliased(2.5)), RegD> && std::isSame<decltype(pointed(1.5)), int>);
+static_assert(sizeof(Outer<i64>::Inner<char>::Type) == 8 && Outer<i64>::Inner<char>::size == 9);
+
+int main()
+{
+  RegD d = direct(1.5);
+  RegF f = aliased(2.5f);
+  std::println(d.x, " ", f.x, " ", pointed(3.5));
+  return 0;
+}

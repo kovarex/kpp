@@ -1,0 +1,28 @@
+// spec: a static member or member type named through an alias of a class template's instance (`using P = Pick<const volatile Tup<int, char>>; P::value`, an alias template's `PickCv<Tup<int, char>>::value`) is the member of the specialization the instance's arguments pick, as the instance written out finds it; clang prints the same
+// found by thread UE (2026-11-22): it was the primary template's member, silently (Unreal's TTupleIndex<Type, Tuple>::Value was 0 and TTupleElement<I, Tuple>::Type void: 20 failed static assertions in converted Core's TuplesTest)
+template<typename... Ts> struct Tup
+{
+};
+
+template<typename T> struct Pick
+{
+  static constexpr int value = 0;
+  using Type = void;
+};
+
+template<typename... Ts> struct Pick<const volatile Tup<Ts...>>
+{
+  static constexpr int value = sizeof...(Ts);
+  using Type = Tup<Ts...>;
+};
+
+template<typename T> using PickCv = Pick<const volatile T>;
+using P = PickCv<Tup<int, char>>;
+static_assert(P::value == 2 && PickCv<const Tup<int>>::value == 1 && Pick<Tup<int>>::value == 0);
+static_assert(std::isSame<P::Type, Tup<int, char>> && std::isSame<PickCv<Tup<>>::Type, Tup<>>);
+
+int main()
+{
+  std::println(P::value, " ", PickCv<Tup<int, char, bool>>::value, " ", Pick<int>::value);
+  return 0;
+}
