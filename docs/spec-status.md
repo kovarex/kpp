@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2393 pass, 3 pending, 0 failing, 0 fixed** (2396 snippets, 230.2 s).
+**2394 pass, 3 pending, 0 failing, 0 fixed** (2397 snippets, 210.2 s).
 
 ## Language: statements, expressions, declarations
 
@@ -322,6 +322,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/decltype.kpp` | decltype | pass | 163 uses in 57 files |  |
 | `language/decltype_auto_return.kpp` | a decltype(auto) return type keeps the reference the returned expression has: returning `f(x)` where f returns int& returns int&, so the call can be assigned to and bound to a reference | pass | the library's views (a transform yielding `const Territory&` in TerritoryManager::getAllTerritories), generic forwarding wrappers |  |
 | `language/decltype_auto_value_categories.kpp` | decltype(auto) takes the decltype of the expression: a call returning int& stays int&, a parenthesised variable or member is a reference to it, a variable or member named plainly has its declared type (a copy); for returns, lambdas (`-> decltype(auto)`) and variables alike | pass | generic forwarding wrappers and views over the game's containers; complements language/decltype_auto_return |  |
+| `language/decltype_of_a_member_of_an_xvalue.kpp` | a parenthesized member access of an xvalue or a prvalue (`(make().v)`, `(std::move(h).v)`, a call returning Holder&&) is an xvalue, which decltype and decltype(auto) give as T&& ([expr.ref] 6.2, [dcl.type.decltype] 1.5), an lvalue's member as T&, the unparenthesized one its declared type; clang prints the same | pass |  |  |
 | `language/decltype_of_a_parenthesized_rvalue_reference.kpp` | a name of an rvalue reference is an lvalue: `decltype((x.r))` of an `int&& r` is int&, and `decltype(auto)` of `return (x.r);` gives one (a Tuple<int&&>'s get<0> was an xvalue, which `= 8` refused); clang's output | pass |  |  |
 | `language/decltype_qualifier.kpp` | `decltype(x)::member` names the member of the class decltype gives (a nested type, a member alias, a constant): `decltype(Definition::migrations)::const_iterator it;` as a member, `using mapped_type = decltype(this->inventories)::mapped_type;` in a member function, `decltype(this->deviation)::CoordinateType::FractionalBits` as a constant; the name is not looked up outside that class | pass | MigrationHelpers' `decltype(PrototypeMigrationListDefinition::migrations)::const_iterator it`, LinkedInventories' mapped_type, SmokeSource's and TrivialSmoke's FractionalBits |  |
 | `language/decltype_qualifier_names_a_function.kpp` | `decltype(s)::g()` calls the static function g, through a nested class too, and `decltype(s)::T(6)` still makes a T | pass |  |  |

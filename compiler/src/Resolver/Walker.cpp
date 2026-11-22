@@ -237,6 +237,8 @@ auto GlobalScope::Impl::Walker::decltypeOf(Expr* e, const Ty* t) -> const Ty*
     return t;
   if (t->kind == TyKind::RRef && isLvalueExpression(e))
     return types.lref(t->inner); // (`(x.r)` of an `int&& r`: what a name says is an lvalue)
+  if (!t->isReference() && Impl::parenthesizedXvalueMember(e))
+    return types.rref(t); // `(move(h).v)`: an xvalue, T&& (Unreal's TTuple Get of an rvalue tuple)
   return t->isReference() || !isLvalueExpression(e) ? t : types.lref(t);
 }
 

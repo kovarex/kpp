@@ -2175,6 +2175,8 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           return typed;
         if (typed->kind == TyKind::RRef && isLvalueExpression(e))
           return types.lref(typed->inner); // (`(x.r)` of an `int&& r`: what a name says is an lvalue)
+        if (!typed->isReference() && parenthesizedXvalueMember(e))
+          return types.rref(typed); // `decltype((move(h).v))`: an xvalue's member is one, T&& ([expr.ref] 6.2)
         return typed->isReference() || !isLvalueExpression(e) ? typed : types.lref(typed);
       };
       const Ty* generic = d->expr && d->expr->ty ? decltypeOfExpr(d->expr->ty) : types.unknown();

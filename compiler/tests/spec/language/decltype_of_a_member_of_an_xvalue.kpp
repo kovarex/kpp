@@ -1,0 +1,32 @@
+// spec: a parenthesized member access of an xvalue or a prvalue (`(make().v)`, `(std::move(h).v)`, a call returning Holder&&) is an xvalue, which decltype and decltype(auto) give as T&& ([expr.ref] 6.2, [dcl.type.decltype] 1.5), an lvalue's member as T&, the unparenthesized one its declared type; clang prints the same
+// found by thread UE (2026-11-22): it was T, so Unreal's TTuple Get of an rvalue tuple (`decltype(auto) Result = (ForwardAsBase<TupleType, Element>(Tuple).Value)`) gave a value where an rvalue reference (45 of TuplesTest's static assertions)
+struct Holder
+{
+  int v = 1;
+};
+
+Holder make() { return {}; }
+Holder&& pass(Holder& h) { return std::move(h); }
+
+template<typename T>
+decltype(auto) value(T&& h) { return (static_cast<T&&>(h).v); }
+
+static_assert(std::isSame<decltype((make().v)), int&&>);
+static_assert(std::isSame<decltype(make().v), int>);
+static_assert(std::isSame<decltype((std::declval<Holder&&>().v)), int&&>);
+static_assert(std::isSame<decltype((std::declval<Holder&>().v)), int&>);
+
+int main()
+{
+  Holder h;
+  static_assert(std::isSame<decltype((pass(h).v)), int&&>);
+  decltype(auto) r = (pass(h).v);
+  static_assert(std::isSame<decltype(r), int&&>);
+  static_assert(std::isSame<decltype(value(std::move(h))), int&&>);
+  static_assert(std::isSame<decltype(value(h)), int&>);
+  int&& x = value(std::move(h));
+  x = 5;
+  r = r + 1;
+  std::println(h.v);
+  return 0;
+}

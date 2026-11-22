@@ -2500,6 +2500,15 @@ auto GlobalScope::Impl::traitObjectValue(const Ty* cls, int depth) -> std::optio
   return constAsDeclared(constInitValue(def->init, vctx, depth + 1, declared), declared);
 }
 
+auto GlobalScope::Impl::parenthesizedXvalueMember(const Expr* e) -> bool
+{
+  if (!e || e->kind != NodeKind::ParenExpr)
+    return false;
+  while (e && e->kind == NodeKind::ParenExpr)
+    e = static_cast<const ParenExpr*>(e)->inner;
+  return isXvalueMember(e);
+}
+
 auto GlobalScope::Impl::namesTupleBinding(const Expr* e) -> bool
 {
   Decl* d = e && e->kind == NodeKind::NameExpr ? static_cast<const NameExpr*>(e)->resolved : nullptr;

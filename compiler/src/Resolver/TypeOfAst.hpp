@@ -337,6 +337,10 @@
   // Whether e names a tuple-like structured binding (its hidden `auto&&` variable, Walker::tupleBindings).
   static bool namesTupleBinding(const Expr* e);
 
+  // Whether e is a parenthesized member access that is an xvalue (`(move(h).v)`, `(f().v)`: isXvalueMember), which
+  // decltype gives as T&& ([dcl.type.decltype] 1.5); unparenthesized, it is the member's declared type.
+  static bool parenthesizedXvalueMember(const Expr* e);
+
   // `auto [a, b] = e;` of class type t: whether the library's TupleSize<t> (std::tuple_size) has
   // a member named value, which makes the binding tuple-like (design.md 4, structured bindings);
   // size gets that value, nothing when it is no constant.
