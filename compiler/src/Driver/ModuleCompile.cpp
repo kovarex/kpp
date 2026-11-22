@@ -140,6 +140,22 @@ size_t reportCheckerErrors(GlobalScope& global, bool laidOut, size_t instancesCh
   return errors;
 }
 
+void reportPassWarnings(const Options& options)
+{
+  if (options.zeroNullWarnings)
+    for (const std::string& w : takeZeroNullWarnings())
+      fprintf(stderr, "%s\n", w.c_str());
+  if (options.thisWarnings)
+    for (const std::string& w : takeThisWarnings())
+      fprintf(stderr, "%s\n", w.c_str());
+  if (options.thisReferenceWarnings)
+    for (const std::string& w : takeThisReferenceWarnings())
+      fprintf(stderr, "%s\n", w.c_str());
+  if (options.plainEnumWarnings)
+    for (const std::string& w : takePlainEnumWarnings())
+      fprintf(stderr, "%s\n", w.c_str());
+}
+
 void reportReturnCopyWarnings(Build& build)
 {
   if (!build.options.returnCopyWarnings || !build.global)
@@ -651,18 +667,7 @@ void runCodegen(Build& build)
   }
   reportAccessWarnings(build);
   reportReturnCopyWarnings(build);
-  if (options.zeroNullWarnings)
-    for (const std::string& w : takeZeroNullWarnings())
-      fprintf(stderr, "%s\n", w.c_str());
-  if (options.thisWarnings)
-    for (const std::string& w : takeThisWarnings())
-      fprintf(stderr, "%s\n", w.c_str());
-  if (options.thisReferenceWarnings)
-    for (const std::string& w : takeThisReferenceWarnings())
-      fprintf(stderr, "%s\n", w.c_str());
-  if (options.plainEnumWarnings)
-    for (const std::string& w : takePlainEnumWarnings())
-      fprintf(stderr, "%s\n", w.c_str());
+  reportPassWarnings(options);
   if (!options.implicitUses.empty())
   {
     std::vector<ParsedFile*> files;

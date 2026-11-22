@@ -621,6 +621,9 @@ void reportResolve(Build& build)
     global.setCodeGenerated(false);
     size_t errors = reportCheckerErrors(global);
     fprintf(stderr, "error: %zu error(s) before code generation: no code generated (--check without a kept session)\n", errors);
+    // (the fix passes' warnings the walks noted: until 2026-11-22 printed after codegen only, so a check with errors had
+    // none, and Unreal's conversion's nullptr pass wrote no nullptr)
+    reportPassWarnings(options);
     build.codegenBehind = true;
   }
   else if (generatesCode(options))

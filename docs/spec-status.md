@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2391 pass, 3 pending, 0 failing, 0 fixed** (2394 snippets, 233.5 s).
+**2392 pass, 3 pending, 0 failing, 0 fixed** (2395 snippets, 233.8 s).
 
 ## Language: statements, expressions, declarations
 
@@ -823,6 +823,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/wide_strings.kpp` | wide string literals and WString | pass | 44 uses in 10 files (literals), 58 (std::wstring) |  |
 | `language/zero_in_brace_list_as_pointer_is_error.kpp` | a literal 0 for a pointer or member pointer member of a brace list is an error at the 0 token too (design.md 4), where no walk sees it as a pointer: codegen reports it once, for a data member pointer and a member function pointer as for a pointer | pass |  |  |
 | `language/zero_literal_as_pointer_is_error.kpp` | kpp requires nullptr (kovarex, 2026-11-04: "writing 0 instead of nullptr is not nice"; design.md 4): a literal 0 that would be a pointer or member pointer without a cast is an error at the 0 token itself (its column with --diagnostic-columns, inside parentheses too): an initializer, a parenthesised one, a member pointer, an argument, a comparison, a template's return (once, however many instances); nullptr is none; imported C keeps C's rule | pass |  |  |
+| `language/zero_null_warnings_beside_an_error.kpp` | --zero-null-warnings with --check prints the warnings at the literal 0s beside the checker's errors (convert.cmd's nullptr pass reads them for fix-null.py): a check that stops before code generation still says them | pass |  |  |
 | `language/zero_null_warnings_mode.kpp` | --zero-null-warnings, convert.cmd's nullptr pass: the literal 0s that would be pointers or member pointers (an error otherwise, design.md 4) are warnings at the 0 token, for fix-null.py to rewrite, a brace list's members too, and the program builds and runs as C++ reads it (a null data member pointer is no zero) | pass |  |  |
 
 ## Classes and objects

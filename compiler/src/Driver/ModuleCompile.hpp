@@ -19,6 +19,12 @@
   void reportAccessWarnings(Build& build);
 
 
+  // The warnings the conversion's fix passes read (--zero-null-warnings, --this-warnings,
+  // --this-reference-warnings, --plain-enum-warnings), to stderr, after codegen or where a check stops
+  // before it (the checker's errors).
+  void reportPassWarnings(const Options& options);
+
+
   // An MSVC link that is no LTO's runs link.exe directly, the clang driver's translation of the link's
   // response file kept beside the executable: the driver, which finds MSVC's and the Windows SDK's
   // libraries before it runs link.exe, took 141 to 519 ms by itself (`clang -###` on the game's 256
