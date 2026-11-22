@@ -1,0 +1,23 @@
+// spec: a local named like its type (`Ptr Ptr = &x;`, `Lock Lock(Ptr);`) is declared after its type and before its initializer, as C++'s point of declaration is ([basic.scope.pdecl] 1): its type names the type around, its initializer the variable; clang prints the same
+// found by thread UE (2026-11-22): with an initializer the local was declared before its type was resolved, "'Ptr' is a variable, not a type" (Unreal's ModuleManager, `ModuleInfoPtr ModuleInfoPtr = FindModule(InModuleName);`)
+struct Lock
+{
+  Lock(int* counter) : counter(counter)
+  {
+    ++*counter;
+  }
+
+  int* counter;
+};
+
+using Ptr = int*;
+
+int main()
+{
+  int x = 5;
+  Ptr Ptr = &x;
+  Lock Lock(Ptr);
+  int size = int(sizeof(size)) * 10;
+  std::println(*Ptr, " ", *Lock.counter, " ", size);
+  return 0;
+}

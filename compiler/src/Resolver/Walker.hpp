@@ -33,6 +33,7 @@
     Expr* const* walkedArgs = nullptr; // see WalkedArgs
     std::vector<const Ty*> walkedArgTypes;
     const Ty* deducedLocal = nullptr;  // the `auto` type walkDecl just deduced, for walkLocalDecl
+    Decl* declaredBeforeInit = nullptr; // a local walkDecl declares after its type, before its initializer (walkLocalDecl)
     size_t blockLocals = 0;            // where the innermost block's locals start (a `when` clash: whenHolds)
     std::vector<size_t> blockStarts;   // where each enclosing block's locals start, the innermost last (whenUse)
     int undecidedBranches = 0;         // inside an instance's `if constexpr` branch this walk could not decide

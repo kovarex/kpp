@@ -12146,6 +12146,11 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       checkArrayBounds(v);
       walkExpr(v->bitfield);
       walkExpr(v->alignment); // (`alignas(T)`: its name resolved, a type's or a constant's, for codegen's alignmentValue)
+      if (declaredBeforeInit == v)
+      {
+        declaredBeforeInit = nullptr;
+        declareLocal(v); // (for its initializer: walkLocalDecl declares it again for what follows)
+      }
       const Ty* initTy = walkExpr(v->init);
       scope = saved;
       locals.writtenIn = savedWrittenIn;
@@ -12814,7 +12819,9 @@ auto GlobalScope::Impl::Walker::walkLocalDecl(Decl* d) -> void
   }
   // Classes are in scope in their own bodies. A variable whose type is written is in scope
   // in its own initializer, as C++ declares it before that (`Function<void(int)> visit =
-  // [&](int n) { visit(n - 1); };`); an `auto` one is not, its type comes from there.
+  // [&](int n) { visit(n - 1); };`); an `auto` one is not, its type comes from there. Not in its
+  // type, which names what is around ([basic.scope.pdecl] 1: `Ptr Ptr = &x;`, `FScopeLock FScopeLock(&Lock);`;
+  // until 2026-11-22 "'Ptr' is a variable, not a type", Unreal's ModuleManager and LinearAllocator).
   if (d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl)
   {
     declareLocal(d);
@@ -12824,20 +12831,17 @@ auto GlobalScope::Impl::Walker::walkLocalDecl(Decl* d) -> void
   {
     auto* v = d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d) : nullptr;
     bool early = v && v->type && v->init && v->structuredBindings.empty() && !Impl::astMentionsAuto(v->type);
-    size_t declaredAt = locals.mark();
-    if (early)
-      declareLocal(d);
+    Decl* outerBeforeInit = declaredBeforeInit;
+    declaredBeforeInit = early ? d : nullptr;
     deducedLocal = nullptr;
     walkDecl(d);
+    declaredBeforeInit = outerBeforeInit;
     const Ty* deduced = v ? deducedLocal : nullptr;
     deducedLocal = nullptr;
     if (v && !v->structuredBindings.empty())
       tupleBindings(v, deduced ? deduced : hiddenObjectType(v));
-    if (!early)
-    {
-      declaredAt = locals.mark();
-      declareLocal(d);
-    }
+    size_t declaredAt = locals.mark();
+    declareLocal(d);
     if (deduced)
       for (size_t i = declaredAt; i < locals.items.size(); ++i)
         if (locals.items[i].decl == d)
