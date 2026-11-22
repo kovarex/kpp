@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2422 pass, 2 pending, 0 failing, 0 fixed** (2424 snippets, 204.2 s).
+**2423 pass, 2 pending, 0 failing, 0 fixed** (2425 snippets, 204.5 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1106,6 +1106,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/operator_result_initializes_the_object.kpp` | `T a = b + c;`, an operator function's prvalue, initializes a itself, as a call does ([dcl.init] 17.6.1, guaranteed elision): kpp built a temporary and moved it, in a variable, an array element, an aggregate's member, a condition, a new-expression and a member initializer. clang and g++ print the same | pass |  |  |
 | `classes/out_of_class_template_constructor_initializes_parameter_base.kpp` | an out-of-class constructor of a class template initializes the base its initializer names by the definition's own template parameter (`template<class T> Derived<T>::Derived(int v) : T(v) {}`, a pack's `Ts(v)...` too), inline, inlined or folded at compile time | pass |  |  |
 | `classes/out_of_line_definition_without_declaration.kpp` | an out-of-line member definition whose signature matches no declaration of its class is an error, as in C++, never a definition silently dropped | pass | 272 functions of the converted code were defined out of line yet never emitted, with no error: unresolved externals at the link |  |
+| `classes/out_of_line_static_member_declared_in_its_class.kpp` | a static member defined outside its class is declared in its class's scope, as C++ has it for what follows its name: the bound of `u8 Pools::table[This::SIZE]` names the class's constant, and an explicit specialization's (`template<> const char Helper<char>::tabs[This::MAX_TABS + 1]`) the instance's, so both are constants; a bare member there is the bare member error with its fix (design.md 23c); clang prints the same for C++'s bare names | pass |  |  |
 | `classes/overloaded_address_of_is_called.kpp` | `&x` of a class with its own unary operator& calls it, as C++ does, wherever the result goes (a local of the operator's result type, an argument): never the built-in address of x reinterpreted as that type; CComPtr<T>'s `T** operator&()` given to QueryInterface and CreateDevice | pass |  |  |
 | `classes/overloaded_arrow_star_operator.kpp` | a class's operator->* is called for `object->*k` with object of that class (a smart pointer's), as C++ has it; a pointer's ->* and an object's .* with a member pointer stay the built-in ones; until 2026-11-06 "codegen does not support ->* on something that is not a pointer" | pass |  |  |
 | `classes/overloaded_logical_or.kpp` | a class's own operator|| (and operator&&) is called for `a || b` of two of its objects, as any overloaded operator, both operands evaluated, and gives its own type; the built-in || (a bool, short-circuit) is only for operands that are not such classes | pass | NamedBool's `constexpr NamedBool operator||(const NamedBool&& other) const`, called by ControlInput::isActive's `guiCheck || GuiCheck::fromBool(this->guiInput)` for a GuiCheck parameter (4c178a5b915) |  |

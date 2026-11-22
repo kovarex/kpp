@@ -1836,6 +1836,16 @@ auto GlobalScope::Impl::Walker::checkArrayBounds(VariableDecl* v) -> void
 {
   if (probing || !file || file->isImported || (v->flags & DF_Typedef) || (inGenericTemplate() && !activeSubst) || undecidedBranches > 0)
     return;
+  // (an explicit specialization's static member defined outside its class, `Helper<char>::tabs[This::MAX_TABS + 1]`:
+  // under the arguments its name gives the class, as its type is, computeDeclaredType)
+  TypeContext c = ctx();
+  Subst ofInstance;
+  if (!activeSubst && v->name.parts.size() > 1 && v->name.parts[v->name.parts.size() - 2].hasTemplateArgs)
+  {
+    ofInstance = impl.qualifierSubst(v->name, c, 0, scope);
+    if (!ofInstance.pairs.empty())
+      c.subst = &ofInstance;
+  }
   for (Type* t = v->type; t;)
   {
     if (t->kind == NodeKind::ConstType)
@@ -1849,7 +1859,7 @@ auto GlobalScope::Impl::Walker::checkArrayBounds(VariableDecl* v) -> void
     if (a->size)
     {
       Impl::constWhy().clear();
-      std::optional<int64_t> n = impl.constEval(a->size, ctx());
+      std::optional<int64_t> n = impl.constEval(a->size, c);
       std::string name = v->name.empty() ? std::string("?") : impl.namePartText(v->name.last());
       if (!n)
       {
@@ -12098,6 +12108,16 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       if (v->when && v->whenKnown < 0 && v->parent && v->parent->kind == NodeKind::ClassDecl)
         walkExpr(v->when);
       bool member = v->parent && v->parent->kind == NodeKind::ClassDecl;
+      Scope* saved = scope;
+      const ParsedFile* savedWrittenIn = locals.writtenIn;
+      // An out-of-line static member's declaration: in its class's scope, as its declared type is (declContextFor), C++'s
+      // for what follows the name (`u8 Pools::table[SIZE] = {0};`, Unreal's FMallocBinned2::MemSizeToPoolIndex; until
+      // 2026-11-22 the type was walked outside, "'SIZE' is not declared"), and its own file's private names, as a function's.
+      if (v->name.parts.size() > 1)
+      {
+        locals.writtenIn = v->file;
+        scope = semanticScopeFor(v->name);
+      }
       declaredTypes += member;
       walkType(v->type);
       declaredTypes -= member;
@@ -12105,13 +12125,6 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       checkArrayBounds(v);
       walkExpr(v->bitfield);
       walkExpr(v->alignment); // (`alignas(T)`: its name resolved, a type's or a constant's, for codegen's alignmentValue)
-      Scope* saved = scope;
-      const ParsedFile* savedWrittenIn = locals.writtenIn;
-      if (v->name.parts.size() > 1)
-      {
-        locals.writtenIn = v->file; // (an out-of-line static member's initializer: its own file's private names, as a function's)
-        scope = semanticScopeFor(v->name);
-      }
       const Ty* initTy = walkExpr(v->init);
       scope = saved;
       locals.writtenIn = savedWrittenIn;

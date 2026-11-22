@@ -2752,6 +2752,20 @@ auto GlobalScope::Impl::computeDeclaredType(Decl* d, const Subst* subst, int dep
       auto* v = static_cast<VariableDecl*>(d);
       if (v->builtin == BUILTIN_EnumValues && v->parent && v->parent->kind == NodeKind::EnumDecl)
         return types.array(enumTypeIn(v->parent, subst), uint32_t(enumeratorCount(v->parent))); // E::values
+      // An explicit specialization's static member defined outside its class (`template<> const char
+      // Helper<char>::tabs[This::MAX_TABS + 1] = ...;`, Unreal's TCStringSpcHelper<ANSICHAR>::TabArray): its type under the
+      // arguments its name gives the class, which the class's members it names need (until 2026-11-22 none: no constant bound).
+      Subst ofInstance;
+      if (!subst && v->name.parts.size() > 1 && v->name.parts[v->name.parts.size() - 2].hasTemplateArgs &&
+          !(v->parent && v->parent->kind == NodeKind::FunctionDecl))
+      {
+        ofInstance = qualifierSubst(v->name, ctx, depth + 1, dc.scope);
+        bool concrete = !ofInstance.pairs.empty() && std::all_of(ofInstance.pairs.begin(), ofInstance.pairs.end(), [&](const Subst::Pair& q) {
+          return q.type && q.type->isKnown() && !types.isDependent(q.type);
+        });
+        if (concrete)
+          ctx.subst = &ofInstance;
+      }
       const Ty* t = convertType(v->type, ctx, depth + 1);
       // A string literal initialising an array of characters may stand in braces (`uint8_t
       // text[] = {"abc"}` is `= "abc"`, C++ [dcl.init.string]).

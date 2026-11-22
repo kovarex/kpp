@@ -1,0 +1,25 @@
+// spec: a static member defined outside its class is declared in its class's scope, as C++ has it for what follows its name: the bound of `u8 Pools::table[This::SIZE]` names the class's constant, and an explicit specialization's (`template<> const char Helper<char>::tabs[This::MAX_TABS + 1]`) the instance's, so both are constants; a bare member there is the bare member error with its fix (design.md 23c); clang prints the same for C++'s bare names
+// found by thread UE (2026-11-22): the declaration's type was checked outside the class ("'SIZE' is not declared", no fix) and an explicit specialization's bound without its arguments ("no constant"): Unreal's FMallocBinned2::MemSizeToPoolIndex, TCStringSpcHelper<ANSICHAR>::TabArray
+class Pools
+{
+public:
+  static constexpr int SIZE = 4;
+  static u8 table[SIZE];
+};
+
+u8 Pools::table[This::SIZE] = {0};
+
+template<typename T> struct Helper
+{
+  static constexpr int MAX_TABS = 3;
+  static const T tabs[MAX_TABS + 1];
+};
+
+template<> const char Helper<char>::tabs[This::MAX_TABS + 1] = "\t\t\t";
+
+int main()
+{
+  Pools::table[3] = 9;
+  std::println(sizeof(Pools::table), " ", sizeof(Helper<char>::tabs), " ", int(Pools::table[3]), " ", int(Helper<char>::tabs[2]));
+  return 0;
+}
