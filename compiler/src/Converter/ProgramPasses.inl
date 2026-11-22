@@ -221,6 +221,27 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     }
     return s;
   };
+  // The file's classes by name, for a member defined below its class (a class template's, whose body stays outside:
+  // `template<typename T> bool Range<T>::operator!=(const Sentinel&) const {...}`); a name two classes have is none.
+  std::map<uint32_t, Decl*> classesByName;
+  std::function<void(Span<Decl*>)> collectClasses = [&](Span<Decl*> decls)
+  {
+    for (Decl* d : decls)
+      if (d->kind == NodeKind::NamespaceDecl)
+        collectClasses(static_cast<NamespaceDecl*>(d)->decls);
+      else if (d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition)
+      {
+        auto* c = static_cast<ClassDecl*>(d);
+        if (!c->name.empty() && c->name.last().symbol != UINT32_MAX)
+        {
+          auto [it, fresh] = classesByName.insert({c->name.last().symbol, c});
+          if (!fresh)
+            it->second = nullptr;
+        }
+        collectClasses(c->members);
+      }
+  };
+  collectClasses(parsed.decls);
   std::function<void(Span<Decl*>, Decl*)> collect = [&](Span<Decl*> decls, Decl* scope)
   {
     for (Decl* d : decls)
@@ -232,6 +253,15 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       else if (d->kind == NodeKind::FunctionDecl)
       {
         auto* f = static_cast<FunctionDecl*>(d);
+        if (f->name.parts.size() > 1 && f->name.last().special == 2 && f->body)
+        {
+          // (a member defined below its class: its class's, when the file has one class of that name)
+          auto c = classesByName.find(f->name.parts[f->name.parts.size() - 2].symbol);
+          uint32_t op = f->name.last().opToken;
+          if (c != classesByName.end() && c->second && (op == uint32_t(P::NotEq) || op == uint32_t(P::EqEq)))
+            (op == uint32_t(P::NotEq) ? notEquals : equals).push_back({f, c->second, paramText(f), bool(f->flags & DF_Const)});
+          continue;
+        }
         if (f->name.parts.size() != 1 || f->name.last().special != 2)
           continue;
         uint32_t op = f->name.last().opToken;
@@ -299,6 +329,10 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     review.push_back("operator!= kept (" + why + "): " + owner + "`" + written + "`");
     counts.add("operator!= kept for review: " + why);
   };
+  // (the definitions first: a declaration whose definition is below it in the file follows what was decided for it)
+  std::stable_partition(notEquals.begin(), notEquals.end(), [](const Function& x) { return x.f->body != nullptr; });
+  auto keyOf = [](const Function& x) { return std::to_string(uintptr_t(x.scope)) + "|" + x.params + "|" + (x.isConst ? "c" : ""); };
+  std::map<std::string, char> decided; // 'd' dropped, 'm' made the ==
   for (const Function& n : notEquals)
   {
     FunctionDecl* f = n.f;
@@ -319,6 +353,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     if (f->flags & DF_Default)
     {
       removeDeclaration(f);
+      decided[keyOf(n)] = 'd';
       counts.add("operator!= dropped: defaulted");
       continue;
     }
@@ -343,8 +378,43 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       return to < toks.size() && from < to;
     };
     uint32_t from = 0, to = 0;
+    if (f->flags & DF_Delete)
+    {
+      // `friend bool operator!=(const TSet&, const TSet&) = delete;` beside a deleted == (Unreal's containers): kpp's
+      // `a != b` is `!(a == b)`, which the deleted == refuses already
+      if (eq && (eq->f->flags & DF_Delete))
+      {
+        removeDeclaration(f);
+        decided[keyOf(n)] = 'd';
+        counts.add("operator!= dropped: deleted, as its == is");
+        continue;
+      }
+      keep(n, "deleted, its == not");
+      continue;
+    }
     if (!f->body)
     {
+      if (auto d = decided.find(keyOf(n)); d != decided.end() && d->second == 'd')
+      {
+        removeDeclaration(f);
+        counts.add("operator!= declaration dropped with its definition");
+        continue;
+      }
+      if (!eq)
+      {
+        // A declaration whose body is elsewhere (a class template's member defined below its class, Unreal's
+        // TDirectoryTree::TIterator): with no == of its parameters, its definition is made the == where it is (below),
+        // so the declaration is too (a definition kept for review leaves the two apart: an error, never another call)
+        uint32_t opTok = operatorToken(f);
+        if (opTok >= f->endToken)
+        {
+          keep(n, "its operator token not found");
+          continue;
+        }
+        edits.push_back({toks[opTok].offset, toks[opTok].length, "=="});
+        counts.add("operator!= declaration made the == its definition is: no == of its parameters");
+        continue;
+      }
       keep(n, "no body here");
       continue;
     }
@@ -356,8 +426,8 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     }
     // the names `*this` and the parameters, whose == is the class's or the pair's
     std::set<std::string> selves;
-    if (f->parent && f->parent->kind == NodeKind::ClassDecl && !(f->flags & (DF_Static | DF_Friend)))
-      selves.insert("*this");
+    if (((f->parent && f->parent->kind == NodeKind::ClassDecl) || f->name.parts.size() > 1) && !(f->flags & (DF_Static | DF_Friend)))
+      selves.insert("*this"); // (a member, also one defined below its class)
     for (Decl* p : f->params)
       if (static_cast<ParamDecl*>(p)->name != UINT32_MAX)
         selves.insert(std::string(symbols.name(static_cast<ParamDecl*>(p)->name)));
@@ -392,6 +462,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       if (callsEquals)
       {
         removeDeclaration(f);
+        decided[keyOf(n)] = 'd';
         counts.add("operator!= dropped: the negation of ==");
         continue;
       }
@@ -407,6 +478,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
         edits.push_back({toks[opTok].offset, toks[opTok].length, "=="});
         edits.push_back({toks[e.from].offset, toks[e.from].length, ""});
         counts.add("operator!= made the == it negates: no == of its parameters");
+        decided[keyOf(n)] = 'm';
         continue;
       }
       keep(n, "a negation of something else than its ==");
@@ -423,6 +495,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
         if (eq->f->body && onlyReturn(eq->f, ef, et) && parse(ef, et, ee) && terms(ee, '&', '=', eqTerms) && eqTerms == ne)
         {
           removeDeclaration(f);
+          decided[keyOf(n)] = 'd';
           counts.add("operator!= dropped: its terms the negation of =='s");
           continue;
         }
@@ -447,6 +520,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
           if (!members.empty() && members == ne)
           {
             removeDeclaration(f);
+            decided[keyOf(n)] = 'd';
             counts.add("operator!= dropped: its terms the negation of the defaulted =='s");
             continue;
           }
@@ -475,6 +549,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       };
       flip(e);
       counts.add("operator!= made the == it negates: no == of its parameters");
+      decided[keyOf(n)] = 'm';
       continue;
     }
     if (!eq)
@@ -490,6 +565,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       edits.push_back({toks[from].offset, 0, "!("});
       edits.push_back({toks[to - 1].offset + toks[to - 1].length, 0, ")"});
       counts.add("operator!= made the == it negates: no == of its parameters");
+      decided[keyOf(n)] = 'm';
       continue;
     }
     keep(n, "a body of another form");
