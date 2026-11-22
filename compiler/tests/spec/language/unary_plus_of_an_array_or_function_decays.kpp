@@ -1,0 +1,21 @@
+// spec: unary + of an array is a pointer to its first element, of a function a pointer to it (the array-to-pointer and function-to-pointer conversions, [expr.unary.op] 7): `decltype(+values)` is int*, `+std::declval<const int(&)[6]>()` a const int*, and its value points at the first element; clang prints the same
+// found by thread UE (2026-11-22): it was the array itself, silently (`isPointer<decltype(+values)>` false), so Unreal's GetNum of a C array (`requires isPointer<decltype(+std::declval<T>())>`) had no candidate (5 in converted Core)
+int values[6] = {1, 2, 3, 4, 5, 6};
+int twice(int v) { return v * 2; }
+template<typename T> constexpr bool decaysToPointer = std::isPointer<decltype(+std::declval<T>())>;
+template<typename T>
+  requires (decaysToPointer<T>)
+usize count(const T& container) { return sizeof(container) / sizeof(*container); }
+static_assert(std::isSame<decltype(+values), int*>);
+static_assert(std::isSame<decltype(+std::declval<const int(&)[6]>()), const int*>);
+static_assert(std::isSame<decltype(+twice), int (*)(int)>);
+static_assert(decaysToPointer<int[6]> && !decaysToPointer<int>);
+
+int main()
+{
+  auto first = +values;
+  auto f = +twice;
+  const int fixed[3] = {7, 8, 9};
+  std::println(first[5], " ", f(21), " ", count(values), " ", count(fixed), " ", *+fixed);
+  return 0;
+}

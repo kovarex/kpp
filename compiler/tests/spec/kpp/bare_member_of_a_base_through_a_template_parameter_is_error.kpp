@@ -1,0 +1,32 @@
+// spec: a bare name that is a member of a base which a class template's instance derives from through its parameters (`frand()` in `struct Math : Platform`, Platform : Sse<Generic>, `template<typename Base> struct Sse : Base`) is the bare member error with its fix, `This::frand` (design.md 23c), as a member of a direct base is; written so it is found through the instance's bases
+// found by thread UE (2026-11-22): it was "'frand' is not declared", which names no fix (Unreal's FMath::FRandRange calling FGenericPlatformMath::FRand through TUnrealPlatformMathSSE4Base<...>, 9 in converted Core)
+// error: bare_member_of_a_base_through_a_template_parameter_is_error.kpp:24: error: frand is a static member: write `This::frand`, not `frand` (design.md 23c)
+// error: bare_member_of_a_base_through_a_template_parameter_is_error.kpp:25: error: count is a data member: write `this.count`, not `count` (design.md 23c)
+struct Generic
+{
+  static float frand() { return 0.5f; }
+  int count = 3;
+};
+
+template<typename Base> struct Sse : Base
+{
+  static int twice(int v) { return v * 2; }
+};
+
+struct PlatformMath : Sse<Generic>
+{
+};
+
+struct Math : PlatformMath
+{
+  static float fine() { return This::frand() * 2; }
+  int alsoFine() const { return this.count + This::twice(1); }
+  static float range() { return frand() * 2; }
+  int counted() const { return count; }
+};
+
+int main()
+{
+  Math m;
+  return Math::fine() == 1.0f && m.alsoFine() == 5 && Math::range() == 1.0f && m.counted() == 3 ? 0 : 1;
+}

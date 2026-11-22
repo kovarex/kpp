@@ -446,6 +446,8 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
   }
   else if (const ParsedFile* owner = impl.filePrivateTo(name.parts[0].symbol, file))
     message = "'" + std::string(spelled) + "' is private to " + owner->path;
+  else if (std::string member = memberThroughBaseInstances(name.parts[0].symbol); !member.empty())
+    message = member;
   else
   {
     // A library's name first (`String(input)` is std::String, whatever enum has an enumerator String), else a scoped enumerator.
@@ -3120,6 +3122,34 @@ auto GlobalScope::Impl::Walker::bareMemberRule(const Node* n, const QualifiedNam
                                                   ": write `" + qualifier + old + "`, not `" + old + "` (design.md 23c)");
   }
   return outside;
+}
+
+// A member of a base that a class template's instance derives from through its parameters, which the scopes around the
+// code do not reach (`frand()` in `struct Math : Platform`, Platform : Sse<Generic>, `template<class Base> struct Sse :
+// Base`): the bare member rule's message and its fix (design.md 23c), where "not declared" named no fix (Unreal's
+// FMath::FRandRange calling FGenericPlatformMath::FRand through TUnrealPlatformMathSSE4Base<...>). Empty for none.
+auto GlobalScope::Impl::Walker::memberThroughBaseInstances(uint32_t symbol) -> std::string
+{
+  for (Scope* s = scope; s; s = s->parent)
+  {
+    if (s->kind != ScopeKind::Class || !s->owner || s->owner->kind != NodeKind::ClassDecl || s->baseTypes.empty())
+      continue;
+    const Ty* self = impl.selfType(s->owner);
+    if (!self || types.isDependent(self))
+      continue;
+    Lookup l;
+    impl.lookupThroughBaseInstances(self, symbol, l, 0);
+    Decl* d = l.decl;
+    if (l.found == Found::No || !d || (d->kind != NodeKind::VariableDecl && d->kind != NodeKind::FunctionDecl) ||
+        (d->flags & (DF_Typedef | DF_Constructor | DF_Destructor)))
+      continue;
+    bool isStatic = false;
+    std::string qualifier = bareMemberQualifier(d, l, isStatic);
+    std::string name(symbols.name(symbol));
+    return name + " is a " + (isStatic ? "static member" : d->kind == NodeKind::FunctionDecl ? "member function" : "data member") + ": write `" + qualifier +
+           name + "`, not `" + name + "` (design.md 23c)";
+  }
+  return {};
 }
 
 // What a bare member's fix writes before it (design.md 23c): `this.`; for a static, `This::`, or the name of the
@@ -10613,6 +10643,13 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
         bool isNoexcept = call && impl.isNoexcept(&call->decl, activeSubst) == std::optional<bool>(true);
         return types.pointer(types.function(s->inner, s->args, false, false, isNoexcept));
       }
+      // `+values` of an array: a pointer to its first element, `+f` of a function a pointer to it (the array-to-pointer and
+      // function-to-pointer conversions, [expr.unary.op] 7). Until 2026-11-22 the array itself, so decltype(+values) was
+      // int[6], silently, and Unreal's GetNum of a C array (`isPointer<decltype(+declval<T>())>`) had no candidate.
+      if (op == P::Plus && s->kind == TyKind::Array && s->inner)
+        return types.pointer(s->inner);
+      if (op == P::Plus && s->kind == TyKind::Function)
+        return types.pointer(s);
       return promote(operandType(u->operand, t));
     case P::PlusPlus: case P::MinusMinus:
       checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of", u->operand);

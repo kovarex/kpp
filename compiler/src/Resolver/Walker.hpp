@@ -500,6 +500,9 @@
     // spelling around the class says so: a bare name will be that one.
     void noteImplicitMember(const Node* n, const QualifiedName& qualified, const Lookup& l);
     std::string bareMemberQualifier(const Decl* d, const Lookup& l, bool& isStatic);
+    // A bare name no scope around reaches that is a member of a base a class template's instance derives from through its
+    // parameters: the bare member rule's message, with its fix; empty for none.
+    std::string memberThroughBaseInstances(uint32_t symbol);
     // Required `this.` (design.md 23c, under --this-reference, kpp code only): a bare name is a local, a parameter or a
     // global, never a member. One that the lookup finds as a data member, a member function or a static member of a
     // class around the code is looked up again outside every class around it: what that finds is the name (Q10, no
