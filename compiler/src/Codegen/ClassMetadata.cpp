@@ -61,6 +61,17 @@ auto codegen::Emitter::argTypesOf(Span<Expr*> args) -> std::vector<const Ty*>
           out.push_back(argumentType(pattern, element.ty, types));
         continue;
       }
+      // A longer pattern (`*ps...` of `int*... ps`): each element's own type, as the walk typed the expansion for this
+      // instantiation, presented as the pattern is (an lvalue's as a reference). Until 2026-11-22 the pack's element types,
+      // `int` for `*ps`, an rvalue: `Probe(int&&, int&&)` was chosen over `Probe(int&, int&)`, and Unreal's
+      // `TTuple<decltype(*Iters)...>(*Iters...)` found no constructor of its `const T&` element types.
+      if (param && a->ty && a->ty->kind == TyKind::Pack && a->ty->args.size() == packLocals[param].size() &&
+          std::all_of(a->ty->args.begin(), a->ty->args.end(), [&](const Ty* e) { return e && e->isKnown() && !types.isDependent(e); }))
+      {
+        for (const Ty* element : a->ty->args)
+          out.push_back(argumentType(pattern, element, types));
+        continue;
+      }
       std::vector<Decl*> packs = param ? templatePacksOf(param) : std::vector<Decl*>{};
       const Ty* pack = nullptr;
       if (!packs.empty() && currentArgs)

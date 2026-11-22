@@ -2365,7 +2365,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       whole.elementPacks = nullptr; // (an expansion in an expansion's pattern: its packs whole, `g<Ts...>()`)
       std::vector<Decl*> packs;
       if (ctx.subst && !isBarePack(pattern))
-        packsNamedIn(pattern, *ctx.subst, packs);
+        packsNamedIn(pattern, *ctx.subst, packs, 0, ctx.locals);
       if (packs.empty())
         return convertType(pattern, whole, depth + 1);
       size_t n = ctx.subst->find(packs[0])->args.size();
@@ -3208,10 +3208,12 @@ auto GlobalScope::Impl::isBarePack(const Type* pattern) -> bool
   return name.parts.size() == 1 && !name.parts[0].hasTemplateArgs && !name.typeQualifier;
 }
 
-auto GlobalScope::Impl::packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>& out, int depth) -> void
+auto GlobalScope::Impl::packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>& out, int depth, const LocalStack* locals) -> void
 {
   if (!n || depth > 32)
     return;
+  // (each call below passes locals on: packsNamedIn's own default would drop them)
+  auto packsNamedIn = [&](Node* x, const Subst& s2, std::vector<Decl*>& o, int d) { this->packsNamedIn(x, s2, o, d, locals); };
   auto named = [&](uint32_t symbol)
   {
     for (const Subst::Pair& p : s.pairs)
@@ -3223,6 +3225,18 @@ auto GlobalScope::Impl::packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>
   auto inName = [&](const QualifiedName& q)
   {
     packsNamedIn(q.typeQualifier, s, out, depth + 1);
+    // A function parameter pack (`ps` of `Ps*... ps`, a generic lambda's `const auto&... ps`): the template packs its
+    // type names, bound whole by s (until 2026-11-22 none, so `Tuple<decltype(*ps)...>` was typed once, `Tuple<unknown>`:
+    // Unreal's UE::Zip, `TTuple<decltype(*Iters)...>(*Iters...)`).
+    if (locals && q.parts.size() == 1 && !q.typeQualifier && !q.global && !q.parts[0].hasTemplateArgs && q.parts[0].symbol != UINT32_MAX)
+      if (Decl* d = locals->find(q.parts[0].symbol); d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack)
+      {
+        std::vector<Decl*> typePacks;
+        packParamsIn(declaredTypeOf(d, nullptr, 0), typePacks);
+        for (Decl* p : typePacks)
+          if (const Ty* bound = s.find(p); bound && bound->kind == TyKind::Pack && std::find(out.begin(), out.end(), p) == out.end())
+            out.push_back(p);
+      }
     for (const NamePart& part : q.parts)
     {
       if (part.symbol != UINT32_MAX)

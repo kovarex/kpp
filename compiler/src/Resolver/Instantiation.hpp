@@ -326,7 +326,9 @@
 
   // The parameter packs that s binds to packs and the pattern n names (by name, in its names and
   // template arguments, in types and expressions written in it), each once.
-  void packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>& out, int depth = 0);
+  // locals: where n is written, whose function parameter packs it may name (`decltype(*ps)...` of `Ps*... ps`): the
+  // template packs their types are.
+  void packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>& out, int depth = 0, const LocalStack* locals = nullptr);
 
   // Whether a written type names something its generic conversion cannot keep for the
   // substitution to fill in later: a decltype, a built-in type trait (`RemoveReference<T>`), a

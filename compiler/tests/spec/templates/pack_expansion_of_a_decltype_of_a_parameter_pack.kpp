@@ -1,0 +1,60 @@
+// spec: a pack expansion of a type whose pattern names a function parameter pack (`Tup<decltype(*ps)...>` of `Ps*... ps`, of a generic lambda's `const auto*... ps`) is one element for each of the pack's, each typed as that element; and a constructor given `*ps...` takes each element as the pattern makes it, an lvalue: `Probe(int&, int&)` over `Probe(int&&, int&&)`; clang prints the same
+// found by thread UE (2026-11-22): the pattern was converted once, "the layout of Tup<<unknown>>", and the code generator gave the constructor the pack's element types, rvalues: Probe(int&&, int&&) was chosen, then refused the lvalues (Unreal's UE::Zip, `TTuple<decltype(*Iters)...>(*Iters...)`)
+template <typename... Ts>
+struct Tup
+{
+  Tup(Ts... vs) : count(int(sizeof...(Ts)))
+  {
+    ((void)vs, ...);
+  }
+
+  int count;
+};
+
+struct Probe
+{
+  Probe(int& v, int& w) : kind(1)
+  {
+    (void)v;
+    (void)w;
+  }
+
+  Probe(int&& v, int&& w) : kind(2)
+  {
+    (void)v;
+    (void)w;
+  }
+
+  int kind;
+};
+
+template <typename... Ps>
+int viaFunction(Ps*... ps)
+{
+  Tup<decltype(*ps)...> t(*ps...);
+  return t.count;
+}
+
+template <typename... Ps>
+int construct(Ps*... ps)
+{
+  Probe p(*ps...);
+  return p.kind;
+}
+
+template <typename... Ps>
+int byValue(Ps... ps)
+{
+  Probe p((ps + 1)...);
+  return p.kind;
+}
+
+int main()
+{
+  int a = 1;
+  int b = 2;
+  auto lambda = [](const auto*... ps) { return Tup<decltype(*ps)...>(*ps...); };
+  std::println(viaFunction(&a, &b), " ", lambda(&a, &b, &a).count, " ", construct(&a, &b), " ", byValue(a, b), " ",
+               std::isSame<decltype(lambda(&a, &b)), Tup<const int&, const int&>>);
+  return 0;
+}
