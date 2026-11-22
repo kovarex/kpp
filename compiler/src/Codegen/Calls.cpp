@@ -2091,6 +2091,10 @@ auto codegen::Emitter::scalarReferenceTarget(const Ty* refTy, Expr* value, Node*
   if (have && isClass(have) && want->isKnown() && !types.isDependent(want) && scalar(want))
     fail(at, "the reference of type " + types.toString(refTy, &symbols) + " given an object of " + types.toString(have, &symbols) +
                  ": none of its conversion functions gives what the reference binds");
+  // `const char (&r)[6] = "hello";`: the literal's characters, whose address its value (a pointer to the first) is. Until
+  // 2026-11-22 the reference bound a temporary holding that pointer, and `r[1]` read the pointer's bytes, silently.
+  if (have && have->kind == TyKind::Pointer && want->kind == TyKind::Array && stringLiteralArray(value, value->ty, types))
+    return rvalue(value).text;
   if (!have || have == want || !have->isKnown() || !want->isKnown() || types.isDependent(want) || !scalar(want) || !scalar(have))
     return lvalue(value);
   if (refTy->kind == TyKind::LRef && !referenced->isConst)

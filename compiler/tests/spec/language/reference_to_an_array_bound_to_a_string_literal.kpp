@@ -1,0 +1,13 @@
+// spec: a reference to an array bound to a string literal refers to the literal's characters (`const char (&r)[6] = "hello";`, a wide one too, a local, a global, a function's parameter): `r[1]` is 'e'; clang prints the same
+// found by thread UE (2026-11-22): a local such reference bound a temporary holding the pointer to the characters, and `r[1]` read that pointer's bytes, silently (found through `decltype(auto) text = "hello";`, a reference to the array once decltype of a literal was right)
+template<usize N> char second(const char (&s)[N]) { return s[1]; }
+const char (&global)[3] = "xy";
+
+int main()
+{
+  const char (&r)[6] = "hello";
+  const wchar_t (&w)[3] = L"ab";
+  decltype(auto) text = "world";
+  std::println(r[1], " ", int(w[1]), " ", text[4], " ", second("abc"), " ", global[1], " ", sizeof(r));
+  return 0;
+}
