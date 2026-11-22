@@ -1,0 +1,44 @@
+// spec: the library's isAssignable (std::is_assignable_v): whether `declval<T>() = declval<U>()` is well-formed, T an rvalue unless a reference (an int is not assignable, an int& is, a const int& not), a class's operator= chosen as the expression would, a deleted one refused, a base assigned from a derived one, and IsAssignable (std::is_assignable) as a type with `::value`; clang prints the same
+// found by thread UE (2026-11-22): the library had none, so Unreal's Tuple.h `std::is_assignable_v<...>` was an undeclared name and CompactBinaryTest's `!std::is_assignable_v<FCbFieldView, const FCbObjectView&>` no constant
+struct Plain
+{
+  int v = 0;
+};
+
+class FromInt
+{
+public:
+  FromInt& operator=(int x)
+  {
+    this.v = x;
+    return this;
+  }
+
+  int v = 0;
+};
+
+class NoAssign
+{
+public:
+  NoAssign& operator=(const NoAssign&) = delete;
+  int v = 0;
+};
+
+class Base
+{
+public:
+  int v = 0;
+};
+
+class Derived : public Base
+{
+};
+
+int main()
+{
+  std::println(std::isAssignable<int&, int>, " ", std::isAssignable<int, int>, " ", std::isAssignable<const int&, int>, " ",
+               std::isAssignable<Plain&, const Plain&>, " ", std::isAssignable<FromInt&, int>, " ", std::isAssignable<FromInt&, const char*>, " ",
+               std::isAssignable<NoAssign&, const NoAssign&>, " ", std::isAssignable<Base&, const Derived&>, " ", std::isAssignable<Derived&, const Base&>, " ",
+               std::IsAssignable<int&, double>::value);
+  return 0;
+}

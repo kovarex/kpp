@@ -22,6 +22,13 @@ struct IsSame<T, T> : TrueType {};
 template<typename T, typename... Args>
 struct IsConstructible : BoolConstant<isConstructible<T, Args...>> {};
 
+// std::is_assignable_v: whether `declval<T>() = declval<U>()` is well-formed (T an rvalue unless a reference: an int is
+// not assignable, an int& is), and std::is_assignable, the same as a type with `::value`.
+template<typename T, typename U>
+constexpr bool isAssignable = requires(T&& t, U&& u) { static_cast<T&&>(t) = static_cast<U&&>(u); };
+template<typename T, typename U>
+struct IsAssignable : BoolConstant<isAssignable<T, U>> {};
+
 template<typename T>
 struct IsConst : FalseType {};
 template<typename T>
