@@ -458,7 +458,43 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     {
       const Node& x = e.kids[0];
       std::string inner = joined(x.from, x.to);
-      bool callsEquals = (x.kind == '=' && isSelfPair(x)) || inner.rfind("operator==(", 0) == 0 || inner.rfind("this->operator==(", 0) == 0;
+      // (`!(FConfigValue::operator==(Other))`: the class's own ==, named through the class)
+      std::string ownQualified;
+      if (n.scope && n.scope->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n.scope)->name.empty())
+        ownQualified = std::string(symbols.name(static_cast<ClassDecl*>(n.scope)->name.last().symbol)) + "::operator==(";
+      bool callsEquals = (x.kind == '=' && isSelfPair(x)) || inner.rfind("operator==(", 0) == 0 || inner.rfind("this->operator==(", 0) == 0 ||
+                         (!ownQualified.empty() && inner.rfind(ownQualified, 0) == 0);
+      // `return !this->Equals(other);` beside an == whose body is `return this->Equals(other);`, its parameters named alike
+      // or not (Unreal's TBigInt IsEqual, TMemoryView and FCbPackage Equals): the same test, negated.
+      if (!callsEquals && eq && eq->f->body && eq->f->params.size() == f->params.size())
+      {
+        uint32_t ef = 0, et = 0;
+        if (onlyReturn(eq->f, ef, et))
+        {
+          // the tokens' spellings, each parameter's name written as its position
+          auto normalized = [&](uint32_t from, uint32_t to, FunctionDecl* fn)
+          {
+            std::string out;
+            for (uint32_t t = from; t < to; ++t)
+            {
+              std::string_view word = spell(t);
+              std::string piece(word);
+              for (size_t k = 0; k < fn->params.size(); ++k)
+                if (static_cast<ParamDecl*>(fn->params[k])->name != UINT32_MAX && symbols.name(static_cast<ParamDecl*>(fn->params[k])->name) == word)
+                  piece = "#" + std::to_string(k);
+              out += piece + " ";
+            }
+            return out;
+          };
+          uint32_t xf = x.from, xt = x.to;
+          // (`!(expression)`: the expression inside the parentheses)
+          while (xt > xf + 1 && toks[xf].is(P::LParen) && toks[xt - 1].is(P::RParen))
+            ++xf, --xt;
+          while (et > ef + 1 && toks[ef].is(P::LParen) && toks[et - 1].is(P::RParen))
+            ++ef, --et;
+          callsEquals = normalized(xf, xt, f) == normalized(ef, et, eq->f);
+        }
+      }
       if (callsEquals)
       {
         removeDeclaration(f);

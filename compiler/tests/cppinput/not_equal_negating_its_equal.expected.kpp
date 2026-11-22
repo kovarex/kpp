@@ -1,0 +1,30 @@
+// cppinput: an operator!= whose body negates exactly what its class's operator== returns, its parameter named alike or
+// not (`return !IsEqual(Other);` beside `return IsEqual(Rhs);`, Unreal's TBigInt, TMemoryView, FCbPackage), or that
+// calls the == through the class's name (`!(FConfigValue::operator==(Other))`), is dropped: kpp's `a != b` is `!(a == b)`
+class BigInt
+{
+public:
+  BigInt(i32 InValue) : Value(InValue) {}
+  bool IsEqual(const BigInt& Other) const { return this->Value == Other.Value; }
+  bool operator==(const BigInt& Rhs) const { return this->IsEqual(Rhs); }
+
+private:
+  i32 Value;
+};
+
+class ConfigValue
+{
+public:
+  ConfigValue(i32 InValue) : Value(InValue) {}
+  bool operator==(const ConfigValue& Other) const { return this->Value == Other.Value; }
+
+private:
+  i32 Value;
+};
+
+i32 main()
+{
+  BigInt A(1), B(1), C(2);
+  ConfigValue X(3), Y(4);
+  return (A == B && A != C && X != Y && !(X != X)) ? 0 : 1;
+}
