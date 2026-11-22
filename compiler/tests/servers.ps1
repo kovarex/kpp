@@ -25,25 +25,24 @@ Copy-Item $KppExe $copy
 Set-Content -Encoding ascii "$work\one.kpp" "int main() { std::println(1); return 0; }"
 Set-Content -Encoding ascii "$work\two.kpp" "int main() { std::println(2); return 0; }"
 
-# The process ids of the servers whose logs are in the test's TEMP, by log: each log's last server.
-# (Its last `started` line, not its first line: a client that started the server writes its steps into
-# the log, and it may reach the server's pipe before the server writes `started`; the first line was
-# then the client's, and "0 servers running" failed the gate under load, 2026-11-10.) Not a server whose
-# log says it ended (an `exiting` line of its id after its `started`): Windows reuses a process id at
-# once, and a later server given an ended one's id was counted twice, once by the ended one's log, so
-# that two servers were there before the second had started.
+# The servers running in the test's TEMP, each by its process: the copy of kpp it runs from,
+# kpp-server-KEY.exe in the server directory (server.cpp, copyPath), its log KEY.log beside it (Key: the
+# log's path; Value: the process id). By their processes, not by their logs' `started` lines: a server
+# writes each line by opening its log anew and drops a line it cannot open, and the polls below read the
+# logs as it starts, so a `started` line went missing under load and a running server went uncounted ("0
+# servers running, 1 expected", its process listed in ServerState: four gates of 2026-11-22). (Earlier the
+# logs' lines misled twice as well: a client's steps before the server's `started`, 2026-11-10, and an
+# ended server's id that Windows reused, 2026-11-04.)
 function Servers()
 {
-  $out = @{}
-  foreach ($log in @(Get-ChildItem "$work\tmp\kpp-server\*.log" -ErrorAction SilentlyContinue))
+  $dir = [IO.Path]::GetFullPath("$work\tmp\kpp-server")
+  $out = @()
+  foreach ($process in @(Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase) }))
   {
-    $lines = @(Get-Content -LiteralPath $log.FullName -ErrorAction SilentlyContinue)
-    $id = 0
-    for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -match '\[(\d+)\] started') { $id = [int]$Matches[1]; break } }
-    if (-not $id) { continue }
-    $ended = $false
-    for ($j = $i + 1; $j -lt $lines.Count; $j++) { if ($lines[$j] -match "\[$id\] .*exiting") { $ended = $true; break } }
-    if (-not $ended) { $out[$log.FullName] = $id }
+    if ((Split-Path -Leaf $process.Path) -match '^kpp-server-([0-9a-f]{16})\.exe$')
+    {
+      $out += [pscustomobject]@{ Key = (Join-Path $dir "$($Matches[1]).log"); Value = $process.Id }
+    }
   }
   return $out
 }
@@ -89,7 +88,7 @@ function RunningServers([int]$count, [int]$seconds = 120)
   $deadline = (Get-Date).AddSeconds($seconds)
   while ($true)
   {
-    $running = @((Servers).GetEnumerator() | Where-Object { Alive $_.Value } | Sort-Object { $_.Value } -Unique)
+    $running = @(Servers | Where-Object { Alive $_.Value } | Sort-Object { $_.Value } -Unique)
     if ($running.Count -ge $count -or (Get-Date) -ge $deadline) { return $running }
     Start-Sleep -Milliseconds 250
   }
