@@ -1117,7 +1117,8 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   if (std::find(headers.begin(), headers.end(), "intrin.h") != headers.end())
     wrapper += "unsigned short __popcnt16(unsigned short);\nunsigned int __popcnt(unsigned int);\nunsigned __int64 __popcnt64(unsigned __int64);\n"
                "unsigned char _rotl8(unsigned char, unsigned char);\nunsigned char _rotr8(unsigned char, unsigned char);\n"
-               "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n";
+               "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n"
+               "void __debugbreak(void);\nvoid* _ReturnAddress(void);\n";
   // malloc.h's alloca is `#define alloca _alloca` (only where __STDC__ is not defined, as it is
   // here), which the import does not carry: declared as the function, the code generator's
   // stack allocation like _alloca.

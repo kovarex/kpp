@@ -46,8 +46,8 @@
     std::optional<Value> sseMore(const std::string& name, CallExpr* c);
 
     // MSVC's intrin.h (and stdlib.h) functions that are instructions: _BitScanReverse and
-    // _BitScanForward (32 and 64 bits), __cpuid and __cpuidex, the byte swaps, the rotations and
-    // __popcnt, as MSVC and clang-cl emit them. Nothing for other names.
+    // _BitScanForward (32 and 64 bits), __cpuid and __cpuidex, the byte swaps, the rotations,
+    // __popcnt, __debugbreak and _ReturnAddress, as MSVC and clang-cl emit them. Nothing for other names.
     std::optional<Value> msvcBuiltin(NameExpr* n, CallExpr* c);
 
     // GCC's builtins that C code calls, which the import declares (clang declares them itself, so no

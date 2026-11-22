@@ -1108,6 +1108,28 @@ auto codegen::Emitter::msvcBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Va
     fn += "  " + r + " = zext i1 " + found + " to i8\n";
     return Value{r, types.intType(8, true)};
   }
+  if (name == "__debugbreak")
+  {
+    // A breakpoint where the call is (int3 on x86-64, brk on arm64), as MSVC and clang-cl emit it: llvm.debugtrap.
+    if (!c->args.empty())
+      unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+    if (declaredNames.claim("@llvm.debugtrap"))
+      decls += "declare void @llvm.debugtrap()\n";
+    fn += "  call void @llvm.debugtrap()\n";
+    return Value{"", types.voidType(), false};
+  }
+  if (name == "_ReturnAddress")
+  {
+    // The address the function the call is in returns to, as MSVC and clang-cl give it: llvm.returnaddress of its own
+    // frame (0). (A function inlined into another gives that one's, as with them.)
+    if (!c->args.empty())
+      unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+    if (declaredNames.claim("@llvm.returnaddress"))
+      decls += "declare ptr @llvm.returnaddress(i32 immarg)\n";
+    std::string r = newTemp();
+    fn += "  " + r + " = call ptr @llvm.returnaddress(i32 0)\n";
+    return Value{r, types.pointer(types.voidType()), false};
+  }
   if ((name == "__cpuid" || name == "__cpuidex") && sh.target.arm64())
     unsupported(c, name + " (x86's cpuid instruction) for " + sh.target.triple);
   if (name == "__cpuid" || name == "__cpuidex")

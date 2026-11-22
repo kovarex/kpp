@@ -1,0 +1,19 @@
+// spec: MSVC's __debugbreak and _ReturnAddress, which intrin.h has as clang's builtins (no header declares them): __debugbreak is a breakpoint where it is called (llvm.debugtrap: int3), _ReturnAddress the address the function it is in returns to (llvm.returnaddress), as MSVC and clang-cl give them
+// found by thread UE (2026-11-22): both were undeclared names (28 and 19 in converted Unreal Core: UE_DEBUG_BREAK, the allocators' and the stack walker's callers)
+// target: windows (MSVC's intrinsics)
+extern "C" import "intrin.h";
+[[noinline]] void* caller() { return _ReturnAddress(); }
+
+[[noinline]] void stopIf(bool debugging)
+{
+  if (debugging)
+    __debugbreak();
+}
+
+int main()
+{
+  void* back = caller();
+  stopIf(false);
+  std::println(back != nullptr);
+  return 0;
+}
