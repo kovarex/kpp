@@ -275,7 +275,7 @@ namespace codegen
     };
     static Definition definitionOf(std::string text);
     bool programOwned(const std::string& owner) const { return programFunctions.count(owner) != 0; }
-    unsigned outputModules() const { return splitPieces ? 2 * moduleCount : moduleCount; }
+    unsigned outputModules() const { return splitPieces ? 2 * moduleCount + unsigned(editFiles.size()) : moduleCount; }
     // Step 4's P2: per module, its program piece as handed to the stream at the barrier (PieceStream),
     // by its size and hash, for the end's check that it is the end's text.
     struct StreamedPiece
@@ -482,6 +482,30 @@ namespace codegen
     // (moduleText's instancePiece) and declares what the program piece defines.
     bool splitPieces = false;
     std::unordered_set<std::string> programFunctions; // (rebuildLLVM: less the removed, with the added)
+    // Edit pieces (CodegenOptions::editPieces): output module 2M + e is the program piece of editFiles[e]'s program
+    // functions, which their module's program piece leaves out (programPieceText's edit); their definitions stay in their
+    // module's texts. programFunctionFiles: each program function's file (gathered with programFunctions). editModulesNow:
+    // the modules a file of which got a piece since the last rebuildLLVM (addEditPieces), which it assembles again.
+    std::vector<const ParsedFile*> editFiles;
+    std::unordered_map<const ParsedFile*, unsigned> editPieceOfFile;
+    std::unordered_map<std::string, const ParsedFile*> programFunctionFiles;
+    std::vector<unsigned> editModulesNow;
+    // The edit piece a program function's definitions go in (its owner's file's), or -1: its module's program piece.
+    int editPieceOf(const std::string& owner) const
+    {
+      if (editFiles.empty())
+        return -1;
+      auto file = programFunctionFiles.find(owner);
+      if (file == programFunctionFiles.end())
+        return -1;
+      auto piece = editPieceOfFile.find(file->second);
+      return piece == editPieceOfFile.end() ? -1 : int(piece->second);
+    }
+    unsigned editModule(unsigned e) const
+    {
+      auto it = fileModule.find(const_cast<ParsedFile*>(editFiles[e]));
+      return it == fileModule.end() ? 0 : it->second;
+    }
     std::vector<size_t> barrierOwned; // per module: its owned entries at level 0's barrier
     // KPP_CHECK_BARRIER: each module's program piece as level 0's barrier assembles it, compared with
     // the one the end assembles; and whether the barrier's is not the whole piece (late): a definition

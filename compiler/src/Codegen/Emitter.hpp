@@ -177,6 +177,7 @@ namespace codegen
     // The program's own functions it emitted (level 0), by IR name: gathered into
     // Shared::programFunctions at level 0's barrier and after a server's build.
     std::vector<std::string> programFunctionsNow;
+    std::vector<const ParsedFile*> programFunctionFilesNow; // (each one's file: Shared::programFunctionFiles)
     // Its errors and the functions they left out, gathered once all are emitted.
     std::vector<std::string> errors, failedFunctions;
     std::unordered_map<std::string, std::string> failedAt; // failed function's IR name -> "qualified name at file:line"

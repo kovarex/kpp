@@ -138,6 +138,12 @@ struct CodegenOptions
   // errors, and no module's text is assembled; a kept session leaves them to the first build that writes them, as
   // a build with errors does (kovarex, 2026-11-18: an edit's check re-assembled two modules of 7 MB, 0.38 s).
   bool assemble = true;
+  // A compile server's edit pieces (a debug build in pieces, codegenOutputModules): the files, by their paths, whose program
+  // functions have an output module of their own, after the instance pieces (2M + e, in this order), so that an edit of one
+  // compiles a small object, not its module's whole program piece (kovarex, 2026-11-22: a body edit of a game test built in
+  // 2.6 s, "it should be sub 2 seconds"; its program piece took 0.7 s to compile, and its object 0.5 s more of the link).
+  // A path no file of the program has is left out.
+  std::vector<std::string> editPieces;
 };
 
 // keep: hand the session back (a build of several modules) instead of freeing it: one with errors only
@@ -152,6 +158,12 @@ CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, Glob
 // (The pieces are for kpp's -O0 back end; an optimized build's is ThinLTO's link, where twice the
 // modules only cost.)
 unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize);
+
+// A kept session's edit pieces (CodegenOptions::editPieces): how many it has, and the files (by their paths) it gives one
+// each from its next rebuildLLVM on, which assembles their modules again (none in a session without pieces). The paths it
+// added are appended to added.
+unsigned codegenEditPieces(const CodegenSession& session);
+void addEditPieces(CodegenSession& session, const std::vector<std::string>& paths, std::vector<std::string>& added);
 
 // An incremental build after the resolver checked the changed bodies again (its steps 3b and 4):
 // emits again the functions whose declarations got new bodies (or were walked again), emits the

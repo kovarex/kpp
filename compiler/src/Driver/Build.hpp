@@ -76,6 +76,10 @@
     // their layouts (rebuildLLVM).
     std::vector<const Ty*> droppedClasses;
     bool rebuildCodegen = false;
+    // The files an incremental build edited (their bodies or whole functions), by their paths: a debug build in pieces
+    // gives each a program piece of its own (runCodegen's serverEditPieces).
+    std::vector<std::string> editedFiles;
+    size_t firstEditPiece = size_t(-1); // the output module of the first edit piece (runCodegen)
     // The build generated no code (parse errors, a clash; reportResolve): codegen's kept session has
     // not seen what it changed, which the next build that generates code emits too (incrementalBuild).
     bool codegenBehind = false;

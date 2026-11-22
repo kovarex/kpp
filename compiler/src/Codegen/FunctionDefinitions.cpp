@@ -217,7 +217,10 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     // program piece (Shared::splitPieces).
     if (sh.splitPieces && currentDepth == 0 && currentRequestedBy.empty() && args.empty() && !classTy && nameOverride.empty() &&
         isProgramFunction(original))
+    {
       programFunctionsNow.push_back(currentFunctionName);
+      programFunctionFilesNow.push_back(original->file);
+    }
     // A registration the parser wrote (a test's: ATTR_Startup) runs at startup, in its place among the globals' constructors.
     if ((original->attributes & ATTR_Startup) && currentDepth == 0 && args.empty() && !classTy && nameOverride.empty())
     {

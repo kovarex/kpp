@@ -370,6 +370,16 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
   return command;
 }
 
+// A compile server's edit pieces (CodegenOptions::editPieces): the files its builds edited, in the order they were first
+// edited, each of which a debug build in pieces gives an object of its own; at most maxEditPieces (the files edited later
+// stay in their modules' program pieces).
+static std::vector<std::string>& serverEditPieces()
+{
+  static std::vector<std::string> paths;
+  return paths;
+}
+constexpr size_t maxEditPieces = 64;
+
 void runCodegen(Build& build)
 {
   std::vector<std::unique_ptr<ParsedFile>>& parsed = build.parsed;
@@ -401,9 +411,34 @@ void runCodegen(Build& build)
   bool rebuilt = false;
   global.setCodeGenerated(true);
   build.codegenBehind = false;
-  const unsigned outputModules = codegenOutputModules(modules, options.debug, options.optimize); // (a debug build's modules in two pieces each)
-  if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == outputModules)
+  const unsigned pieceModules = codegenOutputModules(modules, options.debug, options.optimize); // (a debug build's modules in two pieces each)
+  // A compile server's debug build in pieces: the files it edited have a program piece each (serverEditPieces), the program's
+  // files alone (one taken out goes), and a file edited now gets one (its module assembled again without it).
+  const bool editPieces = pieceModules != modules && servingBuild() && !options.exe.empty() && !options.check && options.emitLLVM.empty();
+  std::vector<std::string>& edits = serverEditPieces();
+  if (!editPieces)
+    edits.clear();
+  else
+    std::erase_if(edits, [&](const std::string& path)
+    {
+      return std::none_of(parsed.begin(), parsed.end(), [&](const std::unique_ptr<ParsedFile>& p) { return p->path == path; });
+    });
+  const unsigned keptEdits = build.codegen ? codegenEditPieces(*build.codegen) : 0;
+  build.firstEditPiece = editPieces ? pieceModules : size_t(-1);
+  if (build.rebuildCodegen && build.codegen && build.moduleBytes.size() == pieceModules + keptEdits && keptEdits == (editPieces ? edits.size() : 0))
   {
+    if (editPieces)
+    {
+      std::vector<std::string> wanted, added;
+      for (const std::string& path : build.editedFiles)
+        if (edits.size() + wanted.size() < maxEditPieces && std::find(edits.begin(), edits.end(), path) == edits.end() &&
+            std::find(wanted.begin(), wanted.end(), path) == wanted.end())
+          wanted.push_back(path);
+      addEditPieces(*build.codegen, wanted, added);
+      edits.insert(edits.end(), added.begin(), added.end());
+      if (!added.empty())
+        logBuildNote("codegen: " + std::to_string(added.size()) + " file(s) given a program piece of their own, " + std::to_string(edits.size()) + " in all");
+    }
     cg = rebuildLLVM(*build.codegen, build.changedBodies, build.movedLines, build.movedPositions, build.replacedBodies, build.addedFunctions, build.removedFunctions,
                      build.changedLayouts, build.instancesOf, build.changedGlobals, build.droppedClasses, rebuilt, !options.check);
     logBuildNote(!rebuilt              ? "codegen: rebuildLLVM declined (" + cg.declined + "), the program generated in full"
@@ -413,6 +448,8 @@ void runCodegen(Build& build)
                                             " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again");
   }
   build.rebuildCodegen = false;
+  build.editedFiles.clear();
+  const unsigned outputModules = pieceModules + unsigned(editPieces ? edits.size() : 0);
   // The objects, EXE.k.o for output module k, and what compiles them: declared before codegen, as
   // step 4's P2 compiles a debug build's program pieces while codegen emits the instances.
   // A release build of several modules is a ThinLTO build: the modules become bitcode, and the
@@ -640,7 +677,8 @@ void runCodegen(Build& build)
                                   .generatedSources = generatedSources,
                                   .target = &options.target,
                                   .optimize = options.optimize != 0, // (resolved to 0 or 1 by now)
-                                  .assemble = !options.check}; // (a check writes nothing: no module text, CodegenOptions::assemble)
+                                  .assemble = !options.check, // (a check writes nothing: no module text, CodegenOptions::assemble)
+                                  .editPieces = editPieces ? edits : std::vector<std::string>()};
     cg = generateLLVM(parsed, global, symbols, codegenOptions, servingBuild() ? &build.codegen : nullptr, backEnd ? &stream : nullptr);
     cg.changedModules.clear();
     if (backEnd)
@@ -651,9 +689,13 @@ void runCodegen(Build& build)
   // build without errors assembled (it assembles the others once the errors are gone).
   if (cg.modules.empty() && (cg.failed() || options.check) && build.codegen)
   {
-    if (build.moduleBytes.size() != outputModules)
+    if (rebuilt && build.moduleBytes.size() < outputModules)
+      build.moduleBytes.resize(outputModules, 0); // (an edit piece added)
+    else if (build.moduleBytes.size() != outputModules)
       build.moduleBytes.assign(outputModules, 0);
   }
+  else if (rebuilt && build.moduleBytes.size() < cg.modules.size())
+    build.moduleBytes.resize(cg.modules.size(), 0); // (an edit piece added: the others keep their sizes)
   else if (build.moduleBytes.size() != cg.modules.size())
     build.moduleBytes.assign(cg.modules.size(), 0);
   size_t irBytes = cg.ir.size();

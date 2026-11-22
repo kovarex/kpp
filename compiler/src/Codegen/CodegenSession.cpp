@@ -229,6 +229,38 @@ unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
   return moduleCount > 1 && debug && !optimize ? 2 * moduleCount : moduleCount;
 }
 
+unsigned codegenEditPieces(const CodegenSession& session)
+{
+  return session.shared ? unsigned(session.shared->editFiles.size()) : 0;
+}
+
+void addEditPieces(CodegenSession& session, const std::vector<std::string>& paths, std::vector<std::string>& added)
+{
+  if (!session.shared || !session.shared->splitPieces)
+    return;
+  Shared& sh = *session.shared;
+  for (const std::string& path : paths)
+    for (auto& [file, module] : sh.fileModule)
+      if (file->path == path && !sh.editPieceOfFile.count(file))
+      {
+        sh.editPieceOfFile[file] = unsigned(sh.editFiles.size());
+        sh.editFiles.push_back(file);
+        sh.editModulesNow.push_back(module);
+        added.push_back(path);
+        break;
+      }
+}
+
+// The edit pieces of module k (Shared::editFiles): their output modules.
+static std::vector<unsigned> editPiecesOf(const Shared& sh, unsigned k)
+{
+  std::vector<unsigned> pieces;
+  for (unsigned e = 0; e < sh.editFiles.size(); ++e)
+    if (sh.editModule(e) == k)
+      pieces.push_back(2 * sh.moduleCount + e);
+  return pieces;
+}
+
 CodegenResult generateLLVM(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                            const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream)
 {
@@ -493,7 +525,10 @@ static void gatherProgramFunctions(Shared& sh, std::vector<std::unique_ptr<Emitt
   for (auto& em : emitters)
   {
     sh.programFunctions.insert(em->programFunctionsNow.begin(), em->programFunctionsNow.end());
+    for (size_t i = 0; i < em->programFunctionsNow.size() && i < em->programFunctionFilesNow.size(); ++i)
+      sh.programFunctionFiles[em->programFunctionsNow[i]] = em->programFunctionFilesNow[i];
     em->programFunctionsNow.clear();
+    em->programFunctionFilesNow.clear();
   }
 }
 
@@ -567,20 +602,33 @@ static PieceSources pieceSources(const Shared& sh, bool atBarrier)
 // names nothing; LLVM reports a real one). errors gets a name private to the instance piece (one of its
 // static locals) that the piece names; complete is false when a type it names has no line in sources
 // (at the barrier: one laid out only later, Shared::latePieces).
+// edit: an edit piece's (Shared::editFiles), its file's program functions' alone (k their module); -1, the module's program
+// piece, without the edit pieces' functions.
 static std::string programPieceText(const Shared& sh, unsigned k, const std::string& prefix, const PieceSources& sources, std::string* errors,
-                                    bool* complete = nullptr)
+                                    bool* complete = nullptr, int edit = -1)
 {
   const bool atBarrier = sources.atBarrier;
+  // (an edit piece's file's program functions own definitions in other modules too, a generic lambda's operator instances:
+  // those stay in their modules' program pieces)
+  auto takes = [&](const std::string& owner)
+  {
+    if (!sh.programOwned(owner))
+      return false;
+    int piece = sh.editPieceOf(owner);
+    if (piece >= 0 && sh.editModule(unsigned(piece)) != k)
+      piece = -1;
+    return piece == edit;
+  };
   std::vector<const Shared::Definition*> definitions;
   const std::vector<Shared::Definition>& all = sh.definitions[k];
   for (size_t i = 0, n = atBarrier ? sh.barrierCounts[k] : all.size(); i < n; ++i)
-    if (sh.programOwned(all[i].owner))
+    if (takes(all[i].owner))
       definitions.push_back(&all[i]);
   std::sort(definitions.begin(), definitions.end(), [](const Shared::Definition* a, const Shared::Definition* b) { return a->text < b->text; });
   std::vector<std::string_view> owned;
   const std::vector<Shared::OwnedEntry>& entries = sh.ownedEntries[k];
   for (size_t i = 0, n = atBarrier ? sh.barrierOwned[k] : entries.size(); i < n; ++i)
-    if (sh.programOwned(entries[i].owner))
+    if (takes(entries[i].owner))
       owned.push_back(entries[i].text);
   std::sort(owned.begin(), owned.end());
   owned.erase(std::unique(owned.begin(), owned.end()), owned.end()); // (a shared static local's, one per function naming it)
@@ -781,6 +829,8 @@ static std::string outputText(Emitter& em, unsigned i, const std::string& prefix
     return em.moduleText(i, prefix);
   if (i < sh.moduleCount)
     return programPieceText(sh, i, prefix, *sources, errors);
+  if (i >= 2 * sh.moduleCount) // (an edit piece)
+    return programPieceText(sh, sh.editModule(i - 2 * sh.moduleCount), prefix, *sources, errors, nullptr, int(i - 2 * sh.moduleCount));
   return em.moduleText(i - sh.moduleCount, prefix, true, errors);
 }
 
@@ -843,6 +893,15 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
                        "attributes #0 = { memory(inaccessiblemem: readwrite) }\n\n";
   for (size_t i = 0; i < files.size(); ++i)
     sh.fileModule[files[i].get()] = sh.emissionModule(i);
+  if (sh.splitPieces)
+    for (const std::string& path : options.editPieces)
+      for (const std::unique_ptr<ParsedFile>& file : files)
+        if (file->path == path && !sh.editPieceOfFile.count(file.get()))
+        {
+          sh.editPieceOfFile[file.get()] = unsigned(sh.editFiles.size());
+          sh.editFiles.push_back(file.get());
+          break;
+        }
   // One emitter per thread; the first one also finishes the runtime and assembles the modules.
   threads = std::max(1u, threads);
   std::vector<std::unique_ptr<Emitter>> emitters;
@@ -1380,7 +1439,11 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
     Emitter& em = *emitters[thread];
     for (unsigned k = nextModule++; k < em.moduleCount; k = nextModule++)
     {
-      for (unsigned i : {k, k + em.moduleCount})
+      std::vector<unsigned> pieces{k, k + em.moduleCount};
+      if (sh.splitPieces)
+        for (unsigned i : editPiecesOf(sh, k))
+          pieces.push_back(i);
+      for (unsigned i : pieces)
         if (i < outputs)
           result.modules[i] = outputText(em, i, prefix, sources ? &*sources : nullptr, &pieceErrors[k]);
       if (!keepTexts)
@@ -1390,7 +1453,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
         std::string().swap(sh.moduleDecls[k].text);
       }
       if (failed)
-        for (unsigned i : {k, k + em.moduleCount})
+        for (unsigned i : pieces)
           if (i < outputs)
             result.modules[i] += declareUndefined(result.modules[i], sh.stubMissing ? &sh.stubMessages : nullptr, &stubbedIn[i]);
       if (k < sh.streamedPieces.size() && sh.streamedPieces[k].handed)
@@ -1695,6 +1758,9 @@ void unassembledAgain(CodegenSession& session, const std::vector<bool>& changedM
       sh.unassembled[k] = true;
     else if (changedModules[k] || (sh.splitPieces && k + sh.moduleCount < changedModules.size() && changedModules[k + sh.moduleCount]))
       sh.unassembled[k] = true;
+  for (unsigned e = 0; e < sh.editFiles.size() && !changedModules.empty(); ++e) // (an edit piece's module)
+    if (2 * sh.moduleCount + e < changedModules.size() && changedModules[2 * sh.moduleCount + e])
+      sh.unassembled[sh.editModule(e)] = true;
 }
 
 namespace
@@ -2988,6 +3054,15 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // (module 0 lists the startup functions: one added or removed changes its text)
   if (startupsChanged && sh.moduleCount > 0 && std::find(which.begin(), which.end(), 0u) == which.end())
     which.insert(which.begin(), 0u);
+  // (a module a file of which got an edit piece (addEditPieces): its program piece without that file's functions, and the piece)
+  for (unsigned k : sh.editModulesNow)
+    if (k < sh.moduleCount)
+    {
+      if (std::find(which.begin(), which.end(), k) == which.end())
+        which.push_back(k);
+      linesOnly[k] = false; // (its program piece lost the file's functions: compiled, never patched)
+    }
+  sh.editModulesNow.clear();
   // --debug-info: a global defined in a file whose lines an edit moved has its DIGlobalVariable's line made again
   // (Emitter::debugGlobal); one that changed changes its home module's text, in its debug metadata alone (a
   // DIGlobalVariable's line is in no CodeView record: its object stays the one it has, patched). Until
@@ -3098,7 +3173,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   std::vector<unsigned> assembled = which;
   if (sh.splitPieces)
     for (unsigned k : which)
+    {
       assembled.push_back(k + sh.moduleCount);
+      for (unsigned i : editPiecesOf(sh, k))
+        assembled.push_back(i);
+    }
   out.modules.resize(outputs);
   out.changedModules.assign(outputs, false);
   std::optional<PieceSources> sources;
@@ -3126,7 +3205,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     {
       out.linesOnlyModules[k] = true;
       if (sh.splitPieces)
+      {
         out.linesOnlyModules[k + sh.moduleCount] = true;
+        for (unsigned i : editPiecesOf(sh, k))
+          out.linesOnlyModules[i] = true;
+      }
     }
   out.functions = sh.functions;
   out.structs = session.result.structs;

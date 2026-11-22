@@ -1914,6 +1914,29 @@ public:
   for the leaf), the modules rebuilt (one), the wall time to a linked game, and
   `--verify-incremental` byte-identical.
 
+### Edit pieces: an edited file's program functions in an object of their own (2026-11-22)
+
+kovarex (2026-11-22): a body edit of a game test built in 2.6 s, "it should be sub 2 seconds". Where it went (factorio-test
+debug, kpp 35345c734, timings written by the server at each step): 0.04 s reading, 0.06 s the walks, 0.12 s to codegen,
+0.2 to 0.5 s codegen, 0.1 s the natvis, 0.7 s compiling the edited file's module's program piece (a 3.6 MB object: the
+program functions of the 39 files in that module), then 0.7 to 1.0 s of link.exe's incremental link (0.36 s with no
+object changed), and 0.2 s before the build. 512 modules made the pieces smaller but the clean build slower.
+
+A compile server's debug build in pieces gives each file its builds edit (its bodies or whole functions) a program piece
+of its own: output module 2M + e, after the instance pieces, in the order the files were first edited, at most 64
+(CodegenOptions::editPieces, the driver's serverEditPieces). The file's program functions' definitions stay in their
+module's texts; its module's program piece leaves them out (programPieceText's edit), and the edit piece is assembled
+from them alone as a program piece is, its other names declared. The first edit of a file compiles its module's program
+piece once more (without the file) and the new piece; every later edit of it compiles the small piece alone. A build from
+scratch in the same server (one that is not incremental, --verify-incremental's) has the same pieces, so its outputs are
+the same; a new server has none.
+
+Measured on factorio-test debug, the same edit of tests/TestWireDraging.kpp made and taken back, quiet as Visual Studio
+builds: 2.1 to 2.7 s before (kpp 1.2 to 1.6 s, link 0.7 to 1.1 s), 1.6 to 2.0 s after (kpp 0.6 to 0.8 s, link 0.7 to
+1.06 s; the edit piece's object 0.86 MB), each build with --verify-incremental "the same as from scratch". With both
+changes of the day, the whole build as Visual Studio runs it: a body edit 1.4 to 2.0 s (the first edit of a file 5.0 s,
+its piece made), a test added or removed 2.6 to 2.7 s (10.6 to 15.1 s before 35345c734).
+
 ### Design: codegen's results, home modules and module assembly (codegen thread, for review, 2026-10-30)
 
 One structure for 3c and for the codegen items above (the destructor helpers copied into every

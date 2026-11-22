@@ -1415,6 +1415,9 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
   {
     std::error_code ec;
     std::string base = kept.options.exe + "." + std::to_string(k);
+    // (an edit piece no build assembled yet has none: one added by a build with errors, which the next build assembles)
+    if (k >= kept.firstEditPiece && kept.moduleBytes[k] == 0)
+      continue;
     if (!kept.options.check && (kept.options.exe.empty() || !std::filesystem::exists(base + ".o", ec) || !std::filesystem::exists(base + ".hash", ec)))
       inFull("module " + std::to_string(k) + "'s object is missing");
     // Written since by another build of the same outputs (another server: Visual Studio's and a
@@ -1424,6 +1427,11 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
       inFull("module " + std::to_string(k) + "'s object was written by another build");
   }
   kept.rebuildCodegen = codegenCanFollow && kept.codegen && (!kept.options.exe.empty() || kept.options.check);
+  kept.editedFiles.clear();
+  for (const ChangedFile& c : changed)
+    kept.editedFiles.push_back(kept.parsed[c.index]->path);
+  for (const FunctionChange& c : functionEdits)
+    kept.editedFiles.push_back(kept.parsed[c.index]->path);
   if (!kept.rebuildCodegen)
     logBuildNote(std::string("codegen in full: ") + (!kept.codegen ? "no kept session" : !codegenCanFollow ? codegenInFullBecause + (codegenInFullOthers ? " (and " + std::to_string(codegenInFullOthers) + " more)" : std::string()) : "no executable"));
   noteIncrementalBuild();
