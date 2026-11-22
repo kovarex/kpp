@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The .kpp file icon (docs/editors.md, "The .kpp file icon"), which kpp.pkgdef gives .kpp as its DefaultIconMoniker. Visual Studio
+     reads every .imagemanifest in an extension's folder; the pictures are resources of KppVisualStudio.dll, drawn
+     by make-icons.ps1. -->
+<ImageManifest xmlns="http://schemas.microsoft.com/VisualStudio/ImageManifestSchema/2014">
+  <Symbols>
+    <String Name="Images" Value="/KppVisualStudio;component/Images" />
+    <Guid Name="KppImages" Value="{07b0591b-40e4-4a77-936f-7fc5e8c39f18}" />
+    <ID Name="KppFile" Value="1" />
+  </Symbols>
+  <Images>
+    <Image Guid="$(KppImages)" ID="$(KppFile)">
+      <Source Uri="$(Images)/kpp-file-16.png">
+        <Size Value="16" />
+      </Source>
+      <Source Uri="$(Images)/kpp-file-32.png">
+        <Size Value="32" />
+      </Source>
+      <Source Uri="$(Images)/kpp-file-48.png">
+        <Size Value="48" />
+      </Source>
+    </Image>
+  </Images>
+  <ImageLists />
+</ImageManifest>

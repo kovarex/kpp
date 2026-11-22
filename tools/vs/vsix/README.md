@@ -22,6 +22,10 @@ The Visual Studio extension (docs/editors.md, "Visual Studio 2022"). It needs Vi
   Coverage File... (`KppPackage.cs`, `KppCommands.vsct`, registered by `kpp.pkgdef`) show a `kpp --coverage`
   file's statements, conditions and missing defaults as colours, with Quick Info (`Coverage.cs`).
 
+- the .kpp file icon in Solution Explorer (docs/editors.md, "The .kpp file icon"): `kpp.pkgdef` names it for .kpp,
+  `kpp.imagemanifest` lists its pictures, `make-icons.ps1` draws them (`Images\`); run it again after changing
+  the drawing.
+
 It also gives the debugger kpp's `this.x` in the watch window, hovers, the Immediate window and breakpoint
 conditions (docs/debugging.md, "this in the watch window"): `KppFrameLanguage.cs` and
 `KppExpressionEvaluator.cs`, debugger engine components configured by `KppVisualStudio.vsdconfigxml`.

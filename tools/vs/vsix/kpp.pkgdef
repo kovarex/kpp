@@ -18,3 +18,7 @@
 
 [$RootKey$\Menus]
 "{845d7c14-d316-4b0c-9ef2-efb3bf028d7b}"=", Menus.ctmenu, 1"
+
+; The .kpp file icon (kpp.imagemanifest) in Solution Explorer.
+[$RootKey$\ShellFileAssociations\.kpp]
+"DefaultIconMoniker"="07b0591b-40e4-4a77-936f-7fc5e8c39f18:1"

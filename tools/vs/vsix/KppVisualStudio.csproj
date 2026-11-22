@@ -60,5 +60,9 @@
     <Content Include="..\..\vscode\language-configuration.json" Link="LanguageConfiguration\language-configuration.json" IncludeInVSIX="true" />
     <Content Include="kpp.pkgdef" IncludeInVSIX="true" />
     <Content Include="kpp.colors.pkgdef" IncludeInVSIX="true" />
+    <!-- The .kpp file icon: the manifest beside the dll, where Visual Studio looks for it, and its pictures
+         (make-icons.ps1) in the dll, where the manifest's pack URIs find them. -->
+    <Content Include="kpp.imagemanifest" IncludeInVSIX="true" />
+    <Resource Include="Images\kpp-file-*.png" />
   </ItemGroup>
 </Project>

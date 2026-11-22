@@ -272,6 +272,11 @@ Studio. `tools\vs\install.cmd`, the grammar alone, is not needed with it.
   functions in one color, so the server offers the capability to the extension alone. `test.ps1` checks
   that the extension received -File's tokens; `colors-check.ps1` opens `colors-test` in Light and Dark and
   compares the color of every line drawn with this table.
+- **The .kpp file icon** (kovarex, 2026-11-22: .kpp files showed a blank page in Solution Explorer, .cpp and .h
+  their own): a page with a blue badge and a white "k", where the .cs icon has its "C#", in Solution Explorer.
+  `kpp.pkgdef` gives .kpp its `DefaultIconMoniker` (`ShellFileAssociations`, as Visual Studio does for .cpp), an
+  image of `kpp.imagemanifest`, whose pictures `make-icons.ps1` draws at 16, 32 and 48 pixels into the dll.
+  Visual Studio's image service inverts their grays in the dark themes, as its own icons'. Checked in Visual Studio 17.14 on a solution kpp generated.
 - **Hover is plain text in Visual Studio.** Its client names hover's `contentFormat` as plain text
   alone. Given markdown, it showed only the code block (`const int volume`, without the value,
   the cell or the description). The server sends markdown only to a client that names it, so
