@@ -460,6 +460,14 @@ Expr* InstanceCopier::expr(const Expr* e)
     case NodeKind::LiteralExpr: out = raw(static_cast<const LiteralExpr*>(e)); break;
     case NodeKind::ThisExpr: out = raw(static_cast<const ThisExpr*>(e)); break;
     case NodeKind::CallerExpr: out = raw(static_cast<const CallerExpr*>(e)); break;
+    case NodeKind::DefaultArgumentExpr: out = raw(static_cast<const DefaultArgumentExpr*>(e)); break;
+    case NodeKind::PackElementExpr:
+    {
+      auto* c = raw(static_cast<const PackElementExpr*>(e));
+      c->pattern = expr(c->pattern);
+      out = c;
+      break;
+    }
     case NodeKind::ErrorExpr: out = raw(static_cast<const ErrorExpr*>(e)); break;
     case NodeKind::CallExpr:
     {

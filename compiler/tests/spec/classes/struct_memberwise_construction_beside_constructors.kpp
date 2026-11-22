@@ -1,4 +1,4 @@
-// spec: a struct keeps its member-wise construction beside the constructors it declares (kovarex, 2026-11-18: in C++ declaring any constructor makes it no aggregate): `S(a, b)`, `S{a, b}`, `S{.b = x}`, `S s = {a, b}`, `return {a, b}`, `new S(a, b)`, a Vector's emplace_back, a union enum class's creator and isConstructible<S, A, B> all fill its members in order when no constructor it declares takes the arguments, a value for each (designated names may leave members out, which take their default initializers: a lone value beside constructors is no member-wise construction, so `isConstructible<Pair<A, int>, Reader&>` stays false where A alone takes a Reader, as the game's DeserialiserHelper asks). A constructor it declares that takes them is chosen first (`Scaled(5)` below), one with the members' own signature replaces the member-wise one, a deleted one turns it off for its arguments, and a class (the keyword) keeps C++'s rule (classes/struct_memberwise_construction_errors_is_error)
+// spec: a struct keeps its member-wise construction beside the constructors it declares (kovarex, 2026-11-18: in C++ declaring any constructor makes it no aggregate): `S(a, b)`, `S{a, b}`, `S{.b = x}`, `S s = {a, b}`, `return {a, b}`, `new S(a, b)`, a Vector's emplace_back, a union enum class's creator and isConstructible<S, A, B> all fill its members in order when no constructor it declares takes the arguments, a value for each (designated names may leave members out, which take their default initializers: a lone value beside constructors is no member-wise construction by position, and by type (design.md 32) only of the leading members' exact types, so `isConstructible<Pair<A, int>, Reader&>` stays false where A alone takes a Reader, and Payload(int) gives second its initializer, as the game's DeserialiserHelper asks). A constructor it declares that takes them is chosen first (`Scaled(5)` below), one with the members' own signature replaces the member-wise one, a deleted one turns it off for its arguments, and a class (the keyword) keeps C++'s rule (classes/struct_memberwise_construction_errors_is_error)
 // factorio: ActionData::OpenTrainsGuiData's hand-written `OpenTrainsGuiData(TrainsGuiParameters, PlaySound)` beside its Deserialiser constructor, 356 such constructors in the game (design.md 30)
 class Reader
 {
@@ -67,7 +67,7 @@ union enum class Action
   { {Load, Payload}, {Nothing, void} }
 };
 static_assert(std::isConstructible<Payload, int, int>);
-static_assert(!std::isConstructible<Payload, int>); // (a value for every member)
+static_assert(std::isConstructible<Payload, int>); // (second takes its initializer: member-wise by type, design.md 32)
 static_assert(!std::isConstructible<Holder, Reader&>);
 static_assert(std::isConstructible<Payload, Reader&>);
 static_assert(!std::isConstructible<Payload, int, int, int>);

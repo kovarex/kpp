@@ -3097,11 +3097,188 @@ auto GlobalScope::Impl::candidateRejection(FunctionDecl* f, const std::vector<co
   return {};
 }
 
+auto GlobalScope::Impl::argumentsByType(FunctionDecl* f, const Ty* ft, const std::vector<const Ty*>& argTypes, std::string* why)
+  -> std::optional<std::vector<int32_t>>
+{
+  if (!f || !f->templateParams.empty() || f->isTemplate || (f->flags & DF_Variadic) || !ft || ft->kind != TyKind::Function || ft->variadic ||
+      ft->args.size() != f->params.size() || namesTextLast(f))
+    return std::nullopt;
+  size_t required = 0;
+  for (Decl* p : f->params)
+  {
+    auto* param = static_cast<ParamDecl*>(p);
+    if (param->isPack)
+      return std::nullopt;
+    if (!param->defaultValue)
+      ++required; // (all before the first with a default: [dcl.fct.default] 4)
+  }
+  if (argTypes.size() <= required || argTypes.size() > f->params.size())
+    return std::nullopt;
+  for (const Ty* a : argTypes)
+    if (!a || !a->isKnown() || types.isDependent(a) || mentionsUnknown(a) || types.stripRef(a)->isBraceList())
+      return std::nullopt;
+  for (size_t i = 0; i < required; ++i)
+    if (!ft->args[i] || conversionRank(argTypes[i], ft->args[i]) >= NotViable)
+      return std::nullopt;
+  auto named = [&](size_t k)
+  {
+    uint32_t n = static_cast<ParamDecl*>(f->params[k])->name;
+    return n == UINT32_MAX ? "parameter " + std::to_string(k + 1) : std::string(symbols.name(n));
+  };
+  std::vector<const Ty*> params(ft->args.begin(), ft->args.end());
+  return matchByType(params, required, named, argTypes, why, "parameter");
+}
+
+auto GlobalScope::Impl::matchByType(const std::vector<const Ty*>& params, size_t required, const std::function<std::string(size_t)>& named,
+                                    const std::vector<const Ty*>& argTypes, std::string* why, const char* part) -> std::optional<std::vector<int32_t>>
+{
+  auto typeName = [&](const Ty* t) { return types.toString(types.unqualified(types.stripRef(t)), &symbols); };
+  std::vector<int32_t> argumentOf(params.size(), -1);
+  for (size_t i = 0; i < required; ++i)
+    argumentOf[i] = int32_t(i);
+  for (size_t j = required; j < argTypes.size(); ++j)
+  {
+    const Ty* a = types.unqualified(types.stripRef(argTypes[j]));
+    std::vector<size_t> exact, converts;
+    for (size_t k = required; k < params.size(); ++k)
+    {
+      const Ty* pt = params[k];
+      if (!pt || !pt->isKnown() || types.isDependent(pt) || conversionRank(argTypes[j], pt) >= NotViable)
+        continue;
+      (types.unqualified(types.stripRef(pt)) == a ? exact : converts).push_back(k);
+    }
+    const std::vector<size_t>& fits = exact.empty() ? converts : exact;
+    if (fits.empty())
+    {
+      if (why)
+        *why = std::string("no ") + part + " takes argument " + std::to_string(j + 1) + " (" + typeName(argTypes[j]) + ") by type";
+      return std::nullopt;
+    }
+    if (fits.size() > 1)
+    {
+      if (why)
+        *why = typeName(argTypes[j]) + " fits two of its " + part + "s (" + named(fits[0]) + " and " + named(fits[1]) + "), so it cannot be matched by type";
+      return std::nullopt;
+    }
+    if (argumentOf[fits[0]] >= 0)
+    {
+      if (why)
+        *why = std::string("its ") + part + " " + named(fits[0]) + " is given twice by type (arguments " + std::to_string(argumentOf[fits[0]] + 1) + " and " +
+               std::to_string(j + 1) + ")";
+      return std::nullopt;
+    }
+    argumentOf[fits[0]] = int32_t(j);
+  }
+  // (each argument where it stands: a call by position, which some other reason kept from being one; a member-wise
+  // construction beside constructors takes no fewer values by position, so it is one by type then)
+  bool inPlace = true;
+  for (size_t j = 0; j < argTypes.size(); ++j)
+    inPlace = inPlace && argumentOf[j] == int32_t(j);
+  if (inPlace && std::string_view(part) == "parameter")
+    return std::nullopt;
+  return argumentOf;
+}
+
+auto GlobalScope::Impl::memberwiseByType(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& argTypes, std::string* why)
+  -> std::optional<std::vector<int32_t>>
+{
+  // A struct's member-wise construction (design.md 30) by type: its members as parameters, those before the first with
+  // a default member initializer taking the first arguments in order; one without an initializer after it is
+  // value-initialized where no argument is for it. Not with a base, a bit-field or an unnamed member.
+  if (!def || !memberwiseBesideConstructors(def) || !def->bases.empty() || def->keyword == Kw::union_ || argTypes.empty())
+    return std::nullopt;
+  for (const Ty* a : argTypes)
+    if (!a || !a->isKnown() || types.isDependent(a) || mentionsUnknown(a) || types.stripRef(a)->isBraceList())
+      return std::nullopt;
+  std::vector<VariableDecl*> members;
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)))
+    {
+      auto* v = static_cast<VariableDecl*>(m);
+      if (v->bitfield || v->name.empty())
+        return std::nullopt;
+      members.push_back(v);
+    }
+  std::vector<const Ty*> params;
+  if (!fieldTypes(t, def, params) || params.size() != members.size() || argTypes.size() > params.size())
+    return std::nullopt;
+  size_t required = 0;
+  while (required < members.size() && !members[required]->init)
+    ++required;
+  if (argTypes.size() < required || required == members.size())
+    return std::nullopt;
+  // The members before the first initializer take values of their own types only, no conversion: `S(input)` of
+  // `struct S { A a; int b = 0; }` with `A(Deserialiser&)` is no construction of S, as DeserialiserHelper's
+  // isConstructible<S, Deserialiser&> asks (design.md 30's Pair trap: the rest would never be loaded).
+  for (size_t i = 0; i < required; ++i)
+    if (types.unqualified(types.stripRef(argTypes[i])) != types.unqualified(types.stripRef(params[i])) || conversionRank(argTypes[i], params[i]) >= NotViable)
+      return std::nullopt;
+  auto named = [&](size_t k) { return std::string(symbols.name(members[k]->name.last().symbol)); };
+  return matchByType(params, required, named, argTypes, why, "member");
+}
+
+auto GlobalScope::Impl::chooseByType(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
+                                     const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit) -> FunctionDecl*
+{
+  lastArgumentsByType = {};
+  bool objectConst = objectTy && types.stripRef(objectTy)->isConst;
+  bool objectVolatile = objectTy && types.stripRef(objectTy)->isVolatile;
+  FunctionDecl* chosen = nullptr;
+  const Ty* chosenType = nullptr;
+  std::vector<int32_t> chosenOrder;
+  size_t found = 0;
+  std::string why;
+  for (FunctionDecl* f : candidates)
+  {
+    if (isFunctionSpecialization(f) || (f->flags & DF_Delete) || !f->templateParams.empty())
+      continue;
+    if (objectTy && !(f->flags & DF_Static) && ((objectConst && !(f->flags & DF_Const)) || (objectVolatile && !(f->flags & DF_Volatile))))
+      continue;
+    Subst s = classSubst ? *classSubst : Subst{};
+    if (bindExplicit && !(*bindExplicit)(f, s))
+      continue;
+    const Ty* ft = declaredTypeOf(f, classSubst, 0);
+    std::string one;
+    std::optional<std::vector<int32_t>> order = argumentsByType(f, ft, argTypes, &one);
+    if (!order)
+    {
+      if (why.empty())
+        why = one;
+      continue;
+    }
+    if (!constraintsHold(f, s))
+      continue;
+    if (++found == 1)
+    {
+      chosen = f;
+      chosenType = ft;
+      chosenOrder = std::move(*order);
+    }
+  }
+  if (found > 1)
+  {
+    ambiguous = true;
+    lastArgumentsByType.why = "more than one function takes its arguments by type";
+    return nullptr;
+  }
+  if (!chosen)
+  {
+    lastArgumentsByType.why = candidates.size() == 1 ? why : std::string();
+    return nullptr;
+  }
+  lastArgumentsByType.chosen = chosen;
+  lastArgumentsByType.params.assign(chosenType->args.begin(), chosenType->args.end());
+  lastArgumentsByType.argumentOf = std::move(chosenOrder);
+  return chosen;
+}
+
 auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit, const std::vector<bool>* nullConstants, std::vector<FunctionDecl*>* tiedOut, const std::vector<const Ty*>* bitFieldPromotions) -> FunctionDecl*
 {
   bool argsConcrete = true;
   for (const Ty* at : argTypes)
     argsConcrete = argsConcrete && at && at->isKnown() && !types.isDependent(at);
+  bool byType = argumentsByTypeAllowed; // (this call's alone: what it asks inside is matched by position)
+  AllowArgumentsByType inside(false);
   std::vector<Candidate> viable;
   bool objectConst = objectTy && types.stripRef(objectTy)->isConst;
   bool objectVolatile = objectTy && types.stripRef(objectTy)->isVolatile;
@@ -3293,7 +3470,7 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
   }
   ambiguous = false;
   if (viable.empty())
-    return nullptr;
+    return byType && argsConcrete ? chooseByType(candidates, argTypes, classSubst, objectTy, ambiguous, bindExplicit) : nullptr;
   auto better = [&](const Candidate& a, const Candidate& b)
   {
     bool someBetter = false;

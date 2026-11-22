@@ -1521,6 +1521,7 @@ private:
         break; // (its operand is not evaluated)
       case NodeKind::LiteralExpr: case NodeKind::ThisExpr: case NodeKind::CallerExpr: case NodeKind::NameofExpr:
       case NodeKind::NoexceptExpr: case NodeKind::TypeidExpr: case NodeKind::RequiresExpr: case NodeKind::DefaultValueExpr:
+      case NodeKind::DefaultArgumentExpr: case NodeKind::PackElementExpr:
       case NodeKind::HeldExpr:
         break; // (none evaluates a local's value: sizeof's, noexcept's and typeid's operand is not evaluated)
       default:

@@ -1994,6 +1994,11 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
           break; // anonymous/incomplete class with no known fields — already zeroed
         unsupported(at, "more values than " + qualifiedName(c) + " has fields");
       }
+      if (args[k] && args[k]->kind == NodeKind::DefaultArgumentExpr)
+      {
+        ++next; // (a member a construction by type left out, design.md 32: its default member initializer, as one at the end)
+        continue;
+      }
       // Brace elision ([dcl.init.aggr] 16): a member that is an array or an aggregate takes its
       // elements' values from the list itself when the value there does not initialize it whole
       // (initializesWhole): `GUID g = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, ... }` fills Data4[8]
@@ -2047,7 +2052,25 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
         ++i;
         continue;
       }
-      initializeAggregateMember(addr, t, info, d, valueOf[i++], zeroedUnits, parts, at);
+      Expr* value = valueOf[i++];
+      if (value && value->kind == NodeKind::PackElementExpr)
+      {
+        // One element of a pack the checker moved apart for a construction by type (design.md 32): its pattern for that
+        // element alone.
+        auto* element = static_cast<PackElementExpr*>(value);
+        bool found = false;
+        forEachPackElement(element->pattern, at, [&](size_t e)
+        {
+          if (e != element->index)
+            return;
+          initializeAggregateMember(addr, t, info, d, element->pattern, zeroedUnits, parts, at);
+          found = true;
+        });
+        if (!found)
+          unsupported(at, "element " + std::to_string(element->index + 1) + " of a pack expansion the pack has not");
+        continue;
+      }
+      initializeAggregateMember(addr, t, info, d, value, zeroedUnits, parts, at);
     }
     return;
   }

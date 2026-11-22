@@ -1287,6 +1287,8 @@ std::vector<const Ty*> GlobalScope::forgetTypesFromWalks(const std::vector<const
 
 thread_local const std::vector<Token>* GlobalScope::Impl::fallbackTokens = nullptr;
 thread_local bool GlobalScope::Impl::exactLayoutOnly = false;
+thread_local bool GlobalScope::Impl::argumentsByTypeAllowed = false;
+thread_local GlobalScope::Impl::ArgumentsByType GlobalScope::Impl::lastArgumentsByType;
 thread_local bool GlobalScope::Impl::layoutNeeded = false;
 thread_local int GlobalScope::Impl::nameEvaluations = 0;
 thread_local int GlobalScope::Impl::deepestNames = 0;

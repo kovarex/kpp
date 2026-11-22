@@ -439,6 +439,47 @@
            !static_cast<const FunctionDecl*>(d)->body;
   }
 
+  // Arguments matched by type (design.md 32). Where no candidate takes a call's arguments by position, a plain function
+  // (no template of its own, no pack, C ellipsis or Text) may take them by type: its parameters without a default the
+  // first arguments in order, and each argument after them the one defaulted parameter of its exact type (cv and
+  // references aside), else the one it converts to. argumentOf: for each parameter, the argument it takes, -1 for its
+  // default; nullopt where f takes none so, with why the reason a reader needs ("its parameter mode is given twice
+  // ..."), empty where none is worth saying (a count, an argument not known). ft: f's type, under its class's arguments.
+  std::optional<std::vector<int32_t>> argumentsByType(FunctionDecl* f, const Ty* ft, const std::vector<const Ty*>& argTypes, std::string* why);
+  // A struct's member-wise construction (design.md 30) by type: its members as a function's parameters, those before the
+  // first with a default member initializer required, in order; the others take an argument of their type or keep
+  // their initializer (value-initialized without one). Not with a base, a bit-field or an unnamed member.
+  std::optional<std::vector<int32_t>> memberwiseByType(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& argTypes, std::string* why);
+  // argumentsByType's and memberwiseByType's match: params[0, required) take the first arguments in order, each other
+  // argument the one of the rest it fits (exactly, else by a conversion). part: "parameter" or "member", for why.
+  std::optional<std::vector<int32_t>> matchByType(const std::vector<const Ty*>& params, size_t required, const std::function<std::string(size_t)>& named,
+                                                  const std::vector<const Ty*>& argTypes, std::string* why, const char* part);
+  // Whether chooseAmong may take a candidate by type (the walk sets it around a call it rewrites, and isConstructible
+  // around its question; never codegen or the interpreter, which see the rewritten call). chooseAmong clears it for
+  // what it asks inside (a conversion's constructors), so only the call itself is matched so.
+  static thread_local bool argumentsByTypeAllowed;
+  struct AllowArgumentsByType
+  {
+    bool saved;
+    explicit AllowArgumentsByType(bool allow) : saved(argumentsByTypeAllowed) { argumentsByTypeAllowed = allow; }
+    ~AllowArgumentsByType() { argumentsByTypeAllowed = saved; }
+  };
+  // chooseAmong's last choice by type (chosen, its type and argumentOf), or, choosing none, why: the walk's to rewrite
+  // the call (Walker::arrangeByType) or to say why not.
+  struct ArgumentsByType
+  {
+    FunctionDecl* chosen = nullptr; // (null for a member-wise construction: memberwise)
+    bool memberwise = false;
+    std::vector<const Ty*> params; // the parameters' (or members') types
+    std::vector<int32_t> argumentOf;
+    std::string why;
+  };
+  static thread_local ArgumentsByType lastArgumentsByType;
+  // chooseAmong's choice by type among candidates no one of which takes the arguments by position: the one that takes
+  // them so (lastArgumentsByType), none, or ambiguous where several do.
+  FunctionDecl* chooseByType(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst,
+                             const Ty* objectTy, bool& ambiguous, const std::function<bool(FunctionDecl*, Subst&)>* bindExplicit);
+
   // Why f is no candidate for a call with these arguments (classSubst: its class's), as chooseAmong leaves it out: their
   // count, "it takes 2 arguments"; for a plain function an argument its parameter does not take, "argument 1 (int32)
   // does not convert to char*"; for a function template that deduces every parameter and takes each argument, its

@@ -1159,6 +1159,10 @@
   // (moved from an xvalue), and is the callee's to destroy once the evaluator knows it made it.
   // places, categories: the arguments' (constArguments'), either null where the caller has none.
   // false: no constant.
+  // What constArguments gives for a DefaultArgumentExpr (design.md 32): no value, the parameter's default argument, which
+  // constBindParameter evaluates as one left out at the end.
+  ConstValue defaultArgumentMark() { return ConstValue::unset(types.unknown()); }
+  bool isDefaultArgumentMark(const ConstValue& v) { return v.isUnset() && v.type == types.unknown(); }
   bool constBindParameter(ParamDecl* p, const Ty* type, size_t i, const std::vector<ConstValue>& args, Expr* defaultValue, const TypeContext& fctx, int depth,
                           const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::vector<ConstBinding>& env);
 

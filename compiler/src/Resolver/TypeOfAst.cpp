@@ -718,9 +718,15 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
         return false;
       }
       if (ctors.empty())
-        return destructibleOutside(static_cast<ClassDecl*>(def)) && aggregateTakes(t, static_cast<ClassDecl*>(def), args);
+        return destructibleOutside(static_cast<ClassDecl*>(def)) &&
+               (aggregateTakes(t, static_cast<ClassDecl*>(def), args) || memberwiseByType(t, static_cast<ClassDecl*>(def), args, nullptr)); // (design.md 32)
       bool ambiguous = false;
-      if (chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous) != nullptr)
+      FunctionDecl* taken = nullptr;
+      {
+        AllowArgumentsByType byType(true); // (what a construction takes by type too, design.md 32)
+        taken = chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous);
+      }
+      if (taken)
         return true;
       // A struct's member-wise construction beside its constructors (design.md 30), where none of them takes the
       // arguments: none of the declared ones, nor a deleted one (`Pos(int, int) = delete;` turns it off).
@@ -733,7 +739,8 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
       bool deletedAmbiguous = false;
       if (!deleted.empty() && (chooseAmong(deleted, args, s.pairs.empty() ? nullptr : &s, nullptr, deletedAmbiguous) || deletedAmbiguous))
         return false;
-      return destructibleOutside(static_cast<ClassDecl*>(def)) && memberwiseTakes(t, static_cast<ClassDecl*>(def), args);
+      return destructibleOutside(static_cast<ClassDecl*>(def)) &&
+             (memberwiseTakes(t, static_cast<ClassDecl*>(def), args) || memberwiseByType(t, static_cast<ClassDecl*>(def), args, nullptr)); // (design.md 32)
     }
     if (args.empty())
       return t->kind != TyKind::Void && t->kind != TyKind::Function;

@@ -1,0 +1,29 @@
+// spec: what matching arguments by type (design.md 32) never guesses: an argument that two defaulted parameters take alike (the same type twice, or two it converts to), two arguments for one parameter, an argument no parameter takes, and two candidates that both take the call by type are errors
+// error: arguments_matched_by_type_errors_is_error.kpp:24: error: no overload of twice takes (int32, Mode): Mode fits two of its parameters (b and c), so it cannot be matched by type
+// error: arguments_matched_by_type_errors_is_error.kpp:25: error: no overload of once takes (int32, Mode, Mode): its parameter mode is given twice by type (arguments 2 and 3)
+// error: arguments_matched_by_type_errors_is_error.kpp:26: error: no overload of once takes (int32, Other): no parameter takes argument 2 (Other) by type
+// error: arguments_matched_by_type_errors_is_error.kpp:27: error: no overload of both takes (int32, Mode): more than one function takes its arguments by type
+// factorio: none
+enum class Mode : u8 { A, B };
+enum class Other : u8 { X };
+
+int twice(int a, bool flag = false, Mode b = Mode::A, Mode c = Mode::B) { return a + int(flag) + int(b) + int(c); }
+int once(int a, bool flag = false, Mode mode = Mode::A) { return a + int(flag) + int(mode); }
+int both(int a, float f = 1, Mode mode = Mode::A) { return a + int(f) + int(mode); }
+int both(int a, double d = 2, Mode mode = Mode::B) { return a + int(d) + int(mode); }
+
+int main()
+{
+  int r = 0;
+  r += twice(1, true, Mode::B); // (by position: fine)
+  r += once(1, Mode::B);        // (by type: mode)
+  r += once(1, Mode::B, true);  // (by type: both)
+  r += 0;
+  r += 0;
+  r += 0;
+  r += twice(1, Mode::B);
+  r += once(1, Mode::A, Mode::B);
+  r += once(1, Other::X);
+  r += both(1, Mode::B);
+  return r;
+}

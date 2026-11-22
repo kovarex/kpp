@@ -1808,6 +1808,40 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
 {
   for (Expr* a : args)
   {
+    if (a && a->kind == NodeKind::DefaultArgumentExpr)
+    {
+      // A default before an argument given by type (design.md 32): the parameter's own, bound by the callee
+      // (constBindParameter) as one left out at the end is.
+      values.push_back(defaultArgumentMark());
+      if (places)
+        places->push_back(std::nullopt);
+      if (categories)
+        categories->push_back(0);
+      if (elementTypes)
+        elementTypes->push_back(nullptr);
+      continue;
+    }
+    if (a && a->kind == NodeKind::PackElementExpr)
+    {
+      // One element of a pack expansion a match by type moved apart (design.md 32): its pattern only forwards, moves or
+      // names the pack (Walker::simplePackPattern), so the whole expansion evaluated gives it without a side effect.
+      auto* element = static_cast<PackElementExpr*>(a);
+      std::vector<std::optional<ConstPlace>> elementPlaces;
+      std::vector<uint8_t> elementCategories;
+      std::vector<const Ty*> expandedTypes;
+      std::optional<std::vector<ConstValue>> expanded = constExpand(element->pattern, ctx, depth, &elementPlaces, &elementCategories, &expandedTypes);
+      size_t k = element->index;
+      if (!expanded || k >= expanded->size())
+        return false;
+      values.push_back((*expanded)[k]);
+      if (places)
+        places->push_back(k < elementPlaces.size() ? elementPlaces[k] : std::nullopt);
+      if (categories)
+        categories->push_back(k < elementCategories.size() ? elementCategories[k] : 0);
+      if (elementTypes)
+        elementTypes->push_back(k < expandedTypes.size() ? expandedTypes[k] : nullptr);
+      continue;
+    }
     if (constIsExpansion(a))
     {
       std::vector<std::optional<ConstPlace>> elementPlaces;
@@ -9035,10 +9069,11 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
 auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t i, const std::vector<ConstValue>& args, Expr* defaultValue, const TypeContext& fctx, int depth,
                                             const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::vector<ConstBinding>& env) -> bool
 {
+  bool given = i < args.size() && !isDefaultArgumentMark(args[i]); // (a DefaultArgumentExpr's mark: its default, design.md 32)
   // A reference refers to the argument's object when that is of its type (or of a class derived
   // from it: the base part); anything else converts, a class object it makes being a temporary.
   std::optional<std::vector<size_t>> basePart;
-  if (type && type->isReference() && i < args.size() && type->inner)
+  if (type && type->isReference() && given && type->inner)
   {
     const Ty* want = types.unqualified(type->inner);
     const Ty* have = places && i < places->size() && (*places)[i] && (*places)[i]->type ? types.unqualified(types.stripRef((*places)[i]->type))
@@ -9051,7 +9086,7 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
       basePart = constBasePath(have, want, depth + 1);
   }
   bool prvalue = categories && i < categories->size() && (*categories)[i] == 0;
-  if (type && type->isReference() && i < args.size() && !args[i].isUnset() &&
+  if (type && type->isReference() && given && !args[i].isUnset() &&
       ((!basePart && types.unqualified(type->inner)->kind == TyKind::Class) ||
        (basePart && !(places && i < places->size() && (*places)[i]) && prvalue && args[i].isObject() && args[i].type && constDestroyRunsCode(args[i].type))))
   {
@@ -9093,7 +9128,7 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     return true;
   }
   std::optional<ConstValue> v;
-  if (i < args.size() && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] &&
+  if (given && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] &&
       args[i].isObject() && args[i].type && types.unqualified(types.stripRef(args[i].type)) == types.unqualified(type) &&
       constCopyRunsCode(type))
   {
@@ -9106,13 +9141,13 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     // `path(path(a, b), c)` with a StringView parameter: the String the inner call made is
     // converted, and is a temporary of the caller's full expression, destroyed when that ends.
     bool held = places && i < places->size() && (*places)[i];
-    if (i < args.size() && type && categories && i < categories->size() && (*categories)[i] == 0 && args[i].isObject() && args[i].type &&
+    if (given && type && categories && i < categories->size() && (*categories)[i] == 0 && args[i].isObject() && args[i].type &&
         types.unqualified(types.stripRef(args[i].type)) != types.unqualified(types.stripRef(type)) && constDestroyRunsCode(args[i].type) && !held)
       constMaterialize(args[i], args[i].type);
     else if (held && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] == 0 &&
              types.unqualified(types.stripRef(args[i].type)) == types.unqualified(types.stripRef(type)))
       (*places)[i]->binding().owns = false; // the prvalue's temporary is the parameter now: destroyed by the call
-    v = i < args.size() ? constConvertTo(args[i], type, depth + 1)
+    v = given ? constConvertTo(args[i], type, depth + 1)
                         : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
   }
   if (!v)
@@ -9121,7 +9156,7 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
   env.back().decl = p;
   // A by-value parameter is the callee's to destroy, once the evaluator knows it made it (a copy,
   // a prvalue, a default).
-  env.back().owns = type && !type->isReference() && (i >= args.size() || (categories && i < categories->size()));
+  env.back().owns = type && !type->isReference() && (!given || (categories && i < categories->size()));
   env.back().referenceToTemporary = type && type->isReference(); // (a value: of no place the run holds)
   if (type && type->kind == TyKind::RRef && !(type->inner && type->inner->isConst))
     env.back().writable = true; // (the temporary an rvalue reference binds: `take(3)` of `take(int&& x)`, which may change it)

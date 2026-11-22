@@ -791,6 +791,9 @@
     // walked where it is written (not a template's instance), and not from a class with a conversion
     // operator (which may make the T the copy constructor takes): codegen still reports those.
     void checkConstruction(const Ty* t, Span<Expr*> args, uint32_t token);
+    // A call of one plain function that takes its arguments neither by position nor by type, where why it does not by type
+    // is known (impl.lastArgumentsByType.why: "its parameter mode is given twice by type ..."), design.md 32.
+    void reportNotByType(const std::string& called, const std::vector<const Ty*>& argTypes, uint32_t token);
     void checkAggregateElements(const Ty* t, Span<Expr*> elements, int depth = 0);
     // `new T`, `new T()`, `new (p) T()`, `new T[n]`: T's default constructor, one class t does not have an error, in
     // an instance too (as that instance's), where codegen said it "does not support" it, and inside the noexcept
@@ -1032,6 +1035,17 @@
     // A brace list's elements constructing a t whose constructor taking them ends in a Text: packed as
     // a call's arguments are (`Problem p{4, "bad ", point};`, `return {4, "bad ", point};`, design.md 14).
     void packListText(Span<Expr*>& elements, const Ty* t, uint32_t token);
+    // Arguments matched by type (design.md 32): the call's arguments in the parameter order of the function chooseAmong
+    // took by type (impl.lastArgumentsByType), a DefaultArgumentExpr for each parameter before the last given that none
+    // takes; codegen and the interpreter then see a call by position. False where this walk may not rewrite its nodes
+    // (a template's own walk, a probe), the call then left as written.
+    bool arrangeByType(Span<Expr*>& args, uint32_t token);
+    // A construction of t from args (`T(...)`, `T{...}`, a variable's, a member initializer's, `new`) that a constructor
+    // of t takes by type only: arranged so (arrangeByType). Asked only of a class with a constructor taking a default.
+    void arrangeConstructionByType(const Ty* t, Span<Expr*>& args, uint32_t token);
+    // A pack expansion's pattern that names its parameter pack once and does nothing else (`args`, `forward<A>(args)`,
+    // `move(args)`, `static_cast<A&&>(args)`): its elements may be evaluated apart (arrangeByType).
+    bool simplePackPattern(Expr* pattern);
 
     const Ty* typeOfCall(CallExpr* c);
 

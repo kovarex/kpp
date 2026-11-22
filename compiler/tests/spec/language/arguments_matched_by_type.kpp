@@ -1,0 +1,126 @@
+// spec: arguments matched by type (design.md 32, kovarex 2026-11-22): a call that no candidate takes by position is tried by type: the parameters without a default take the first arguments in order, and each argument after them goes to the one defaulted parameter of its exact type (cv and references aside), else to the one it converts to; the parameters left take their defaults, evaluated at the call as C++'s. Functions, member functions and constructors alike (`T(...)`, `T{...}`, a variable's, a member initializer's, `new`), in a constant too, and what a call takes a trait answers too. A call that some candidate takes by position keeps that meaning.
+// factorio: ActionData::BuildParameters, whose constructor template took its options in any order by a fold over loadArg overloads (1,046 calls, about 86 argument-type combinations, each its own instance)
+enum class Direction : u8 { North, East, South, West };
+enum class BuildMode : u8 { Normal, Forced, Ghost };
+enum class Mirror : u8 { False, True };
+enum class Dragging : u8 { False, True };
+
+struct DragInfo
+{
+  DragInfo() = default;
+  implicit DragInfo(Dragging dragging) : dragging(dragging == Dragging::True) {}
+  bool dragging = false;
+};
+
+int defaultsMade = 0;
+int counted(int v)
+{
+  ++defaultsMade;
+  return v;
+}
+
+struct Build
+{
+  Build(int position, Direction direction = Direction::North, DragInfo drag = DragInfo(), BuildMode mode = BuildMode::Normal,
+        Mirror mirror = Mirror::False, int tag = counted(7))
+    : position(position)
+    , direction(direction)
+    , drag(drag)
+    , mode(mode)
+    , mirror(mirror)
+    , tag(tag)
+  {}
+  int position;
+  Direction direction;
+  DragInfo drag;
+  BuildMode mode;
+  Mirror mirror;
+  int tag;
+};
+
+void show(const Build& b)
+{
+  std::println(b.position, " ", int(b.direction), " ", b.drag.dragging, " ", int(b.mode), " ", int(b.mirror), " ", b.tag);
+}
+
+struct Holder
+{
+  Holder(int position) : build(position, BuildMode::Ghost, Direction::West) {}
+  Build build;
+};
+
+void perform(const Build& b) { show(b); }
+
+int describe(int base, Direction direction = Direction::North, BuildMode mode = BuildMode::Normal)
+{
+  return base * 100 + int(direction) * 10 + int(mode);
+}
+
+struct Counter
+{
+  int add(int amount, Direction direction = Direction::North, BuildMode mode = BuildMode::Normal)
+  {
+    this.total += amount + int(direction) * 10 + int(mode) * 100;
+    return this.total;
+  }
+  int total = 0;
+};
+
+constexpr int area(int width, BuildMode mode = BuildMode::Normal, Direction direction = Direction::North)
+{
+  return width * 100 + int(mode) * 10 + int(direction);
+}
+static_assert(area(1, Direction::South, BuildMode::Forced) == 112);
+static_assert(area(2, Direction::East) == 201);
+
+// positional first: (int, long) takes 2 by position, the same call by type would not change it either way
+int pick(int a, long b = 5, short c = 6) { return a * 100 + int(b) * 10 + c; }
+
+// Forwarded: a pack's elements go by type too (`Build(forward<A>(a)...)`, makeUnique's `new T(...)`, a creator).
+template<typename... A>
+Build makeBuild(A&&... a)
+{
+  return Build(std::forward<A>(a)...);
+}
+
+union enum class Action : u8
+{
+  { {Stop, void}, {Place, Build} }
+};
+
+static_assert(std::isConstructible<Build, int, BuildMode, Direction>);
+static_assert(std::isConstructible<Build, int, Mirror>);
+static_assert(!std::isConstructible<Build, int, BuildMode, BuildMode>);
+
+int main()
+{
+  show(Build(1));
+  show(Build(2, BuildMode::Forced));
+  show(Build(3, BuildMode::Forced, Direction::East));
+  show(Build{4, Mirror::True, Direction::South, Dragging::True});
+  Build b(5, 99, BuildMode::Ghost);
+  show(b);
+  Build c{6, Dragging::True};
+  show(c);
+  show(Holder(8).build);
+  Build* d = new Build(9, Mirror::True);
+  show(*d);
+  delete d;
+  perform(Build{10, BuildMode::Forced});
+  std::println(describe(1, BuildMode::Forced), " ", describe(2, BuildMode::Ghost, Direction::West), " ", describe(3, Direction::East));
+  Counter counter;
+  counter.add(1, BuildMode::Forced);
+  std::println(counter.add(2, BuildMode::Normal, Direction::South));
+  std::println(area(3, Direction::West));
+  std::println(pick(1, 2), " ", pick(1, short(3)));
+  show(makeBuild(11, BuildMode::Ghost, Mirror::True));
+  int position = 12;
+  Direction east = Direction::East;
+  show(makeBuild(position, Mirror::True, east));
+  std::UniquePtr<Build> owned = std::makeUnique<Build>(13, Direction::South);
+  show(*owned);
+  Action place = Action::Place(14, BuildMode::Forced, Direction::West);
+  show(place[Action::Tag::Place]);
+  std::println(defaultsMade);
+  return 0;
+}

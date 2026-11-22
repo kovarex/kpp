@@ -1,0 +1,97 @@
+// spec: a struct's member-wise construction (design.md 30) matched by type (design.md 32): its members as parameters, those before the first with a default member initializer taking the first arguments in order, every other one the argument of its type (exact, else the one it converts to) or else its initializer, a member without one value-initialized; beside a constructor that does not take them, and for a struct without constructors, by `T(...)`, `T{...}`, a variable, `new`, makeUnique, a union enum class's creator and a brace list through a function pointer alike, and isConstructible answers so
+// factorio: ActionData::BuildParameters as a struct without its loadArg constructor template (kovarex's generic-enum-code-generation branch, 2026-11-22)
+enum class Direction : u8 { North, East, South, West };
+enum class BuildMode : u8 { Normal, Forced, Ghost };
+enum class Mirror : u8 { False, True };
+enum class Dragging : u8 { False, True };
+
+struct DragInfo
+{
+  DragInfo() = default;
+  implicit DragInfo(Dragging dragging) : dragging(dragging == Dragging::True) {}
+  bool dragging = false;
+};
+
+struct Names
+{
+  std::Vector<int> values;
+};
+
+struct Loader
+{
+  int fromStream = 0;
+};
+
+struct Build
+{
+  Build(Loader& input) : position(input.fromStream) {}
+  int position;
+  Direction direction = Direction::North;
+  DragInfo drag;
+  BuildMode mode = BuildMode::Normal;
+  Mirror mirror = Mirror::False;
+  Names names;
+};
+
+struct Plain
+{
+  int a;
+  Direction direction = Direction::South;
+  BuildMode mode = BuildMode::Ghost;
+};
+
+// Member-wise by position before a constructor by type (SelectUpgradeData{selectAreaData, upgradeMode}).
+struct Upgrade
+{
+  Upgrade(int area, Direction direction = Direction::North, BuildMode mode = BuildMode::Normal) : area(area + 100), mode(mode)
+  {
+    (void)direction;
+  }
+  int area;
+  BuildMode mode = BuildMode::Normal;
+};
+
+int positionOf(Build&& b)
+{
+  return b.position * 10 + int(b.mode);
+}
+
+void show(const Build& b)
+{
+  std::println(b.position, " ", int(b.direction), " ", b.drag.dragging, " ", int(b.mode), " ", int(b.mirror), " ", b.names.values.size());
+}
+
+union enum class Action : u8
+{
+  { {Stop, void}, {Place, Build} }
+};
+
+static_assert(std::isConstructible<Build, int, BuildMode, Direction>);
+static_assert(std::isConstructible<Plain, int, BuildMode>);
+static_assert(!std::isConstructible<Build, int, BuildMode, BuildMode>);
+
+int main()
+{
+  Loader loader{3};
+  show(Build(loader));
+  show(Build(1, BuildMode::Forced));
+  show(Build{2, Mirror::True, Direction::East, Dragging::True});
+  Build b(4, Names{{1, 2}}, BuildMode::Ghost);
+  show(b);
+  Build* p = new Build(5, Direction::West);
+  show(*p);
+  delete p;
+  std::UniquePtr<Build> owned = std::makeUnique<Build>(6, Mirror::True);
+  show(*owned);
+  Action place = Action::Place(7, BuildMode::Forced, Direction::South);
+  show(place[Action::Tag::Place]);
+  Plain plain(8, BuildMode::Forced);
+  Plain braced{9, Direction::North};
+  std::println(plain.a, " ", int(plain.direction), " ", int(plain.mode), " ", braced.a, " ", int(braced.direction), " ", int(braced.mode));
+  Upgrade byPosition(1, BuildMode::Forced);          // member-wise: area 1
+  Upgrade byType(2, Direction::East, BuildMode::Ghost); // the constructor by position: 102
+  std::println(byPosition.area, " ", int(byPosition.mode), " ", byType.area, " ", int(byType.mode));
+  int (*action)(Build&&) = &positionOf;
+  std::println(action({10, BuildMode::Ghost})); // (a brace list through a pointer)
+  return 0;
+}

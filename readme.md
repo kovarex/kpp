@@ -83,6 +83,10 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **Explicit by default.** A constructor or conversion operator converts implicitly only when marked
   `implicit` (`implicit Celsius(double degrees)`), and the keyword `explicit` is gone. A function
   argument's braces name their type: `draw(Color{1, 0, 0})`, not `draw({1, 0, 0})`.
+- **Arguments matched by type.** A call no overload takes by position goes by the arguments' types:
+  `Build(position, BuildMode::Forced)` for `Build(MapPosition position, Direction direction = North,
+  BuildMode mode = Normal)` skips `direction`, in any order, with no template instance per combination.
+  An argument two parameters fit is an error, never a guess.
 - **No implicit fallthrough.** Every `case` ends with an implicit `break`; falling through is written
   `fallthrough;`, and a body several values share is one label, `case North, South:`.
 - **A class with a virtual function has a virtual destructor**, written or not, so `delete` through a
@@ -297,8 +301,6 @@ Decided, and not built yet:
 - **kpp's own IDE** on top of the language server ([docs/ide.md](docs/ide.md)).
 - **Access levels between `private` and public**, for example a member visible to its own
   directory or subsystem, where C++ code uses `friend` today.
-- **Choosing a default argument by its type**: `foo(B(3), C(4))` for `foo(A a = ..., B b = ...,
-  C c = ...)`.
 - **`accumulate`**: a virtual function that runs every level of the hierarchy without calling
   `super::`. Reflection already writes save and load once for every class.
 - **Code coverage** in the compiler.

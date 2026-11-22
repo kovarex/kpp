@@ -38,6 +38,14 @@ struct CastExpr : Expr { Type* type; Expr* operand; };
 struct NamedCastExpr : Expr { Kw castKind; Type* type; Expr* operand; };
 struct SizeofExpr : Expr { Kw sizeofKind; Type* type = nullptr; Expr* operand = nullptr; bool isPack = false; };
 struct CallerExpr : Expr {}; // `caller` as a default argument: the compiler fills in the call site.
+// A parameter's default argument where a call matched by type (design.md 32) gives none but gives one after it: the
+// walk's rewrite of `f(a, c)` for `f(A a, B b = B(), C c = C())` as `f(a, <b's default>, c)`, evaluated at the call as
+// a default argument left out at the end is. param: the parameter's index; ty: its type.
+struct DefaultArgumentExpr : Expr { uint32_t param = 0; };
+// One element of a pack expansion among a call's arguments, where a match by type (design.md 32) moved the elements
+// apart: `Build(forward<A>(a)...)` given (MapPosition, BuildMode) as `Build(<a's element 0>, <default>, <a's element 1>)`.
+// pattern: the expansion's (a forward, move or name of the parameter pack, evaluated once); index: the element; ty: its type.
+struct PackElementExpr : Expr { Expr* pattern = nullptr; uint32_t index = 0; };
 struct NameofExpr : Expr { Expr* operand; uint32_t text = UINT32_MAX; }; // nameof(x): the last name of x as a string literal. Without an operand: text's spelling (the parser's `__kpp_text X`, design.md 8.7).
 // noexcept(e), the operator: whether e cannot throw (its operand is not evaluated). value is the
 // walk's answer (GlobalScope::canThrow): 1 true, 0 false, -1 not decided (a template's own walk).

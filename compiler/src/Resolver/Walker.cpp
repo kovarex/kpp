@@ -1638,6 +1638,14 @@ auto GlobalScope::Impl::Walker::reportTemplatesRejected(Decl* primary, const std
   reportCheck(token, "no " + called + " takes (" + list + "): " + why);
 }
 
+auto GlobalScope::Impl::Walker::reportNotByType(const std::string& called, const std::vector<const Ty*>& argTypes, uint32_t token) -> void
+{
+  std::string list;
+  for (const Ty* a : argTypes)
+    list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &symbols);
+  reportCheck(token, "no overload of " + called + " takes (" + list + "): " + impl.lastArgumentsByType.why);
+}
+
 auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std::vector<Entry>* overloads, const Ty* objectTy, uint32_t symbol,
                                                      const std::vector<const Ty*>& argTypes, uint32_t token) -> void
 {
@@ -1661,7 +1669,9 @@ auto GlobalScope::Impl::Walker::reportNoMatchingMember(Decl* primary, const std:
       return;
     list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
   }
-  reportCheck(token, "no overload of " + types.toString(o, &impl.symbols) + "::" + std::string(impl.symbols.name(symbol)) + " takes (" + list + ")");
+  const std::string& byType = impl.lastArgumentsByType.why; // (why none took them by type either, design.md 32)
+  reportCheck(token, "no overload of " + types.toString(o, &impl.symbols) + "::" + std::string(impl.symbols.name(symbol)) + " takes (" + list + ")" +
+                       (byType.empty() ? "" : ": " + byType));
 }
 
 auto GlobalScope::Impl::Walker::reportNoMatchingFunction(Decl* primary, const std::vector<Entry>* overloads, const QualifiedName& name,
@@ -1688,7 +1698,8 @@ auto GlobalScope::Impl::Walker::reportNoMatchingFunction(Decl* primary, const st
         return;
       list += (list.empty() ? "" : ", ") + types.toString(types.stripRef(a), &impl.symbols);
     }
-    reportCheck(token, "no overload of " + called + " takes (" + list + ")");
+    const std::string& byType = impl.lastArgumentsByType.why; // (why none took them by type either, design.md 32)
+    reportCheck(token, "no overload of " + called + " takes (" + list + ")" + (byType.empty() ? "" : ": " + byType));
   };
   // An argument typed as a whole pack (the walk of a fold's pattern, `(show(ts), ...)`, or of a `for constexpr` body
   // over a pack's types, `show(E{5})`, sees every element at once as the call's arguments, argTypes): each element's
@@ -7491,6 +7502,13 @@ auto GlobalScope::Impl::Walker::packTextThrough(Span<Expr*>& args, const Ty* cal
     t = types.unqualified(t->inner);
   if (t && (t->kind == TyKind::Lambda || t->kind == TyKind::Function) && !t->args.empty() && !t->variadic && impl.isText(t->args[t->args.size() - 1]))
     packTextAt(args, t->args.size() - 1, token);
+  // A brace list for a parameter of a class (`buildAction({position, BuildMode::Forced})` through a pointer): its values
+  // by type where no constructor takes them by position (design.md 32), as a named function's (checkExplicitArguments).
+  if (t && t->kind == TyKind::Function)
+    for (size_t i = 0; i < args.size() && i < t->args.size(); ++i)
+      if (args[i] && args[i]->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(args[i])->designators.empty() &&
+          !static_cast<BraceInitExpr*>(args[i])->text)
+        arrangeConstructionByType(t->args[i], static_cast<BraceInitExpr*>(args[i])->args, args[i]->token);
 }
 
 auto GlobalScope::Impl::Walker::packTextAt(Span<Expr*>& args, size_t k, uint32_t token) -> void
@@ -7758,8 +7776,194 @@ auto GlobalScope::Impl::Walker::textConstructor(const Ty* cls, Span<Expr*> args)
   return f && !ambiguous && impl.namesTextLast(f) ? f : nullptr;
 }
 
+auto GlobalScope::Impl::Walker::arrangeByType(Span<Expr*>& args, uint32_t token) -> bool
+{
+  const Impl::ArgumentsByType& by = impl.lastArgumentsByType;
+  if ((!by.chosen && !by.memberwise) || by.params.size() != by.argumentOf.size() || !ownsNodes())
+    return false;
+  // The values the arguments stand for, as argTypesOf lists them (argumentOf's indices): an expansion of a pack, element by
+  // element, each a PackElementExpr of its pattern, which must name the pack once and do nothing else (a forward, a move,
+  // the name), so that the elements apart are what the expansion would give.
+  std::vector<Expr*> slots;
+  for (Expr* a : args)
+  {
+    if (isEmptyExpansion(a))
+      continue;
+    bool expansion = a && a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+                     P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis;
+    if (expansion && (!a->ty || a->ty->kind != TyKind::Pack))
+      return false; // (an expansion whose elements this walk does not know)
+    if (a && a->ty && a->ty->kind == TyKind::Pack)
+    {
+      if (a->kind != NodeKind::UnaryExpr || static_cast<UnaryExpr*>(a)->isKeyword || !static_cast<UnaryExpr*>(a)->postfix ||
+          P(static_cast<UnaryExpr*>(a)->op) != P::Ellipsis || !simplePackPattern(static_cast<UnaryExpr*>(a)->operand))
+        return false;
+      Expr* pattern = static_cast<UnaryExpr*>(a)->operand;
+      for (size_t k = 0; k < a->ty->args.size(); ++k)
+      {
+        auto* element = impl.instanceArena().make<PackElementExpr>();
+        element->kind = NodeKind::PackElementExpr;
+        element->token = a->token;
+        element->pattern = pattern;
+        element->index = uint32_t(k);
+        record(element, a->ty->args[k]);
+        slots.push_back(element);
+      }
+      continue;
+    }
+    slots.push_back(a);
+  }
+  for (int32_t j : by.argumentOf)
+    if (j >= 0 && size_t(j) >= slots.size())
+      return false;
+  // (a member-wise construction gets a value for every member, as codegen takes one beside constructors: design.md 30)
+  size_t end = by.memberwise ? by.argumentOf.size() : 0;
+  for (size_t k = 0; k < by.argumentOf.size(); ++k)
+    if (by.argumentOf[k] >= 0)
+      end = std::max(end, k + 1);
+  Arena& arena = impl.instanceArena();
+  std::vector<Expr*> arranged;
+  for (size_t k = 0; k < end; ++k)
+  {
+    if (by.argumentOf[k] >= 0)
+    {
+      arranged.push_back(slots[size_t(by.argumentOf[k])]);
+      continue;
+    }
+    // (a prvalue of the parameter's type, as its default is; an lvalue for a `T&` one)
+    auto* d = arena.make<DefaultArgumentExpr>();
+    d->kind = NodeKind::DefaultArgumentExpr;
+    d->token = token;
+    d->param = uint32_t(k);
+    const Ty* pt = by.params[k];
+    record(d, pt->kind == TyKind::LRef && !types.stripRef(pt)->isConst ? pt : types.unqualified(types.stripRef(pt)));
+    arranged.push_back(d);
+  }
+  args = Span<Expr*>{arena.array(arranged.data(), arranged.size()), uint32_t(arranged.size())};
+  return true;
+}
+
+auto GlobalScope::Impl::Walker::simplePackPattern(Expr* pattern) -> bool
+{
+  while (pattern && pattern->kind == NodeKind::ParenExpr)
+    pattern = static_cast<ParenExpr*>(pattern)->inner;
+  auto namesPack = [](Expr* e)
+  {
+    while (e && e->kind == NodeKind::ParenExpr)
+      e = static_cast<ParenExpr*>(e)->inner;
+    Decl* d = e && e->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(e)->resolved : nullptr;
+    return d && d->kind == NodeKind::ParamDecl && static_cast<ParamDecl*>(d)->isPack;
+  };
+  if (namesPack(pattern))
+    return true;
+  if (pattern && pattern->kind == NodeKind::NamedCastExpr)
+    return static_cast<NamedCastExpr*>(pattern)->castKind == Kw::static_cast_ && namesPack(static_cast<NamedCastExpr*>(pattern)->operand);
+  if (!pattern || pattern->kind != NodeKind::CallExpr || static_cast<CallExpr*>(pattern)->args.size() != 1)
+    return false;
+  auto* c = static_cast<CallExpr*>(pattern);
+  Decl* callee = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee)->resolved : nullptr;
+  return callee && callee->kind == NodeKind::FunctionDecl && impl.callIntrinsicOf(static_cast<FunctionDecl*>(callee)) != GlobalScope::CallIntrinsic::None &&
+         namesPack(c->args[0]);
+}
+
+auto GlobalScope::Impl::Walker::arrangeConstructionByType(const Ty* t, Span<Expr*>& args, uint32_t token) -> void
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (args.empty() || !t || t->kind != TyKind::Class || types.isDependent(t) || !ownsNodes())
+    return;
+  ClassDecl* def = impl.classDefinition(t);
+  if (!def || def->isClosure || impl.isInitializerList(t)) // (an InitializerList's braces are its elements)
+    return;
+  if (def->isTypedUnion)
+  {
+    // `U(U::Tag::Place, forward<A>(a)...)`, a union enum class's creator: the alternative the constant tag names is built
+    // from the rest (design.md 8.5), by type too, unless a constructor of the union's own takes them all.
+    Expr* first = args[0];
+    if (args.size() < 2 || !first || !first->ty || first->ty->kind == TyKind::Pack ||
+        types.unqualified(types.stripRef(first->ty)) != types.unqualified(impl.tagTypeOf(def, t)))
+      return;
+    std::vector<const Ty*> all = argTypesOf(args);
+    bool ambiguous = false;
+    if (impl.chooseConstructor(t, all, nullptr, nullptr, false, &ambiguous) || ambiguous)
+      return;
+    std::optional<int64_t> v = impl.constEval(first, ctx());
+    if (!v || *v < 0 || size_t(*v) >= def->alternatives.size() || static_cast<VariableDecl*>(def->alternatives[size_t(*v)])->voidAlternative)
+      return;
+    Subst s = impl.substFor(t);
+    const Ty* alternative = impl.declaredTypeOf(def->alternatives[size_t(*v)], s.pairs.empty() ? nullptr : &s, 0);
+    Span<Expr*> rest{args.data + 1, uint32_t(args.size() - 1)};
+    arrangeConstructionByType(alternative, rest, token);
+    if (rest.data != args.data + 1)
+    {
+      std::vector<Expr*> arranged{first};
+      arranged.insert(arranged.end(), rest.begin(), rest.end());
+      args = Span<Expr*>{impl.instanceArena().array(arranged.data(), arranged.size()), uint32_t(arranged.size())};
+    }
+    return;
+  }
+  bool defaulted = impl.memberwiseBesideConstructors(def), hasConstructors = false; // (a struct's members: by type too)
+  for (Decl* m : membersRead(def))
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))
+    {
+      hasConstructors = true;
+      if (m->templateParams.empty())
+        for (Decl* p : static_cast<FunctionDecl*>(m)->params)
+          defaulted = defaulted || static_cast<ParamDecl*>(p)->defaultValue;
+    }
+  if (!defaulted)
+  {
+    std::vector<const Ty*> inherited;
+    impl.inheritedConstructorSources(def, t, inherited, 0);
+    if (inherited.empty())
+      return;
+  }
+  for (Expr* a : args)
+    if (a && a->kind == NodeKind::UnaryExpr && !static_cast<UnaryExpr*>(a)->isKeyword && static_cast<UnaryExpr*>(a)->postfix &&
+        P(static_cast<UnaryExpr*>(a)->op) == P::Ellipsis && (!a->ty || a->ty->kind != TyKind::Pack))
+      return; // (an expansion whose elements this walk does not know)
+  std::vector<const Ty*> argTypes = argTypesOf(args);
+  for (const Ty* a : argTypes)
+    if (!a || !a->isKnown() || types.isDependent(a) || Impl::mentionsUnknown(a) || a->kind == TyKind::Pack)
+      return;
+  // (one value of the class, of a class derived from it or of a class converting by an operator: its copy, move or
+  // conversion, which no declared constructor is chosen for, as checkConstruction leaves it)
+  if (argTypes.size() == 1)
+    if (const Ty* a = types.unqualified(types.stripRef(argTypes[0])); a == t || (a->kind == TyKind::Class && (impl.isBaseClass(t, a) || impl.convertsByOperator(a, t, 0, 0, true))))
+      return;
+  impl.lastArgumentsByType = {};
+  bool ambiguous = false;
+  FunctionDecl* f = nullptr;
+  {
+    Impl::AllowArgumentsByType byType(true);
+    f = impl.chooseConstructor(t, argTypes, nullptr, nullptr, false, &ambiguous);
+  }
+  // (by position first: a struct's member-wise construction by position, design.md 30, before a constructor by type;
+  // `InputAction::Upgrade(box, mode)`'s SelectUpgradeData{selectAreaData, upgradeMode} stays that)
+  bool memberwiseByPosition = impl.memberwiseBesideConstructors(def) && impl.aggregateTakes(t, def, argTypes, hasConstructors);
+  if (f && !ambiguous && impl.lastArgumentsByType.chosen == f)
+  {
+    if (!memberwiseByPosition)
+      arrangeByType(args, token);
+    return;
+  }
+  // A struct's member-wise construction (design.md 30) that its members take by type only.
+  if (f || ambiguous || !impl.memberwiseBesideConstructors(def) || memberwiseByPosition)
+    return;
+  std::string why;
+  std::optional<std::vector<int32_t>> order = impl.memberwiseByType(t, def, argTypes, &why);
+  if (!order)
+    return;
+  impl.lastArgumentsByType = {};
+  impl.lastArgumentsByType.memberwise = true;
+  if (!impl.fieldTypes(t, def, impl.lastArgumentsByType.params))
+    return;
+  impl.lastArgumentsByType.argumentOf = std::move(*order);
+  arrangeByType(args, token);
+}
+
 auto GlobalScope::Impl::Walker::packListText(Span<Expr*>& elements, const Ty* t, uint32_t token) -> void
 {
+  arrangeConstructionByType(t, elements, token); // (`Build{position, BuildMode::Forced}`: by type, design.md 32)
   t = t ? types.unqualified(types.stripRef(t)) : nullptr;
   if (t && t->kind == TyKind::Class && !types.isDependent(t))
     packText(elements, textConstructor(t, elements), token);
@@ -7840,6 +8044,7 @@ auto GlobalScope::Impl::Walker::typeOfCall(CallExpr* c) -> const Ty*
       if (known && impl.traitValue("isConstructible", traitArgs) == false)
         return unknown(Why::Overload);
     }
+    arrangeConstructionByType(t, c->args, c->token); // `Build(position, BuildMode::Forced)` (design.md 32)
     checkConstruction(t, c->args, c->token);
     packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`
   }
@@ -8208,8 +8413,16 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
         if (Scope* self = impl.classScopeOf(types.unqualified(thisType->inner)); self && reachesClassScope(self, l.foundIn, 0))
           implicitObject = thisType->inner;
       // (*this is an lvalue: a member qualified && is no candidate, `f() &` is.)
-      FunctionDecl* f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject ? types.lref(implicitObject) : nullptr, ambiguous, &n->name.last(), c->args, &tied);
-      if (f && !ambiguous)
+      // A call no candidate takes by position may take its arguments by type (design.md 32): arranged in the parameters'
+      // order, as a call by position; one this walk may not rewrite is left unchecked here (the instance's walk does it).
+      impl.lastArgumentsByType = {};
+      FunctionDecl* f = nullptr;
+      {
+        Impl::AllowArgumentsByType byType(true);
+        f = pickOverload(d, l.overloads, argTypes, classSubst, implicitObject ? types.lref(implicitObject) : nullptr, ambiguous, &n->name.last(), c->args, &tied);
+      }
+      bool byTypeLeft = f && !ambiguous && impl.lastArgumentsByType.chosen == f && !arrangeByType(c->args, c->token);
+      if (f && !ambiguous && !byTypeLeft)
       {
         checkConstObjectCall(f, implicitObject, c->token);
         checkExplicitArguments(f, impl.declaredTypeOf(f, classSubst, 0), c->args); // `lane(7)` with `explicit Strict(int)`
@@ -8247,6 +8460,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
           reportDeductionConflict(d, l.overloads, argTypes, n->name.last(), nullptr, c->token); // `refConv(1, 2.0)` for `refConv(const T&, T)`
           reportTemplatesRejected(d, l.overloads, argTypes, c->args, n->name.last(), classSubst, nullptr, c->token); // `make(1)` for `make(T) -> typename T::Value`
         }
+        else if (!impl.lastArgumentsByType.why.empty())
+          reportNotByType(impl.namePartText(n->name.last()), argTypes, c->token); // `once(1, Mode::A, Mode::B)` (design.md 32)
         else if (auto* only = static_cast<FunctionDecl*>(d); !checkArgumentCount(&only->params, impl.declaredTypeOf(d, classSubst, 0), (only->flags & DF_Variadic) != 0, c->args, c->token,
                                                                                     impl.namePartText(n->name.last())))
         {
@@ -8424,8 +8639,14 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
       const Ty* category = m->op == P::Arrow || m->op == P::SafeArrow ? types.lref(types.stripRef(object)) : argumentType(m->base, base, types);
       if (category && !category->isReference())
         category = types.rref(category);
-      FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, category, ambiguous, &last, c->args, &tied);
-      if (f && !ambiguous)
+      impl.lastArgumentsByType = {};
+      FunctionDecl* f = nullptr;
+      {
+        Impl::AllowArgumentsByType byType(true); // (by type where by position takes none, as for a name: design.md 32)
+        f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, category, ambiguous, &last, c->args, &tied);
+      }
+      bool byTypeLeft = f && !ambiguous && impl.lastArgumentsByType.chosen == f && !arrangeByType(c->args, c->token);
+      if (f && !ambiguous && !byTypeLeft)
       {
         checkConstObjectCall(f, object, m->token);
         checkRefQualifiedCall(f, category, m->token);
@@ -8445,6 +8666,8 @@ auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
           reportDeductionConflict(r.decl, r.overloads, argTypes, last, object, m->token); // `box.both(1, 'c')` for `both(T, T)`
           reportTemplatesRejected(r.decl, r.overloads, argTypes, c->args, last, &r.subst, object, m->token); // `box.wide(1)` for `wide(T) requires (sizeof(T) > 4)`
         }
+        else if (!impl.lastArgumentsByType.why.empty())
+          reportNotByType(types.toString(types.unqualified(types.stripRef(object)), &impl.symbols) + "::" + impl.namePartText(last), argTypes, m->token);
         else if (auto* only = static_cast<FunctionDecl*>(r.decl);
                  !checkArgumentCount(&only->params, impl.declaredTypeOf(r.decl, &r.subst, 0), (only->flags & DF_Variadic) != 0, c->args, c->token, impl.namePartText(last)))
         {
@@ -11734,6 +11957,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                                        : nullptr;
           if (initialized && initialized->kind == TyKind::Class && !types.isDependent(initialized))
           {
+            arrangeConstructionByType(initialized, init.args, f->token); // `: build(position, BuildMode::Forced)` (design.md 32)
             packText(init.args, textConstructor(initialized, init.args), f->token);
             checkBracedConstruction(initialized, init.args); // `: origin(0, {1, 2})`
             // `: targetData(input)` that no constructor takes (until 2026-11-20 codegen's "does not support a
@@ -12903,6 +13127,15 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
   {
     case NodeKind::NameExpr: return record(e, resolveName(static_cast<NameExpr*>(e)));
     case NodeKind::CallerExpr: return record(e, types.unknown()); // typed by the parameter it defaults
+    case NodeKind::DefaultArgumentExpr: return record(e, e->ty ? e->ty : types.unknown()); // (typed by the rewrite that made it)
+    case NodeKind::PackElementExpr:
+    {
+      // (its pattern walked as the expansion's operand is, so that a copy of the instance names its own parameter pack;
+      // typed by the rewrite that made it)
+      const Ty* element = e->ty;
+      walkExpr(static_cast<PackElementExpr*>(e)->pattern);
+      return record(e, element ? element : types.unknown());
+    }
     case NodeKind::NameofExpr:
       walkExpr(static_cast<NameofExpr*>(e)->operand);
       return record(e, types.pointer(types.qualified(types.charType(), true, false)));
@@ -13336,6 +13569,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         checkParenthesizedArray(n->args, wholeArray, n->token); // `new int[3](8, 9)` (C++20)
       else if (!n->braced)
       {
+        arrangeConstructionByType(t, n->args, n->token); // `new Build(position, BuildMode::Forced)` (design.md 32)
         checkConstruction(t, n->args, n->token);
         packText(n->args, textConstructor(t, n->args), n->token); // `new Problem("bad ", point)`
       }
@@ -13612,6 +13846,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
                                                                                                                   : c->args); // `Target{source}`
       if (!c->braced)
       {
+        arrangeConstructionByType(t, c->args, c->token); // `Build build(position, BuildMode::Forced);` (design.md 32)
         checkConstruction(t, c->args, c->token);
         packText(c->args, textConstructor(t, c->args), c->token); // `Problem("bad ", point)`, `Problem problem("bad ", point);`
       }

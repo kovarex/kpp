@@ -617,6 +617,26 @@ struct Pos { i32 x; i32 y; };
 bool same = Pos{1, 2} == Pos{1, 2}; // true: C++ needs `bool operator==(const Pos&) const = default;`
 ```
 
+### Arguments matched by type (built)
+
+- **C++:** arguments go by position, so a default in the middle cannot be skipped, and options in any order need a
+  constructor template folding over overloads, one instance per combination of argument types.
+- **kpp:** a call no candidate takes by position is tried by type: the parameters without a default take the first
+  arguments, and each argument after them goes to the one defaulted parameter of its type (exact, else the one it
+  converts to); the rest take their defaults. Two parameters an argument fits alike, a parameter given twice and two
+  candidates taking it so are errors. A struct's member-wise construction goes by type too, and so do arguments
+  forwarded through a pack (`makeUnique<T>(...)`, a creator). Every call C++ accepts keeps its meaning;
+  `isConstructible` and requirements answer by it too.
+- **Why:** kovarex (2026-11-22), from the original proposal's "Type based parameter resolution": the game's
+  BuildParameters took its options by a `loadArg` fold, about 86 instances for 1,046 calls.
+- **See:** [design 32][d32]; specs `language/arguments_matched_by_type`, `language/arguments_matched_by_type_memberwise`,
+  `language/arguments_matched_by_type_errors_is_error`.
+
+```cpp
+Build(MapPosition position, Direction direction = Direction::North, BuildMode mode = BuildMode::Normal);
+Build b(position, BuildMode::Forced); // direction takes its default: C++ has no such call
+```
+
 ### One definition for const and non-const (later, details not decided)
 
 - **C++:** a getter is written twice, and C++23's deducing `this` helps a little.
@@ -632,8 +652,8 @@ bool same = Pos{1, 2} == Pos{1, 2}; // true: C++ needs `bool operator==(const Po
 ### Under consideration (undecided)
 
 Access levels between `private` and public (a member visible to its directory, where C++ uses
-`friend`), choosing a default argument by its type (`foo(B(3), C(4))`) and `accumulate`, a virtual
-function that runs every level of a hierarchy. See the readme's Planned.
+`friend`) and `accumulate`, a virtual function that runs every level of a hierarchy. See the readme's
+Planned.
 
 ## Enums, switch and typed unions
 
@@ -1274,6 +1294,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d29]: design.md#29-the-implicit-default-constructor-stays-beside-other-constructors-decided-2026-11-17-built
 [d30]: design.md#30-a-struct-keeps-its-member-wise-construction-beside-its-constructors-decided-2026-11-18-built
 [d31]: design.md#31-a-struct-has-an-implicit--decided-2026-11-21-built
+[d32]: design.md#32-arguments-matched-by-type-decided-2026-11-22-built
 [dbgv]: debugging.md#debugvalue
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01

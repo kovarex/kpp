@@ -1049,7 +1049,11 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     unsupported(at, "a call to " + qualifiedName(f) + " with " + std::to_string(leading.size() + callArgs.size()) + " arguments, which takes " +
                       std::to_string(f->params.size()) + " (and the overload resolution let it through)",
                 std::none_of(callArgs.begin(), callArgs.end(), [&](Expr* e) { return e && holdsCheckerError(e); }));
-  if (indirect.empty() && sh.inlineTrivial && leading.empty() && !emitted && !isCheckedCall(callArgs, at))
+  // A call whose arguments the checker matched by type (design.md 32) holds a DefaultArgumentExpr for each default
+  // before the last argument given: emitted here as a default left out at the end is, so never inlined as written.
+  bool defaultsBetween = std::any_of(callArgs.begin(), callArgs.end(), [](Expr* e)
+                                     { return e && (e->kind == NodeKind::DefaultArgumentExpr || e->kind == NodeKind::PackElementExpr); });
+  if (indirect.empty() && sh.inlineTrivial && leading.empty() && !emitted && !isCheckedCall(callArgs, at) && !defaultsBetween)
   {
     if (std::optional<Value> v = inlinedIdentity(f, args, callArgs, at))
       return *v;
@@ -1098,6 +1102,42 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   // function's structs by value lowered after (lowerCArguments).
   std::vector<std::pair<const Ty*, std::string>> argList;
   size_t position = slot;
+  // A parameter's default argument, evaluated at the call site (the expression's literals belong to the callee's file; a
+  // `caller` location to this one). A template's are the ones of the callee's own instantiation, typed under its
+  // arguments (`ScrollBar(const Style* s = &Policy::defaultStyle)` with Policy = VerticalPolicy).
+  ParsedFile* callerFile = currentFile;
+  FunctionDecl* instance = nullptr;
+  auto defaultArgument = [&](size_t i, const Ty* pt) -> std::string
+  {
+    auto* pd = static_cast<ParamDecl*>(f->params[i]);
+    if (!pd->defaultValue)
+      unsupported(at, "a call to " + qualifiedName(f) + " without an argument for its parameter " +
+                        (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(i + 1)) + " (and the overload resolution let it through)");
+    if (!instance)
+      instance = args.empty() ? f : global.instanceBody(f, args, classTy);
+    Expr* value = i < instance->params.size() ? static_cast<ParamDecl*>(instance->params[i])->defaultValue : nullptr;
+    if (!value)
+      unsupported(at, "the default argument of " + qualifiedName(f) + " missing from its instantiation");
+    if (value->kind == NodeKind::CallerExpr)
+      return "ptr " + callerLocation(pt, at);
+    // Emitted from the callee's declaration: its own node (and file) for what it reports,
+    // not the caller's token read in the callee's file.
+    Restore<ParsedFile*> fileRestore(currentFile, callerFile);
+    currentFile = f->file;
+    // Names in it are the callee's (`Limits<ModifierValueType>::max()` with the class's
+    // `using ModifierValueType = double;`), not those of the caller's scope.
+    Restore<Decl*> contextRestore(initializerOf);
+    initializerOf = instance;
+    ArgsScope calleeArgs(*this, args.empty() ? currentArgs : &args); // CharacterModifier<double>'s ModifierValueType
+    // A bare static member is the callee's class instance's (`int scaled(int n = scale)` in Box<T>
+    // called as Box<int>().scaled(): Box<int>::scale), not the caller's class's, nor the
+    // template's own object (until 2026-11-10 a call from main read a global made for Box itself,
+    // holding the initializer: E's battery a2).
+    Restore<const Ty*> classRestore(currentClassTy);
+    if (classTy)
+      currentClassTy = classTy;
+    return argumentText(pt, value, value);
+  };
   for (const std::string& text : leading)
   {
     argList.push_back({position < s.paramTys.size() ? s.paramTys[position] : nullptr, text});
@@ -1118,7 +1158,26 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
       continue;
     }
     const Ty* pt = position < s.paramTys.size() ? s.paramTys[position] : nullptr;
-    std::string text = argumentText(pt, arg, at);
+    std::string text;
+    if (arg && arg->kind == NodeKind::DefaultArgumentExpr)
+      text = defaultArgument(static_cast<DefaultArgumentExpr*>(arg)->param, pt);
+    else if (arg && arg->kind == NodeKind::PackElementExpr)
+    {
+      // One element of a pack expansion the checker moved apart (design.md 32): its pattern for that element alone.
+      auto* element = static_cast<PackElementExpr*>(arg);
+      bool found = false;
+      forEachPackElement(element->pattern, at, [&](size_t i)
+      {
+        if (i != element->index)
+          return;
+        text = argumentText(pt, element->pattern, at);
+        found = true;
+      });
+      if (!found)
+        unsupported(at, "element " + std::to_string(element->index + 1) + " of a pack expansion the pack has not");
+    }
+    else
+      text = argumentText(pt, arg, at);
     if (emitted)
       emitted->push_back(text);
     argList.push_back({pt ? pt : arg->ty ? withCurrentArgs(types.unqualified(types.stripRef(arg->ty))) : nullptr, std::move(text)});
@@ -1133,49 +1192,13 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   size_t provided = position - slot; // argument values emitted (pack expansions counted element by element)
   if (provided < f->params.size())
   {
-    // Parameters the call left out take their default arguments, evaluated at the call site
-    // (the expression's literals belong to the callee's file; a `caller` location to this one).
-    // A template's are the ones of the callee's own instantiation, typed under its arguments
-    // (`ScrollBar(const Style* s = &Policy::defaultStyle)` with Policy = VerticalPolicy).
-    ParsedFile* callerFile = currentFile;
-    FunctionDecl* instance = nullptr;
+    // Parameters the call left out take their default arguments (defaultArgument).
     for (size_t i = provided; i < f->params.size(); ++i)
     {
-      auto* pd = static_cast<ParamDecl*>(f->params[i]);
-      if (pd->isPack)
+      if (static_cast<ParamDecl*>(f->params[i])->isPack)
         break;
-      if (!pd->defaultValue)
-        unsupported(at, "a call to " + qualifiedName(f) + " without an argument for its parameter " +
-                          (pd->name != UINT32_MAX ? sym(pd->name) : std::to_string(i + 1)) + " (and the overload resolution let it through)");
-      if (!instance)
-        instance = args.empty() ? f : global.instanceBody(f, args, classTy);
-      Expr* value = i < instance->params.size() ? static_cast<ParamDecl*>(instance->params[i])->defaultValue : nullptr;
-      if (!value)
-        unsupported(at, "the default argument of " + qualifiedName(f) + " missing from its instantiation");
       const Ty* pt = position < s.paramTys.size() ? s.paramTys[position] : nullptr;
-      std::string text;
-      if (value->kind == NodeKind::CallerExpr)
-        text = "ptr " + callerLocation(pt, at);
-      else
-      {
-        // Emitted from the callee's declaration: its own node (and file) for what it reports,
-        // not the caller's token read in the callee's file.
-        Restore<ParsedFile*> fileRestore(currentFile, callerFile);
-        currentFile = f->file;
-        // Names in it are the callee's (`Limits<ModifierValueType>::max()` with the class's
-        // `using ModifierValueType = double;`), not those of the caller's scope.
-        Restore<Decl*> contextRestore(initializerOf);
-        initializerOf = instance;
-        ArgsScope calleeArgs(*this, args.empty() ? currentArgs : &args); // CharacterModifier<double>'s ModifierValueType
-        // A bare static member is the callee's class instance's (`int scaled(int n = scale)` in Box<T>
-        // called as Box<int>().scaled(): Box<int>::scale), not the caller's class's, nor the
-        // template's own object (until 2026-11-10 a call from main read a global made for Box itself,
-        // holding the initializer: E's battery a2).
-        Restore<const Ty*> classRestore(currentClassTy);
-        if (classTy)
-          currentClassTy = classTy;
-        text = argumentText(pt, value, value);
-      }
+      std::string text = defaultArgument(i, pt);
       argText += std::string(argText.empty() ? "" : ", ") + text;
       ++position;
     }

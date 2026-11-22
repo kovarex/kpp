@@ -3661,6 +3661,9 @@ bases and members in order where no constructor it declares takes the arguments.
   `DeserialiserHelper<MapDeserialiser>::load` of a `Pair<OptimizedSignalID, int32>` asked
   `isConstructible<Pair<...>, MapDeserialiser&>`, which was true by OptimizedSignalID's loading constructor alone, and
   built the pair from the deserialiser with its int never loaded (found by comparing the game's IR before and after).
+  Since design.md 32 (2026-11-22) a struct's members are also taken by type, the members before the first default
+  member initializer of exactly their types: `Payload(1)` of `{int first; int second = 7;}` takes 7 for second, and the
+  Pair trap stays closed (a Deserialiser is no OptimizedSignalID).
 - Designated names (`S{.b = x}`) are always the members': no constructor takes names, and members left out take their
   default initializers.
 - Only `struct` (the keyword: a public value type, its members and bases public, no virtual function, "struct and
@@ -3713,6 +3716,48 @@ Kotlin data classes (automatic equality), Swift (`Equatable` synthesised on requ
 makes an order automatic. Specs: kpp/struct_implicit_equality, kpp/struct_implicit_equality_excluded_is_error;
 classes/defaulted_equality_defined_as_deleted_is_error's base is now a class. docs/differences-from-cpp.md, "A struct
 has an implicit ==".
+
+### 32. Arguments matched by type (decided 2026-11-22, built)
+kovarex, 2026-11-22, on the original proposal's "Type based parameter resolution" (`foo(B(3), C(4))` for
+`foo(A a = A(1), B b = B(2), C c = C(3))`): "A but without the bytype, it would just work automagically"; "it would be
+for any function call". No marker: a call no candidate takes by position is tried by type, so every call C++ accepts
+keeps its meaning.
+
+- By position first, as C++. Only where no candidate takes the arguments so, a plain function (no template parameters
+  of its own; no pack, C ellipsis or Text parameter) takes them by type: its parameters without a default the first
+  arguments in order, and each argument after them the one defaulted parameter of its exact type (cv and references
+  aside), else the one parameter it converts to. The parameters left take their defaults, evaluated at the call as
+  C++'s. A member of a class template takes them so too, its parameters typed under the class's arguments.
+- Never a guess, each an error saying why: an argument two parameters take alike ("Mode fits two of its parameters (b
+  and c), so it cannot be matched by type"), a parameter given twice, an argument no parameter takes, and two
+  candidates that both take the call by type (ambiguous).
+- Functions, member functions and constructors alike (`T(...)`, `T{...}`, a variable's, a member initializer's,
+  `new T(...)`, a brace list given to a parameter, through a function pointer too), in a constant too. What a call
+  takes `isConstructible` and a requirement answer too; an implicit conversion does not (a one-value construction by
+  type would be a new conversion). A call through a function pointer or `std::Function` stays by position: it has no
+  defaults.
+- Forwarded: a pack's elements go by type too, where the expansion only forwards, moves or names the pack
+  (`T(forward<A>(a)...)`: makeUnique, emplace_back, a union enum class's creator), each element evaluated apart
+  (PackElementExpr). The forwarding template is still an instance per argument types, as in C++; the function or
+  constructor it reaches is one.
+- A struct's member-wise construction (design.md 30) too, its members as the parameters: those before the first with a
+  default member initializer take the first arguments in order, of exactly their types (no conversion: `S(input)` of
+  `struct S { A a; int b = 0; }` with `A(Deserialiser&)` stays no construction, design.md 30's Pair trap), every other
+  member the argument of its type or else its initializer, value-initialized without one. Not with a base, a bit-field
+  or an unnamed member. kovarex's ActionData::BuildParameters is such a struct, its loadArg constructor template gone.
+- Decided once: the walk that types the call rewrites it in the parameters' order (Walker::arrangeByType, on the
+  instance's own copy as design.md 24's decisions), with a DefaultArgumentExpr for a default before an argument given;
+  codegen and the interpreter see a call by position and evaluate that default as one left out at the end. They never
+  match by type themselves (Impl::argumentsByTypeAllowed is the walk's and isConstructible's): a form the walk did not
+  rewrite stays their error, never another order.
+- The cost: none for a call that compiles today. Only a call no candidate takes by position, which was an error, and a
+  probe that answers false (isConstructible, a requirement) try the match: one pass over the arguments against the
+  defaulted parameters' types, no instantiation.
+
+Found for the game's ActionData::BuildParameters, whose constructor template took its options in any order by a fold
+over `loadArg` overloads: 1,046 calls in about 86 argument-type combinations, each an instance (study 2026-11-22, the
+one such pattern in wube/kpp-factorio kpp e66c75eaf3d). Specs: language/arguments_matched_by_type,
+language/arguments_matched_by_type_memberwise, language/arguments_matched_by_type_errors_is_error. docs/differences-from-cpp.md, "Arguments matched by type".
 
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
