@@ -1249,7 +1249,19 @@ auto GlobalScope::Impl::packNamedIn(Node* n, const Subst& s, int depth) -> Decl*
     case NodeKind::ConstType: return first({static_cast<ConstType*>(n)->inner});
     case NodeKind::ParenExpr: return first({static_cast<ParenExpr*>(n)->inner});
     case NodeKind::UnaryExpr: return first({static_cast<UnaryExpr*>(n)->operand});
-    case NodeKind::MemberExpr: return first({static_cast<MemberExpr*>(n)->base});
+    case NodeKind::MemberExpr:
+    {
+      // (`row.get<Is>()...`: the member's template arguments name the pack too; until 2026-11-22 no pack, the expansion
+      // "cannot be evaluated yet")
+      auto* m = static_cast<MemberExpr*>(n);
+      if (Decl* d = first({m->base}))
+        return d;
+      for (const NamePart& part : m->member.parts)
+        for (Node* a : part.templateArgs)
+          if (Decl* d = packNamedIn(a, s, depth + 1))
+            return d;
+      return nullptr;
+    }
     case NodeKind::BinaryExpr: return first({static_cast<BinaryExpr*>(n)->lhs, static_cast<BinaryExpr*>(n)->rhs});
     case NodeKind::ConditionalExpr:
       return first({static_cast<ConditionalExpr*>(n)->cond, static_cast<ConditionalExpr*>(n)->then, static_cast<ConditionalExpr*>(n)->else_});

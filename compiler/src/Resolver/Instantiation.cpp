@@ -3263,12 +3263,54 @@ auto GlobalScope::Impl::packsNamedIn(Node* n, const Subst& s, std::vector<Decl*>
       packsNamedIn(static_cast<SizeofExpr*>(n)->type, s, out, depth + 1);
       packsNamedIn(static_cast<SizeofExpr*>(n)->operand, s, out, depth + 1);
       break;
-    case NodeKind::UnaryExpr: packsNamedIn(static_cast<UnaryExpr*>(n)->operand, s, out, depth + 1); break;
+    case NodeKind::UnaryExpr:
+    {
+      auto* u = static_cast<UnaryExpr*>(n);
+      if (u->isKeyword || !u->postfix || P(u->op) != P::Ellipsis) // (an inner expansion expands its own packs, whole)
+        packsNamedIn(u->operand, s, out, depth + 1);
+      break;
+    }
     case NodeKind::BinaryExpr:
       packsNamedIn(static_cast<BinaryExpr*>(n)->lhs, s, out, depth + 1);
       packsNamedIn(static_cast<BinaryExpr*>(n)->rhs, s, out, depth + 1);
       break;
     case NodeKind::ParenExpr: packsNamedIn(static_cast<ParenExpr*>(n)->inner, s, out, depth + 1); break;
+    // (the expressions the code generator's typePacksIn looks into, so that a pattern the walker types per element is one
+    // it emits per element: `t.get<Is>()`, `values[Is]`, `(T)x`, `Ts(x)`, `c ? Is : 0`)
+    case NodeKind::MemberExpr: // (its template arguments, not the member's own name, a member of the object's class)
+      packsNamedIn(static_cast<MemberExpr*>(n)->base, s, out, depth + 1);
+      for (const NamePart& part : static_cast<MemberExpr*>(n)->member.parts)
+        for (Node* a : part.templateArgs)
+          if (!a || a->kind != NodeKind::PackType)
+            packsNamedIn(a, s, out, depth + 1);
+      break;
+    case NodeKind::IndexExpr:
+      packsNamedIn(static_cast<IndexExpr*>(n)->base, s, out, depth + 1);
+      for (Expr* a : static_cast<IndexExpr*>(n)->args)
+        packsNamedIn(a, s, out, depth + 1);
+      break;
+    case NodeKind::CastExpr:
+      packsNamedIn(static_cast<CastExpr*>(n)->type, s, out, depth + 1);
+      packsNamedIn(static_cast<CastExpr*>(n)->operand, s, out, depth + 1);
+      break;
+    case NodeKind::NamedCastExpr:
+      packsNamedIn(static_cast<NamedCastExpr*>(n)->type, s, out, depth + 1);
+      packsNamedIn(static_cast<NamedCastExpr*>(n)->operand, s, out, depth + 1);
+      break;
+    case NodeKind::ConditionalExpr:
+      packsNamedIn(static_cast<ConditionalExpr*>(n)->cond, s, out, depth + 1);
+      packsNamedIn(static_cast<ConditionalExpr*>(n)->then, s, out, depth + 1);
+      packsNamedIn(static_cast<ConditionalExpr*>(n)->else_, s, out, depth + 1);
+      break;
+    case NodeKind::FunctionalCastExpr:
+      packsNamedIn(static_cast<FunctionalCastExpr*>(n)->type, s, out, depth + 1);
+      for (Expr* a : static_cast<FunctionalCastExpr*>(n)->args)
+        packsNamedIn(a, s, out, depth + 1);
+      break;
+    case NodeKind::BraceInitExpr:
+      for (Expr* a : static_cast<BraceInitExpr*>(n)->args)
+        packsNamedIn(a, s, out, depth + 1);
+      break;
     default: break;
   }
 }

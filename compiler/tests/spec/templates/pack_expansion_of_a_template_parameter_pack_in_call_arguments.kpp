@@ -1,0 +1,101 @@
+// spec: a pack expansion among a call's arguments whose pattern names a template parameter pack and no function parameter pack (`identity(Is)...`, `row.get<Is>()...` of `int... Is`, the index-sequence idiom; `int(sizeof(Ts))...`) is one argument per element, the callee deduced from all of them, at run time and at compile time; clang prints the same
+// found by thread UE (2026-11-22): the pattern was typed once, `sum(identity(Is)...)` called sum<int> for Is = 1, 2, 3, which the code generator gave the three, silently: sizeof...(Types) was 1, the sum 1 (Unreal's TransformTuple, so UE::Zip's iterators, a tuple of one element); `sum(Is...)` was "codegen does not support the type 1"
+
+template <typename... Types>
+constexpr int sum(Types... args)
+{
+  return (0 + ... + args) * 100 + sizeof...(Types);
+}
+
+constexpr int identity(int i)
+{
+  return i;
+}
+
+struct Row
+{
+  template <int I>
+  constexpr int get() const
+  {
+    return I + 10;
+  }
+};
+
+template <int... Is>
+constexpr int values()
+{
+  return sum(Is...);
+}
+
+template <int... Is>
+constexpr int calls()
+{
+  return sum(identity(Is)...);
+}
+
+template <int... Is>
+constexpr int doubled()
+{
+  return sum((Is * 2)...);
+}
+
+template <int... Is>
+constexpr int members(const Row& row)
+{
+  return sum(row.get<Is>()...);
+}
+
+template <int... Is>
+constexpr int conditions()
+{
+  return sum((Is > 1 ? Is : 0)...);
+}
+
+template <typename... Ts>
+constexpr int sizes()
+{
+  return sum(int(sizeof(Ts))...);
+}
+
+template <int... Is>
+int elements()
+{
+  static const int table[] = {5, 6, 7, 8};
+  return sum(table[Is]...);
+}
+
+template <int... Is>
+constexpr int none()
+{
+  return sum(identity(Is)...);
+}
+
+template <int... Is>
+struct Seq
+{
+};
+
+template <typename S>
+struct Indexed;
+
+template <int... Is>
+struct Indexed<Seq<Is...>>
+{
+  static constexpr int of(const Row& row)
+  {
+    return sum(row.get<Is>()...);
+  }
+};
+
+// (and at compile time)
+static_assert(values<1, 2, 3>() == 603 && calls<1, 2, 3>() == 603 && doubled<1, 2, 3>() == 1203);
+static_assert(members<1, 2>(Row()) == 2302 && conditions<1, 2, 3>() == 503 && sizes<char, short, int>() == 703);
+static_assert(none<>() == 0 && Indexed<Seq<0, 1, 2>>::of(Row()) == 3303);
+
+int main()
+{
+  std::println(values<1, 2, 3>(), " ", calls<1, 2, 3>(), " ", doubled<1, 2, 3>(), " ", members<1, 2>(Row()), " ",
+               conditions<1, 2, 3>(), " ", sizes<char, short, int>(), " ", elements<0, 3>(), " ", none<>(), " ",
+               Indexed<Seq<0, 1, 2>>::of(Row()));
+  return 0;
+}

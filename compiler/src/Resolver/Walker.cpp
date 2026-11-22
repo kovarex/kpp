@@ -10323,6 +10323,20 @@ auto GlobalScope::Impl::Walker::typeOfExpansion(UnaryExpr* u) -> const Ty*
   const Subst* whole = expansionWhole ? expansionWhole : activeSubst;
   Decl* pd = whole ? packParamIn(u->operand) : nullptr;
   const Ty* pt = pd ? impl.declaredTypeOf(pd, whole, 0) : nullptr;
+  // A pattern of no function parameter pack, of a template parameter pack: `get(Is)...` and `t.get<Is>()...` of `int... Is`
+  // (the index-sequence idiom), `sizeof(Ts)...`, as the code generator expands it (typePacksIn). Until 2026-11-22 it was
+  // typed once, one argument: `count(get(Is)...)` called count<int> for Is = 1, 2, 3, and the code generator gave it the
+  // three, silently 1 for sizeof...(Types) (Unreal's TransformTuple, so UE::Zip's iterators, had a type of one element).
+  std::vector<Decl*> templatePacks;
+  if (!pd && whole)
+  {
+    impl.packsNamedIn(u->operand, *whole, templatePacks);
+    if (!templatePacks.empty())
+    {
+      pd = templatePacks[0];
+      pt = whole->find(pd);
+    }
+  }
   if (!pt || pt->kind != TyKind::Pack)
     return nullptr;
   const Subst* caller = activeSubst;
@@ -10346,6 +10360,10 @@ auto GlobalScope::Impl::Walker::typeOfExpansion(UnaryExpr* u) -> const Ty*
       if (std::find(elementPacks->begin(), elementPacks->end(), p) != elementPacks->end())
         return nullptr;
   }
+  if (elementPacks && !elementPacks->empty() && !templatePacks.empty() && typedForElement(u->operand))
+    for (Decl* p : templatePacks)
+      if (std::find(elementPacks->begin(), elementPacks->end(), p) != elementPacks->end())
+        return nullptr;
   ElementPacksAside aside(*this, inElementPattern && !typedForElement(u->operand));
   size_t n = pt->args.size();
   if (n == 0)
