@@ -258,6 +258,8 @@
     // `#define alloca(size) __builtin_alloca (size)`): the builtin's name, which the C import declares
     // on every target.
     {"alloca", "__builtin_alloca"},
+    // clang's and MSVC's builtin of std::is_constant_evaluated (Unreal's UE_IF_CONSTEVAL), the library's.
+    {"__builtin_is_constant_evaluated", "std::isConstantEvaluated"},
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
     {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"}, {"NULL", "nullptr"},
@@ -702,5 +704,6 @@
     {"memory_order", "std::memory_order"}, {"memory_order_relaxed", "std::memory_order_relaxed"}, {"memory_order_consume", "std::memory_order_consume"},
     {"memory_order_acquire", "std::memory_order_acquire"}, {"memory_order_release", "std::memory_order_release"},
     {"memory_order_acq_rel", "std::memory_order_acq_rel"}, {"memory_order_seq_cst", "std::memory_order_seq_cst"},
-    {"atomic_thread_fence", "std::atomicThreadFence"}, {"atomic_int", "std::Atomic<i32>"}, {"atomic_uint", "std::Atomic<u32>"}};
+    {"atomic_thread_fence", "std::atomicThreadFence"}, {"atomic_int", "std::Atomic<i32>"}, {"atomic_uint", "std::Atomic<u32>"},
+    {"is_constant_evaluated", "std::isConstantEvaluated"}};
 

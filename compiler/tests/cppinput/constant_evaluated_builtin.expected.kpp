@@ -1,0 +1,19 @@
+// cppinput: clang's and MSVC's `__builtin_is_constant_evaluated()` and `std::isConstantEvaluated()` convert to the
+// library's std::isConstantEvaluated() (Unreal's UE_IF_CONSTEVAL), where the builtin was undeclared
+
+constexpr i32 Pick()
+{
+  if (std::isConstantEvaluated())
+    return 1;
+  return 2;
+}
+
+constexpr i32 PickStd() { return std::isConstantEvaluated() ? 10 : 20; }
+
+i32 main()
+{
+  constexpr i32 AtCompileTime = Pick() + PickStd();
+  i32 volatile Zero = 0;
+  i32 AtRunTime = Pick() + PickStd() + Zero;
+  return AtCompileTime == 11 && AtRunTime == 22 ? 0 : 1;
+}
