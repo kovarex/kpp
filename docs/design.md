@@ -3656,7 +3656,12 @@ bases and members in order where no constructor it declares takes the arguments.
   beside two members runs the constructor); an ambiguous choice among them stays the error it was. One with the members'
   own signature therefore replaces the member-wise construction, as a union enum class's member replaces a creator (8.5)
   and a class's own `T()` the implicit default constructor (29).
-- A deleted constructor that takes them turns it off for those arguments (`Pos(int, int) = delete;`).
+- A deleted constructor that takes them turns it off for those arguments (`Pos(int, int) = delete;`), unless the
+  members take them better, ranked as the constructor of the members' own types the construction stands for: so do
+  several declared ones tied for them, where C++ would refuse the call (2026-11-22, kovarex: the game's
+  `SelectSlotParameters<T>(id, index)` with `(T, i8) = delete` and `(T, u8) = delete`, both taking (T, u16) by
+  narrowing, was ambiguous once its hand-written `(T, ItemStackIndex)` went). Spec
+  classes/struct_memberwise_construction_beside_deleted_constructors.
 - Positionally, a value for every base and member: beside constructors, fewer values are no member-wise
   construction (an aggregate's members left out take their default initializers; a struct's with constructors are
   left out only by designated names). Without that, a lone value became a conversion: the game's

@@ -285,7 +285,16 @@ auto GlobalScope::Impl::chooseConstructor(const Ty* classType, const std::vector
       all.pairs.push_back(pair);
   }
   bool ambiguous = false;
-  FunctionDecl* chosen = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, all.empty() ? nullptr : &all, nullptr, ambiguous, nullptr, nullConstants);
+  std::vector<FunctionDecl*> tied;
+  FunctionDecl* chosen = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, all.empty() ? nullptr : &all, nullptr, ambiguous, nullptr, nullConstants, &tied);
+  // A struct's member-wise construction (design.md 30) that takes the arguments better than the deleted or tied
+  // constructors chosen: none of them (SelectSlotParameters<T>'s deleted (T, i8) and (T, u8), tied for (T, u16) by narrowing, made its
+  // member-wise (T, u16) unreachable, which the C++ constructor it replaced was not; kovarex, 2026-11-22).
+  if ((chosen || ambiguous) && memberwiseBesideConstructors(def) && memberwiseOutranks(p, def, argTypes, chosen, tied, all))
+  {
+    chosen = nullptr;
+    ambiguous = false;
+  }
   if (ambiguousOut)
     *ambiguousOut = ambiguous;
   if (chosen && inheritedFrom)
@@ -3268,6 +3277,60 @@ auto GlobalScope::Impl::memberwiseByType(const Ty* t, ClassDecl* def, const std:
       return std::nullopt;
   auto named = [&](size_t k) { return std::string(symbols.name(members[k]->name.last().symbol)); };
   return matchByType(params, required, named, argTypes, why, "member");
+}
+
+auto GlobalScope::Impl::memberwiseOutranks(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& argTypes, FunctionDecl* chosen,
+                                           const std::vector<FunctionDecl*>& tied, const Subst& s) -> bool
+{
+  if (!def || argTypes.empty() || (!chosen && tied.empty()) || !memberwiseBesideConstructors(def))
+    return false;
+  // Only where C++ would refuse the construction: a deleted constructor chosen, or several tied. One it declares and
+  // chooses keeps C++'s answer, though it converts where the members would not (`W(i64, i64)` for two ints).
+  std::vector<FunctionDecl*> rivals = tied;
+  if (rivals.empty())
+  {
+    if (!chosen || !(chosen->flags & DF_Delete))
+      return false;
+    rivals.push_back(chosen);
+  }
+  // Each rival's ranks first, cheaply: one that takes every argument exactly is never outranked (a copy, most calls).
+  std::vector<std::vector<int>> rivalRanks;
+  bool someInexact = false;
+  for (FunctionDecl* f : rivals)
+  {
+    if (!f || !f->templateParams.empty() || f->params.size() < argTypes.size())
+      return false; // (a template's or a pack's parameters: not compared, the constructor stays the choice)
+    std::vector<int>& ranks = rivalRanks.emplace_back();
+    for (size_t i = 0; i < argTypes.size(); ++i)
+    {
+      const Ty* pt = declaredTypeOf(f->params[i], s.empty() ? nullptr : &s, 0);
+      if (!pt || !pt->isKnown() || types.isDependent(pt) || pt->kind == TyKind::Pack)
+        return false;
+      ranks.push_back(conversionRank(argTypes[i], pt));
+      someInexact = someInexact || ranks.back() != 0;
+    }
+  }
+  if (!someInexact || !memberwiseTakes(t, def, argTypes))
+    return false;
+  std::vector<const Ty*> parts;
+  if (!directBases(t, def, parts) || !fieldTypes(t, def, parts) || parts.size() != argTypes.size())
+    return false;
+  std::vector<int> own;
+  for (size_t i = 0; i < argTypes.size(); ++i)
+    own.push_back(conversionRank(argTypes[i], parts[i]));
+  for (const std::vector<int>& ranks : rivalRanks)
+  {
+    bool better = false;
+    for (size_t i = 0; i < own.size(); ++i)
+    {
+      if (own[i] > ranks[i])
+        return false;
+      better = better || own[i] < ranks[i];
+    }
+    if (!better)
+      return false;
+  }
+  return true;
 }
 
 auto GlobalScope::Impl::chooseByType(const std::vector<FunctionDecl*>& candidates, const std::vector<const Ty*>& argTypes, const Subst* classSubst,

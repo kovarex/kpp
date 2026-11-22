@@ -1,0 +1,61 @@
+// spec: a struct's member-wise construction (design.md 30) is chosen over the deleted constructors it declares, or over several tied, that take the arguments worse than its members do, as the constructor of its members' own types it stands for would be in C++: `Slot<Chunk>(id, index)` with `Slot(T, i8) = delete` and `Slot(T, u8) = delete`, which both took (Chunk, u16) by narrowing, was "ambiguous: more than one constructor takes it" and no creator of a union enum class built it (kovarex, 2026-11-22). A deleted one that takes the arguments as well as the members do still turns it off (`Sealed(int, int)`), and one it declares and chooses keeps C++'s answer, though it converts where the members would not (`Wide(i64, i64)` for two ints)
+// factorio: ActionData::SelectSlotParameters<AsteroidChunkID>(id, index) once its hand-written (T, ItemStackIndex) constructor went, the creator InputAction::SelectAsteroidChunkSlot(id, index)
+class Reader
+{
+public:
+  int value = 2;
+};
+enum class Chunk : u16 { A, B, C };
+template<class T>
+struct Slot
+{
+  Slot(Reader& input) : id(T(input.value)), index(1) {}
+  Slot(T id, i8) = delete;
+  Slot(T id, u8) = delete;
+  T id;
+  u16 index;
+};
+struct Sealed
+{
+  Sealed(const char* text) : x(text[0]) {}
+  Sealed(int, int) = delete;
+  int x;
+  int y;
+};
+struct Wide
+{
+  Wide(i64 a, i64 b) : a(i32(a) + 100), b(i32(b)) {}
+  i32 a;
+  i32 b;
+};
+struct Narrow
+{
+  Narrow(i64 a, i16 b) = delete;
+  Narrow(i16 a, i64 b) = delete;
+  i32 a;
+  i32 b;
+};
+union enum class Action
+{
+  { {Nothing, void}, {SelectChunk, Slot<Chunk>} }
+};
+static_assert(std::isConstructible<Slot<Chunk>, Chunk, u16>);
+static_assert(!std::isConstructible<Slot<Chunk>, Chunk, u8>);
+static_assert(!std::isConstructible<Sealed, int, int>);
+static_assert(std::isConstructible<Narrow, i32, i32>);
+static_assert(!std::isConstructible<Narrow, i64, i16>);
+int main()
+{
+  Chunk id = Chunk::C;
+  u16 index = 5;
+  Slot<Chunk> direct(id, index);
+  Slot<Chunk> braced{id, u16(6)};
+  Action action = Action::SelectChunk(id, u16(7));
+  Action wrapped = Action::SelectChunk(Slot<Chunk>(Chunk::B, index));
+  Reader reader;
+  Slot<Chunk> loaded(reader);
+  Narrow narrow(1, 2);
+  std::println(i32(direct.id), " ", direct.index, " | ", braced.index, " | ", action[Action::Tag::SelectChunk].index, " | ",
+               i32(wrapped[Action::Tag::SelectChunk].id), " | ", i32(loaded.id), " ", loaded.index, " | ", Wide(1, 2).a, " | ", narrow.a, " ", narrow.b);
+  return 0;
+}

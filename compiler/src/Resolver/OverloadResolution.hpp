@@ -450,6 +450,12 @@
   // first with a default member initializer required, in order; the others take an argument of their type or keep
   // their initializer (value-initialized without one). Not with a base, a bit-field or an unnamed member.
   std::optional<std::vector<int32_t>> memberwiseByType(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& argTypes, std::string* why);
+  // Whether a struct's member-wise construction by position (design.md 30), ranked as the constructor of its members'
+  // own types it stands for, takes argTypes better than chosen and each constructor tied with it (a declared one wins a
+  // tie: one of the members' signature replaces it, a deleted one turns it off), where C++ would refuse the
+  // construction: chosen deleted, or the choice ambiguous. s: the class's arguments.
+  bool memberwiseOutranks(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& argTypes, FunctionDecl* chosen, const std::vector<FunctionDecl*>& tied,
+                          const Subst& s);
   // argumentsByType's and memberwiseByType's match: params[0, required) take the first arguments in order, each other
   // argument the one of the rest it fits (exactly, else by a conversion). part: "parameter" or "member", for why.
   std::optional<std::vector<int32_t>> matchByType(const std::vector<const Ty*>& params, size_t required, const std::function<std::string(size_t)>& named,

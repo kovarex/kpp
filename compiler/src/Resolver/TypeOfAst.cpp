@@ -777,28 +777,38 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
             return true;
           return constructibleFromSelf(t, args[0]->kind != TyKind::LRef && !types.stripRef(args[0])->isConst, TraitForm::Plain);
         }
-      if (ctors.empty())
+      // (an aggregate; a struct whose constructors are all deleted keeps its member-wise construction, below)
+      bool declaresDeleted = false;
+      for (Decl* m : membersRead(static_cast<ClassDecl*>(def)))
+        declaresDeleted = declaresDeleted || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && (m->flags & DF_Delete));
+      if (ctors.empty() && !(declaresDeleted && memberwiseBesideConstructors(static_cast<ClassDecl*>(def))))
         return destructibleOutside(static_cast<ClassDecl*>(def)) &&
                (aggregateTakes(t, static_cast<ClassDecl*>(def), args) || memberwiseByType(t, static_cast<ClassDecl*>(def), args, nullptr)); // (design.md 32)
       bool ambiguous = false;
       FunctionDecl* taken = nullptr;
+      std::vector<FunctionDecl*> tied;
       {
         AllowArgumentsByType byType(true); // (what a construction takes by type too, design.md 32)
-        taken = chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous);
+        taken = chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguous, nullptr, nullptr, &tied);
       }
-      if (taken)
-        return true;
       // A struct's member-wise construction beside its constructors (design.md 30), where none of them takes the
-      // arguments: none of the declared ones, nor a deleted one (`Pos(int, int) = delete;` turns it off).
-      if (ambiguous || !memberwiseBesideConstructors(static_cast<ClassDecl*>(def)))
+      // arguments as well as it does (chooseConstructor's rule): none of the declared ones, nor a deleted one
+      // (`Pos(int, int) = delete;` turns it off).
+      bool memberwise = memberwiseBesideConstructors(static_cast<ClassDecl*>(def));
+      if ((taken || ambiguous) && !(memberwise && memberwiseOutranks(t, static_cast<ClassDecl*>(def), args, taken, tied, s)))
+        return taken != nullptr;
+      if (!memberwise)
         return false;
       std::vector<FunctionDecl*> deleted;
       for (Decl* m : membersRead(static_cast<ClassDecl*>(def)))
         if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && (m->flags & DF_Delete))
           deleted.push_back(static_cast<FunctionDecl*>(m));
       bool deletedAmbiguous = false;
-      if (!deleted.empty() && (chooseAmong(deleted, args, s.pairs.empty() ? nullptr : &s, nullptr, deletedAmbiguous) || deletedAmbiguous))
-        return false;
+      std::vector<FunctionDecl*> deletedTied;
+      if (!deleted.empty())
+        if (FunctionDecl* d = chooseAmong(deleted, args, s.pairs.empty() ? nullptr : &s, nullptr, deletedAmbiguous, nullptr, nullptr, &deletedTied);
+            (d || deletedAmbiguous) && !memberwiseOutranks(t, static_cast<ClassDecl*>(def), args, d, deletedTied, s))
+          return false;
       return destructibleOutside(static_cast<ClassDecl*>(def)) &&
              (memberwiseTakes(t, static_cast<ClassDecl*>(def), args) || memberwiseByType(t, static_cast<ClassDecl*>(def), args, nullptr)); // (design.md 32)
     }
