@@ -1060,6 +1060,7 @@ auto GlobalScope::Impl::textPieceOf(const Expr* e, const Ty* given) -> TextPiece
   };
   std::string name = types.toString(t, &symbols);
   auto isNarrowChar = [&](const Ty* c) { return c && types.unqualified(c)->kind == TyKind::Char && types.unqualified(c)->bits == 8; };
+  auto isWideChar = [&](const Ty* c) { return c && types.unqualified(c)->kind == TyKind::Char && types.unqualified(c)->bits == types.wcharBits(); };
   // A string literal or an array of chars: C's text, to its first zero (as C++'s `out << text`).
   if ((e && stringLiteralArray(e, given, types)) || (t->kind == TyKind::Array && isNarrowChar(t->inner)))
     return thunk("appendCTextPiece");
@@ -1071,6 +1072,13 @@ auto GlobalScope::Impl::textPieceOf(const Expr* e, const Ty* given) -> TextPiece
     {
       out.type = t;
       return thunk("appendCPointerPiece");
+    }
+    // A wide char pointer (wchar_t's width: Unreal's TCHAR text, `*Name` of an FString): wide C text, to its first
+    // zero, written as UTF-8, as a char pointer's (2026-11-22).
+    if (t->kind == TyKind::Pointer && isWideChar(t->inner))
+    {
+      out.type = t;
+      return thunk("appendWideCPointerPiece");
     }
     out.error = "a pointer (" + name + ") is no piece of a Text: write address(p) for its address (design.md 14)";
     return out;

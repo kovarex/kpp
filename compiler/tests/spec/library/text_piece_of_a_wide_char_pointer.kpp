@@ -1,0 +1,11 @@
+// spec: a wchar_t pointer in a text (`std::println("name: ", name)` with `const wchar_t* name`, Unreal's TCHAR text) is wide C text, to its first zero, written as UTF-8, as a char pointer is (design.md 14; UTF-16 on Windows, UTF-32 elsewhere)
+// found by thread UE (2026-11-22): it was "a pointer (const wchar_t*) is no piece of a Text: write address(p) for its address" (18 errors in converted Core, its printf-style messages of TCHAR strings)
+int main()
+{
+  const wchar_t* name = L"Grüße";
+  wchar_t buffer[4] = {L'a', L'b', 0, L'c'};
+  wchar_t* cut = buffer;
+  std::String text = std::toString("[", name, "]");
+  std::println("name: ", name, " ", cut, " ", text.size());
+  return 0;
+}

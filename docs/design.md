@@ -2623,6 +2623,9 @@ glad stays unscoped, its build.kpp says why; CommonUtil, Agui and Util not this 
     2026-11-16: "the most basic thing to expect"; until then an error asking for `StringView(p)`). A
     null one stops at a release_assert (Text.kpp's appendCPointerPiece), in every build. Specs
     language/text_char_pointer_piece, language/text_null_char_pointer_piece_stops;
+  - a wchar_t pointer (`const wchar_t*`, Unreal's TCHAR text): wide C text, to its first zero, written as UTF-8
+    (UTF-16 on Windows, UTF-32 elsewhere), as a char pointer's (2026-11-22, thread UE; appendWideCPointerPiece). Spec
+    library/text_piece_of_a_wide_char_pointer;
   - any other pointer is no piece (the error points to `address(p)`). Its error is the call's only
     one: codegen adds none for the arguments it left unpacked (spec
     language/text_constructor_pointer_piece_is_error).
