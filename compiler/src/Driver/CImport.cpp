@@ -381,7 +381,7 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
   std::map<std::string, std::string> integerTypes; // constants with a plain integer body, by name
   std::map<std::string, std::string> floatTypes;   // constants with a plain floating literal body (__FLT_MAX__), by name
   std::vector<std::pair<std::string, std::string>> laterAliases; // (name, the macro it names) not typed when read
-  std::set<std::string> constants; // every macro made a constant of a type it shows (`((DWORD )0xC0000005L)`), by name
+  std::set<std::string> constants; // every macro made a constant, of a type it shows (`((DWORD )0xC0000005L)`) or not, by name
   std::set<std::string> valueAliases; // constants that alias a declared function or enumerator (values)
   auto identifier = [](const std::string& s)
   {
@@ -496,8 +496,10 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
         ok = false;
       if ((isalpha((unsigned char)c) || c == '_') && !prevIdent && quotes % 2 == 0)
       {
-        // An identifier: it must be a type word, a typedef of the headers or another constant macro for
-        // the body to be a constant.
+        // An identifier: it must be a type word, a typedef of the headers, another constant macro or a
+        // declared enumerator for the body to be a constant (combaseapi.h's `#define CLSCTX_ALL
+        // (CLSCTX_INPROC_SERVER| ... | CLSCTX_REMOTE_SERVER)`, of CLSCTX's enumerators: until 2026-11-22 none,
+        // "'CLSCTX_ALL' is not declared" for Unreal's CoCreateInstance of its network list manager).
         size_t j = i;
         while (j < body.size() && (isalnum((unsigned char)body[j]) || body[j] == '_'))
           ++j;
@@ -506,7 +508,7 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
         bool prefix = j < body.size() && body[j] == '"' && word == "L";
         if (prefix)
           stringPrefix = word;
-        if (!prefix && !typeWords.count(word) && !typedefs.count(word) && !candidates.count(word))
+        if (!prefix && !typeWords.count(word) && !typedefs.count(word) && !candidates.count(word) && !values.count(word))
           namesKnown = false;
       }
       if (c == '(')
@@ -614,8 +616,9 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
     }
     if (type.find("int") != std::string::npos || type.find("long") != std::string::npos)
       integerTypes[name] = type;
-    if (type != "auto")
-      constants.insert(name);
+    // (one of no type it shows too, so that an alias of it is one: winbase.h's `#define FILE_MAP_ALL_ACCESS
+    // SECTION_ALL_ACCESS`, which ORs other constants' names, until 2026-11-22 none, "'FILE_MAP_ALL_ACCESS' is not declared")
+    constants.insert(name);
     out += "const " + type + " " + name + " = " + body + ";\n";
   }
   // The aliases of macros typed after them, each once the macro it names is (an alias of such an
@@ -1208,7 +1211,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   }
   uint64_t hash = 1469598103934665603ull;
   // the version of what the cache holds (macroConstants' rules, vaListForSysV: 12 for AAPCS64's va_list), then what it is made from
-  for (unsigned char c : "kpp import 13\n" + wrapper + includeArgs + "\n" + toolchain)
+  for (unsigned char c : "kpp import 14\n" + wrapper + includeArgs + "\n" + toolchain)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
   std::filesystem::create_directories(cacheDir, ec);

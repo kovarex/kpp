@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2451 pass, 2 pending, 0 failing, 0 fixed** (2453 snippets, 219.7 s).
+**2452 pass, 2 pending, 0 failing, 0 fixed** (2454 snippets, 219.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -2395,6 +2395,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `interop/c_macro_cast_to_imported_typedef.kpp` | an imported C macro that casts a number to a typedef its headers declare (`(my_ulong)0x7f000001`) is that constant, of that type, as the macros casting to a builtin or Windows type are (interop/c_macro_casts) (`0 2130706433 65535 2`) | pass | UDPSocket's INADDR_ANY, MinGW-w64's `(u_long)0x00000000` in the windows-gnu import (the Windows SDK's `(ULONG)0x00000000` imports): it was not declared |  |
 | `interop/c_macro_casts.kpp` | an imported header's constant macro that casts through typedef names (windows.h's `INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)`) is the constant the casts make: all ones, as Win32 returns it | pass |  |  |
 | `interop/c_macro_constant_with_sizeof.kpp` | an imported C macro whose body adds a sizeof of a typedef to another constant (`AA_MSGRESULT + sizeof(my_result)`) is that constant, `sizeof(` no call (`0 4 12`) | pass |  |  |
+| `interop/c_macro_constants_of_names_alone.kpp` | an imported C macro made of other names alone, enumerators (`(ZZMODE_READ| ZZMODE_WRITE | ZZMODE_EXECUTE)`) or other macros' (`(ZZ_RIGHTS_REQUIRED|ZZ_QUERY| ZZ_MAP_WRITE)`), is a constant of their value, and so is a macro naming it (`AA_MAP_ALL_ACCESS`), as clang gives them (`19 983043 983043`) | pass |  |  |
 | `interop/c_macro_expression_with_e_in_a_name.kpp` | an imported C macro whose body is an integer expression naming another macro is an integer constant, whatever letters that name has: `(BASE_VALUE + 13)` divides as an int; one with a floating literal (`* 0.5`, `2e3`) is floating (`5006 9999 5000 2001`) | pass | MinGW-w64's winsock error codes (`#define WSAEWOULDBLOCK (WSABASEERR + 35)`), imported as doubles in the windows-gnu build of the game |  |
 | `interop/c_macro_wide_string_constant.kpp` | an imported C macro whose body is a wide string literal (`L"NT Kernel Logger"`) is a constant of its wide characters, as one of a narrow literal is of its chars (`16 NT Kernel Logger true`) | pass |  |  |
 | `interop/c_math_classification_macros.kpp` | math.h's classification macros are usable through the C import as C uses them: fpclassify, signbit, isnan, isinf, and the FP_* constants the UCRT defines (FP_NORMAL is (-1), FP_SUBNORMAL (-2)) | pass | trio (converted as C): trionan.c's c99_fpclassify_and_signbit, which its `#if defined(PREDEF_STANDARD_C99) && defined(fpclassify)` selects in the C build, `switch (fpclassify(number)) { case FP_NAN: ... case FP_SUBNORMAL: ... }` |  |

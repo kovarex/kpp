@@ -1,0 +1,9 @@
+// spec: an imported C macro made of other names alone, enumerators (`(ZZMODE_READ| ZZMODE_WRITE | ZZMODE_EXECUTE)`) or other macros' (`(ZZ_RIGHTS_REQUIRED|ZZ_QUERY| ZZ_MAP_WRITE)`), is a constant of their value, and so is a macro naming it (`AA_MAP_ALL_ACCESS`), as clang gives them (`19 983043 983043`)
+// found by thread UE (2026-11-22): one of enumerators was no constant, and an alias of one of other macros' names none: "'CLSCTX_ALL' is not declared" and "'FILE_MAP_ALL_ACCESS' is not declared" (Unreal's CoCreateInstance of its network list manager, its shared memory's MapViewOfFile)
+extern "C" import "c_macro_constants_of_names_alone.h";
+
+int main()
+{
+  std::println(AA_MODE_ALL, " ", AA_MAP_ALL_ACCESS, " ", MM_SECTION_ALL_ACCESS);
+  return 0;
+}
