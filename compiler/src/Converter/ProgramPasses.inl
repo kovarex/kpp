@@ -95,6 +95,22 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       s += spell(t);
     return s;
   };
+  // The same, each parameter of fn named by its position (#0, #1), not a member of that name (`o.#0`): two functions'
+  // operands compared whatever they name their parameters (`ColorB.R` of == and `Other.R` of != are `#0.R`)
+  auto joinedOf = [&](uint32_t from, uint32_t to, FunctionDecl* fn)
+  {
+    std::string s;
+    for (uint32_t t = from; t < to; ++t)
+    {
+      size_t k = fn ? fn->params.size() : 0;
+      if (toks[t].getKind() == TokenKind::Identifier && !(t > from && (toks[t - 1].is(P::Dot) || toks[t - 1].is(P::Arrow) || toks[t - 1].is(P::ColonColon))))
+        for (k = 0; k < fn->params.size(); ++k)
+          if (static_cast<ParamDecl*>(fn->params[k])->name != UINT32_MAX && toks[t].id == static_cast<ParamDecl*>(fn->params[k])->name)
+            break;
+      s += fn && k < fn->params.size() ? "#" + std::to_string(k) : std::string(spell(t));
+    }
+    return s;
+  };
   // An expression of the return statement, read as a tree of the operators that matter here.
   struct Node { char kind; uint32_t from, to, op; std::vector<Node> kids; }; // kind: '|' or, '&' and, '!' not, '=' ==, 'n' !=, 'a' atom
   std::function<bool(uint32_t, uint32_t, Node&)> parse = [&](uint32_t from, uint32_t to, Node& out) -> bool
@@ -178,14 +194,15 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     return true;
   };
   // The terms of an or-tree of != (kind '|') or an and-tree of == (kind '&'), each an unordered operand pair.
-  std::function<bool(const Node&, char, char, std::multiset<std::pair<std::string, std::string>>&)> terms =
-    [&](const Node& n, char tree, char comparison, std::multiset<std::pair<std::string, std::string>>& out) -> bool
+  // (fn: the function whose parameters the operands name, by position: joinedOf)
+  std::function<bool(const Node&, char, char, std::multiset<std::pair<std::string, std::string>>&, FunctionDecl*)> terms =
+    [&](const Node& n, char tree, char comparison, std::multiset<std::pair<std::string, std::string>>& out, FunctionDecl* fn) -> bool
   {
     if (n.kind == tree)
-      return terms(n.kids[0], tree, comparison, out) && terms(n.kids[1], tree, comparison, out);
+      return terms(n.kids[0], tree, comparison, out, fn) && terms(n.kids[1], tree, comparison, out, fn);
     if (n.kind != comparison)
       return false;
-    std::string a = joined(n.kids[0].from, n.kids[0].to), b = joined(n.kids[1].from, n.kids[1].to);
+    std::string a = joinedOf(n.kids[0].from, n.kids[0].to, fn), b = joinedOf(n.kids[1].from, n.kids[1].to, fn);
     out.insert(a < b ? std::make_pair(a, b) : std::make_pair(b, a));
     return true;
   };
@@ -377,6 +394,33 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       }
       return to < toks.size() && from < to;
     };
+    // The body's last statement a return, and nothing before it returning or throwing (`ensure(...); return a != b;`,
+    // Unreal's TRangedForIterator): its expression, which an operator!= made the == negates alone; never for one
+    // dropped, whose statements before would go with it.
+    auto lastReturn = [&](FunctionDecl* g, uint32_t& from, uint32_t& to) -> bool
+    {
+      if (!g->body || g->body->kind != NodeKind::BlockStmt)
+        return false;
+      auto* b = static_cast<BlockStmt*>(g->body);
+      Stmt* last = b->stmts.empty() ? nullptr : b->stmts[b->stmts.size() - 1];
+      if (!last || last->kind != NodeKind::ReturnStmt)
+        return false;
+      for (uint32_t t = b->token; t < last->token; ++t)
+        if (toks[t].is(Kw::return_) || toks[t].is(Kw::throw_) || toks[t].is(Kw::goto_) || toks[t].is(Kw::co_return_))
+          return false;
+      from = last->token + 1;
+      int depth = 0;
+      for (to = from; to < toks.size(); ++to)
+      {
+        if (toks[to].is(P::LParen) || toks[to].is(P::LBracket) || toks[to].is(P::LBrace))
+          ++depth;
+        else if (toks[to].is(P::RParen) || toks[to].is(P::RBracket) || toks[to].is(P::RBrace))
+          --depth;
+        else if (depth == 0 && toks[to].is(P::Semi))
+          break;
+      }
+      return to < toks.size() && from < to;
+    };
     uint32_t from = 0, to = 0;
     if (f->flags & DF_Delete)
     {
@@ -419,7 +463,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       continue;
     }
     Node e;
-    if (!onlyReturn(f, from, to) || !parse(from, to, e))
+    if (!(onlyReturn(f, from, to) || (!eq && lastReturn(f, from, to))) || !parse(from, to, e))
     {
       keep(n, "a body other than one return");
       continue;
@@ -521,14 +565,16 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       continue;
     }
     std::multiset<std::pair<std::string, std::string>> ne;
-    if (terms(e, '|', 'n', ne))
+    if (terms(e, '|', 'n', ne, f))
     {
       if (eq)
       {
         uint32_t ef = 0, et = 0;
         Node ee;
         std::multiset<std::pair<std::string, std::string>> eqTerms;
-        if (eq->f->body && onlyReturn(eq->f, ef, et) && parse(ef, et, ee) && terms(ee, '&', '=', eqTerms) && eqTerms == ne)
+        // (the parameters by position: FLinearColor's == names its ColorB, its != Other)
+        if (eq->f->body && eq->f->params.size() == f->params.size() && onlyReturn(eq->f, ef, et) && parse(ef, et, ee) &&
+            terms(ee, '&', '=', eqTerms, eq->f) && eqTerms == ne)
         {
           removeDeclaration(f);
           decided[keyOf(n)] = 'd';
@@ -540,7 +586,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
         if ((eq->f->flags & DF_Default) && n.scope && n.scope->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(n.scope)->bases.empty() &&
             f->params.size() == 1 && static_cast<ParamDecl*>(f->params[0])->name != UINT32_MAX)
         {
-          std::string other(symbols.name(static_cast<ParamDecl*>(f->params[0])->name));
+          std::string other = "#0"; // (its parameter, by position: joinedOf)
           std::multiset<std::pair<std::string, std::string>> members;
           for (Decl* m : static_cast<ClassDecl*>(n.scope)->members)
             if (m->kind == NodeKind::VariableDecl && !(m->flags & DF_Static) && static_cast<VariableDecl*>(m)->name.parts.size() == 1)
@@ -587,6 +633,27 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       counts.add("operator!= made the == it negates: no == of its parameters");
       decided[keyOf(n)] = 'm';
       continue;
+    }
+    if (eq && eq->f->body && eq->f->params.size() == f->params.size())
+    {
+      // `return x;` beside an == whose body is `return !x;` (`operator!=(nullptr_t)` returning `IsValid()` beside an ==
+      // returning `!IsValid()`, Unreal's TPimplPtr and TCbFieldIterator; `(bool)*this` beside `!*this`, TFunction), and
+      // `return false;` beside `return true;` (FNull): the same test, negated
+      uint32_t ef = 0, et = 0;
+      Node ee;
+      uint32_t xf = e.from, xt = e.to;
+      if (xt > xf + 3 && toks[xf].is(P::LParen) && spell(xf + 1) == "bool" && toks[xf + 2].is(P::RParen))
+        xf += 3; // (a value tested as a bool: `(bool)x` is x)
+      std::string tested = joinedOf(xf, xt, f);
+      if (onlyReturn(eq->f, ef, et) && parse(ef, et, ee) &&
+          ((ee.kind == '!' && joinedOf(ee.kids[0].from, ee.kids[0].to, eq->f) == tested) ||
+           (xt == xf + 1 && et == ef + 1 && ((tested == "false" && spell(ef) == "true") || (tested == "true" && spell(ef) == "false")))))
+      {
+        removeDeclaration(f);
+        decided[keyOf(n)] = 'd';
+        counts.add("operator!= dropped: the negation of ==");
+        continue;
+      }
     }
     if (!eq)
     {
