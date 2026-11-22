@@ -1173,14 +1173,20 @@ auto GlobalScope::Impl::selfParameter(Decl* p, ClassDecl* def) -> int
   return kind;
 }
 
-auto GlobalScope::Impl::specialMembersOf(ClassDecl* def) -> SpecialMembers
+auto GlobalScope::Impl::specialMembersOf(ClassDecl* def, const Ty* of) -> SpecialMembers
 {
   SpecialMembers s;
+  Subst args = of && of->kind == TyKind::Class && !of->args.empty() ? substFor(types.unqualified(of)) : Subst{};
   for (Decl* m : membersRead(def))
   {
     if (m->kind != NodeKind::FunctionDecl || !m->templateParams.empty())
       continue;
     auto* f = static_cast<FunctionDecl*>(m);
+    // (until 2026-11-22 the last one declared of each kind, whatever its constraint: TOptional<FText>'s deleted
+    // `operator=(TOptional&&) requires (!isMoveConstructible<OptionalType>)`, so isMoveAssignable was false, silently)
+    if (f->requiresClause && !args.pairs.empty())
+      if (std::optional<bool> holds = constraintValue(f->requiresClause, f, args); holds && !*holds)
+        continue;
     if (f->flags & DF_Destructor)
     {
       s.destructor = true;
@@ -1302,7 +1308,7 @@ auto GlobalScope::Impl::constructibleFromSelf(const Ty* t, bool move, TraitForm 
     if (!destructibleOutside(def))
       return false;
   }
-  SpecialMembers s = specialMembersOf(def);
+  SpecialMembers s = specialMembersOf(def, u);
   FunctionDecl* chosen = move && s.moveCtor ? s.moveCtor : s.copyCtor;
   if (chosen)
   {
@@ -1533,7 +1539,7 @@ auto GlobalScope::Impl::assignableFromSelf(const Ty* t, bool move, TraitForm for
   ClassDecl* def = classDefinition(u);
   if (!def)
     return std::nullopt;
-  SpecialMembers s = specialMembersOf(def);
+  SpecialMembers s = specialMembersOf(def, u);
   FunctionDecl* chosen = move && s.moveAssign ? s.moveAssign : s.copyAssign;
   if (chosen)
   {
@@ -1839,7 +1845,7 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
   for (Decl* m : membersRead(def))
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Destructor) && (!(m->flags & (DF_Default | DF_Delete)) || (m->flags & (DF_Virtual | DF_Override))))
       return false;
-  SpecialMembers own = specialMembersOf(def);
+  SpecialMembers own = specialMembersOf(def, s.cls);
   for (FunctionDecl* f : {own.copyCtor, own.copyCtorNonConst, own.moveCtor, own.copyAssign, own.copyAssignNonConst, own.moveAssign})
     if (f && !(f->flags & (DF_Default | DF_Delete)))
       return false;
@@ -1874,7 +1880,7 @@ auto GlobalScope::Impl::triviallyCopyable(const Ty* t) -> std::optional<bool>
   return true;
 }
 
-auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::optional<bool>
+auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth, ClassDecl* constructing) -> std::optional<bool>
 {
   if (!t || !t->isKnown() || types.isDependent(t) || depth > maxNestedLevels)
     return std::nullopt;
@@ -1928,8 +1934,13 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
       takesNone = takesNone && (static_cast<ParamDecl*>(p)->defaultValue || static_cast<ParamDecl*>(p)->isPack);
     if (!takesNone)
       continue;
-    if ((f->flags & DF_Delete) || f->access == Access::Private || (depth == 0 && f->access == Access::Protected))
+    if (f->flags & DF_Delete)
       return false;
+    // (one the class keeps private, or protected from all but its derived classes, unless it declares the constructing
+    // class its friend: until 2026-11-22 none for a friend too, "FTask has no default constructor")
+    if (f->access == Access::Private || (depth == 0 && f->access == Access::Protected))
+      if (!constructing || !constructing->ownScope || !grantingFriend(def, nullptr, {constructing->ownScope}))
+        return false;
     if (!(f->flags & DF_Default))
       return true; // a user-provided default constructor
     break; // `= default`: as the implicit one, below
@@ -1944,7 +1955,7 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
   if (!def->isTypedUnion && !directBases(u, def, bases))
     return std::nullopt;
   for (const Ty* b : bases)
-    if (std::optional<bool> r = defaultConstructible(b, depth + 1); !r || !*r)
+    if (std::optional<bool> r = defaultConstructible(b, depth + 1, def); !r || !*r)
       return r;
   for (Decl* m : membersRead(def))
   {
@@ -1963,7 +1974,7 @@ auto GlobalScope::Impl::defaultConstructible(const Ty* t, int depth) -> std::opt
       mu = mu->inner;
     if (mu->isConst && mu->kind != TyKind::Class)
       return false; // a const scalar left uninitialised
-    if (std::optional<bool> r = defaultConstructible(mt, depth + 1); !r || !*r)
+    if (std::optional<bool> r = defaultConstructible(mt, depth + 1, def); !r || !*r)
       return r;
   }
   return true;

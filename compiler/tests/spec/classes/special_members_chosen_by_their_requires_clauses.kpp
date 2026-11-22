@@ -1,0 +1,60 @@
+// spec: a class's special members are the ones whose requires clauses its arguments meet: of an Optional<T> declaring `operator=(Optional&&) requires (isMoveConstructible<T>)` and `operator=(Optional&&) requires (!isMoveConstructible<T>) = delete`, a class with an Optional<Text> member is assigned by its implicit assignment, and isMoveAssignable and isCopyAssignable of it are true; clang prints the same
+// found by thread UE (2026-11-22): the last one declared was taken, whatever its constraint: "FFormatArgumentValue is assigned by its implicit assignment, which C++ defines as deleted" (11 in converted Unreal Core, its TOptional<FText> member), and isMoveAssignable was false, silently
+struct Text
+{
+  Text() = default;
+  Text(const Text& other) : value(other.value) {}
+  Text(Text&& other) : value(other.value) {}
+  Text& operator=(const Text& other) { this.value = other.value; return this; }
+  Text& operator=(Text&& other) { this.value = other.value; return this; }
+  int value = 0;
+};
+
+template<typename T> class Optional
+{
+public:
+  Optional() = default;
+  Optional(const T& v) : value(v), set(true) {}
+  Optional(const Optional& other) = default;
+  Optional(Optional&& other) = default;
+
+  Optional& operator=(Optional&& other) requires (std::isMoveConstructible<T>)
+  {
+    this.value = other.value;
+    this.set = other.set;
+    return this;
+  }
+
+  Optional& operator=(Optional&& other) requires (!std::isMoveConstructible<T>) = delete;
+
+  Optional& operator=(const Optional& other) requires (std::isCopyConstructible<T>)
+  {
+    this.value = other.value;
+    this.set = other.set;
+    return this;
+  }
+
+  Optional& operator=(const Optional& other) requires (!std::isCopyConstructible<T>) = delete;
+  T value{};
+  bool set = false;
+};
+
+struct Argument
+{
+  Optional<Text> text;
+  int kind = 0;
+};
+
+int main()
+{
+  Argument a;
+  Argument b;
+  Text t;
+  t.value = 5;
+  b.text = Optional<Text>(t);
+  a = std::move(b);
+  Argument c;
+  c = a;
+  std::println(a.text.value.value, " ", c.text.set, " ", std::isMoveAssignable<Argument>, " ", std::isCopyAssignable<Argument>);
+  return 0;
+}

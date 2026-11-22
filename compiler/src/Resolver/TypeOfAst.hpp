@@ -195,7 +195,9 @@
   // A constructor that is never a conversion: a default one (callable with no argument), a copy or a move one.
   bool neverConversion(FunctionDecl* f);
 
-  SpecialMembers specialMembersOf(ClassDecl* def);
+  // of: the class type def defines, whose arguments decide its members' requires clauses: one they fail is none of its
+  // special members (Unreal's TOptional<T> declares each assignment three times, constrained by T's traits).
+  SpecialMembers specialMembersOf(ClassDecl* def, const Ty* of = nullptr);
 
   // Whether aggregate t takes args in parentheses (`Pod(1, 2.5f)`, [dcl.init] 17.6.2.2), and
   // false for a class that is no aggregate.
@@ -302,7 +304,9 @@
   // others, else by the implicit one, which needs every base and member default-constructible (or
   // initialised in the class), no reference or const scalar left uninitialised, and for a typed
   // union its first alternative (design.md 8.5: default construction builds that one).
-  std::optional<bool> defaultConstructible(const Ty* t, int depth = 0);
+  // constructing: the class whose implicit (or defaulted) constructor builds t, as a base or a member, which reaches
+  // t's private default constructor when t's class declares it its friend (Unreal's LowLevelTasks::FTask : FTaskBase).
+  std::optional<bool> defaultConstructible(const Ty* t, int depth = 0, ClassDecl* constructing = nullptr);
 
   std::optional<bool> triviallyDefaultConstructible(const Ty* t, int depth = 0);
 

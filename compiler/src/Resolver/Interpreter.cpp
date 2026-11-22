@@ -4254,7 +4254,7 @@ auto GlobalScope::Impl::constCopyConstruct(const Ty* t, const ConstValue& v, con
   ClassDecl* def = classDefinition(t);
   if (!layout || !def || depth > maxNestedLevels)
     return std::nullopt;
-  SpecialMembers special = specialMembersOf(def);
+  SpecialMembers special = specialMembersOf(def, t);
   FunctionDecl* ctor = moving && special.moveCtor ? special.moveCtor : special.copyCtor ? special.copyCtor : special.copyCtorNonConst;
   if (ctor && (ctor->flags & DF_Delete))
     return std::nullopt;

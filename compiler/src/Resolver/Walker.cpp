@@ -5419,7 +5419,7 @@ auto GlobalScope::Impl::Walker::missingDefaultConstructor(const Ty* t) -> std::s
   if (!impl.directBases(c, def, bases))
     return {};
   for (const Ty* b : bases)
-    if (impl.defaultConstructible(b, 1) == std::optional<bool>(false))
+    if (impl.defaultConstructible(b, 1, def) == std::optional<bool>(false))
       return "its base " + types.toString(b, &symbols) + " has none";
   Subst s = impl.substFor(c);
   for (Decl* m : membersRead(def))
@@ -5441,7 +5441,7 @@ auto GlobalScope::Impl::Walker::missingDefaultConstructor(const Ty* t) -> std::s
       return "its const member " + name + " has no initializer";
     if (ClassDecl* md = mu->kind == TyKind::Class ? impl.classDefinition(types.unqualified(mu)) : nullptr; md && md->keyword == Kw::union_)
       continue; // (an anonymous union's members: its own rules)
-    if (impl.defaultConstructible(mt, 1) == std::optional<bool>(false))
+    if (impl.defaultConstructible(mt, 1, def) == std::optional<bool>(false))
       return "its member " + name + " (" + types.toString(mt, &symbols) + ") has none";
   }
   return {};
@@ -9432,6 +9432,12 @@ auto GlobalScope::Impl::Walker::deletedAssignment(const Ty* cls, bool move, int 
     }
     if (!f->templateParams.empty() || f->params.empty() || f->name.empty())
       continue;
+    // (one whose requires clause the class's arguments fail is none of its members: Unreal's TOptional<FText> has
+    // `operator=(TOptional&&) requires (!isMoveConstructible<OptionalType>) = delete` beside the one that holds, and
+    // until 2026-11-22 the last declared was taken, so a class with a TOptional<FText> member had no assignment)
+    if (f->requiresClause && sp)
+      if (std::optional<bool> holds = impl.constraintValue(f->requiresClause, f, s); holds && !*holds)
+        continue;
     bool rest = true;
     for (size_t i = 1; i < f->params.size(); ++i)
       rest = rest && static_cast<ParamDecl*>(f->params[i])->defaultValue;

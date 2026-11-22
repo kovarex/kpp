@@ -1,0 +1,39 @@
+// spec: a class that a class declares its friend default-constructs it as a base or a member though its default constructor is private (`friend class ::Task;` beside a private `TaskBase() = default;`): the friend's defaulted default constructor is no deleted one; for any other class, and std::isDefaultConstructible, the private constructor stays out of reach; clang prints the same
+// found by thread UE (2026-11-22): it was "Task has no default constructor: its base TaskBase has none" (Unreal's LowLevelTasks::FTask : FTaskBase, 7 in converted Core)
+class Task;
+class Holder;
+
+class TaskBase
+{
+  friend class ::Task;
+  friend class ::Holder;
+public:
+  TaskBase(const TaskBase&) = delete;
+  int value = 3;
+private:
+  TaskBase() = default;
+};
+
+class Task final : private TaskBase
+{
+public:
+  Task() = default;
+  Task(const Task&) = delete;
+  int get() const { return this.value; }
+};
+
+class Holder
+{
+public:
+  TaskBase base;
+  int extra = 4;
+};
+
+int main()
+{
+  Task t;
+  Holder h;
+  std::println(t.get(), " ", h.base.value + h.extra, " ", std::isDefaultConstructible<Task>, " ", std::isDefaultConstructible<Holder>, " ",
+               std::isDefaultConstructible<TaskBase>);
+  return 0;
+}
