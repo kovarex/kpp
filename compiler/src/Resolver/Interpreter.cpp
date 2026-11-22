@@ -678,6 +678,19 @@ auto GlobalScope::Impl::constDescriptorTag(MemberExpr* m, const TypeContext& ctx
   return constValueOfDecl(enumerators[index], ctx, depth + 1);
 }
 
+auto GlobalScope::Impl::constDescriptorHasInitializer(MemberExpr* m, const TypeContext& ctx) -> std::optional<ConstValue>
+{
+  // `m.hasInitializer`: whether a member descriptor's member has a default member initializer (design.md 8.3), a bool.
+  if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "hasInitializer")
+    return std::nullopt;
+  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  t = t ? types.stripRef(t) : nullptr;
+  size_t index = 0;
+  if (!t || t->kind != TyKind::Member || !t->decl || t->decl->kind != NodeKind::VariableDecl || Walker::alternativeOf(t, index))
+    return std::nullopt;
+  return ConstValue::integer(static_cast<VariableDecl*>(t->decl)->init ? 1 : 0, types.boolType());
+}
+
 auto GlobalScope::Impl::constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   // `members(T).size`, `alternatives(U).size`: how many descriptors the list holds (design.md 8.3), a u64.
@@ -809,6 +822,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return tag;
       if (std::optional<ConstValue> size = constReflectionSize(m, ctx, depth))
         return size;
+      if (std::optional<ConstValue> has = constDescriptorHasInitializer(m, ctx))
+        return has;
       if (m->member.parts.size() != 1)
         return m->base && m->resolved && m->resolved->kind == NodeKind::VariableDecl && !(m->resolved->flags & (DF_Static | DF_Typedef))
                  ? constMemberRead(m, ctx, depth) // `b.A::v`: the data member of the base the qualifier names

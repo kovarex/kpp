@@ -4488,6 +4488,8 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
                                          : unknown(Why::Member);
     if (which == "offset")
       return types.sizeType();
+    if (which == "hasInitializer" && descriptor->decl && descriptor->decl->kind == NodeKind::VariableDecl)
+      return types.boolType(); // (whether it has a default member initializer, a constant: design.md 8.3)
     if (which == "initializer" && descriptor->inner && descriptor->decl && descriptor->decl->kind == NodeKind::VariableDecl)
     {
       // The member's default value alone (its default member initializer, else its default construction), as a

@@ -675,7 +675,7 @@ a `const` array, bodies at namespace or class scope.
 
 **8.3 Reflection.** `members(T)` is the list of T's non-static data members, bases first, in
 declaration order; each member `m` has `m.name` (a string literal), `m.type` (usable where a
-type is written), `m.offset`, `m.initializer` (its default value alone, below), and `object.[m]` is that member of `object`. `enumerators(E)`
+type is written), `m.offset`, `m.initializer` (its default value alone, below), `m.hasInitializer`, and `object.[m]` is that member of `object`. `enumerators(E)`
 lists an enum's values with `e.name` and `e.value`. `nameof(x)` is the last name of `x` as a
 string literal (`nameof(this->sprite)` is `"sprite"`, `nameof(Direction)` is `"Direction"`).
 In `if constexpr`, types compare with `==` (`if constexpr (m.type == bool)`).
@@ -703,6 +703,11 @@ default member initializer alone, with no object, and it names this"); a referen
 object the initializer makes has its own `this`. Not a constant expression yet (the interpreter does not read
 descriptors). Specs kpp/reflection_member_initializer, reflection_member_initializer_in_class_template,
 reflection_member_initializer_naming_this_is_error, reflection_member_initializer_of_a_reference_is_error.
+*m.hasInitializer* (2026-11-22, for kovarex's generic VariableToCode: SelectMapperSlotFromParameters' `ItemStackIndex
+index;` held 0, equal to its m.initializer, and the generated call dropped the argument its constructor needs): a `bool`
+constant, true when the member has a default member initializer (`= v`, `{v}`, a bit-field's included), false when
+m.initializer is only its default construction. Usable in `if constexpr` and in constant expressions
+(`if constexpr (!m.hasInitializer || ...)`). An alternative's descriptor has none. Spec kpp/reflection_member_has_initializer.
 *members(T)[i] and members(T).size* (kovarex, 2026-11-22, option A, for InputActionTestMaker's VariableToCode: "can't I
 just check for the first member?"): `members(T)[i]` is the descriptor the loop's `m` is for T's i-th member, anywhere an
 expression is, with `.name`, `.type` (`members(T)[0].type` where a type is written: `std::isConvertible<members(T)[0].type, T>`

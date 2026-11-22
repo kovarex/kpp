@@ -729,7 +729,9 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         }
         if (which == "initializer")
           return memberInitializerAlone(bt, field, e);
-        unsupported(e, "a member descriptor has name, offset and initializer only");
+        if (which == "hasInitializer")
+          return {field->init ? "true" : "false", types.boolType()};
+        unsupported(e, "a member descriptor has name, type, offset, initializer and hasInitializer only");
       }
       std::string addr = lvalue(e);
       // Use the field's declared type when the expression type is unknown.

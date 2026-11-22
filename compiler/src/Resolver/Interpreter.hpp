@@ -107,6 +107,7 @@
   // `a.tag` of a descriptor of alternatives(U) in a for constexpr body (design.md 8.5): its U::Tag enumerator's
   // value, a constant expression (a case label, an if constexpr, a constexpr variable); none for another member.
   std::optional<ConstValue> constDescriptorTag(MemberExpr* m, const TypeContext& ctx, int depth);
+  std::optional<ConstValue> constDescriptorHasInitializer(MemberExpr* m, const TypeContext& ctx);
   std::optional<ConstValue> constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth);
   bool reflectedElementsOf(const Ty* cls, bool alternatives, std::vector<const Ty*>& out, int depth);
   bool reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, bool& alternatives, int depth);

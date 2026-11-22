@@ -1,0 +1,46 @@
+// spec: m.hasInitializer is true when the member has a default member initializer, a bool constant usable in if constexpr; m.initializer of one without is its default construction, so the two tell "= 0" from no initializer (kovarex, 2026-11-22: SelectMapperSlotFromParameters' index read 0 == m.initializer and VariableToCode dropped the argument its constructor needs)
+// design.md 8.3
+struct Base
+{
+  i32 id = 7;
+};
+struct Slot : Base
+{
+  i32 filter = 0;
+  u16 index;
+  std::String label;
+  bool flag : 1 = true;
+};
+template<typename T> std::String needed(const T& value)
+{
+  std::String result;
+  for constexpr (auto m : members(T))
+  {
+    if constexpr (!m.hasInitializer)
+      result << std::StringView(m.name) << "(no initializer) ";
+    else if (!(value.[m] == m.initializer))
+      result << std::StringView(m.name) << " ";
+  }
+  return result;
+}
+template<typename T> constexpr i32 withInitializers()
+{
+  i32 count = 0;
+  for constexpr (auto m : members(T))
+    if constexpr (m.hasInitializer)
+      count += 1;
+  return count;
+}
+int main()
+{
+  Slot s;
+  std::println("[", needed(s), "]");
+  s.filter = 3;
+  s.id = 1;
+  std::println("[", needed(s), "]");
+  static_assert(withInitializers<Slot>() == 3);
+  static_assert(!members(Slot)[2].hasInitializer);
+  bool runtime = members(Slot)[1].hasInitializer;
+  std::println(runtime, " ", members(Slot)[3].hasInitializer);
+  return 0;
+}
