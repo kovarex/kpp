@@ -1,0 +1,46 @@
+// spec: an alias template given to a template template parameter (`ByPredicate<char[4], CompatibleWithChar>` with `template<class S> using CompatibleWithChar = Compatible<S, char>`) is that template: a partial specialization taking it matches, and `Predicate<T>` is the alias's type for T, Compatible<T, char>; an alias template declared in a class template takes that class's arguments (Unreal's StringBuilder: `requires (ByPredicate<F, CompatibleWithC>::Value)` in Builder<C>); clang prints the same
+// found by thread UE (2026-11-22): the alias was taken for its type with its parameter left in it, a class template's instance: the partial specialization did not match and the primary's value was the answer, silently (`7` where `1`), and Unreal's Appendf had no candidate (110 errors in converted Core)
+template<typename A, typename B>
+struct Compatible
+{
+  static constexpr bool Value = std::isSame<A, B>;
+};
+
+template<typename S>
+using CompatibleWithChar = Compatible<S, char>;
+
+template<typename T, template<typename> class Predicate>
+struct ByPredicate
+{
+  static constexpr int Value = 7;
+};
+
+template<typename T, u32 N, template<typename> class Predicate>
+struct ByPredicate<T[N], Predicate>
+{
+  static constexpr int Value = Predicate<T>::Value ? 1 : 0;
+};
+
+template<typename C>
+struct Builder
+{
+  template<typename S>
+  using CompatibleWithC = Compatible<S, C>;
+
+  template<typename F>
+    requires (ByPredicate<F, CompatibleWithC>::Value == 1)
+  int append([[maybe_unused]] const F& text) { return 1; }
+
+  template<typename F>
+    requires (ByPredicate<F, CompatibleWithC>::Value != 1)
+  int append([[maybe_unused]] const F& other) { return 2; }
+};
+
+int main()
+{
+  Builder<char> b;
+  int numbers[2] = {1, 2};
+  std::println(ByPredicate<char[4], CompatibleWithChar>::Value, " ", ByPredicate<int[4], CompatibleWithChar>::Value, " ", ByPredicate<char, CompatibleWithChar>::Value,
+               " ", b.append("abc"), " ", b.append(numbers));
+  return 0;
+}

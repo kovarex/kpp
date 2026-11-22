@@ -109,6 +109,9 @@
   const Ty* functionArgument(const Lookup& l, Decl* param, int depth);
 
   const Ty* templateArgument(Node* arg, Decl* param, const TypeContext& ctx, int depth);
+  // An alias template bound to a template template parameter (a class type whose declaration is the alias, its arguments
+  // those of the class templates the alias is declared in) applied to written arguments: the alias's type with them.
+  const Ty* applyAliasTemplate(const Ty* bound, const std::vector<const Ty*>& written, int depth);
   // A class object's value as a template argument (TypeTable::objectValue) and back: its parts
   // integers (bool, char, integer, enumeration) and objects of such parts; null (nullopt) for any
   // other part (a floating value, a pointer, a reference), which no argument holds yet.

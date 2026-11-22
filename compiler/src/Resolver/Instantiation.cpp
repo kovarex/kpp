@@ -452,6 +452,22 @@ auto GlobalScope::Impl::qualifierSubst(const QualifiedName& name, const TypeCont
   Lookup l = lookupQualified(prefix, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
   if (!l.decl)
     return s;
+  if (l.decl->kind == NodeKind::TemplateParamDecl && ctx.subst && prefix.last().hasTemplateArgs)
+  {
+    // `Predicate<T>::Value` with Predicate a template template parameter: the instance of the template it is bound
+    // to made with these arguments, converted as the type the qualifier names (Unreal's TIsArrayOrRefOfTypeByPredicate;
+    // until 2026-11-22 the bound template itself, without them: no constant).
+    NamedType written{};
+    written.kind = NodeKind::NamedType;
+    written.name = prefix;
+    const Ty* q = convertType(&written, ctx, depth + 1);
+    q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+    if (qualifierOut)
+      *qualifierOut = q;
+    if (q && q->kind == TyKind::Class && !types.isDependent(q))
+      return memberSubst(q, foundIn, depth);
+    return s;
+  }
   if (l.decl->kind == NodeKind::TemplateParamDecl && ctx.subst)
   {
     // `T::value_type` where T is a template parameter: the substituted class carries the
@@ -514,6 +530,42 @@ auto GlobalScope::Impl::functionArgument(const Lookup& l, Decl* param, int depth
     if (const Ty* t = namedFunctionType(f, declaredTypeOf(f, nullptr, depth + 1), nullptr); t == wanted || losesNoexcept(t, wanted))
       return types.functionValue(pt->kind == TyKind::MemberPointer ? pt : types.pointer(wanted), f);
   return types.unknown();
+}
+
+auto GlobalScope::Impl::applyAliasTemplate(const Ty* bound, const std::vector<const Ty*>& written, int depth) -> const Ty*
+{
+  // An alias template bound to a template template parameter (templateArgument): its type with these arguments, the
+  // classes it is declared in under the arguments the binding carries.
+  auto* alias = static_cast<UsingAliasDecl*>(bound->decl);
+  Subst s;
+  if (Decl* p = alias->parent; p && p->kind == NodeKind::ClassDecl)
+  {
+    Span<Decl*> outer = effectiveParams(p);
+    for (size_t i = 0; i < outer.size() && i < bound->args.size(); ++i)
+      s.pairs.push_back({outer[i], bound->args[i]});
+  }
+  std::vector<const Ty*> args;
+  for (const Ty* a : written)
+    if (!spliceIfPack(a, args))
+      args.push_back(a);
+  Span<Decl*> params = alias->templateParams;
+  LocalStack own;
+  for (Decl* p : params)
+    own.push(static_cast<TemplateParamDecl*>(p)->name, p);
+  for (size_t i = 0; i < params.size(); ++i)
+  {
+    if (static_cast<TemplateParamDecl*>(params[i])->isPack)
+    {
+      std::vector<const Ty*> rest(args.begin() + std::min(i, args.size()), args.end());
+      s.pairs.push_back({params[i], types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+      break;
+    }
+    if (i >= args.size())
+      return types.unknown(); // (an alias template's default arguments: not taken here)
+    s.pairs.push_back({params[i], args[i]});
+  }
+  TypeContext actx{lexicalScopeOf(alias), &own, &s, alias->file ? alias->file->tokens : nullptr, alias->file ? alias->file->text : std::string_view()};
+  return convertType(alias->type, actx, depth + 1);
 }
 
 auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeContext& ctx, int depth) -> const Ty*
@@ -579,6 +631,20 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
       // `IsSpec<T, Box>`: a class template given to a template template parameter, the template
       // itself (its class without arguments, as deduction binds such a parameter).
       return types.classType(l.scope && l.scope->owner ? l.scope->owner : l.decl, {});
+    else if (l.decl && l.decl->kind == NodeKind::UsingAliasDecl && !l.decl->templateParams.empty() && !an.last().hasTemplateArgs && param &&
+             param->kind == NodeKind::TemplateParamDecl && !static_cast<TemplateParamDecl*>(param)->innerParams.empty())
+    {
+      // An alias template given to a template template parameter (`ByPredicate<T, CompatibleWithChar>` with `template<class S>
+      // using CompatibleWithChar = Compatible<S, char>`, Unreal's TIsCharEncodingCompatibleWithCharType): the alias, with the
+      // arguments of the class templates it is declared in, as this context binds them (applyAliasTemplate makes
+      // `Predicate<T>` of it). Until 2026-11-22 the alias's type with its parameter left in it, a class template's
+      // instance that `Predicate<T>` applied wrong and no partial specialization matched: the primary's answer, silently.
+      std::vector<const Ty*> outer;
+      if (Decl* p = l.decl->parent; p && p->kind == NodeKind::ClassDecl)
+        for (Decl* e : effectiveParams(p))
+          outer.push_back(ctx.subst && ctx.subst->find(e) ? ctx.subst->find(e) : types.param(e));
+      return types.classType(l.decl, Span<const Ty*>{outer.data(), uint32_t(outer.size())});
+    }
     else
       return convertType(static_cast<Type*>(arg), ctx, depth); // (a written type's parts keep the depth: convertType)
   }
@@ -2011,6 +2077,13 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           for (Node* a : n->name.parts[0].templateArgs)
             args.push_back(templateArgument(a, nullptr, ctx, depth + 1));
           Span<const Ty*> span{args.data(), uint32_t(args.size())};
+          if (ctx.subst)
+            if (const Ty* sub = ctx.subst->find(l.decl); sub && sub->kind == TyKind::Class && sub->decl && sub->decl->kind == NodeKind::UsingAliasDecl)
+              return applyAliasTemplate(sub, args, depth); // `Predicate<T>` with Predicate bound to an alias template
+          if (ctx.subst)
+            if (const Ty* sub = ctx.subst->find(l.decl); sub && sub->kind == TyKind::Class && sub->decl && !sub->args.empty())
+              return types.unknown(); // bound to an instance, not a template: what a template template parameter takes is
+                                      // a template (an alias template's type was one until 2026-11-22)
           if (ctx.subst)
             if (const Ty* sub = ctx.subst->find(l.decl); sub && sub->kind == TyKind::Class && sub->decl)
             {
@@ -4059,6 +4132,13 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
     case TyKind::Param:
       if (const Ty* r = s.find(t->decl))
       {
+        if (!t->args.empty() && r->kind == TyKind::Class && r->decl && r->decl->kind == NodeKind::UsingAliasDecl)
+        {
+          std::vector<const Ty*> args;
+          for (const Ty* a : t->args)
+            args.push_back(substitute(a, s, depth));
+          return types.qualified(applyAliasTemplate(r, args, depth), t->isConst, t->isVolatile); // bound to an alias template
+        }
         if (!t->args.empty() && r->kind == TyKind::Class && r->decl)
         {
           // `Container<T>` with Container bound to a class template: that template with the

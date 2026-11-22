@@ -1,0 +1,46 @@
+// spec: `Predicate<T>::Value` with Predicate a template template parameter is the member of the instance of the class template bound to it, made with T, in a static member's initializer, a constexpr function and a partial specialization's enumerator (`enum { Value = Predicate<T>::Value }`, Unreal's TIsArrayOrRefOfTypeByPredicate); clang prints the same
+// found by thread UE (2026-11-22): the evaluator took the qualifier as the bound template itself, without its arguments, so the value was no constant ("static assertion whose condition the compiler cannot evaluate yet"; StringBuilder's Appendf constraint, 110 errors in converted Core)
+template<typename A>
+struct IsChar
+{
+  static constexpr bool Value = std::isSame<A, char>;
+  static constexpr int Size = int(sizeof(A));
+};
+
+template<typename T, template<typename> class Predicate>
+struct Direct
+{
+  static constexpr bool Value = Predicate<T>::Value;
+};
+
+template<typename T, template<typename> class Predicate>
+struct Sized
+{
+  static constexpr int Value = Predicate<T>::Size;
+};
+
+template<template<typename> class P>
+constexpr bool viaFunction() { return P<char>::Value; }
+
+template<typename T, template<typename> class Predicate>
+struct ByPredicate
+{
+  enum { Value = false };
+};
+
+template<typename T, u32 N, template<typename> class Predicate>
+struct ByPredicate<T[N], Predicate>
+{
+  enum { Value = Predicate<T>::Value };
+};
+
+static_assert(viaFunction<IsChar>());
+static_assert(Sized<long long, IsChar>::Value == 8);
+static_assert(Direct<char, IsChar>::Value && !Direct<int, IsChar>::Value);
+static_assert(ByPredicate<char[4], IsChar>::Value && !ByPredicate<int[4], IsChar>::Value && !ByPredicate<char, IsChar>::Value);
+
+int main()
+{
+  std::println(Direct<char, IsChar>::Value, " ", Direct<int, IsChar>::Value, " ", Sized<short, IsChar>::Value, " ", bool(ByPredicate<char[2], IsChar>::Value));
+  return 0;
+}

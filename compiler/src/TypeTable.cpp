@@ -878,6 +878,8 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       uint32_t n = static_cast<TemplateParamDecl*>(d)->name;
       return n == UINT32_MAX ? "T" : std::string(symbols->name(n));
     }
+    else if (d->kind == NodeKind::UsingAliasDecl) // an alias template given to a template template parameter
+      return static_cast<UsingAliasDecl*>(d)->name == UINT32_MAX ? "?" : std::string(symbols->name(static_cast<UsingAliasDecl*>(d)->name));
     if (!name || name->empty() || name->last().symbol == UINT32_MAX)
       return "?";
     std::string_view own = symbols->name(name->last().symbol);
@@ -907,7 +909,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         spaces = std::string(symbols->name(static_cast<const NamespaceDecl*>(p)->name)) + "::" + spaces;
       return !p && !spaces.empty() ? spaces + name : name;
     }
-    if (!qualified || !d || (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl))
+    if (!qualified || !d || (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl && d->kind != NodeKind::UsingAliasDecl))
       return name;
     bool local = name == "?"; // an anonymous class is told apart by where it is declared too
     name += elementOf(d);
