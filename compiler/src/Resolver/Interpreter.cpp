@@ -2112,6 +2112,39 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
   }
   auto* callee = static_cast<NameExpr*>(c->callee);
   Decl* d = callee->resolved;
+  // A call of an overloaded function whose arguments name the context's bound parameters (`IsUObjectPtr((U*)nullptr)` in a
+  // class template's static_assert, Unreal's raw method delegates): the overload the arguments choose under them. The
+  // node's is the one the template's own walk chose without them (the pointer overload for any U, so true, silently).
+  // (none on the node either, where that walk could choose none: the first of the name's functions with as many parameters
+  // was run below)
+  if ((!d || d->kind == NodeKind::FunctionDecl) && ctx.subst && !ctx.subst->empty() && callee->name.parts.size() == 1 && !callee->name.last().hasTemplateArgs &&
+      !c->args.empty() && std::any_of(c->args.begin(), c->args.end(), [&](Expr* a) { return a && mentionsBound(a, *ctx.subst); }))
+  {
+    Lookup l = lookupQualified(callee->name, ctx.scope, ctx.locals, depth + 1, ctx.subst, ctx.elementPacks, ctx.elementIndex);
+    std::vector<const Ty*> argTypes;
+    for (Expr* a : c->args)
+    {
+      const Ty* t = l.overloads && l.overloads->size() > 1 && a ? typeOfSignatureExpression(a, ctx, nullptr, nullptr, nullptr, true) : nullptr;
+      if (!t || !t->isKnown() || types.isDependent(t) || mentionsUnknown(t))
+      {
+        argTypes.clear();
+        break;
+      }
+      argTypes.push_back(t);
+    }
+    if (!argTypes.empty())
+    {
+      std::vector<FunctionDecl*> candidates;
+      for (const Entry& e : *l.overloads)
+        if (e.decl && e.decl->kind == NodeKind::FunctionDecl)
+          candidates.push_back(static_cast<FunctionDecl*>(e.decl));
+      bool ambiguous = false;
+      FunctionDecl* chosen = candidates.empty() ? nullptr : chooseAmong(candidates, argTypes, nullptr, nullptr, ambiguous);
+      if (!chosen || ambiguous)
+        return std::nullopt;
+      d = chosen;
+    }
+  }
   // `f(v)` with f a parameter, local or constant holding a function's address.
   if (constLocal(callee, ctx) || (d && (d->kind == NodeKind::ParamDecl || (d->kind == NodeKind::VariableDecl && !(d->flags & DF_Typedef)))))
   {
@@ -2357,7 +2390,17 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
     return std::nullopt;
   bool variadic = !f->params.empty() && static_cast<ParamDecl*>(f->params[f->params.size() - 1])->isPack;
   if (values.size() > f->params.size() && !variadic)
-    return std::nullopt;
+  {
+    // C's `...` (`constexpr bool IsUObjectPtr(...) { return false; }`, a detection overload): the arguments it takes are
+    // evaluated and not passed on (a body reading them, through va_arg, is no constant anyway)
+    if (!(f->flags & DF_Variadic))
+      return std::nullopt;
+    values.resize(f->params.size());
+    if (places.size() > f->params.size())
+      places.resize(f->params.size());
+    if (categories.size() > f->params.size())
+      categories.resize(f->params.size());
+  }
   // `AreCreatedInOrder<EntityPrototypeList, AchievementPrototypeList>()`: a template's body
   // with its parameters bound to the written arguments (and a class template member's to the
   // instance it is named through); a parameter left unbound decides nothing.
