@@ -717,6 +717,33 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
           }
         return false;
       }
+      // A derived object, which the class's copy or move constructor takes through its base (`Base b(derived)`, the
+      // base part copied), declared or implicit: only through a public base, as std::is_constructible answers (until
+      // 2026-11-22 false for an implicit one, so isConstructible<Base, const Derived&> was false, silently, and true
+      // through a protected base, Unreal's `!std::isConstructible<FCbFieldView, const FCbObjectView&>`).
+      if (args.size() == 1)
+        if (const Ty* from = types.unqualified(types.stripRef(args[0]));
+            from->kind == TyKind::Class && from != t && !types.isDependent(from) && isBaseClass(t, from))
+        {
+          std::optional<bool> reached = publicBaseOf(from, t, 0);
+          if (!reached)
+            return std::nullopt;
+          bool ambiguousOwn = false;
+          FunctionDecl* own = nullptr;
+          if (!ctors.empty())
+          {
+            AllowArgumentsByType byType(true);
+            own = chooseAmong(ctors, args, s.pairs.empty() ? nullptr : &s, nullptr, ambiguousOwn);
+          }
+          // (a constructor of its own that takes the derived object as itself, a template's say, takes it however derived)
+          if (own && !(own->templateParams.empty() && own->params.size() >= 1 && selfParameter(own->params[0], static_cast<ClassDecl*>(def))))
+            return true;
+          if (!*reached)
+            return false;
+          if (own)
+            return true;
+          return constructibleFromSelf(t, args[0]->kind != TyKind::LRef && !types.stripRef(args[0])->isConst, TraitForm::Plain);
+        }
       if (ctors.empty())
         return destructibleOutside(static_cast<ClassDecl*>(def)) &&
                (aggregateTakes(t, static_cast<ClassDecl*>(def), args) || memberwiseByType(t, static_cast<ClassDecl*>(def), args, nullptr)); // (design.md 32)
@@ -835,6 +862,17 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
       return false;
     if (to->kind == TyKind::LRef && !to->inner->isConst && from->kind != TyKind::LRef)
       return false; // an rvalue binds no non-const lvalue reference
+    // A derived class's object, reference or pointer to its base's only through a public base (until 2026-11-22 through
+    // a protected or private one too).
+    {
+      const Ty* f = types.unqualified(types.stripRef(from));
+      const Ty* t = types.unqualified(types.stripRef(to));
+      if (f->kind == TyKind::Pointer && t->kind == TyKind::Pointer && f->inner && t->inner)
+        f = types.unqualified(f->inner), t = types.unqualified(t->inner);
+      if (f->kind == TyKind::Class && t->kind == TyKind::Class && f != t && !types.isDependent(f) && !types.isDependent(t) && isBaseClass(t, f))
+        if (std::optional<bool> reached = publicBaseOf(f, t, 0); !reached || !*reached)
+          return reached;
+    }
     return conversionRank(from, to) < NotViable;
   }
   // The traits that need a class's members, answered as C++'s intrinsics answer them; nullopt
@@ -1218,6 +1256,47 @@ auto GlobalScope::Impl::specialMembersOf(ClassDecl* def, const Ty* of) -> Specia
     }
   }
   return s;
+}
+
+auto GlobalScope::Impl::publicBaseOf(const Ty* derived, const Ty* base, int depth) -> std::optional<bool>
+{
+  derived = types.unqualified(types.stripRef(derived));
+  base = types.unqualified(types.stripRef(base));
+  if (derived == base)
+    return true;
+  if (derived->kind != TyKind::Class || depth > maxNestedLevels || types.isDependent(derived))
+    return false;
+  ClassDecl* def = classDefinition(derived);
+  if (!def)
+    return std::nullopt;
+  DeclContext dc;
+  declContextFor(def, dc);
+  Subst s = substFor(derived);
+  TypeContext ctx{dc.scope, &dc.params, s.pairs.empty() ? nullptr : &s, def->file ? def->file->tokens : nullptr,
+                  def->file ? def->file->text : std::string_view()};
+  bool undecided = false;
+  for (const ClassDecl::Base& b : def->bases)
+  {
+    // (a class's bases are private unless written public, a struct's public)
+    if (b.access != Access::Public && !(b.access == Access::Default && def->keyword != Kw::class_))
+      continue; // (another way to the base may be public)
+    const Ty* bt = convertType(b.type, ctx, 0);
+    std::vector<const Ty*> each;
+    if (bt && bt->kind == TyKind::Pack)
+      each.assign(bt->args.begin(), bt->args.end());
+    else
+      each.push_back(bt);
+    for (const Ty* e : each)
+    {
+      if (!e || types.unqualified(e)->kind != TyKind::Class || (types.unqualified(e) != base && !isBaseClass(base, e)))
+        continue;
+      std::optional<bool> r = publicBaseOf(e, base, depth + 1);
+      if (r && *r)
+        return true;
+      undecided = undecided || !r;
+    }
+  }
+  return undecided ? std::nullopt : std::optional<bool>(false);
 }
 
 auto GlobalScope::Impl::declaredSpecial(FunctionDecl* f, TraitForm form, const Ty* of) -> std::optional<bool>

@@ -199,6 +199,11 @@
   // special members (Unreal's TOptional<T> declares each assignment three times, constrained by T's traits).
   SpecialMembers specialMembersOf(ClassDecl* def, const Ty* of = nullptr);
 
+  // Whether derived reaches base, a class it derives from, through bases it derives from publicly, so that converting a
+  // derived object to it is accessible to all ([conv.ptr] 3, [class.access.base] 4), as std::is_convertible and
+  // std::is_constructible ask; nullopt where a class on the way has no definition.
+  std::optional<bool> publicBaseOf(const Ty* derived, const Ty* base, int depth = 0);
+
   // Whether aggregate t takes args in parentheses (`Pod(1, 2.5f)`, [dcl.init] 17.6.2.2), and
   // false for a class that is no aggregate.
   bool aggregateTakes(const Ty* t, ClassDecl* def, const std::vector<const Ty*>& args, bool besideConstructors = false);

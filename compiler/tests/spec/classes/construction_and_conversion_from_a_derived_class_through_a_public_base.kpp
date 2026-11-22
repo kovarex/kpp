@@ -1,0 +1,55 @@
+// spec: std::isConstructible and std::isConvertible from a derived class's object, reference or pointer to its base's take a public base only ([conv.ptr] 3, [class.access.base] 4): a copy through a public base is constructible (the base part copied, by the implicit or a declared copy constructor), through a protected or private one neither constructible nor convertible; a struct's bases are public, a class's private unless written public; clang prints the same
+// found by thread UE (2026-11-22): isConstructible<Base, const Open&> was false, silently, and a protected base's true (Unreal's `!std::isConstructible<FCbFieldView, const FCbObjectView&>`, FCbObjectView : protected FCbFieldView)
+class Base
+{
+public:
+  int v = 1;
+};
+
+class Copying
+{
+public:
+  Copying() = default;
+  Copying(const Copying& other) : v(other.v + 10) {}
+  int v = 1;
+};
+
+class Open : public Base
+{
+};
+
+class Shut : protected Base
+{
+};
+
+class Hidden : Base
+{
+};
+
+struct Plain : Base
+{
+};
+
+class OpenCopying : public Copying
+{
+};
+
+class ShutCopying : protected Copying
+{
+};
+
+static_assert(std::isConstructible<Base, const Open&> && std::isConstructible<Base, Open> && std::isConstructible<Base, Plain&>);
+static_assert(!std::isConstructible<Base, const Shut&> && !std::isConstructible<Base, Hidden&>);
+static_assert(std::isConstructible<Copying, const OpenCopying&> && !std::isConstructible<Copying, const ShutCopying&>);
+static_assert(std::isConvertible<Open*, Base*> && !std::isConvertible<Shut*, Base*> && !std::isConvertible<const Shut&, const Base&>);
+static_assert(std::isConvertible<Plain&, Base&> && !std::isConvertible<Hidden, Base>);
+
+int main()
+{
+  Open o;
+  OpenCopying c;
+  Base b(o);
+  Copying copied(c);
+  std::println(b.v, " ", copied.v, " ", std::isConstructible<Base, Open&>, " ", std::isConvertible<Shut&, Base&>);
+  return 0;
+}
