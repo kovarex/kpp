@@ -2,7 +2,9 @@
 # named by kpp.imagemanifest. A page with a folded corner, as Visual Studio's own file icons, and a blue badge
 # with a white "k" at its bottom left, where the .cs icon has its "C#". Drawn on a 16-unit grid, scaled to each
 # size; Visual Studio's image service inverts the page's grays for its dark themes, as for its own icons.
-#   powershell -NoProfile -File make-icons.ps1
+# Images\kpp-file.ico has the same pictures and a 256-pixel one, for File Explorer: the kpp installer gives it to
+# .kpp files when asked (tools/release/kpp.iss).
+#   powershell -NoProfile -ExecutionPolicy Bypass -File make-icons.ps1
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $out = "$PSScriptRoot\Images"
@@ -15,7 +17,8 @@ function Points($scale, [double[]]$xy)
   , $points
 }
 
-foreach ($size in 16, 32, 48)
+$pictures = @()
+foreach ($size in 16, 32, 48, 256)
 {
   $s = $size / 16.0
   $bitmap = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
@@ -40,7 +43,26 @@ foreach ($size in 16, 32, 48)
   $g.FillPolygon($white, (Points $s @(5.2, 11.4, 9.2, 15, 6.6, 15, 4, 12.6)))
 
   $g.Dispose()
-  $bitmap.Save("$out\kpp-file-$size.png", [System.Drawing.Imaging.ImageFormat]::Png)
+  $png = New-Object System.IO.MemoryStream
+  $bitmap.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
   $bitmap.Dispose()
+  $pictures += , @($size, $png.ToArray())
+  if ($size -le 48) { [System.IO.File]::WriteAllBytes("$out\kpp-file-$size.png", $png.ToArray()) }
 }
-"make-icons.ps1: wrote $out\kpp-file-16.png, -32, -48"
+
+# The .ico: its header, a directory entry per picture (a width and height of 0 is 256), then the pictures as PNGs.
+$ico = New-Object System.IO.MemoryStream
+$writer = New-Object System.IO.BinaryWriter $ico
+$writer.Write([uint16]0); $writer.Write([uint16]1); $writer.Write([uint16]$pictures.Count)
+$offset = 6 + 16 * $pictures.Count
+foreach ($picture in $pictures)
+{
+  $side = [byte]($picture[0] % 256)
+  $writer.Write($side); $writer.Write($side); $writer.Write([byte]0); $writer.Write([byte]0)
+  $writer.Write([uint16]1); $writer.Write([uint16]32); $writer.Write([uint32]$picture[1].Length); $writer.Write([uint32]$offset)
+  $offset += $picture[1].Length
+}
+foreach ($picture in $pictures) { $writer.Write([byte[]]$picture[1]) }
+$writer.Flush()
+[System.IO.File]::WriteAllBytes("$out\kpp-file.ico", $ico.ToArray())
+"make-icons.ps1: wrote $out\kpp-file-16.png, -32, -48 and kpp-file.ico"

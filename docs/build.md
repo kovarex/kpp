@@ -1201,7 +1201,7 @@ install. `install.cmd` links it there.
 kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a kpp release, run
 `kpp` in the project's root, and build or generate Visual Studio files from there.
 - **A release** is `kpp.exe`, `stdlib\`, `projectlib\`, `libraries\`, the
-  bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix, kpp-visualstudio.vsix and a README. kpp finds `stdlib\`,
+  bundled toolchain (below), the TextMate grammar, kpp-vscode.vsix, kpp-visualstudio.vsix, kpp-file.ico and a README. kpp finds `stdlib\`,
   `projectlib\` and `bin\` next to itself. An installation needs nothing else: no Visual Studio,
   Build Tools or Windows SDK (design.md 17, stage 2; `--toolchain msvc` uses an installed Visual
   Studio's clang on request, as the game's build does).
@@ -1327,6 +1327,10 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   (kpp-vscode.vsix, and Visual Studio's kpp-visualstudio.vsix): Windows opens every .vsix in Visual
   Studio's installer, which failed on the VS Code one when it was kpp.vsix (kovarex, 2026-11-02). An
   upgrade deletes an earlier release's kpp.vsix.
+  It also asks, as a checkbox, to give .kpp files kpp's icon in File Explorer (kovarex, 2026-11-22):
+  `.kpp` becomes a `kpp.source` file whose icon is `kpp-file.ico` (tools/vs/vsix/make-icons.ps1), with no
+  program to open it; the uninstaller removes both. Visual Studio's Solution Explorer has the icon from
+  kpp-visualstudio.vsix (editors.md, "The .kpp file icon").
 - **`.github/workflows/release.yml`** is started by hand (Actions > release > Run workflow): it
   builds kpp on a windows-2022 runner, packages it, and publishes the zip and installer as the
   prerelease `build-<run number>`, named by kpp's version. It ran on every master commit from

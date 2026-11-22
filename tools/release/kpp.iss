@@ -34,6 +34,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 ChangesEnvironment=yes
+; Explorer is told when the task fileicon gives .kpp its icon.
+ChangesAssociations=yes
 UninstallDisplayName=kpp {#Version}
 
 ; FreeBSD 14.3's headers and libraries (sysroots\freebsd-x86_64, about 90 MB installed), so that `kpp
@@ -83,6 +85,17 @@ Filename: "{code:VSIXInstallerOf}"; Parameters: "/quiet ""{app}\kpp-visualstudio
 ; the next start has no grammar and no extension (a FileNotFoundException, every word in the text's color).
 Filename: "{code:DevenvOf}"; Parameters: "/updateconfiguration"; Flags: runasoriginaluser waituntilterminated; Tasks: visualstudio; StatusMsg: "Updating Visual Studio's configuration for the extension..."
 #endif
+
+; The .kpp file icon in File Explorer (kpp-file.ico, tools/vs/vsix/make-icons.ps1), asked as a task: .kpp is a
+; kpp.source file, whose icon it is. No program opens it: double-clicking one asks, as before. Visual Studio's
+; Solution Explorer takes its icon from the Visual Studio extension, not from this.
+[Tasks]
+Name: fileicon; Description: "Give .kpp files kpp's icon in File Explorer"
+
+[Registry]
+Root: HKLM; Subkey: "Software\Classes\.kpp"; ValueType: string; ValueName: ""; ValueData: "kpp.source"; Flags: uninsdeletevalue; Tasks: fileicon
+Root: HKLM; Subkey: "Software\Classes\kpp.source"; ValueType: string; ValueName: ""; ValueData: "kpp source file"; Flags: uninsdeletekey; Tasks: fileicon
+Root: HKLM; Subkey: "Software\Classes\kpp.source\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\kpp-file.ico"; Tasks: fileicon
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NotOnPath(ExpandConstant('{app}'))

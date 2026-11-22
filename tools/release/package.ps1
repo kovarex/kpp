@@ -128,6 +128,8 @@ function CopyTree([string]$from, [string]$to)
 Copy-Item "$repository\compiler\build\kpp.exe" "$kpp\kpp.exe"
 # Apache 2.0's section 4(a): every copy carries the license (LICENSE, with its third-party section).
 Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
+# The .kpp file icon (tools/vs/vsix/make-icons.ps1), which the installer gives .kpp files when asked (kpp.iss).
+Copy-Item "$repository\tools\vs\vsix\Images\kpp-file.ico" "$kpp\kpp-file.ico"
 
 # The bundled toolchain, at its paths in llvm-mingw so clang finds the rest relative to its bin\ and
 # kpp finds bin\ next to itself: clang (which also compiles a project's C and C++ sources), lld,
