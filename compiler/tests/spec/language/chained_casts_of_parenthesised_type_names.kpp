@@ -1,0 +1,19 @@
+// spec: casts one after another through parenthesised names of types (`(Wide)(Word)(v)`, parsed as a call of a call) are `(Wide)((Word)(v))`, the one way C++ reads them when the second name is a type too; clang prints the same
+// found by thread UE (2026-11-22): "`(T)(x)` followed by `(` is a cast of the whole postfix expression", the error for `(T)(x)(y)` with x a value (Unreal's xxhash, `(xxh_u64)(xxh_u32)(data_key & 0xFFFFFFFF)`)
+using Word = unsigned int;
+using Wide = unsigned long long;
+
+template <typename T>
+Wide lowTimesHigh(T v)
+{
+  return (Wide)(Word)(v & 0xFFFFFFFF) * (Wide)(Word)(v >> 32);
+}
+
+int main()
+{
+  Wide data = 0x00000003FFFFFFFFull;
+  Wide a = (Wide)(Word)(data);
+  Wide b = (Wide)(unsigned char)(data);
+  std::println(a, " ", b, " ", lowTimesHigh(data), " ", (Wide)(Word)((Word)data + 1u));
+  return 0;
+}

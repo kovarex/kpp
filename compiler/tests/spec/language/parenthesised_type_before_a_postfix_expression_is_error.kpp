@@ -1,0 +1,23 @@
+// spec: a parenthesised name of a type before a parenthesised value followed by `(`, `.`, `->` or `[` (`(Wide)(twice)(3)`, `(Wide)(box).value`) is an error that asks which is meant: C++ casts the whole postfix expression, `(Wide)((twice)(3))`, the parser reads the cast first; casts one after another, `(Wide)(Word)(3)`, are no such case (language/chained_casts_of_parenthesised_type_names)
+// error: parenthesised_type_before_a_postfix_expression_is_error.kpp:19: error: `(T)(x)` followed by `.`, `->`, `[` or `(` is a cast of the whole postfix expression in C++; write `T(x)` or `(T)((x)...)` to say which
+// error: parenthesised_type_before_a_postfix_expression_is_error.kpp:20: error: `(T)(x)` followed by `.`, `->`, `[` or `(` is a cast of the whole postfix expression in C++; write `T(x)` or `(T)((x)...)` to say which
+using Wide = unsigned long long;
+
+Wide twice(Wide v)
+{
+  return v * 2;
+}
+
+struct Box
+{
+  Wide value = 4;
+};
+
+int main()
+{
+  Box box;
+  Wide a = (Wide)(twice)(3);
+  Wide b = (Wide)(box).value;
+  std::println(a, " ", b);
+  return 0;
+}

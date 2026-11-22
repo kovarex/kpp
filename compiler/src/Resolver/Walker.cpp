@@ -6997,7 +6997,11 @@ auto GlobalScope::Impl::Walker::parenthesisedTypeCallee(Expr* e) -> NameExpr*
   auto* c = static_cast<CallExpr*>(e);
   if (!c->callee || c->callee->kind != NodeKind::ParenExpr || c->args.size() != 1)
     return nullptr;
-  Expr* inner = static_cast<ParenExpr*>(c->callee)->inner;
+  return parenthesisedTypeName(static_cast<ParenExpr*>(c->callee)->inner);
+}
+
+auto GlobalScope::Impl::Walker::parenthesisedTypeName(Expr* inner) -> NameExpr*
+{
   if (!inner || inner->kind != NodeKind::NameExpr || static_cast<NameExpr*>(inner)->name.empty())
     return nullptr;
   auto* n = static_cast<NameExpr*>(inner);
@@ -8175,6 +8179,26 @@ auto GlobalScope::Impl::Walker::builtinMemberCall(CallExpr* c, MemberExpr* m, co
 
 auto GlobalScope::Impl::Walker::typeOfCallUnpacked(CallExpr* c) -> const Ty*
 {
+  // `(u64)(u32)(x)`, parsed `((u64)(u32))(x)`: casts one after another, `(u64)((u32)(x))`, the one way C++ reads it when
+  // the second parenthesised name is a type too (until 2026-11-22 "`(T)(x)` followed by `(` is a cast of the whole
+  // postfix expression", Unreal's xxhash `(xxh_u64)(xxh_u32)(data_key & 0xFFFFFFFF)`).
+  if (c->callee && c->callee->kind == NodeKind::CallExpr && c->args.size() == 1 && !probesSharedNodes())
+    if (auto* cast = static_cast<CallExpr*>(c->callee); parenthesisedTypeCallee(cast) && parenthesisedTypeName(cast->args[0]))
+    {
+      Arena& arena = impl.instanceArena();
+      auto* paren = arena.make<ParenExpr>();
+      paren->kind = NodeKind::ParenExpr;
+      paren->token = cast->args[0]->token;
+      paren->inner = cast->args[0];
+      auto* inner = arena.make<CallExpr>();
+      inner->kind = NodeKind::CallExpr;
+      inner->token = c->token;
+      inner->callee = paren;
+      inner->args = c->args;
+      Expr* operand = inner;
+      c->callee = cast->callee;
+      c->args = Span<Expr*>{arena.array(&operand, 1), 1};
+    }
   if (c->callee && c->callee->kind == NodeKind::CallExpr)
     checkPostfixAfterParenthesisedType(c->callee, c->token);
   if (NameExpr* typeName = parenthesisedTypeCallee(c); typeName && !probesSharedNodes())

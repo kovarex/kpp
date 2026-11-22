@@ -939,6 +939,8 @@
     // parser reads as a call (it cannot tell types from functions). C++ reads a cast. The name
     // inside, or null when it names no type.
     NameExpr* parenthesisedTypeCallee(Expr* e);
+    // The name of a type an expression is, as the parser read it (`u32` of `(u32)`), or null.
+    NameExpr* parenthesisedTypeName(Expr* inner);
 
     // `(T)(x).m`, `(T)(x)[i]`, `(T)(x)(y)`: C++ casts the whole postfix expression, the parser read
     // the cast as a call the postfix applies to; said, not compiled as the other one.
