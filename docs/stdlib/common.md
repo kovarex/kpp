@@ -172,5 +172,5 @@ volatile elements is volatile, a reference is not), isObject (no reference, func
 enumeration, pointer, member pointer, nullptr), isEmpty (a class with no data member, no virtual function and only
 empty bases; a closure without captures) and isDefaultConstructible (isConstructible<T>; kpp keeps a class's implicit
 default constructor beside its others, design.md 29). core/TypeTraits.kpp has AddVolatile, conjunction and
-disjunction (std::conjunction_v, disjunction_v); core/UtilityExt.kpp addressOf (std::addressof: past a class's unary
+disjunction (std::conjunction_v, disjunction_v) and CommonType (std::common_type_t: `c ? a : b`'s type, decayed); core/UtilityExt.kpp addressOf (std::addressof: past a class's unary
 operator&) and launder.

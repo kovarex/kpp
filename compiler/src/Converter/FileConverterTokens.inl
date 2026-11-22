@@ -3332,29 +3332,6 @@
               continue;
             }
           }
-          if ((name == "memory_order" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && toks[i + 4].getKind() == TokenKind::Identifier) ||
-              name.rfind("memory_order_", 0) == 0)
-          {
-            // A memory order passed to an atomic operation (`value.load(std::memory_order::relaxed)`,
-            // TimeStatistics' AtomicNanoseconds): the library's Atomic takes none, every operation is
-            // sequentially consistent (docs/stdlib/atomic.md), which is at least as strong. The
-            // argument goes with its comma; elsewhere a memory order stays and fails to compile.
-            uint32_t last = name == "memory_order" ? i + 4 : i + 2;
-            bool before = i > 0 && (toks[i - 1].is(P::Comma) || toks[i - 1].is(P::LParen));
-            bool after = last + 1 < toks.size() && (toks[last + 1].is(P::Comma) || toks[last + 1].is(P::RParen));
-            if (before && after)
-            {
-              if (toks[i - 1].is(P::Comma))
-                remove(toks[i - 1].offset, endOffset(last) - toks[i - 1].offset);
-              else if (toks[last + 1].is(P::Comma))
-                remove(t.offset, toks[last + 2].offset - t.offset);
-              else
-                remove(t.offset, endOffset(last) - t.offset);
-              counts.add("memory order arguments dropped");
-              i = last;
-              continue;
-            }
-          }
           if (name == "thread" && i + 4 < toks.size() && toks[i + 3].is(P::ColonColon) && spelling(i + 4) == "hardware_concurrency")
           {
             // A static member whose library name differs: std::thread::hardware_concurrency().

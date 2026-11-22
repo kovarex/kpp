@@ -144,10 +144,10 @@ toCivilTime and fromCivilTime, in UTC, without leap seconds; FileClock converts 
 from_sys. The duration literals (`10ms`, `2h`): a duration is written `Milliseconds(10)`.
 
 Not in the library yet, which Unreal Engine's Core names (2026-11-22; the converter writes them without std::, so
-they are undeclared): common_type_t, align_val_t, is_assignable(_v), is_aggregate_v, invoke_result_t,
+they are undeclared): align_val_t, is_assignable(_v), is_aggregate_v, invoke_result_t,
 remove_all_extents_t, setlocale, atomic_fetch_or and atomic_fetch_and, the class forms is_constructible and
 is_convertible. The type traits that converted code named and lacked until then are the compiler's (isLvalueReference,
-isRvalueReference, isVolatile, isObject, isScalar, isEmpty, isDefaultConstructible), with AddVolatile, conjunction,
+isRvalueReference, isVolatile, isObject, isScalar, isEmpty, isDefaultConstructible), with AddVolatile, CommonType (std::common_type_t, a program's specialization of std::common_type not consulted), conjunction,
 disjunction, addressOf and launder in core/.
 
 Not in the library by decision: `<regex>`. Its one user is cxxopts, whose five fixed patterns are

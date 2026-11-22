@@ -1,0 +1,23 @@
+// cppinput: memory orders stay where C++ writes them (the library's Atomic takes them, each sequentially consistent), so a
+// program's own atomic wrapper that requires one keeps its argument (Unreal's FPackedDataAtomic::load(std::memory_order),
+// whose calls lost theirs); std::CommonType is the library's CommonType
+
+struct PackedAtomic
+{
+  std::Atomic<u32> Value{3};
+  u32 load(std::memory_order Order) const { return this->Value.load(Order); }
+  void store(u32 V, std::memory_order Order) { this->Value.store(V, Order); }
+};
+
+template<typename A, typename B>
+std::CommonType<A, B> Sum(A a, B b) { return a + b; }
+
+i32 main()
+{
+  PackedAtomic p;
+  p.store(p.load(std::memory_order_relaxed) + 1, std::memory_order_release);
+  u32 seen = p.Value.fetch_add(1, std::memory_order_acq_rel);
+  std::atomicThreadFence(std::memory_order_seq_cst);
+  static_assert(std::isSame<std::CommonType<i32, i64>, i64>);
+  return seen == 4 && p.load(std::memory_order::acquire) == 5 && Sum(1, 2.5) == 3.5 ? 0 : 1;
+}

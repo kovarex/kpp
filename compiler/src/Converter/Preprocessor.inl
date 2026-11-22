@@ -705,5 +705,5 @@
     {"memory_order_acquire", "std::memory_order_acquire"}, {"memory_order_release", "std::memory_order_release"},
     {"memory_order_acq_rel", "std::memory_order_acq_rel"}, {"memory_order_seq_cst", "std::memory_order_seq_cst"},
     {"atomic_thread_fence", "std::atomicThreadFence"}, {"atomic_int", "std::Atomic<i32>"}, {"atomic_uint", "std::Atomic<u32>"},
-    {"is_constant_evaluated", "std::isConstantEvaluated"}};
+    {"is_constant_evaluated", "std::isConstantEvaluated"}, {"common_type_t", "std::CommonType"}};
 

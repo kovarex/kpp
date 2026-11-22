@@ -22,7 +22,7 @@ struct Counter
     constexpr std::memory_order MemoryOrder = std::memory_order_relaxed;
     this->Active.store(3);
     u32 x = this->Active.load(MemoryOrder);
-    std::atomicThreadFence();
+    std::atomicThreadFence(std::memory_order_seq_cst);
     return *std::launder(std::addressOf(v)) + i32(x);
   }
 };

@@ -47,6 +47,34 @@ constexpr bool conjunction = (B::value && ...);
 template<typename... B>
 constexpr bool disjunction = (B::value || ...);
 
+// std::common_type_t: the type two values of the types have together, as `c ? a : b` gives it, decayed; of more types the
+// first two's with the next, and so on (a program's specialization of std::common_type is not consulted).
+template<typename... T>
+struct CommonTypeOf
+{
+};
+
+template<typename T>
+struct CommonTypeOf<T>
+{
+  using Type = Decay<T>;
+};
+
+template<typename A, typename B>
+struct CommonTypeOf<A, B>
+{
+  using Type = Decay<decltype(false ? declval<A>() : declval<B>())>;
+};
+
+template<typename A, typename B, typename C, typename... R>
+struct CommonTypeOf<A, B, C, R...>
+{
+  using Type = typename CommonTypeOf<typename CommonTypeOf<A, B>::Type, C, R...>::Type;
+};
+
+template<typename... T>
+using CommonType = typename CommonTypeOf<T...>::Type;
+
 template<typename T>
 struct MakeUnsignedHelper {};
 template<> struct MakeUnsignedHelper<i8> { using Type = u8; };
