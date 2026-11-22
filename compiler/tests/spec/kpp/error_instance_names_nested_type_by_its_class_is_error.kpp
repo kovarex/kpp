@@ -1,0 +1,12 @@
+// spec: an error in a template's instance writes a template argument declared in a class by its class too, `T = Upgrade::Tag`, since many classes have one of that name (kovarex, 2026-11-22: SerialiserHelper's "Unsafe enum saving." static assertion said `T = Tag`, of one of the game's many union enums); a type declared at namespace scope keeps its short name
+// error: error_instance_names_nested_type_by_its_class_is_error.kpp:5: error: static assertion failed: "one byte" (4 == 1) (in T = Upgrade::Tag, asked for at
+// error: error_instance_names_nested_type_by_its_class_is_error.kpp:5: error: static assertion failed: "one byte" (4 == 1) (in T = Wide, asked for at
+union enum class Upgrade { { {Entity, int}, {Item, int} } };
+template<typename T> void save(T value) { static_assert(sizeof(T) == 1, "one byte"); (void)value; }
+enum class Wide : u32 { A, B };
+int main()
+{
+  save(Upgrade::Tag::Item);
+  save(Wide::A);
+  return 0;
+}

@@ -11826,7 +11826,11 @@ auto GlobalScope::Impl::Walker::instanceDescription() const -> std::string
       if (p.param && p.param->kind == NodeKind::TemplateParamDecl)
       {
         uint32_t name = static_cast<TemplateParamDecl*>(p.param)->name;
-        std::string one = std::string(name == UINT32_MAX ? "?" : impl.symbols.name(name)) + " = " + types.toString(p.type, &impl.symbols);
+        // A class's own type by its class too (`T = UpgradeIDBase::Tag`: every union enum has a Tag; kovarex, 2026-11-22).
+        const Ty* bare = p.type ? types.unqualified(types.stripRef(p.type)) : nullptr;
+        bool nested = bare && (bare->kind == TyKind::Class || bare->kind == TyKind::Enum) && bare->decl && bare->decl->parent &&
+                      (bare->decl->parent->kind == NodeKind::ClassDecl || bare->decl->parent->kind == NodeKind::EnumDecl);
+        std::string one = std::string(name == UINT32_MAX ? "?" : impl.symbols.name(name)) + " = " + types.toString(p.type, &impl.symbols, nested);
         if (std::find(seen.begin(), seen.end(), one) != seen.end())
           continue;
         seen.push_back(one);
