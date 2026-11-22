@@ -1,0 +1,50 @@
+// spec: a friend declaration naming a namespace's function (`friend Ref Detail::make<T, M>(T* p);`) looks up the names of its declarator in the class granting friendship, as C++ does ([basic.lookup.unqual] 10): a static member named bare there is the bare member error with its fix, `This::M` (design.md 23c), which compiles
+// found by thread UE (2026-11-22): the names were looked up in the namespace, "'M' is not declared", naming no fix (Unreal's TSharedRef befriending UE::Core::Private::MakeSharedRef<ObjectType, Mode>, Mode a static member)
+// error: bare_static_member_in_a_friend_declaration_is_error.kpp:21: error: M is a static member: write `This::M`, not `M` (design.md 23c)
+template <typename T, int InM>
+class Ref;
+
+namespace Detail
+{
+  template <typename T, int M>
+  Ref<T, M> make(T* p);
+
+  template <typename T, int M>
+  Ref<T, M> makeFixed(T* p);
+}
+
+template <typename T, int InM>
+class Ref
+{
+public:
+  static constexpr int M = InM;
+  friend Ref Detail::make<T, M>(T* p);
+  friend Ref Detail::makeFixed<T, This::M>(T* p);
+  int value() const { return *this.p + This::M; }
+
+private:
+  Ref(T* p) : p(p) {}
+  T* p = nullptr;
+};
+
+namespace Detail
+{
+  template <typename T, int M>
+  Ref<T, M> make(T* p)
+  {
+    return Ref<T, M>(p);
+  }
+
+  template <typename T, int M>
+  Ref<T, M> makeFixed(T* p)
+  {
+    return Ref<T, M>(p);
+  }
+}
+
+int main()
+{
+  int x = 5;
+  std::println(Detail::make<int, 3>(&x).value(), " ", Detail::makeFixed<int, 2>(&x).value());
+  return 0;
+}

@@ -11992,13 +11992,20 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       ++declaredTypes;
       walkType(f->returnType);
       --declaredTypes;
-      if (f->name.parts.size() > 1)
+      // A friend naming a namespace's function (`friend Ref Private::makeRef<T, M>(T* p, Counter<M>* c);`) declares that
+      // function, but its declarator's names are the granting class's, as C++ looks them up ([basic.lookup.unqual] 10):
+      // its class template parameters and members, a static member `M` getting its `This::M` (design.md 23c). Until
+      // 2026-11-22 they were looked up in the namespace, "'Mode' is not declared" (Unreal's TSharedRef befriending
+      // UE::Core::Private::MakeSharedRef<ObjectType, Mode>).
+      Scope* qualifierScope = f->name.parts.size() > 1 ? semanticScopeFor(f->name) : nullptr;
+      bool friendOfNamespace = (f->flags & DF_Friend) && qualifierScope && qualifierScope->kind == ScopeKind::Namespace;
+      if (f->name.parts.size() > 1 && !friendOfNamespace)
       {
         // An out-of-line member function sees its own file's private names (design.md 15), not its class's
         // file's: Unreal's `void FFileManagerGeneric::ProcessCommandLineOptions()` in its .cpp names that file's
         // log category and static helpers, its class is declared in a header.
         locals.writtenIn = f->file;
-        scope = semanticScopeFor(f->name);
+        scope = qualifierScope;
         if (!activeSubst)
           thisType = computeThisType();
       }
