@@ -1163,6 +1163,8 @@
   // constBindParameter evaluates as one left out at the end.
   ConstValue defaultArgumentMark() { return ConstValue::unset(types.unknown()); }
   bool isDefaultArgumentMark(const ConstValue& v) { return v.isUnset() && v.type == types.unknown(); }
+  // A parameter's type as the function takes it: an array parameter is a pointer to its element.
+  const Ty* constParameterType(ParamDecl* p, const TypeContext& fctx, int depth);
   bool constBindParameter(ParamDecl* p, const Ty* type, size_t i, const std::vector<ConstValue>& args, Expr* defaultValue, const TypeContext& fctx, int depth,
                           const std::vector<std::optional<ConstPlace>>* places, const std::vector<uint8_t>* categories, std::vector<ConstBinding>& env);
 

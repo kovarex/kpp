@@ -1,0 +1,59 @@
+// spec: a constant function's array parameter (`const usize sizes[]`) is a pointer to its element, as in C++ ([dcl.fct] 5), so one given a local array reads it through that pointer: the largest of `sizeof(Ts)...` is a constant, a class's member array of that size has one, and its size is a constant in a requires clause; clang prints the same (`24 1 32 8`)
+// found by thread UE (2026-11-22): the parameter was bound as an array, a copy, and the reads were no constant: no size for Unreal's TVariant (TVariantStorage::MaxOf), "the requires clause of DestructItems cannot be evaluated" for FCbAttachment, which holds one
+template <usize Size, u32 Alignment>
+struct AlignedBytes
+{
+  alignas(Alignment) u8 pad[Size];
+};
+
+template <typename... Ts>
+struct VariantStorage
+{
+  static constexpr usize maxOf(const usize sizes[])
+  {
+    usize largest = 0;
+    for (usize i = 0; i < sizeof...(Ts); ++i)
+      if (sizes[i] > largest)
+        largest = sizes[i];
+    return largest;
+  }
+
+  static constexpr usize maxSizeof()
+  {
+    constexpr usize sizes[] = {sizeof(Ts)...};
+    return This::maxOf(sizes);
+  }
+
+  static constexpr usize maxAlignof()
+  {
+    constexpr usize alignments[] = {alignof(Ts)...};
+    return This::maxOf(alignments);
+  }
+
+  AlignedBytes<maxSizeof(), u32(maxAlignof())> storage;
+};
+
+struct Big
+{
+  double values[3];
+};
+
+struct Holder
+{
+  VariantStorage<int, Big, char> storage;
+  u8 typeIndex = 0;
+};
+
+template <typename T>
+  requires(sizeof(T) > 0)
+int sized(T* p)
+{
+  return p ? 2 : 1;
+}
+
+int main()
+{
+  Holder* h = nullptr;
+  std::println(VariantStorage<int, Big, char>::maxSizeof(), " ", sized(h), " ", sizeof(Holder), " ", alignof(Holder));
+  return 0;
+}

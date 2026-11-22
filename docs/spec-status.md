@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2455 pass, 2 pending, 0 failing, 0 fixed** (2457 snippets, 219.7 s).
+**2456 pass, 2 pending, 0 failing, 0 fixed** (2458 snippets, 219.7 s).
 
 ## Language: statements, expressions, declarations
 
@@ -44,6 +44,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `language/array_of_function_pointers.kpp` | an array of pointers to functions, `int (*table[2])() = { one, two };`, a local and a global, and one assigned element by element: the declarator's array was dropped until 2026-11-06, so table was one pointer (its brace list "no initializer of it", and `t[0] = one` indexed a function pointer, a silent wrong answer) | pass |  |  |
 | `language/array_of_function_pointers_declarators_nest.kpp` | `int (*(a[2]))(int)`, `int (*(*p)[2])(int)`, `int (*(&r)[2])(int)`, `int (&(f))(int)`, `int (*(x))(int)`, `int ((*y))(int)` | pass |  |  |
 | `language/array_parameter_is_pointer.kpp` | a parameter declared as an array is a pointer to its element (C's and C++'s adjustment): `void f(unsigned rep[3])` is `void f(unsigned* rep)`, so a pointer is an argument for it; and in a function pointer type too: `unsigned (*)(unsigned rep[3])` is `unsigned (*)(unsigned*)` | pass | zstd (converted as C): ZSTD_blockCompressor's `U32 rep[ZSTD_REP_NUM]` parameter, with the functions of that pointer type taking `U32 rep[ZSTD_REP_NUM]` and called with `zc->blockState.nextCBlock->rep` decayed; the converter writes `U32* rep` until this passes |  |
+| `language/array_parameter_reads_through_its_pointer_in_a_constant.kpp` | a constant function's array parameter (`const usize sizes[]`) is a pointer to its element, as in C++ ([dcl.fct] 5), so one given a local array reads it through that pointer: the largest of `sizeof(Ts)...` is a constant, a class's member array of that size has one, and its size is a constant in a requires clause; clang prints the same (`24 1 32 8`) | pass |  |  |
 | `language/array_with_more_values_than_elements_is_error.kpp` | a brace list with more values than its array takes is an error, as in C++ ([dcl.init.aggr] 9: `int a[2] = {1, 2, 3}`), and so it is where an element's braces are elided (`In b[1] = {1, 2, 3}`: {1, 2} takes two) | pass |  |  |
 | `language/arrays_2d.kpp` | two-dimensional arrays: nested brace initialisation and indexing | pass |  |  |
 | `language/assign_through_returned_reference.kpp` | assigning through a reference returned from a function | pass |  |  |

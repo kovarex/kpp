@@ -6259,7 +6259,7 @@ auto GlobalScope::Impl::constEnumConstruct(const Ty* t, const std::vector<ConstV
     if (p->isPack)
       return none("a parameter pack");
     Expr* defaultValue = p->defaultValue ? p->defaultValue : static_cast<ParamDecl*>(ctor->params[i])->defaultValue;
-    const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+    const Ty* type = constParameterType(p, fctx, depth + 1);
     if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, nullptr, nullptr, env))
       return std::nullopt;
   }
@@ -6325,7 +6325,7 @@ auto GlobalScope::Impl::constEnumMethod(FunctionDecl* f, ConstValue& self, const
     if (p->isPack)
       return none("a parameter pack");
     Expr* defaultValue = p->defaultValue ? p->defaultValue : static_cast<ParamDecl*>(f->params[i])->defaultValue;
-    const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+    const Ty* type = constParameterType(p, fctx, depth + 1);
     if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, nullptr, nullptr, env))
       return std::nullopt;
   }
@@ -6443,7 +6443,7 @@ auto GlobalScope::Impl::constRunConstructor(FunctionDecl* ctor, const Ty* t, con
     // destroyed: "memory allocated at String.kpp:657 is never freed"); `ByValue(String v)` given
     // an lvalue gets a copy by String's copy constructor (it shared the lvalue's block: "memory
     // freed twice"), which the constructor destroys when it returns (constRunBody).
-    const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+    const Ty* type = constParameterType(p, fctx, depth + 1);
     if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, places, categories, env))
       return std::nullopt;
   }
@@ -9091,7 +9091,7 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
       env.push_back(std::move(b));
       break;
     }
-    const Ty* type = p->type ? convertType(p->type, fctx, depth + 1) : nullptr;
+    const Ty* type = constParameterType(p, fctx, depth + 1);
     if (!constBindParameter(p, type, i, args, defaultValue, fctx, depth, places, categories, env))
       return std::nullopt;
   }
@@ -9137,6 +9137,16 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
   if (flow != ConstFlow::Returned || !result)
     return std::nullopt;
   return returns ? constConvertTo(result, returns, depth + 1) : result;
+}
+
+auto GlobalScope::Impl::constParameterType(ParamDecl* p, const TypeContext& fctx, int depth) -> const Ty*
+{
+  const Ty* type = p->type ? convertType(p->type, fctx, depth) : nullptr;
+  // An array parameter is a pointer to its element ([dcl.fct] 5: `const SIZE_T Sizes[]`, Unreal's TVariantStorage::MaxOf,
+  // which its MaxSizeof calls with a local array): bound as the array it was given, a copy, its reads through the
+  // pointer it is were no constant (until 2026-11-22: no TVariant's size, "the requires clause of DestructItems cannot
+  // be evaluated" for Unreal's FCbAttachment).
+  return type && type->kind == TyKind::Array ? types.decay(type) : type;
 }
 
 auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t i, const std::vector<ConstValue>& args, Expr* defaultValue, const TypeContext& fctx, int depth,
