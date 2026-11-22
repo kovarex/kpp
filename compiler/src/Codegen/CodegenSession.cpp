@@ -197,6 +197,33 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
   });
 }
 
+// A module's own literals (`$.str.X = comdat any` with its definition) that none of its texts names any more: the ones of a
+// body edited or removed since (its literal changed, its function gone), which a build from scratch does not have (until
+// 2026-11-22 a release build's server kept them: --verify-incremental, "what it wrote differs", after a test was renamed).
+static void dropUnusedLiterals(const Shared& sh, unsigned k, std::vector<std::string>& entries)
+{
+  auto literal = [](const std::string& e) { return e.starts_with("$.str.") || e.starts_with("$.wstr.") || e.starts_with("$.data."); };
+  std::unordered_set<std::string_view> named;
+  auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { named.insert(text.substr(at, length)); }); };
+  for (const Shared::Definition& d : sh.definitions[k])
+    for (auto [at, length] : d.names)
+      named.insert(std::string_view(d.text).substr(at, length));
+  for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+    scan(o.text);
+  for (const std::string& e : entries)
+    if (!literal(e))
+      scan(e);
+  // (a literal named by another literal's data, a constant array of pointers to them, stays with it)
+  for (bool more = true; more;)
+  {
+    more = false;
+    for (const std::string& e : entries)
+      if (literal(e) && named.count("@" + e.substr(1, e.find(" = comdat") - 1)))
+        irNamesIn(e, [&](size_t at, size_t length) { more |= named.insert(std::string_view(e).substr(at, length)).second; });
+  }
+  std::erase_if(entries, [&](const std::string& e) { return literal(e) && !named.count("@" + e.substr(1, e.find(" = comdat") - 1)); });
+}
+
 unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
 {
   return moduleCount > 1 && debug && !optimize ? 2 * moduleCount : moduleCount;
@@ -2951,6 +2978,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     std::vector<std::string>& kept = sh.keptModuleEntries[k];
     kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
     dropSharedLiterals(sh, kept);
+    dropUnusedLiterals(sh, k, kept);
     std::vector<std::string> entries = kept;
     appendOwnedEntries(sh, k, entries);
     sh.moduleDecls[k].entries = std::move(entries);

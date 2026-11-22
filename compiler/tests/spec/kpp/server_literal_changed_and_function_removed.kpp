@@ -1,0 +1,26 @@
+// spec: a compile server's builds after a function's string literal is changed and after a function with a literal of its own is removed are what a build from scratch gives, in every configuration: the module keeps no literal its texts no longer name (until 2026-11-22 a release build's server kept the old literal, and --verify-incremental found "what it wrote differs")
+//--- step: the program
+[[maybe_unused]] void extra() { std::println("a literal of its own"); }
+
+int main()
+{
+  std::println("first literal");
+  return 0;
+}
+// expect: first literal
+//--- step: the literal changed
+[[maybe_unused]] void extra() { std::println("a literal of its own"); }
+
+int main()
+{
+  std::println("second literal");
+  return 0;
+}
+// expect: second literal
+//--- step: the function with its own literal removed
+int main()
+{
+  std::println("second literal");
+  return 0;
+}
+// expect: second literal
