@@ -23,7 +23,9 @@ struct CallExpr : Expr
 };
 struct IndexExpr : Expr { Expr* base; Span<Expr*> args; bool indexFirst = false; }; // indexFirst: written `2[a]`, the walk swapped them: args[0] is evaluated first.
 // dynamicMember: `object.[m]`, the member a reflection descriptor names (design.md 8.3); member is then empty.
-struct MemberExpr : Expr { Expr* base; QualifiedName member; P op; Decl* resolved = nullptr; Expr* dynamicMember = nullptr; };
+// objectQualifiers: what the walk that typed it added to the member's type from its object's (1 const, 2 volatile), which
+// decltype of it leaves out: an unparenthesized member access is the member's declared type ([dcl.type.decltype] 1.3).
+struct MemberExpr : Expr { Expr* base; QualifiedName member; P op; uint8_t objectQualifiers = 0; Decl* resolved = nullptr; Expr* dynamicMember = nullptr; };
 // What the checker decided an operator calls (design.md 24: decisions are made once), written by the
 // walk that types the node, so per instance on an instance's own copy. Undecided: no walk decided it
 // (a template's dependent operand, a node codegen made). Builtin: no operator function, the built-in

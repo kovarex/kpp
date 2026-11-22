@@ -341,6 +341,10 @@
   // decltype gives as T&& ([dcl.type.decltype] 1.5); unparenthesized, it is the member's declared type.
   static bool parenthesizedXvalueMember(const Expr* e);
 
+  // decltype of the member access m, which the walk typed t ([dcl.type.decltype] 1.3): the member's declared type, t
+  // without the qualifiers its object added (MemberExpr::objectQualifiers).
+  static const Ty* declaredMemberType(const MemberExpr* m, const Ty* t, TypeTable& types);
+
   // `auto [a, b] = e;` of class type t: whether the library's TupleSize<t> (std::tuple_size) has
   // a member named value, which makes the binding tuple-like (design.md 4, structured bindings);
   // size gets that value, nothing when it is no constant.

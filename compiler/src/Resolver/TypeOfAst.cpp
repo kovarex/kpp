@@ -2516,6 +2516,20 @@ auto GlobalScope::Impl::parenthesizedXvalueMember(const Expr* e) -> bool
   return isXvalueMember(e);
 }
 
+auto GlobalScope::Impl::declaredMemberType(const MemberExpr* m, const Ty* t, TypeTable& types) -> const Ty*
+{
+  if (!m || !t || !t->isKnown() || !m->objectQualifiers || t->isReference())
+    return t;
+  // (an array member's elements are what took them, as TypeTable::qualified gives an array's to its elements)
+  auto without = [&](auto& self, const Ty* x) -> const Ty*
+  {
+    if (x->kind == TyKind::Array && x->inner)
+      return types.array(self(self, x->inner), x->count);
+    return types.qualified(types.unqualified(x), x->isConst && !(m->objectQualifiers & 1), x->isVolatile && !(m->objectQualifiers & 2));
+  };
+  return without(without, t);
+}
+
 auto GlobalScope::Impl::namesTupleBinding(const Expr* e) -> bool
 {
   Decl* d = e && e->kind == NodeKind::NameExpr ? static_cast<const NameExpr*>(e)->resolved : nullptr;

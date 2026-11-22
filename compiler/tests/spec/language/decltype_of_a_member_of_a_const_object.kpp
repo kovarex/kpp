@@ -1,0 +1,52 @@
+// spec: decltype of an unparenthesized member access is the member's declared type ([dcl.type.decltype] 1.3), whatever the object's qualifiers: `decltype(c.key)` of a const or volatile c is int, a const member's const int, an array member's int[2]; parenthesized, an lvalue's member is the object's qualifiers on it (`const int&`); decltype(auto) the same; clang prints the same
+// found by thread UE (2026-11-22): it was const int, silently, so Unreal's TTuple Get of a const tuple named a base TTupleBaseElement<const int32> it does not have (7 of TuplesTest's static assertions no constant)
+struct Elem
+{
+  int key = 3;
+  const int fixed = 4;
+  int pair[2] = {5, 6};
+  mutable int seen = 0;
+};
+
+template<typename T> struct Holder
+{
+  T value{};
+};
+
+template<typename T> constexpr bool keyIsPlain = std::isSame<decltype(std::declval<T>().key), int>;
+
+template<typename T> decltype(auto) declared(T&& object)
+{
+  decltype(auto) result = object.key;
+  return result;
+}
+
+template<typename T> decltype(auto) referred(T&& object) { return (object.key); }
+
+const Elem c;
+volatile Elem v;
+const Holder<const int> h;
+
+static_assert(std::isSame<decltype(c.key), int>);
+static_assert(std::isSame<decltype((c.key)), const int&>);
+static_assert(std::isSame<decltype(c.fixed), const int>);
+static_assert(std::isSame<decltype(c.pair), int[2]>);
+static_assert(std::isSame<decltype((c.pair)), const int(&)[2]>);
+static_assert(std::isSame<decltype(c.seen), int>);
+static_assert(std::isSame<decltype(v.key), int>);
+static_assert(std::isSame<decltype((v.key)), volatile int&>);
+static_assert(std::isSame<decltype(h.value), const int>);
+static_assert(keyIsPlain<const Elem&> && keyIsPlain<const volatile Elem&>);
+static_assert(std::isSame<decltype(declared(c)), int>);
+static_assert(std::isSame<decltype(referred(c)), const int&>);
+
+int main()
+{
+  const Elem& r = c;
+  decltype(r.key) copy = r.key;
+  copy += 10;
+  decltype(auto) other = r.pair;
+  other[0] = 7;
+  std::println(copy, " ", other[0], " ", c.pair[0], " ", declared(c), " ", referred(c));
+  return 0;
+}

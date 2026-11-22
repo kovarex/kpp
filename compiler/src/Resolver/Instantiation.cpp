@@ -2249,8 +2249,13 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
       // decltype's own rule ([dcl.type.decltype] 1): a plain name or member access is its declared
       // type, the type the walk gave it; any other lvalue a reference to its type (`decltype((x))`,
       // `decltype(++x)` are int&), an xvalue or prvalue its type (references the walk keeps).
-      auto decltypeOfExpr = [&](const Ty* typed) -> const Ty* {
+      // (walked: the node the walk typed, d->expr or a copy typed anew, whose objectQualifiers say what a member access's
+      // object added: `decltype(c.key)` of a const c is the member's type, until 2026-11-22 const too, silently, and
+      // Unreal's TTuple Get of a const tuple named a base TTupleBaseElement<const int32> it does not have)
+      auto decltypeOfExpr = [&](const Ty* typed, const Expr* walked) -> const Ty* {
         const Expr* e = d->expr;
+        if (!d->isAuto && e && e->kind == NodeKind::MemberExpr && walked && walked->kind == NodeKind::MemberExpr && typed)
+          return declaredMemberType(static_cast<const MemberExpr*>(walked), typed, types);
         if (d->isAuto || !e || !typed || !typed->isKnown() || typed->kind == TyKind::Pack ||
             e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr || typed->kind == TyKind::Void)
           return typed;
@@ -2260,12 +2265,15 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           return types.rref(typed); // `decltype((move(h).v))`: an xvalue's member is one, T&& ([expr.ref] 6.2)
         return typed->isReference() || !isLvalueExpression(e) ? typed : types.lref(typed);
       };
-      const Ty* generic = d->expr && d->expr->ty ? decltypeOfExpr(d->expr->ty) : types.unknown();
+      const Ty* generic = d->expr && d->expr->ty ? decltypeOfExpr(d->expr->ty, d->expr) : types.unknown();
       if (namesTupleBinding(d->expr))
         generic = types.stripRef(generic); // `decltype(a)` of a tuple-like binding: the type get gives it, not its reference
       if (d->expr && !d->expr->ty && !d->isAuto)
-        if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx); typed && typed->isKnown())
-          generic = decltypeOfExpr(typed); // `decltype(Definition::migrations)` in a member's type, before any walk typed it
+      {
+        Expr* typedCopy = nullptr;
+        if (const Ty* typed = typeOfSignatureExpression(d->expr, ctx, &typedCopy); typed && typed->isKnown())
+          generic = decltypeOfExpr(typed, typedCopy); // `decltype(Definition::migrations)` in a member's type, before any walk typed it
+      }
       // `-> Future<decltype(callable())>` under an instantiation's arguments: the generic type of
       // a dependent expression (F) stands in for no call's result, so the expression is typed
       // anew with them. So is one that names a parameter they bind, whatever its generic type:
@@ -2312,7 +2320,7 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
             if (!namesOnlyAccessible(typedCopy, own.function, context, nullptr))
               return types.unknown();
           }
-          return decltypeOfExpr(typed);
+          return decltypeOfExpr(typed, typedCopy);
         }
         // An expression that does not form under the arguments, all of them known (`decltype(T::value)` with T = int,
         // `decltype(a + b)` of a class without operator+): no type, a substitution failure ([temp.deduct] 8), never

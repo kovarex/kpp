@@ -233,7 +233,9 @@ auto GlobalScope::Impl::Walker::decltypeOf(Expr* e, const Ty* t) -> const Ty*
 {
   if (Impl::namesTupleBinding(e) && t)
     return types.stripRef(t); // `decltype(auto) x = a;` of a tuple-like binding a: what get gives, no reference
-  if (!e || !t || !t->isKnown() || e->kind == NodeKind::NameExpr || e->kind == NodeKind::MemberExpr)
+  if (e && t && e->kind == NodeKind::MemberExpr)
+    return Impl::declaredMemberType(static_cast<MemberExpr*>(e), t, types); // `decltype(auto) r = c.key;` of a const c: the member's type
+  if (!e || !t || !t->isKnown() || e->kind == NodeKind::NameExpr)
     return t;
   if (t->kind == TyKind::RRef && isLvalueExpression(e))
     return types.lref(t->inner); // (`(x.r)` of an `int&& r`: what a name says is an lvalue)
@@ -4205,6 +4207,7 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
       symbols.name(m->member.parts[0].symbol) == "size")
     return typeOfReflectionSize(m);
   const Ty* base = walkExpr(m->base);
+  m->objectQualifiers = 0;
   if (m->dynamicMember)
   {
     // `object.[m]`: the data member the descriptor m names (reflection, design.md 8.3).
@@ -4222,8 +4225,11 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
     ++stats.membersBound;
     const Ty* t = d->inner ? d->inner : types.unknown();
     const Ty* obj = object ? types.stripRef(object) : nullptr;
-    if (obj && obj->isConst && t->isKnown() && !t->isReference())
-      t = types.qualified(t, true, false);
+    if (obj && obj->isConst && t->isKnown() && !t->isReference() && !t->isConst)
+    {
+      m->objectQualifiers = 1;
+      t = types.qualified(t, true, t->isVolatile);
+    }
     return t;
   }
   for (const NamePart& part : m->member.parts)
@@ -4304,14 +4310,21 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
   // A data member of a const object is const (`rectangle.data.begin()` with `const Rect&
   // rectangle` calls the const begin()), unless it is mutable, static or a reference; an array
   // member's elements are (`this->cells[0] = 5;` in a const member function was no error).
+  // (What it adds, decltype of the access leaves out: objectQualifiers.)
   if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Mutable | DF_Typedef)) &&
       !r.type->isReference() && r.type->isKnown() && !Impl::isConstObject(r.type))
     if (const Ty* obj = types.stripRef(object); obj && obj->isConst)
+    {
+      m->objectQualifiers = uint8_t(1 | (obj->isVolatile && !r.type->isVolatile ? 2 : 0));
       return types.qualified(r.type, true, r.type->isVolatile || obj->isVolatile);
+    }
   // (of a volatile one volatile, the same way, a mutable one too, and read and written as one)
   if (r.type && r.decl && r.decl->kind == NodeKind::VariableDecl && !(r.decl->flags & (DF_Static | DF_Typedef)) && !r.type->isReference() && r.type->isKnown())
     if (const Ty* obj = types.stripRef(object); obj && obj->isVolatile)
+    {
+      m->objectQualifiers = r.type->isVolatile ? 0 : 2;
       return types.qualified(r.type, r.type->isConst, true);
+    }
   return r.type ? r.type : types.unknown();
 }
 
