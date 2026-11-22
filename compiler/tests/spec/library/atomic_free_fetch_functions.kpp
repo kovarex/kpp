@@ -1,0 +1,17 @@
+// spec: the free functions on an Atomic<T>* that C++'s std::atomic_fetch_add ... atomic_fetch_xor convert to (atomicFetchAdd, atomicFetchSub, atomicFetchAnd, atomicFetchOr, atomicFetchXor) do the member's operation and return the value before, as atomicLoad and atomicStore do theirs; clang prints the same (`12 14 14 4 4 5 4 5 1`)
+// found by thread UE (2026-11-22): there were none, "'atomic_fetch_or' is not declared" for Unreal's FNameEntryAllocator `std::atomic_fetch_or((std::atomic<WordType>*)DestDword, ValueMask)`
+int main()
+{
+  std::Atomic<u32> bits(12);
+  u32 beforeOr = std::atomicFetchOr(&bits, 2u);
+  u32 afterOr = std::atomicLoad(&bits);
+  u32 beforeAnd = std::atomicFetchAnd(&bits, 4u);
+  u32 afterAnd = bits.load();
+  u32 beforeXor = std::atomicFetchXor(&bits, 1u);
+  std::Atomic<i32> count(4);
+  i32 beforeAdd = std::atomicFetchAdd(&count, 1);
+  i32 beforeSub = std::atomicFetchSub(&count, 5);
+  std::atomicStore(&count, count.load() + 1);
+  std::println(beforeOr, " ", afterOr, " ", beforeAnd, " ", afterAnd, " ", beforeXor, " ", bits.load(), " ", beforeAdd, " ", beforeSub, " ", std::atomicLoad(&count));
+  return 0;
+}

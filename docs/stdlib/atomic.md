@@ -56,7 +56,9 @@ otherwise false and expected set to the value. An object whose last owner is rep
 after the lock is released.
 
 The free functions on a plain SharedPtr (`atomicLoad`, `atomicStore`, `atomicExchange`) are in
-sharedptr.md.
+sharedptr.md. On an `Atomic<T>*` (C++'s `std::atomic_load`, `atomic_fetch_or` ...): `atomicLoad(a)`, `atomicStore(a,
+value)`, `atomicFetchAdd(a, delta)`, `atomicFetchSub`, `atomicFetchAnd(a, mask)`, `atomicFetchOr`, `atomicFetchXor`, each
+the member of that name, returning what it returns.
 
 `atomicThreadFence(order)` / `atomic_thread_fence` and `atomicSignalFence(order)` /
 `atomic_signal_fence`: a sequentially consistent fence (an atomic read-modify-write of a word of the

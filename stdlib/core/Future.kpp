@@ -412,3 +412,20 @@ T atomicLoad(const Atomic<T>* a) { return a->load(); }
 
 template<typename T>
 void atomicStore(Atomic<T>* a, T value) { a->store(value); }
+
+// std::atomic_fetch_add ... atomic_fetch_xor: the member's, returning the value before (Unreal's FNameEntryAllocator
+// `std::atomic_fetch_or((std::atomic<WordType>*)DestDword, ValueMask)`).
+template<typename T>
+T atomicFetchAdd(Atomic<T>* a, T delta) { return a->fetchAdd(delta); }
+
+template<typename T>
+T atomicFetchSub(Atomic<T>* a, T delta) { return a->fetchSub(delta); }
+
+template<typename T>
+T atomicFetchAnd(Atomic<T>* a, T mask) { return a->fetchAnd(mask); }
+
+template<typename T>
+T atomicFetchOr(Atomic<T>* a, T mask) { return a->fetchOr(mask); }
+
+template<typename T>
+T atomicFetchXor(Atomic<T>* a, T mask) { return a->fetchXor(mask); }

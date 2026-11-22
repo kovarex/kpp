@@ -626,6 +626,8 @@
     {"atomic_uint64_t", "std::Atomic<u64>"}, {"atomic_int8_t", "std::Atomic<i8>"}, {"atomic_int16_t", "std::Atomic<i16>"},
     {"atomic_int32_t", "std::Atomic<i32>"}, {"atomic_int64_t", "std::Atomic<i64>"}, {"atomic_load", "std::atomicLoad"},
     {"atomic_store", "std::atomicStore"}, {"atomic_exchange", "std::atomicExchange"}, {"atomic_is_lock_free", "std::atomicIsLockFree"},
+    {"atomic_fetch_add", "std::atomicFetchAdd"}, {"atomic_fetch_sub", "std::atomicFetchSub"}, {"atomic_fetch_and", "std::atomicFetchAnd"},
+    {"atomic_fetch_or", "std::atomicFetchOr"}, {"atomic_fetch_xor", "std::atomicFetchXor"},
     {"async", "std::async"}, {"future", "std::Future"}, {"shared_future", "std::SharedFuture"},
     {"promise", "std::Promise"}, {"future_status", "std::FutureStatus"}, {"launch", "std::Launch"},
     {"this_thread", "std::thisThread"}, {"recursive_mutex", "std::RecursiveMutex"}, {"shared_mutex", "std::SharedMutex"},
