@@ -3941,9 +3941,10 @@ namespace
           }
           // Its text is its value's (design.md 33; the library's appendTo writes the underlying value), and str() is that
           // text, as appendTo makes str() of other types: `index.str()` is "9", a strong bool's "true".
-          if (at(P::Semi))
+          // (written after the declaration's `;`, so its own tokens stay the declaration's: hover shows them)
+          if (expect(P::Semi, "expected ';'"))
           {
-            std::vector<Token> made = synthesize("std::String str() const { return std::toString(this); }", start);
+            std::vector<Token> made = synthesize("std::String str() const { return std::toString(this); }", pos - 1);
             toks.insert(toks.begin() + pos, made.begin(), made.end());
             Decl* savedParent = currentParent;
             currentParent = e;
@@ -3954,7 +3955,6 @@ namespace
             e->members = makeSpan<Decl*>(mark);
             currentParent = savedParent;
           }
-          expect(P::Semi, "expected ';'");
           pushDecl(e);
           return;
         }
