@@ -1,0 +1,23 @@
+// spec: a lambda's capture by copy of a range-for variable whose element's copy or ending does something (`for (std::SharedPtr<int>& each : all)`, `[each]`) keeps that element alive, no unused capture, as one of a local is; a range-for variable of a plain element (`for (int& x : numbers)`, `[x]`) captured and never used stays the error
+// found by thread UE (2026-11-22): a range-for variable is no DeclStmt's local, so the check said to remove `Task` from Unreal's `for (TSharedPtr<FTask>& Task : Tasks) Task->Init(..., [&Garbage, &TestVal, Task]() {...});`, which keeps each task alive by its reference
+// error: unused_capture_of_a_range_for_variable_keeping_its_element_alive_is_kept.kpp:18: error: the lambda captures x and never uses it: remove it from the captures
+int main()
+{
+  std::Vector<std::SharedPtr<int>> all;
+  all.push_back(std::makeShared<int>(1));
+  int sum = 0;
+  for (std::SharedPtr<int>& each : all)
+  {
+    auto keep = [each]() { return 2; };
+    sum += keep();
+  }
+  std::Vector<int> numbers;
+  numbers.push_back(3);
+  for (int& x : numbers)
+  {
+    auto plainCopy = [x]() { return 4; };
+    sum += plainCopy();
+  }
+  std::println(sum);
+  return 0;
+}

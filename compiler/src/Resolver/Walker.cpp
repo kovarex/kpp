@@ -1197,15 +1197,27 @@ auto GlobalScope::Impl::Walker::checkUnusedNames(FunctionDecl* f) -> void
     {
       if (c.isThis || c.init || c.isPack || c.symbol == UINT32_MAX || named.count(c.symbol))
         continue;
-      // By copy, a class whose copy or ending does something keeps that alive (a SharedPtr): used by being there.
+      // By copy, a class whose copy or ending does something keeps that alive (a SharedPtr): used by being there. (A
+      // range-for's variable too, `for (TSharedPtr<FTask>& Task : Tasks)`, which is no DeclStmt's: Unreal's task tests
+      // capture each Task to keep it alive, and the check said to remove it, which would end the task's last reference.)
       bool kept = false;
+      auto keeps = [&](Decl* d, bool element)
+      {
+        if (!d || d->kind != NodeKind::VariableDecl)
+          return;
+        auto* v = static_cast<VariableDecl*>(d);
+        if (!v->name.empty() && v->name.last().symbol == c.symbol)
+        {
+          const Ty* t = v->cachedType.load(std::memory_order_acquire);
+          kept = kept || !t || !plain(element ? types.stripRef(t) : t, 0); // (the element a reference variable names)
+        }
+      };
       if (!c.byRef)
+      {
         for (VariableDecl* v : locals)
-          if (!v->name.empty() && v->name.last().symbol == c.symbol)
-          {
-            const Ty* t = v->cachedType.load(std::memory_order_acquire);
-            kept = kept || !t || !plain(t, 0);
-          }
+          keeps(v, false);
+        forEachNodeExcept(f, [&](Node* n) { if (n->kind == NodeKind::RangeForStmt) keeps(static_cast<RangeForStmt*>(n)->var, true); }, ownBody);
+      }
       if (!kept)
         report(l->token, "the lambda captures " + std::string(symbols.name(c.symbol)) + " and never uses it: remove it from the captures");
     }
