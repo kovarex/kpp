@@ -1,0 +1,24 @@
+// cppinput: a class template's constructors and destructor declared with the class's arguments in their names (`V<T>(T x, T y);`,
+// valid before C++20; Unreal's TVector2) are its constructors, defined outside the class: the declarations stay (they were
+// taken for explicit instantiations and removed, and every TVector2(x, y) of converted Core had no constructor)
+template<typename T>
+struct V
+{
+  T X, Y;
+  V<T>(T InX, T InY);
+  explicit V<T>(T InF);
+  ~V<T>() {}
+};
+
+template<typename T>
+V<T>::V(T InX, T InY) : X(InX), Y(InY) {}
+
+template<typename T>
+V<T>::V(T InF) : X(InF), Y(InF) {}
+
+int main()
+{
+  V<int> v(1, 2);
+  V<int> w(3);
+  return v.X + v.Y + w.X + w.Y - 9;
+}

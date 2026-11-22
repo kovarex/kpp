@@ -369,7 +369,9 @@
             // the interface's own record of it once the declaration goes)
             if (isScopeHeader() && namespaceScope && !f->body && f->name.parts.size() == 1 && f->name.last().symbol != UINT32_MAX)
               scopeFunctions.push_back(std::string(symbols.name(f->name.last().symbol)));
-            if (f->templateParams.empty() && !f->body && !f->name.empty() && f->name.last().hasTemplateArgs && !(f->flags & DF_Specialization))
+            // (not a member: `V<T>(T x, T y);` in V's class is its constructor named with the class's arguments, Unreal's TVector2)
+            if (f->templateParams.empty() && !f->body && !f->name.empty() && f->name.last().hasTemplateArgs && !(f->flags & DF_Specialization) &&
+                !(f->parent && f->parent->kind == NodeKind::ClassDecl))
             {
               removeDecl(d); // an explicit instantiation: templates compile from source in kpp
               counts.add("explicit instantiations removed");
