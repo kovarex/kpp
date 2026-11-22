@@ -1253,7 +1253,8 @@ namespace
     {
       if (isP(b + 1, P::LBracket))
         return {-1, Rule::None}; // an attribute `[[...]]`
-      if (A.getKind() == TokenKind::Identifier || A.getKind() == TokenKind::String || A.is(P::RParen) || A.is(P::RBracket) || templateClose(a))
+      if (A.getKind() == TokenKind::Identifier || A.getKind() == TokenKind::String || A.is(P::RParen) || A.is(P::RBracket) || templateClose(a) ||
+          A.is(Kw::this_)) // (`this[a]`, `this[]`: a subscript, as of any value)
         return {0, Rule::SpaceCallParen};
       if (A.getKind() == TokenKind::Keyword && !A.is(Kw::delete_) && !A.is(Kw::new_))
         return {1, Rule::SpaceWords};

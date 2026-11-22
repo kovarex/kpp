@@ -153,6 +153,10 @@
     // `members(T)` (design.md 8.3), `alternatives(U)` (8.5): the type reflected on, or null when
     // the node is no such list.
     Expr* reflectionSubject(Node* list) const;
+    // A `u[]`'s switch (design.md 8.5): the member u[] is read by in its body, and the one error naming the alternatives
+    // its statement is not valid for (failures: each element's errors).
+    std::string memberOfEveryAlternative(Stmt* body);
+    void reportEveryAlternative(ForConstexprStmt* f, const std::vector<const Ty*>& elements, const std::vector<std::vector<std::string>>& failures);
 
     // The enumerator of union u's tag that an index written as a bare name names, when the name
     // means nothing where it is written (`p[Integer]` outside the union: design.md 8.5).

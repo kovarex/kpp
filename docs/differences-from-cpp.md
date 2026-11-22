@@ -847,6 +847,29 @@ union enum class Action : u8
 Action a = Action::Close(Browsing::Yes), b = Action::Close(Browsing::No, Sound::On);
 ```
 
+### `u[]`: a statement once per alternative (built)
+
+- **C++:** `std::visit` with a generic lambda: a `return` leaves the lambda, not the function, and an
+  alternative the call does not fit is an error inside the template's instance.
+- **kpp:** `u[]` repeats the statement it is in once per alternative of the typed union u, in a switch on
+  its tag: `this[].save(output);`, `return this[].getPrototype();` (each converted to the function's
+  type), `describe(this[])` (the overload of each). u is evaluated once. In an expression statement, a
+  return, the initializer of a variable of a written type, or an if's or while's condition. A statement
+  some alternatives do not fit is one error naming them: "not all of UpgradeID's alternatives have the
+  member save: Fluid (FluidID) has none; Entity (EntityID) and Item (ItemID) have it".
+- **Why:** kovarex (2026-11-22): the game's tagged classes repeat `case Entity: this[Entity].save(output);
+  case Item: this[Item].save(output);`, and one of them read `this[Item]` in the Entity case.
+- **See:** [design 8.5][d8]; specs `kpp/typed_union_every_alternative`,
+  `kpp/typed_union_every_alternative_missing_member_is_error`.
+
+```cpp
+union enum class UpgradeID : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  void save(Serialiser& output) const { output << this.tag(); this[].save(output); }
+};
+```
+
 ## Expressions
 
 ### Falling off the end of a function that returns a value (built)

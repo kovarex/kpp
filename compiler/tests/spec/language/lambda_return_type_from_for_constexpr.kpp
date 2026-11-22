@@ -1,0 +1,22 @@
+// spec: a lambda whose return type is deduced from returns inside a `for constexpr` (one per element, in a switch over a
+// typed union's alternatives), in a function that is no template, returns their type, not void
+// pending: "codegen does not support a conversion from void to int32": the lambda's return type is deduced as void. The returns depend on the loop's variable, which the walk of the body before its elements leaves open, and the code generator's re-typing of the function walks no element of the loop for the lambda's type (walking them there read one element's case label for every element: "the case value 1 is a label of this switch twice"). Found writing `u[]` (design.md 8.5), whose initializer of an auto variable is an error until this passes (2026-11-22); D
+union enum class U : u8
+{
+  { {A, int}, {B, int} }
+};
+
+int main()
+{
+  U u(U::Tag::B, 7);
+  auto read = [&]() {
+    switch (u.tag())
+    {
+      for constexpr (auto a : alternatives(U))
+        case a.tag: return u[a];
+    }
+  };
+  int value = read();
+  std::println(value);
+  return 0;
+}

@@ -196,6 +196,9 @@
   // (under checkerErrorsMutex) Names a template instance's function body uses that its arguments'
   // lookup does not find either, by that body: errors once the code generator emits it.
   std::unordered_map<const FunctionDecl*, std::vector<CheckerError>> instanceNameErrors;
+  // (under checkerErrorsMutex) Where a template instance's `u[]` was reported as not valid for some alternatives
+  // (design.md 8.5): the code generator's error on the same statement repeats it (checkerErrorWithin).
+  std::set<std::pair<const ParsedFile*, uint32_t>> everyAlternativeErrors;
   // (under checkerErrorsMutex) Warnings in template instances' function bodies, by that body: printed
   // once the code generator emits it, as C++ warns in the instances it makes only (the checker walks
   // some that C++ never makes: a primary template's body for arguments an explicit specialization takes).

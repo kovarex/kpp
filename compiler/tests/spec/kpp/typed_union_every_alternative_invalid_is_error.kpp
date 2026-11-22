@@ -1,0 +1,18 @@
+// spec: a `u[]` whose statement is not valid for some alternatives, for another reason than a missing member, is one
+// error naming each such alternative with its own error, and the alternatives it is valid for; in a template's instance too
+// design.md 8.5 ("Every alternative: u[]")
+// error: typed_union_every_alternative_invalid_is_error.kpp:11: error: u[] is not valid for every alternative of U: Second (B): a B does not convert to const A&: B does not derive from A, no constructor of A takes it, and no conversion operator of B gives one (valid for First (A)) (design.md 8.5)
+// error: typed_union_every_alternative_invalid_is_error.kpp:12: error: not all of U's alternatives have the member a: Second (B) has none; First (A) has it (design.md 8.5) (in T = U)
+struct A { int a = 1; };
+struct B { int b = 2; };
+union enum U : u8 { { {First, A}, {Second, B} } };
+
+int f(const A& a) { return a.a; }
+int call(const U& u) { return f(u[]); }
+template<class T> int read(const T& t) { return t[].a; }
+
+int main()
+{
+  U u;
+  return call(u) + read(u);
+}

@@ -980,6 +980,38 @@ Until then `a.tag` was a constant only to codegen's own reads (`u[a]`, `u == a.t
 constexpr condition or a constexpr variable reading it were errors. Specs: kpp/typed_union_switch_over_alternatives,
 kpp/typed_union_switch_over_alternatives_twice_is_error.
 
+*Every alternative: `u[]`* (kovarex 2026-11-22, for the hand-written switches of UpgradeIDBase and the like, `case
+Entity: this[Entity].save(output); case Item: this[Item].save(output);`, one of which read `this[Item]` in its Entity
+case; options study S-A, U1, R1, V1). `u[]` repeats the statement it is in once per alternative of the typed union u,
+in a switch on u's tag, `u[]` being that alternative's value (`u[a]`):
+```
+void save(Serialiser& output) const { output << this.tag(); this[].save(output); }
+const PrototypeBase* getPrototype() const { return this[].getPrototype(); } // each alternative's pointer converted
+std::String describe() const { return ::describe(this[]); }                // the overload of each alternative
+```
+- *Where:* an expression statement and a return are each case's statement. The initializer of one variable of a
+  written type (`i64 w = u[].weight();`) and an if's or while's condition are a lambda's switch called in their place,
+  the variable's type (or bool) its return type, so each alternative's value converts to it. An `auto` variable is an
+  error for now ("write the variable's type"): a deduced lambda's return type from returns in a `for constexpr` is
+  void (pending language/lambda_return_type_from_for_constexpr). Anywhere else (a for's header, a switch's condition,
+  a default argument) is an error. One statement is for one union: `u[].a + w[].a` is an error, `u[].a + u[].b`
+  reads one alternative twice.
+- u is evaluated once, before the switch (`get()[].bump()` calls get once), bound as `auto&&`; const follows it, so a
+  const u's alternatives are const and overloads are chosen per alternative and constness.
+- A void alternative is the void value (`out << u[]` takes an `operator<<(Out&, void)`); a member of it is an error.
+- *One error* when the statement is not valid for some alternatives, never the switch's: "not all of UpgradeID's
+  alternatives have the member save: Fluid (FluidID) and Nothing (void) have none; Entity (EntityID) and Item (ItemID)
+  have it" when a member is missing, otherwise "u[] is not valid for every alternative of U: Second (B): <its error>
+  (valid for First (A))", ten alternatives named at most. `x[]` of a value that is no typed union is an error.
+- The parser writes the statement as `{ auto&& __kpp_unionN = u; switch (__kpp_unionN.tag()) { for constexpr (auto
+  __kpp_alternativeN : alternatives(__kpp_unionN)) case __kpp_alternativeN.tag: S } }`, S the statement with each u[]
+  `__kpp_unionN[__kpp_alternativeN]` (alternatives of a generated variable: its type's), and reads it again; the
+  checker gathers each alternative's errors of that loop into the one error. Its code is the hand-written switch's
+  (the study's measure: the same IR). Format mode reads `u[]` as written. Not yet: `u[A, B]`, some alternatives alone.
+Specs: kpp/typed_union_every_alternative, kpp/typed_union_every_alternative_missing_member_is_error,
+kpp/typed_union_every_alternative_invalid_is_error, kpp/typed_union_every_alternative_of_no_union_is_error,
+kpp/typed_union_every_alternative_placement_errors; tests/format/typed_union_every_alternative.kpp.
+
 *An alternative of type void* (kovarex 2026-11-17, for InputAction's 61 actions without data, which held an empty
 InputActionNoData): `{Stop, void}` carries no value. It is built from its tag alone (`Action(Action::Tag::Stop)`, a
 tag read at run time too) or as the first alternative's default, and is held, switched on, copied, moved, assigned and

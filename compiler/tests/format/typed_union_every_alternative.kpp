@@ -1,0 +1,22 @@
+// `u[]` and `this[]` (design.md 8.5) and `this[a]` are written as any subscript: no space before the bracket.
+struct EntityID
+{
+  int id = 1;
+  void save(int& out) const { out += this.id; }
+};
+
+struct ItemID
+{
+  int id = 2;
+  void save(int& out) const { out += this.id; }
+};
+
+union enum class UpgradeID : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+
+  void save(int& out) const { this[].save(out); }
+  int idOf() const { return (this)[UpgradeID::Tag::Item].id + this[UpgradeID::Tag::Entity].id; }
+};
+
+int read(const UpgradeID& u) { return u[].id; }

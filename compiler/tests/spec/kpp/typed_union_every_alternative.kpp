@@ -1,0 +1,132 @@
+// spec: `u[]` repeats its statement once per alternative of the typed union u, in a switch on u's tag, u[] being that
+// alternative's value: a method called, a member read or assigned, an overload chosen per alternative, a return
+// converted to the function's type, a variable's initializer converted to its written type, an if's and a while's
+// condition; u evaluated once; a void alternative is the void value; in templates and on a class template's union
+// design.md 8.5 ("Every alternative: u[]"); kovarex 2026-11-22
+class Base { public: virtual ~Base() = default; virtual std::String name() const = 0; };
+class EntityPrototype : public Base { public: std::String name() const override { return "entity"; } };
+class ItemPrototype : public Base { public: std::String name() const override { return "item"; } };
+EntityPrototype entityPrototype;
+ItemPrototype itemPrototype;
+
+struct EntityID
+{
+  int id = 1;
+  void save(std::String& out) const { out << "E" << this.id; }
+  void bump() { this.id += 10; }
+  const EntityPrototype* prototype() const { return &entityPrototype; }
+  int weight() const { return this.id; }
+  bool valid() const { return this.id > 0; }
+};
+struct ItemID
+{
+  int id = 2;
+  void save(std::String& out) const { out << "I" << this.id; }
+  void bump() { this.id += 100; }
+  const ItemPrototype* prototype() const { return &itemPrototype; }
+  i16 weight() const { return i16(this.id * 2); }
+  bool valid() const { return this.id > 0; }
+};
+
+std::String describe(const EntityID& e) { return std::toString("entity#", e.id); }
+std::String describe(const ItemID& i) { return std::toString("item#", i.id); }
+std::String constness(const EntityID&) { return "const"; }
+std::String constness(EntityID&) { return "mutable"; }
+std::String constness(const ItemID&) { return "const"; }
+std::String constness(ItemID&) { return "mutable"; }
+
+union enum class UpgradeID : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  void save(std::String& out) const
+  {
+    out << int(this.tag()) << ":";
+    this[].save(out);
+  }
+  void bump() { this[].bump(); }
+  const Base* prototype() const { return this[].prototype(); } // each alternative's pointer converted to const Base*
+  std::String describe() const { return ::describe(this[]); }  // the overload of each alternative
+  std::String constnessHere() const { return constness(this[]); }
+  std::String constnessMutable() { return constness(this[]); }
+  i64 weight() const
+  {
+    i64 w = this[].weight(); // int32 and i16, each converted to the variable's type
+    return w;
+  }
+};
+
+struct Holder
+{
+  UpgradeID id;
+  int reads = 0;
+  UpgradeID& get()
+  {
+    ++this.reads;
+    return this.id;
+  }
+};
+
+// A void alternative is the void value: an overload taking void takes it.
+struct Out { std::String text; };
+Out& operator<<(Out& out, const EntityID& e) { out.text << "E" << e.id; return out; }
+Out& operator<<(Out& out, const ItemID& i) { out.text << "I" << i.id; return out; }
+Out& operator<<(Out& out, void) { out.text << "-"; return out; }
+union enum Slot : u8 { { {SlotEntity, EntityID}, {SlotItem, ItemID}, {Empty, void} } };
+
+template<class U> std::String saved(const U& u)
+{
+  Out out;
+  out << u[];
+  return out.text;
+}
+
+template<class X> union enum Counted : u8 { { {Value, X}, {Count, int} } };
+template<class X> int sum(const Counted<X>& c)
+{
+  int result = c[] + 1;
+  return result;
+}
+
+int main()
+{
+  UpgradeID e = EntityID();
+  UpgradeID i = ItemID();
+  for (UpgradeID* u : {&e, &i})
+  {
+    std::String out;
+    u->save(out);
+    std::println(out, " ", u->prototype()->name(), " ", u->describe(), " ", u->constnessHere(), " ", u->constnessMutable(), " ", u->weight());
+  }
+  e.bump();
+  i.bump();
+  e[].id += 1; // a member, assigned in each alternative
+  std::println(e[].id);
+  std::println(i[].id);
+  int id = i[].id;
+  std::println(id);
+  if (i[].valid())
+    std::println("valid");
+  Holder h;
+  h.id = ItemID();
+  h.get()[].bump(); // h.get() called once
+  std::println(h.id[].id, " reads ", h.reads);
+  int n = 0;
+  while (e[].id > n)
+    n += 5;
+  std::println(n);
+  auto twice = [](UpgradeID& u) {
+    u[].bump();
+    u[].bump();
+  };
+  twice(e);
+  std::println(e[].id);
+  Slot slots[] = {Slot(EntityID()), Slot(ItemID()), Slot(Slot::Empty)};
+  std::String all;
+  for (const Slot& s : slots)
+    all << saved(s);
+  std::println(all);
+  Counted<i16> c(Counted<i16>::Count, 7);
+  Counted<i16> v = i16(3);
+  std::println(sum(c), " ", sum(v));
+  return 0;
+}

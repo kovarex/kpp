@@ -1,0 +1,24 @@
+// spec: a `u[]` whose statement is not valid for every alternative is one error naming the alternatives that lack the
+// member and those that have it, a void alternative among them, not an error in the switch it is written as
+// design.md 8.5 ("Every alternative: u[]"); kovarex 2026-11-22: "not all of <Typename>s union variants have method save"
+// error: typed_union_every_alternative_missing_member_is_error.kpp:15: error: not all of UpgradeID's alternatives have the member save: Fluid (FluidID) and Nothing (void) have none; Entity (EntityID) and Item (ItemID) have it (design.md 8.5)
+struct EntityID { int id = 1; void save(int& out) const { out += this.id; } };
+struct ItemID { int id = 2; void save(int& out) const { out += this.id; } };
+struct FluidID { int id = 3; };
+
+union enum class UpgradeID : u8
+{
+  { {Entity, EntityID}, {Item, ItemID}, {Fluid, FluidID}, {Nothing, void} }
+  int save() const
+  {
+    int out = 0;
+    this[].save(out);
+    return out;
+  }
+};
+
+int main()
+{
+  UpgradeID u;
+  return u.save();
+}

@@ -168,7 +168,10 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
     if (var->isType)
       unsupported(f, "members(T) or alternatives(U) for a for constexpr type variable");
     const Ty* cls = nullptr;
-    if (subject->kind == NodeKind::NameExpr)
+    if (subject->kind == NodeKind::NameExpr && static_cast<NameExpr*>(subject)->resolved && locals.count(static_cast<NameExpr*>(subject)->resolved) &&
+        sym(static_cast<NameExpr*>(subject)->name.last().symbol).starts_with("__kpp_union"))
+      cls = locals.at(static_cast<NameExpr*>(subject)->resolved).ty; // (`u[]`'s switch, design.md 8.5: the type of the u it binds)
+    else if (subject->kind == NodeKind::NameExpr)
     {
       NamedType tmp{};
       tmp.kind = NodeKind::NamedType;

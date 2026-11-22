@@ -733,6 +733,8 @@ bool GlobalScope::checkerErrorWithin(const ParsedFile* file, uint32_t from, uint
   for (const auto& [e, units] : impl->checkerErrorSet)
     if (e.file == file && e.token >= from && e.token <= to)
       return true;
+  for (auto it = impl->everyAlternativeErrors.lower_bound({file, from}); it != impl->everyAlternativeErrors.end() && it->first == file && it->second <= to; ++it)
+    return true;
   return false;
 }
 

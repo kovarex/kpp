@@ -1,0 +1,9 @@
+// spec: `x[]` of a value that is no typed union is an error
+// design.md 8.5 ("Every alternative: u[]")
+// error: typed_union_every_alternative_of_no_union_is_error.kpp:4: error: u[] repeats its statement once per alternative of a typed union, and this value is of type int32, which is none (design.md 8.5)
+int twice(int x) { return x[] * 2; }
+
+int main()
+{
+  return twice(1);
+}

@@ -185,6 +185,13 @@ auto GlobalScope::Impl::Walker::reflectedType(Expr* subject) -> const Ty*
 {
   if (!subject || subject->kind != NodeKind::NameExpr)
     return nullptr;
+  if (const QualifiedName& name = static_cast<NameExpr*>(subject)->name; name.parts.size() == 1 && symbols.name(name.parts[0].symbol).starts_with("__kpp_union"))
+  {
+    // `alternatives(__kpp_unionN)` of the switch the parser writes for a `u[]` (design.md 8.5): the alternatives of
+    // the type of u, the variable it binds.
+    const Ty* t = walkExpr(subject);
+    return t ? types.unqualified(types.stripRef(t)) : nullptr;
+  }
   NamedType named{};
   named.kind = NodeKind::NamedType;
   named.token = subject->token;
@@ -245,6 +252,109 @@ auto GlobalScope::Impl::Walker::decltypeOf(Expr* e, const Ty* t) -> const Ty*
   if (!t->isReference() && Impl::parenthesizedXvalueMember(e))
     return types.rref(t); // `(move(h).v)`: an xvalue, T&& (Unreal's TTuple Get of an rvalue tuple)
   return t->isReference() || !isLvalueExpression(e) ? t : types.lref(t);
+}
+
+auto GlobalScope::Impl::Walker::memberOfEveryAlternative(Stmt* body) -> std::string
+{
+  // The member a `u[]` is read by (`u[].save(output)`: save), in the body of its switch (design.md 8.5); empty: none.
+  std::string found;
+  forEachNode(body, [&](Node* n) {
+    if (!found.empty() || n->kind != NodeKind::MemberExpr)
+      return;
+    auto* m = static_cast<MemberExpr*>(n);
+    Expr* base = m->base;
+    while (base && base->kind == NodeKind::ParenExpr)
+      base = static_cast<ParenExpr*>(base)->inner;
+    if (!base || base->kind != NodeKind::IndexExpr || m->member.empty())
+      return;
+    Expr* u = static_cast<IndexExpr*>(base)->base;
+    if (u && u->kind == NodeKind::NameExpr && !static_cast<NameExpr*>(u)->name.empty() &&
+        symbols.name(static_cast<NameExpr*>(u)->name.last().symbol).starts_with("__kpp_union") && m->member.last().symbol != UINT32_MAX)
+      found = std::string(symbols.name(m->member.last().symbol));
+  });
+  return found;
+}
+
+auto GlobalScope::Impl::Walker::reportEveryAlternative(ForConstexprStmt* f, const std::vector<const Ty*>& elements,
+                                                       const std::vector<std::vector<std::string>>& failures) -> void
+{
+  // One error for a `u[]` whose statement is not valid for some alternatives (design.md 8.5): which, and why, and which
+  // it is valid for. A member none of the failing alternatives has is named as such (kovarex 2026-11-22: "not all of
+  // <Typename>'s union variants have method save").
+  size_t failing = 0;
+  for (const std::vector<std::string>& f : failures)
+    failing += !f.empty();
+  if (failing == 0)
+    return;
+  ClassDecl* u = nullptr;
+  auto describe = [&](size_t i) {
+    size_t index = 0;
+    ClassDecl* of = alternativeOf(elements[i], index);
+    if (of)
+      u = of;
+    std::string name = of && of->tagEnum && index < static_cast<EnumDecl*>(of->tagEnum)->enumerators.size()
+                           ? std::string(symbols.name(static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(of->tagEnum)->enumerators[index])->name))
+                           : "?";
+    const Ty* type = elements[i]->inner;
+    bool isVoid = elements[i]->decl && elements[i]->decl->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(elements[i]->decl)->voidAlternative;
+    return name + " (" + (isVoid ? std::string("void") : type ? types.toString(type, &symbols) : std::string("?")) + ")";
+  };
+  auto list = [&](const std::vector<std::string>& names) {
+    std::string out;
+    size_t shown = std::min<size_t>(names.size(), 10);
+    for (size_t k = 0; k < shown; ++k)
+      out += (k == 0 ? "" : k + 1 == shown && shown == names.size() ? " and " : ", ") + names[k];
+    if (shown < names.size())
+      out += " and " + std::to_string(names.size() - shown) + " more";
+    return out;
+  };
+  std::vector<std::string> bad, good;
+  for (size_t i = 0; i < elements.size(); ++i)
+    (failures[i].empty() ? good : bad).push_back(describe(i));
+  std::string unionName = u ? std::string(symbols.name(u->name.last().symbol)) : std::string("the typed union");
+  std::string member = memberOfEveryAlternative(f->body);
+  bool missing = !member.empty();
+  for (const std::vector<std::string>& f : failures)
+    if (!f.empty() && f[0].find("has no member '" + member + "'") == std::string::npos)
+      missing = false;
+  std::string message;
+  std::string counted = failing > 10 ? std::to_string(failing) + " of " + std::to_string(elements.size()) + " " : std::string();
+  if (missing)
+    message = "not all of " + unionName + "'s alternatives have the member " + member + ": " + counted + list(bad) + (failing == 1 ? " has" : " have") +
+              " none" + (good.empty() ? std::string() : "; " + list(good) + (good.size() == 1 ? " has" : " have") + " it");
+  else
+  {
+    message = "u[] is not valid for every alternative of " + unionName + (counted.empty() ? std::string() : " (" + counted + "of them)");
+    size_t shown = 0;
+    for (size_t i = 0; i < elements.size() && shown < 10; ++i)
+      if (!failures[i].empty())
+      {
+        message += (shown == 0 ? ": " : "; ") + describe(i) + ": " + failures[i][0];
+        ++shown;
+      }
+    if (!good.empty())
+      message += " (valid for " + list(good) + ")";
+  }
+  message += " (design.md 8.5)";
+  // (reported as the loop's walk would report it, unbound: its variable in scope makes the walk generic, which reports nothing)
+  if (!file || file->isImported || probing)
+    return;
+  // (at the first `u[]` of the statement, where the code generator's error on it would be, which it then leaves out)
+  uint32_t at = f->token;
+  forEachNode(f->body, [&](Node* n) {
+    if (at == f->token && n->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(n)->base && static_cast<IndexExpr*>(n)->base->kind == NodeKind::NameExpr &&
+        !static_cast<NameExpr*>(static_cast<IndexExpr*>(n)->base)->name.empty() &&
+        symbols.name(static_cast<NameExpr*>(static_cast<IndexExpr*>(n)->base)->name.last().symbol).starts_with("__kpp_union"))
+      at = n->token;
+  });
+  if (activeSubst)
+  {
+    reportInInstance(at, message);
+    std::lock_guard lock(impl.checkerErrorsMutex);
+    impl.everyAlternativeErrors.insert({file, at});
+  }
+  else
+    impl.reportCheckerError(file, at, message);
 }
 
 auto GlobalScope::Impl::Walker::typedUnionOf(const Ty* t) -> ClassDecl*
@@ -13210,6 +13320,18 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       bool open = activeSubst && !returnFrames.empty() && !returnFrames.back() && returnFrames.size() != declaredReturnFrames;
       bool checked = !generic && !retypingElements && !probing;
       bool listed = !generic && (open || checked || f->elementBodies.empty()) && forConstexprElements(f, elements);
+      if (!listed && checked && symbols.name(v->name).starts_with("__kpp_alternative") && file && !file->isImported)
+        if (Expr* subject = reflectionSubject(f->list))
+          if (const Ty* t = walkExpr(subject); t && t->isKnown() && !types.isDependent(t) && !typedUnionOf(types.unqualified(types.stripRef(t))))
+          {
+            // `x[]` of a value that is no typed union (design.md 8.5)
+            std::string message = "u[] repeats its statement once per alternative of a typed union, and this value is of type " +
+                                  types.toString(types.unqualified(types.stripRef(t)), &symbols) + ", which is none (design.md 8.5)";
+            if (activeSubst)
+              reportInInstance(f->token, message);
+            else
+              impl.reportCheckerError(file, f->token, message);
+          }
       if (listed && bodyOf && !probing)
         impl.copyElementBodies(f, elements, activeSubst, scope, bodyOf);
       if (listed && (open || checked))
@@ -13224,18 +13346,53 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
           clearSeen(f); // (its body, and its copies of the body)
         ++elementWalks;
         activeSubst = &bound;
+        // The switch the parser writes for a `u[]` (design.md 8.5): each alternative's errors gathered, and reported as
+        // one error naming the alternatives the statement is not valid for.
+        bool everyAlternative = checked && bodyOf && symbols.name(v->name).starts_with("__kpp_alternative");
+        std::vector<std::vector<std::string>> failures(everyAlternative ? elements.size() : 0);
         for (size_t i = 0; i < elements.size(); ++i)
         {
           bound.pairs.back().type = elements[i];
           size_t inner = locals.mark();
+          size_t errorsBefore = 0;
+          if (everyAlternative)
+          {
+            std::lock_guard lock(impl.checkerErrorsMutex);
+            auto it = impl.instanceNameErrors.find(bodyOf);
+            errorsBefore = it == impl.instanceNameErrors.end() ? 0 : it->second.size();
+          }
           walkStmt(f->elementBodies.empty() ? f->body : f->elementBodies[i]);
           locals.pop(inner);
+          if (everyAlternative)
+          {
+            std::lock_guard lock(impl.checkerErrorsMutex);
+            if (auto it = impl.instanceNameErrors.find(bodyOf); it != impl.instanceNameErrors.end() && it->second.size() > errorsBefore)
+            {
+              for (size_t k = errorsBefore; k < it->second.size(); ++k)
+              {
+                std::string message = it->second[k].message;
+                if (size_t in = message.rfind(" (in "); in != std::string::npos)
+                  message.erase(in); // (the alternative, which the error names)
+                if (std::find(failures[i].begin(), failures[i].end(), message) == failures[i].end())
+                  failures[i].push_back(message);
+              }
+              it->second.resize(errorsBefore);
+              if (it->second.empty())
+                impl.instanceNameErrors.erase(it);
+            }
+            if (failures[i].empty() && elements[i]->kind == TyKind::Member && elements[i]->decl && elements[i]->decl->kind == NodeKind::VariableDecl &&
+                static_cast<VariableDecl*>(elements[i]->decl)->voidAlternative)
+              if (std::string member = memberOfEveryAlternative(f->body); !member.empty())
+                failures[i].push_back("void has no member '" + member + "'");
+          }
           if (!checked && returnFrames.back())
             break;
         }
         --elementWalks;
         activeSubst = saved;
         plainElementWalks -= !saved;
+        if (everyAlternative)
+          reportEveryAlternative(f, elements, failures);
       }
       locals.pop(mark);
       break;

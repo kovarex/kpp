@@ -1,0 +1,23 @@
+// spec: `u[]` is written in an expression statement, a return, the initializer of one variable of a written type, or an
+// if's or while's condition, and one statement repeats for one union: anything else is an error, never a silent choice
+// design.md 8.5 ("Every alternative: u[]")
+// error: typed_union_every_alternative_placement_errors.kpp:17: error: u[] of two different values in one statement
+// error: typed_union_every_alternative_placement_errors.kpp:18: error: u[] in the initializer of an auto variable: write the variable's type
+// error: typed_union_every_alternative_placement_errors.kpp:19: error: u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression statement
+// error: typed_union_every_alternative_placement_errors.kpp:21: error: u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression statement
+struct A { int a = 1; };
+struct B { int a = 2; };
+union enum U : u8 { { {First, A}, {Second, B} } };
+
+struct Defaults { int a = 0; };
+
+int main()
+{
+  U u, w;
+  int both = u[].a + w[].a;
+  auto deduced = u[].a;
+  for (int i = 0; i < u[].a; i++) {}
+  int sum = both + deduced;
+  switch (u[].a) { default: sum++; }
+  return sum;
+}

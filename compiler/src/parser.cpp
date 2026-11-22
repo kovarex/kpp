@@ -130,6 +130,10 @@ namespace
         }
         parseDeclaration(Scope::Namespace);
       }
+      for (const EveryAlternative& e : everyAlternative) // (outside any statement: a default argument, a member's initializer, ...)
+        errorAt(e.open, "u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression statement, a "
+                        "return, a variable's initializer or an if's or while's condition");
+      everyAlternative.clear();
       // A --tests build's main is the test runner's (compiler/src/tests.cpp): the program's is renamed.
       if (testsEnabled() && out.path != testRunnerPath)
         for (size_t i = mark; i < scratch.size(); ++i)
@@ -4807,6 +4811,138 @@ namespace
     }
 
     // The source text of tokens [from, to).
+    // The statement s, its tokens [start, pos), holds `u[]`s (everyAlternative from everyMark on): writes it as a switch on
+    // u's tag with a case per alternative, `u[]` read as `u[a]` in each (design.md 8.5), and says whether it did. u is
+    // evaluated once, before the switch. An expression statement and a return are each case's statement; a variable's
+    // initializer and an if's or while's condition are a lambda's switch, called where they are (the variable's declared
+    // type, or bool, its return type). Any other place is an error.
+    bool writeEveryAlternative(Stmt* s, uint32_t start, size_t everyMark)
+    {
+      uint32_t end = pos;
+      std::vector<EveryAlternative> found(everyAlternative.begin() + everyMark, everyAlternative.end());
+      std::sort(found.begin(), found.end(), [](const EveryAlternative& a, const EveryAlternative& b) { return a.valueStart < b.valueStart; });
+      // (a postfix chain parsed twice, a for's header tried as a range-for first, recorded its `u[]` twice)
+      found.erase(std::unique(found.begin(), found.end(), [](const EveryAlternative& a, const EveryAlternative& b) { return a.valueStart == b.valueStart && a.open == b.open; }),
+                  found.end());
+      const EveryAlternative& first = found[0];
+      for (const EveryAlternative& f : found)
+      {
+        bool same = f.open - f.valueStart == first.open - first.valueStart;
+        for (uint32_t k = 0; same && k < f.open - f.valueStart; ++k)
+          same = toks[f.valueStart + k].getKind() == toks[first.valueStart + k].getKind() && toks[f.valueStart + k].id == toks[first.valueStart + k].id;
+        if (!same)
+        {
+          errorAt(f.open, "u[] of two different values in one statement: the statement is repeated once per alternative of one typed union "
+                          "(design.md 8.5); write the other in a statement of its own");
+          return false;
+        }
+        if (&f != &first && f.valueStart < first.open + 2)
+        {
+          errorAt(f.open, "u[] inside the value of another u[]: write the inner one in a statement of its own (design.md 8.5)");
+          return false;
+        }
+      }
+      uint32_t n = ++everyAlternativeCount;
+      std::string u = "__kpp_union" + std::to_string(n), a = "__kpp_alternative" + std::to_string(n);
+      std::vector<Token> made;
+      auto append = [&](const std::string& source) {
+        std::vector<Token> t = synthesize(source, first.open);
+        made.insert(made.end(), t.begin(), t.end());
+      };
+      auto copy = [&](uint32_t from, uint32_t to) { made.insert(made.end(), toks.begin() + from, toks.begin() + to); };
+      // The tokens [from, to) with each `u[]` written `__kpp_unionN[__kpp_alternativeN]`.
+      auto region = [&](uint32_t from, uint32_t to) {
+        uint32_t k = from;
+        for (const EveryAlternative& f : found)
+        {
+          copy(k, f.valueStart);
+          append(u + "[" + a + "]");
+          k = f.open + 2;
+        }
+        copy(k, to);
+      };
+      auto head = [&]() {
+        append("auto&& " + u + " =");
+        copy(first.valueStart, first.open);
+        append("; switch (" + u + ".tag()) { for constexpr (auto " + a + " : alternatives(" + u + ")) case " + a + ".tag:");
+      };
+      auto depthZero = [&](uint32_t from, uint32_t to, P p) -> uint32_t { // the first p at depth 0 in [from, to), or to
+        for (uint32_t k = from; k < to; ++k)
+        {
+          if (toks[k].is(p))
+            return k;
+          if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::LBrace))
+            k = closingToken(k);
+        }
+        return to;
+      };
+      const char* where = "u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression statement, a "
+                          "return, a variable's initializer or an if's or while's condition";
+      if (s->kind == NodeKind::ExprStmt || s->kind == NodeKind::ReturnStmt)
+      {
+        append("{");
+        head();
+        region(start, end);
+        append("} }");
+      }
+      else if (s->kind == NodeKind::DeclStmt)
+      {
+        uint32_t eq = depthZero(start, first.valueStart, P::Assign);
+        if (eq == first.valueStart || eq < start + 2 || toks[eq - 1].getKind() != TokenKind::Identifier || !toks[end - 1].is(P::Semi) ||
+            depthZero(eq + 1, end - 1, P::Comma) != end - 1)
+        {
+          errorAt(first.open, "u[] in a declaration is written in the initializer of one variable, `T x = ... u[] ...;` (design.md 8.5)");
+          return false;
+        }
+        for (uint32_t k = start; k < eq - 1; ++k)
+          if (toks[k].getKind() == TokenKind::Keyword && (toks[k].id == uint32_t(Kw::static_) || toks[k].id == uint32_t(Kw::constexpr_) ||
+                                                          toks[k].id == uint32_t(Kw::thread_local_) || toks[k].id == uint32_t(Kw::extern_)))
+          {
+            errorAt(first.open, "u[] in the initializer of a static, constexpr, thread_local or extern variable (design.md 8.5)");
+            return false;
+          }
+          else if (toks[k].getKind() == TokenKind::Keyword && toks[k].id == uint32_t(Kw::auto_))
+          {
+            errorAt(first.open, "u[] in the initializer of an auto variable: write the variable's type, which each alternative's value "
+                                "converts to (design.md 8.5)");
+            return false;
+          }
+        copy(start, eq + 1);
+        append("[&]() ->");
+        copy(start, eq - 1);
+        append("{");
+        head();
+        append("return");
+        region(eq + 1, end - 1);
+        append("; } }();");
+      }
+      else if ((s->kind == NodeKind::IfStmt || s->kind == NodeKind::WhileStmt) && toks[start].getKind() == TokenKind::Keyword &&
+               (toks[start].id == uint32_t(Kw::if_) || toks[start].id == uint32_t(Kw::while_)) && toks[start + 1].is(P::LParen))
+      {
+        uint32_t open = start + 1, close = closingToken(open);
+        if (found.back().open > close || depthZero(open + 1, close, P::Semi) != close)
+        {
+          errorAt(first.open, where);
+          return false;
+        }
+        copy(start, open + 1);
+        append("[&]() -> bool {");
+        head();
+        append("return");
+        region(open + 1, close);
+        append("; } }()");
+        copy(close, end);
+      }
+      else
+      {
+        errorAt(first.open, where);
+        return false;
+      }
+      toks.erase(toks.begin() + start, toks.begin() + end);
+      toks.insert(toks.begin() + start, made.begin(), made.end());
+      return true;
+    }
+
     std::string tokensText(uint32_t from, uint32_t to) const
     {
       if (from >= to)
@@ -6193,9 +6329,24 @@ namespace
       }
       uint32_t start = pos;
       size_t mark = scratch.size();
+      size_t everyMark = everyAlternative.size();
       Stmt* s = parseStatementInner();
+      if (!inRecovery && s && everyAlternative.size() > everyMark && !roles) // (format mode reads the statement as written)
+      {
+        // `u[]` (design.md 8.5): the statement once per alternative of the typed union u, in a switch on its tag. Its
+        // tokens are written as that switch and read again.
+        if (writeEveryAlternative(s, start, everyMark))
+        {
+          everyAlternative.resize(everyMark);
+          scratch.resize(mark);
+          pos = start;
+          return parseStatement();
+        }
+        everyAlternative.resize(everyMark);
+      }
       if (inRecovery)
       {
+        everyAlternative.resize(everyMark);
         scratch.resize(mark);
         if (pos == start)
           advance();
@@ -8571,6 +8722,7 @@ namespace
 
     Expr* parsePostfixChain(Expr* e)
     {
+      uint32_t chainStart = e ? e->token : pos; // (the first token of the value a `u[]` in the chain is of)
       for (;;)
       {
         uint32_t start = pos;
@@ -8594,6 +8746,8 @@ namespace
           parseExpressionList(P::RBracket);
           i->args = makeSpan<Expr*>(mark);
           expect(P::RBracket, "expected ']'");
+          if (i->args.empty() && isKpp() && !roles)
+            everyAlternative.push_back({chainStart, start}); // `u[]`: its statement once per alternative (parseStatement)
           e = i;
         }
         else if (at(P::Dot) || at(P::Arrow) || at(P::SafeArrow))
@@ -8716,6 +8870,10 @@ namespace
     Dialect dialect = Dialect::Cpp; // what the file is written in (parser.hpp)
     bool typedefDeclarators = false; // the declarators being parsed are a typedef's (design.md 22)
     std::vector<ParenExpr*> safeHolders; // the `?->`s of the postfix chains being parsed (parsePostfix)
+    // The `u[]`s parsed and not yet written as their statement's switch (parseStatement): the first token of u, the `[`.
+    struct EveryAlternative { uint32_t valueStart, open; };
+    std::vector<EveryAlternative> everyAlternative;
+    uint32_t everyAlternativeCount = 0; // (the names each statement's switch declares: __kpp_union1, __kpp_alternative1, ...)
     const ConfigValues* config = nullptr; // Build configuration, for declaration-scope if constexpr.
     std::vector<uint8_t>* roles = nullptr; // format mode (ParsedFile::formatRoles)
   private:

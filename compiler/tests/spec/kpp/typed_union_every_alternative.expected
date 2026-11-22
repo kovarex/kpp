@@ -1,0 +1,11 @@
+0:E1 entity entity#1 const mutable 1
+1:I2 item item#2 const mutable 4
+12
+102
+102
+valid
+102 reads 1
+15
+32
+E1I2-
+8 4
