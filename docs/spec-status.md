@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2421 pass, 2 pending, 0 failing, 0 fixed** (2423 snippets, 205.3 s).
+**2422 pass, 2 pending, 0 failing, 0 fixed** (2424 snippets, 204.2 s).
 
 ## Language: statements, expressions, declarations
 
@@ -999,6 +999,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/free_operator_with_reference_operand.kpp` | a free operator whose left parameter is a non-const reference to a class (`Stream& operator<<(Stream& s, const char* text)`, `Acc& operator+=(Acc& a, int v)`) is found for that class's lvalue, chained as each returns the reference | pass | Main's `std::cerr << "Error: This is a headless executable..."` through the library's `StderrStream& operator<<(StderrStream&, const char*)` (stdlib/io/Stream.kpp); the same shape as any stream operator a program writes |  |
 | `classes/free_unary_operators_on_a_class.kpp` | `*g`, `++g`, `g++`, `--g` on a class with free operator functions call those, in a namespace too (found by argument-dependent lookup); postfix passes the int | pass |  |  |
 | `classes/friend_declarations.kpp` | `friend Name;` names a friend class without the keyword; friend declarations of classes and functions declare no member and no nested class | pass |  |  |
+| `classes/friend_named_through_an_alias.kpp` | a friend named through a type alias (`friend Super;` with `using Super = BoxBase<T>;`, a class template's base; `using Reader = struct Peek; friend Reader;`) befriends the class the alias names: its members reach the private ones; clang prints the same | pass |  |  |
 | `classes/friends.kpp` | friend functions and friend classes | pass | 459 uses in 269 files |  |
 | `classes/handler_takes_public_unambiguous_base.kpp` | a handler of a base class, or a pointer to one, takes a thrown object only if that base is public and unambiguous ([except.handle] 3): a repeated, private or protected base passes it by (the handler took it, at the first subobject of that class). A base further up takes it, const pointers too. clang and g++ print the same | pass |  |  |
 | `classes/hidden_friend_functions.kpp` | a friend function defined in its class (a hidden friend) is a function of the class's namespace that argument-dependent lookup finds through an argument of the class, a name and an operator alike, in a class and in a class template's instances (one function per instance) | pass | Optional's hidden friend operators, which the converter moves out to namespace scope; the C++ libraries' (glm, imgui) idiom |  |

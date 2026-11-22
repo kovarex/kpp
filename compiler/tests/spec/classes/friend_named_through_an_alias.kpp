@@ -1,0 +1,38 @@
+// spec: a friend named through a type alias (`friend Super;` with `using Super = BoxBase<T>;`, a class template's base; `using Reader = struct Peek; friend Reader;`) befriends the class the alias names: its members reach the private ones; clang prints the same
+// found by thread UE (2026-11-22): it befriended a class named Super, which no class is: "Box::value is private, named in BoxBase::get" (Unreal's TNotNull and TNotNullBase)
+template<typename T> class Box;
+
+template<typename T> struct BoxBase
+{
+  using Sub = Box<T>;
+  T get() const { return ((const Sub*)&this)->value; }
+};
+
+template<typename T> class Box : public BoxBase<T>
+{
+  using Super = BoxBase<T>;
+  friend Super;
+  T value;
+public:
+  Box(T v) : value(v) {}
+};
+
+class Secret
+{
+  using Reader = struct Peek;
+  friend Reader;
+  int hidden = 7;
+};
+
+struct Peek
+{
+  static int read(const Secret& s) { return s.hidden; }
+};
+
+int main()
+{
+  Box<int> b(5);
+  Secret s;
+  std::println(b.get(), " ", Peek::read(s));
+  return 0;
+}

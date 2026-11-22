@@ -51,10 +51,33 @@ auto GlobalScope::Impl::grantingFriend(Decl* owner, FunctionDecl* fn, const std:
     {
       const QualifiedName& n = static_cast<ClassDecl*>(m)->name;
       if (!n.empty())
+      {
+        uint32_t named = n.last().symbol;
+        // `friend Super;` with `using Super = TNotNullBase<T>;` (Unreal's TNotNull): the class the alias names, until
+        // 2026-11-22 a class named Super, which no class is ("TNotNull::Val is private, named in TNotNullBase").
+        Lookup l = lookupQualified(n, owner->ownScope ? owner->ownScope : lexicalScopeOf(owner), nullptr, 0);
+        Decl* alias = nullptr; // (the friend declaration itself is an entry of the name too)
+        auto isAlias = [&](Decl* d)
+        {
+          return d && d != m && (d->kind == NodeKind::UsingAliasDecl || (d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef)));
+        };
+        if (isAlias(l.decl))
+          alias = l.decl;
+        if (!alias && l.overloads)
+          for (const Entry& e : *l.overloads)
+            if (isAlias(e.decl))
+              alias = e.decl;
+        if (alias)
+          if (const Ty* aliased = declaredTypeOf(alias, nullptr, 0); aliased && types.unqualified(aliased)->kind == TyKind::Class &&
+                                                                     types.unqualified(aliased)->decl &&
+                                                                     types.unqualified(aliased)->decl->kind == NodeKind::ClassDecl &&
+                                                                     !static_cast<ClassDecl*>(types.unqualified(aliased)->decl)->name.empty())
+            named = static_cast<ClassDecl*>(types.unqualified(aliased)->decl)->name.last().symbol;
         for (Scope* s : context)
           if (s->owner && s->owner->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(s->owner)->name.empty() &&
-              static_cast<ClassDecl*>(s->owner)->name.last().symbol == n.last().symbol)
+              static_cast<ClassDecl*>(s->owner)->name.last().symbol == named)
             return m;
+      }
     }
     else if (m->kind == NodeKind::FunctionDecl && fn && !fn->name.empty())
     {
