@@ -260,6 +260,8 @@
     {"alloca", "__builtin_alloca"},
     // clang's and MSVC's builtin of std::is_constant_evaluated (Unreal's UE_IF_CONSTEVAL), the library's.
     {"__builtin_is_constant_evaluated", "std::isConstantEvaluated"},
+    // MSVC's and GCC's spellings of alignof (Unreal's MinimalWindowsApi: `__alignof(Windows::OVERLAPPED) == __alignof(OVERLAPPED)`).
+    {"__alignof", "alignof"}, {"__alignof__", "alignof"},
     {"FORMAT_ATTR", ""}, {"TAG_FORMAT_ATTR", ""}, {"NO_INLINE", "[[noinline]]"}, {"ALWAYS_INLINE", "[[forceinline]]"},
     {"NTAPI", ""}, {"WINAPI", ""}, {"APIENTRY", ""}, {"CALLBACK", ""}, {"STDMETHODCALLTYPE", ""}, {"EXTERNC", "extern \"C\""},
     {"FAR", ""}, {"NEAR", ""}, {"VOID", "void"}, {"NULL", "nullptr"},
