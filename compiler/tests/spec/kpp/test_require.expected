@@ -1,4 +1,4 @@
-test_require.kpp:13:3: check failed: x == 2 (expected 2, but was 1)
+test_require.kpp:13:3: check failed: expected 2, but was 1
 guard destroyed
 failed: test_require.kpp > require
 test_require.kpp:20:3: assertion failed: x == 2

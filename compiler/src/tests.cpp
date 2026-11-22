@@ -553,7 +553,11 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
   failure.expression = std::String(text);
   failure.hasValues = state.hasValues;
   std::String shown = std::toString(std::StringView(file), ":", line, ":", column, ": ", std::StringView(what));
-  if (text[0] != 0)
+  // a failed `==` says its values alone, not the expression (kovarex, 2026-11-22): `check failed: expected
+  // 4, but was 3`, the right side the expected value (2026-11-21), as in nearly all of the game's checks
+  // against a literal
+  bool expected = state.hasValues && std::StringView(state.op) == "==";
+  if (text[0] != 0 && !expected)
     shown << ": " << std::StringView(text);
   if (state.hasValues)
   {
@@ -561,10 +565,8 @@ void __kppFail(const char* file, int line, int column, const char* kind, const c
     failure.right = state.right;
     std::String left = __kppQuoted(state.left, state.leftText);
     std::String right = __kppQuoted(state.right, state.rightText);
-    // `==` (kovarex, 2026-11-21): the right side is the expected value, as in nearly all of the game's
-    // checks against a literal
-    if (std::StringView(state.op) == "==")
-      shown << " (expected " << right << ", but was " << left << ")";
+    if (expected)
+      shown << ": expected " << right << ", but was " << left;
     else
       shown << " (" << left << " " << std::StringView(state.op) << " " << right << ")";
   }

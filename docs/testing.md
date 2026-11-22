@@ -14,7 +14,7 @@ int square(int x) { return x * x; }
 
 test squareOfThree            // a test outside a suite: its full name is `square.kpp > squareOfThree`
 {
-  check(square(3) == 8);      // fails and goes on: square.kpp:5:3: check failed: square(3) == 8 (expected 8, but was 9)
+  check(square(3) == 8);      // fails and goes on: square.kpp:5:3: check failed: expected 8, but was 9
   require(square(0) == 0);    // a failed require ends the test; a failed check goes on
 }
 
@@ -32,9 +32,9 @@ suite Squares                 // a suite: its tests' full names are Squares.Test
 - `fail(arguments...)` fails and ends the test. `requireThrows<T>(expr)` is the `T` that `expr`
   throws, and fails and ends the test when it throws none; `checkThrows<T>(expr)` is an `Optional<T>`
   and goes on.
-- A failed check shows its operands' values (`(expected 8, but was 9)` for `==`, the right side the
-  expected value; `(2 < 1)` for the other comparisons), a call's arguments' values, and its
-  message; a value that is text is quoted and escaped (`(expected "abd", but was "abc")`). Inside a check, signed and unsigned integers compare by value, and `==` of two char
+- A failed check shows its operands' values (`expected 8, but was 9` alone for `==`, the right side
+  the expected value; the expression and `(2 < 1)` for the other comparisons), a call's arguments' values, and its
+  message; a value that is text is quoted and escaped (`expected "abd", but was "abc"`). Inside a check, signed and unsigned integers compare by value, and `==` of two char
   pointers is an error (it would compare addresses: write `StringView(a) == b`).
 - A function or class declared `test` (and every function and class in a suite) is test code: it
   may use `check`, `require` and `fail`, and a failure in it says where it was called from.

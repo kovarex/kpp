@@ -1,9 +1,9 @@
-test_jobs.kpp:9:5: check failed: 1 == 2 (expected 2, but was 1): first
+test_jobs.kpp:9:5: check failed: expected 2, but was 1: first
 failed: First.Slow
-test_jobs.kpp:16:15: check failed: 2 == 3 (expected 3, but was 2): other
+test_jobs.kpp:16:15: check failed: expected 3, but was 2: other
 failed: Other.Fast
 test_jobs.kpp:21:16: check failed: false: third
 failed: Third.After (after failures in: First)
-test_jobs.kpp:24:16: check failed: 3 == 4 (expected 4, but was 3): outside
+test_jobs.kpp:24:16: check failed: expected 4, but was 3: outside
 failed: test_jobs.kpp > Outside
 5 tests, 4 failed (root failures: First.Slow, Other.Fast, test_jobs.kpp > Outside; 1 after failures in their dependencies)

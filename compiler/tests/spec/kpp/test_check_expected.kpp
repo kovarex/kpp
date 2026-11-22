@@ -1,4 +1,4 @@
-// spec: a failed `==` in a check says the right side as the expected value and the left as what it was (kovarex, 2026-11-21): `(expected "B", but was "A")`; a value that is text is quoted, its quotes and backslashes escaped, also among a call's values; the other comparisons keep `(left op right)`
+// spec: a failed `==` in a check says the right side as the expected value and the left as what it was without the expression (kovarex, 2026-11-21 and 2026-11-22): `check failed: expected "B", but was "A"`; a value that is text is quoted, its quotes and backslashes escaped, also among a call's values; the other comparisons keep `(left op right)`
 // test:
 // exit: 1
 enum class Mode : u8 { { Normal, SuperForced } };
