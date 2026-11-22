@@ -1229,6 +1229,15 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   project that needs another keeps its own copy. package.ps1's zip test unpacks the zip outside the
   repository and builds and runs a project using httpclient and mariadb with it; the nightly release
   check does the same with the installer's installation.
+- **Over a kpp in use** (kovarex, 2026-11-22: with Visual Studio open the install stopped at "DeleteFile failed; code
+  5" on kpp.exe): the installer stops the compile servers its kpp.exe started, renames the old kpp.exe aside
+  (kpp.exe.TIME.old: Windows renames a running executable but does not replace it), copies the new files, and only
+  then stops the language servers that ran the old one, which the editors start again from the new kpp.exe (Visual
+  Studio's extension starts a stopped server again at once, so one stopped before the copy held kpp.exe again). The
+  renamed file goes then, or at the next install or the uninstall when a build still ran it. Not Windows' Restart
+  Manager (CloseApplications=no), which stopped the language server before the copy. tools\release\install-test.ps1, in
+  CI's package job, installs the setup twice with an editor's stand-in restarting `kpp --lsp` and a compile server
+  running; 0.2.1693's setup fails it with kovarex's error.
 - **`kpp --version`** prints the version and commit kpp was built from ("Versions" below), the
   compiler's path, the toolchain a build takes without `--toolchain`, and the standard library.
   `kpp --help` lists the options. Both work only alone; in a project's directory they print and

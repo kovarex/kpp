@@ -705,6 +705,15 @@ jobs:
           $sums = ($files | ForEach-Object { "$_=$((Get-FileHash -Algorithm SHA256 "build/release/$_").Hash.ToLowerInvariant())" }) -join ' '
           "sums=$sums" | Out-File -Append -Encoding ascii $env:GITHUB_OUTPUT
 
+      # The setup installed twice, over a kpp in use: a language server its editor starts again at once and a compile
+      # server (docs/build.md, "Installing"). It installs into Program Files: GitHub's own runner only.
+      - name: Install over a kpp in use
+        if: ${{ !vars.KPP_CI_RUNNER }}
+        shell: powershell
+        run: |
+          tools\release\install-test.ps1 -Setup (Resolve-Path "build\release\kpp-$env:KPP_VERSION-setup.exe").Path
+          exit $LASTEXITCODE
+
       - uses: actions/upload-artifact@v4
         with:
           name: package

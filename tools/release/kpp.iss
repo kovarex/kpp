@@ -36,6 +36,10 @@ PrivilegesRequired=admin
 ChangesEnvironment=yes
 ; Explorer is told when the task fileicon gives .kpp its icon.
 ChangesAssociations=yes
+; Not Windows' Restart Manager, which closed an editor's language server before the copy (its editor started it again
+; while kpp.exe was renamed aside): a kpp.exe in use is renamed aside, and its language servers stopped after the copy
+; (SetKppAside, StopOldLanguageServers).
+CloseApplications=no
 UninstallDisplayName=kpp {#Version}
 
 ; FreeBSD 14.3's headers and libraries (sysroots\freebsd-x86_64, about 90 MB installed), so that `kpp
@@ -60,6 +64,10 @@ Source: "{#Source}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 ; Earlier releases' name for the VS Code extension, which opened in Visual Studio's installer.
 [InstallDelete]
 Type: files; Name: "{app}\kpp.vsix"
+
+; The old kpp.exe an install renamed aside (SetKppAside) and a build still ran then.
+[UninstallDelete]
+Type: files; Name: "{app}\kpp.exe.*.old"
 
 ; Only a package with kpp-vscode.vsix offers it (package.ps1 leaves it out by hand without Node.js).
 ; cmd /c ""...\code.cmd" --install-extension "...\kpp-vscode.vsix" --force": cmd takes off the outer
@@ -218,14 +226,71 @@ begin
     Result := Previous;
 end;
 
+// Runs a PowerShell command, hidden; false (and a line in the log) when it fails.
+function PowerShell(Command, What: string): Boolean;
+var
+  Code: Integer;
+begin
+  Result := Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + Command + '"', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  if not Result then
+    Log('Could not ' + What + ' (exit ' + IntToStr(Code) + ')');
+end;
+
+// kpp.exe as an earlier install left it, renamed aside (SetKppAside): kpp.exe.TIME.old.
+const
+  OldKppPattern = 'kpp.exe.*.old';
+
+// The old kpp.exe is renamed aside before the files are copied: Windows replaces no running executable but renames
+// one, and an editor's language server (`kpp --lsp`) or a build may run it (kovarex, 2026-11-22: with Visual Studio
+// open the install stopped at "DeleteFile failed; code 5" on kpp.exe; its extension starts a stopped language server
+// again at once, from the same kpp.exe, so stopping it before the copy left the file in use). The language servers
+// running it are noted first, by process id (a renamed process's ExecutablePath stays the name it was started by), and
+// stopped after the copy (StopOldLanguageServers).
+procedure SetKppAside();
+var
+  Exe, Aside: string;
+begin
+  Exe := ExpandConstant('{app}\kpp.exe');
+  if not FileExists(Exe) then
+    exit;
+  PowerShell('Set-Content -Encoding ascii ''' + ExpandConstant('{tmp}\kpp-lsp.txt') + ''' @(Get-CimInstance Win32_Process | ' +
+    'Where-Object { $_.ExecutablePath -eq ''' + Exe + ''' -and $_.CommandLine -match ''--lsp'' } | ForEach-Object { $_.ProcessId })',
+    'note the language servers of ' + Exe);
+  Aside := Exe + '.' + GetDateTimeString('yyyymmddhhnnss', #0, #0) + '.old';
+  if RenameFile(Exe, Aside) then
+    Log('Renamed ' + Exe + ' to ' + Aside + ' (it may be running)')
+  else
+    Log('Could not rename ' + Exe + ' aside: it is replaced in place');
+end;
+
+// The language servers an editor started from the old kpp.exe (noted by SetKppAside) are stopped once the new one is
+// there (kovarex, 2026-11-17: Visual Studio kept showing the old kpp's errors after an upgrade). The editors start the
+// new one: VS Code's client by itself, Visual Studio's extension when its server stops (KppLanguageClient). Then the
+// renamed files go, but one that a build still runs, which the next install or the uninstaller deletes.
+procedure StopOldLanguageServers();
+var
+  Dir: string;
+begin
+  Dir := ExpandConstant('{app}');
+  PowerShell('$ids = @(Get-Content -ErrorAction SilentlyContinue ''' + ExpandConstant('{tmp}\kpp-lsp.txt') + '''); ' +
+    '$old = @($ids | ForEach-Object { Get-CimInstance Win32_Process -Filter (''ProcessId='' + $_) } | Where-Object { $_.CommandLine -match ''--lsp'' }); ' +
+    'foreach ($p in $old) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }; ' +
+    'foreach ($p in $old) { Wait-Process -Id $p.ProcessId -Timeout 10 -ErrorAction SilentlyContinue }; ' +
+    'Get-ChildItem -LiteralPath ''' + Dir + ''' -Filter ''' + OldKppPattern + ''' | Remove-Item -Force -ErrorAction SilentlyContinue; exit 0',
+    'stop the language servers of the old kpp.exe in ' + Dir);
+end;
+
 // Windows keeps a folder's case: a folder whose name differs from {app}'s only in case is renamed
 // through a temporary name, and its PATH entry (compared without case) is taken off, for [Registry]
-// to add {app} as written.
+// to add {app} as written. Then kpp.exe is renamed aside (SetKppAside); after the copy, the old one's
+// language servers stop (StopOldLanguageServers).
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Dir, Old: string;
   FindRec: TFindRec;
 begin
+  if CurStep = ssPostInstall then
+    StopOldLanguageServers();
   if CurStep <> ssInstall then
     exit;
   Dir := ExpandConstant('{app}');
@@ -249,30 +314,26 @@ begin
     end;
     RemoveFromPath(Dir);
   end;
+  SetKppAside();
 end;
 
-// The language servers an editor started from this folder's kpp.exe (`kpp --lsp`) are stopped before the files are
-// replaced (kovarex, 2026-11-17: Visual Studio kept showing the old kpp's errors after an upgrade). The editors start
-// the new one: VS Code's client by itself, Visual Studio's extension when its server stops (KppLanguageClient). So are
-// the compile servers this kpp.exe started, every user's (copies of it in %TEMP%\kpp-server, `kpp-server-KEY.exe
-// --serve KEY "<this kpp.exe>" STAMP`; kovarex, 2026-11-21: Visual Studio's builds of a newly installed kpp kept
-// reaching the old one's server until he ended it by hand): a server also exits by itself once its kpp changes, but
-// only between builds. A build running from this folder is left alone.
+// The compile servers this kpp.exe started are stopped before the files are replaced, every user's (copies of it in
+// %TEMP%\kpp-server, `kpp-server-KEY.exe --serve KEY "<this kpp.exe>" STAMP`; kovarex, 2026-11-21: Visual Studio's
+// builds of a newly installed kpp kept reaching the old one's server until he ended it by hand): a server also exits
+// by itself once its kpp changes, but only between builds. A build running from this folder is left alone, and an
+// editor's language server until the new kpp.exe is there (SetKppAside).
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Exe, Command: string;
-  Code: Integer;
+  Exe: string;
 begin
   Result := '';
-  Exe := AddBackslash(ExpandConstant('{app}')) + 'kpp.exe';
+  Exe := ExpandConstant('{app}\kpp.exe');
   if not FileExists(Exe) then
     exit;
-  Command := '-NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and (' +
-    '($_.ExecutablePath -eq ''' + Exe + ''' -and $_.CommandLine -match ''--lsp'') -or ' +
-    '($_.CommandLine.IndexOf('' --serve '') -ge 0 -and $_.CommandLine.IndexOf([char]34 + ''' + Exe + ''' + [char]34, [StringComparison]::OrdinalIgnoreCase) -ge 0)) } | ' +
-    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"';
-  if not Exec('powershell.exe', Command, '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
-    Log('Could not stop the language and compile servers of ' + Exe + ' (exit ' + IntToStr(Code) + ')');
+  PowerShell('Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf('' --serve '') -ge 0 -and ' +
+    '$_.CommandLine.IndexOf([char]34 + ''' + Exe + ''' + [char]34, [StringComparison]::OrdinalIgnoreCase) -ge 0 } | ' +
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force }',
+    'stop the compile servers of ' + Exe);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
