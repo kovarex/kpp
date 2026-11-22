@@ -648,7 +648,7 @@
     {"is_member_object_pointer_v", "std::isMemberObjectPointer"},
     {"alignment_of_v", "std::alignmentOf"},
     {"add_const_t", "std::AddConst"}, {"add_lvalue_reference_t", "std::AddLvalueReference"},
-    {"remove_cv", "std::RemoveCv"}, {"is_const", "std::IsConst"}, {"is_same", "std::IsSame"}, {"is_constructible", "std::IsConstructible"}, {"is_assignable", "std::IsAssignable"}, {"is_assignable_v", "std::isAssignable"},
+    {"remove_cv", "std::RemoveCv"}, {"is_const", "std::IsConst"}, {"is_same", "std::IsSame"}, {"is_constructible", "std::IsConstructible"}, {"is_assignable", "std::IsAssignable"}, {"is_assignable_v", "std::isAssignable"}, {"invoke_result_t", "std::InvokeResult"},
     {"make_unsigned_t", "std::MakeUnsigned"}, {"conditional", "std::Conditional"},
     {"enable_if", "std::EnableIf"}, {"void_t", "std::VoidT"},
     {"bool_constant", "std::BoolConstant"}, {"integral_constant", "std::IntegralConstant"},

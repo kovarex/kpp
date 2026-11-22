@@ -1,0 +1,21 @@
+// spec: the library's InvokeResult (std::invoke_result_t), the type of invoke(f, args...): a function's result, a lambda's, a member function's through a pointer to it and a const object, a data member's through a pointer to it (an lvalue's reference); clang prints the same
+// found by thread UE (2026-11-22): the library had none and the converter no mapping, an undeclared invoke_result_t (Unreal's AutoRTFM TTask)
+struct Box
+{
+  int v = 3;
+  double scaled(double f) const { return this.v * f; }
+};
+
+int twice(int x)
+{
+  return x * 2;
+}
+
+int main()
+{
+  auto lambda = [](char c, long n) { return c + n; };
+  std::println(std::isSame<std::InvokeResult<decltype(twice)&, int>, int>, " ", std::isSame<std::InvokeResult<decltype(lambda), char, long>, long>, " ",
+               std::isSame<std::InvokeResult<double (Box::*)(double) const, const Box&, double>, double>, " ",
+               std::isSame<std::InvokeResult<int Box::*, Box&>, int&>);
+  return 0;
+}

@@ -29,6 +29,10 @@ constexpr bool isAssignable = requires(T&& t, U&& u) { static_cast<T&&>(t) = sta
 template<typename T, typename U>
 struct IsAssignable : BoolConstant<isAssignable<T, U>> {};
 
+// std::invoke_result_t: the type of invoke(f, args...) for an F and Args (a callable's result, a member pointer's too).
+template<typename F, typename... Args>
+using InvokeResult = decltype(invoke(declval<F>(), declval<Args>()...));
+
 template<typename T>
 struct IsConst : FalseType {};
 template<typename T>

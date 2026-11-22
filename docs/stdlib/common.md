@@ -174,6 +174,7 @@ empty bases; a closure without captures) and isDefaultConstructible (isConstruct
 default constructor beside its others, design.md 29), and the transformation RemoveAllExtents (std::remove_all_extents_t:
 every array level's element). core/TypeTraits.kpp has IsConstructible (std::is_constructible, isConstructible as a
 type with `::value`, for conjunction and disjunction), isAssignable and IsAssignable (std::is_assignable_v and
-std::is_assignable: whether `declval<T>() = declval<U>()` is well-formed, a requires-expression), AddVolatile, conjunction and
+std::is_assignable: whether `declval<T>() = declval<U>()` is well-formed, a requires-expression), InvokeResult
+(std::invoke_result_t: invoke's result type), AddVolatile, conjunction and
 disjunction (std::conjunction_v, disjunction_v) and CommonType (std::common_type_t: `c ? a : b`'s type, decayed); core/UtilityExt.kpp addressOf (std::addressof: past a class's unary
 operator&) and launder.
