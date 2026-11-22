@@ -5192,7 +5192,8 @@ human output.
 ### How it is built (done 2026-10-30, thread G)
 1. `--run` and `--test`: `compiler/src/run.cpp`; `main.cpp` hands them over before anything else.
 2. The parser (A's file, `parseTest`): with `config::tests` (set by `--tests`), `test "name" { }`
-   becomes a function `void __kpp_test_<file hash>_<n>()` (static in a class) and a variable
+   becomes a function `void __kpp_test_<name>__<file hash>_<n>()` (static in a class; the
+   debug information names it `Suite::name()`, docs/debugging.md) and a variable
    `int __kpp_test_registered_<...> = __kppRegisterTest(&__kpp_test_<...>, "name");`, whose
    initializer registers the test at startup. Its caller location is the test's, which gives the
    file and line. So there is no table to generate, and a test in a class or a namespace needs

@@ -1,0 +1,24 @@
+// debuginfo.ps1: a --tests build's debug information names each test, fixture and generator as written
+// (Suite::Name, not the parser's __kpp_test_Name__<hash>_<n>), and the runner's frames a file that exists
+// (NAME.generated\tests.kpp beside the executable, not <tests>.kpp).
+class Base
+{
+public:
+  i32 value = 1;
+};
+
+suite Machines
+{
+  test CircuitWireMigration { check(1 + 1 == 2); }
+
+  test WithFixture : Base() { check(this.value == 1); }
+
+  generate EachSave
+  {
+    this.addTest("first", [] { check(true); });
+  }
+}
+
+test Outside { check(true); }
+
+int main() { return 0; }

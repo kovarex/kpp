@@ -4658,15 +4658,18 @@ namespace
       return c;
     }
 
-    // The suffix that names a file's next test-related declaration: the hash of its path and a count.
-    std::string testSuffix()
+    // The suffix that names a file's next test-related declaration: the hash of its path and a count, after the
+    // test's (or generator's) own name and `__` when it has one, `Name__<hash>_<n>`: the debugger and a stack trace
+    // show that name alone (readableGeneratedName, tests.hpp; kovarex, 2026-11-22: "Why is the test name some random
+    // hexdec?").
+    std::string testSuffix(const std::string& name = {})
     {
       uint64_t h = 1469598103934665603ull;
       for (unsigned char c : out.path)
         h = (h ^ c) * 1099511628211ull;
       char suffix[40];
       snprintf(suffix, sizeof suffix, "%016llx_%u", (unsigned long long)h, testCount++);
-      return suffix;
+      return name.empty() ? std::string(suffix) : name + "__" + suffix;
     }
 
     // The tokens of source, which the parser writes (identifiers, keywords and punctuators), each
@@ -5131,7 +5134,7 @@ namespace
         error("a test in a class takes no fixture (it sees the class's members)");
       if (currentSuite)
         currentSuite->tests.push_back({toks[nameToken].id, nameToken});
-      std::string suffix = testSuffix();
+      std::string suffix = testSuffix(name);
       std::string isStatic = scope == Scope::Class ? "static " : "";
       std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
       // (`This::` in a class: a bare name is never a member under --this-reference, design.md 23c)
@@ -5270,7 +5273,7 @@ namespace
       }
       if (!currentSuite)
         error("generate adds tests to a suite: it is written in one");
-      std::string suffix = testSuffix();
+      std::string suffix = testSuffix(name);
       std::string suite = currentSuite ? std::string(symbols.name(currentSuite->name)) : std::string();
       std::vector<Token> head = synthesize("class __kpp_generator_" + suffix + " : public __KppGenerator { public: void __kpp_generate()", from);
       std::vector<Token> tail = synthesize("}; void __kpp_generate_" + suffix + "() { __kpp_generator_" + suffix + " generator; generator.__kpp_generate(); } " +

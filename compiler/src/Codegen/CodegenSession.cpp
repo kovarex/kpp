@@ -799,6 +799,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   }
   sh.inlineTrivial = inlineTrivial;
   sh.debugInfo = debugInfo;
+  sh.generatedSources = options.generatedSources;
   sh.fullDebugInfo = debugInfo && !optimize; // (an optimized build keeps its line tables alone)
   sh.setModules(moduleCount);
   // A release build (ThinLTO) puts its short definitions in modules of their own (Emitter::placeShortDefinitions).

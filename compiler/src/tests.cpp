@@ -1,4 +1,5 @@
 #include "tests.hpp"
+#include <filesystem>
 
 // The runner, in kpp. What the compiler generates calls into it (parser.cpp, parseTest and
 // parseSuite; design.md 8.6, 8.7):
@@ -2936,4 +2937,57 @@ int __kppEndWorker(__KppWorkerProcess& worker)
   return (status & 0x7f) != 0 ? 128 + (status & 0x7f) : (status >> 8) & 0xff; // (a signal's as a shell says it)
 }
 )kpp";
+}
+
+std::string readableGeneratedName(std::string_view name)
+{
+  if (name.find("__kpp_") == std::string_view::npos)
+    return std::string(name);
+  std::string out;
+  out.reserve(name.size());
+  auto word = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; };
+  size_t i = 0;
+  while (i < name.size())
+  {
+    if (word(name[i]) && (i == 0 || !word(name[i - 1])))
+    {
+      size_t end = i;
+      while (end < name.size() && word(name[end]))
+        ++end;
+      std::string_view id = name.substr(i, end - i);
+      std::string shown(id);
+      if (id.starts_with("__kpp_suite_") && !id.starts_with("__kpp_suite_registered_"))
+        shown = id.substr(12);
+      else if (id == "__kpp_body" || id == "__kpp_generate")
+        shown = id.substr(6); // (a fixture's body, a generator's function: `body`, `generate`)
+      else
+        for (std::string_view prefix : {"__kpp_test_", "__kpp_fixture_", "__kpp_generator_", "__kpp_generate_"})
+          if (id.starts_with(prefix) && !id.starts_with("__kpp_test_registered_") && !id.starts_with("__kpp_generator_registered_"))
+          {
+            // `Name__<16 hex digits>_<count>`: Name, which may hold `__` itself
+            std::string_view rest = id.substr(prefix.size());
+            size_t last = rest.rfind('_');
+            size_t mark = last != std::string_view::npos && last >= 18 ? last - 18 : std::string_view::npos;
+            if (mark != std::string_view::npos && rest.substr(mark, 2) == "__")
+              shown = rest.substr(0, mark);
+            break;
+          }
+      out += shown;
+      i = end;
+    }
+    else
+      out += name[i++];
+  }
+  return out;
+}
+
+std::string generatedSourceFile(const std::string& directory, const std::string& path)
+{
+  std::string name;
+  for (char c : path)
+    if (c != '<' && c != '>')
+      name += c;
+  if (!name.ends_with(".kpp"))
+    name += ".kpp";
+  return (std::filesystem::path(directory) / name).string();
 }

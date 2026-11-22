@@ -221,4 +221,25 @@ $code = $LASTEXITCODE
 & $KppExe --stop-server --quiet --debug-info --emit-llvm $served --exe $cexe $constants | Out-Null
 if ($code -ne 0) { "FAIL debug info: constants.kpp through a compile server: compile"; exit 1 }
 if ((Get-FileHash $fresh).Hash -ne (Get-FileHash $served).Hash) { "FAIL debug info: constants.kpp's IR through a compile server is not its IR in a build of its own process"; exit 1 }
+# A --tests build (debuginfo\tests.kpp): its tests, fixtures and generators are named as written in the PDB, which a
+# stack trace and the debugger show (`Machines::CircuitWireMigration()`, not
+# `__kpp_suite_Machines::__kpp_test_CircuitWireMigration__<hash>_0()`), and the runner's functions are in
+# kpp-generated\tests\tests.kpp, a file that exists, not `<tests>.kpp` (kovarex, 2026-11-22).
+$texe = Join-Path $work 'tests.exe'
+& $KppExe --quiet --tests --debug-info --exe $texe (Join-Path $PSScriptRoot 'debuginfo\tests.kpp')
+if ($LASTEXITCODE -ne 0) { "FAIL debug info: tests.kpp: compile"; exit 1 }
+& $texe --jobs 0 | Out-Null
+if ($LASTEXITCODE -ne 0) { "FAIL debug info: tests.kpp's tests failed"; exit 1 }
+$tpdb = Join-Path $work 'tests.pdb'
+$procs = @(& $pdbutil dump -symbols $tpdb | ForEach-Object { if ($_ -match 'S_[GL]PROC32 \[size = \d+\] `(.*)`') { $Matches[1] } })
+foreach ($want in @('Machines::CircuitWireMigration()', 'Machines::WithFixture()', 'Machines::WithFixture::body', 'Machines::EachSave::generate', 'Outside()'))
+{
+  if ($procs -notcontains $want) { "FAIL debug info: tests.kpp's PDB has no function $want"; $procs | Where-Object { $_ -match 'Machines|Outside|__kpp_' } | ForEach-Object { "  $_" }; exit 1 }
+}
+$generated = @($procs | Where-Object { $_ -match '__kpp_(test|fixture|generator|generate|suite)_' })
+if ($generated.Count -gt 0) { "FAIL debug info: tests.kpp's PDB names $($generated[0])"; exit 1 }
+$files = @(& $pdbutil dump -files $tpdb)
+if (@($files | Where-Object { $_ -match '<tests' }).Count -gt 0) { "FAIL debug info: tests.kpp's PDB names <tests>.kpp"; exit 1 }
+$runner = [IO.Path]::GetFullPath((Join-Path $work 'kpp-generated\tests\tests.kpp'))
+if (-not (Test-Path $runner) -or @($files | Where-Object { $_.Contains($runner) }).Count -eq 0) { "FAIL debug info: tests.kpp's PDB does not name $runner"; exit 1 }
 "ok   debug info"

@@ -519,6 +519,7 @@ namespace codegen
     bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
     bool sanitizeThread = false;                         // --sanitize thread: vtable pointers' loads and stores tagged (vptrAccess)
     bool coverage = false;                               // --coverage: probes in the program's own functions (Emitter::coverBegin)
+    std::string generatedSources;                        // CodegenOptions::generatedSources
     bool debugInfo = false;                              // --debug-info: line tables for the debugger (Emitter::debugLines)
     bool fullDebugInfo = false;                          // --debug-info unoptimized: variables and types too (Emitter::debugVariable)
     // An unoptimized build for Windows with no importable modules, --debug-info or not: the lines in its code are constants

@@ -128,6 +128,10 @@ struct CodegenOptions
   // --debug-info: line tables, each statement's instructions at its line, so that a debugger steps
   // through the kpp source (docs/debugging.md).
   bool debugInfo = false;
+  // With debugInfo: the directory the driver wrote its generated sources to (`<tests>.kpp` as tests.kpp,
+  // generatedSourceFile), which their debug information names, so that a stack trace and the debugger show a file
+  // that exists (kovarex, 2026-11-22); empty: their names as they are.
+  std::string generatedSources;
   const Target* target = nullptr; // the platform the IR is for (--target; null: Windows x64)
   bool optimize = false; // --optimize: the modules are optimized (ThinLTO), and not split (codegenOutputModules)
   // false: a build that writes nothing (--check, the language server's): the functions are emitted, for their

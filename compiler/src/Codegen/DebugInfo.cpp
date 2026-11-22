@@ -3,6 +3,7 @@
 // of the struct's body in Codegen/Emitter.hpp. A translation unit of its own since 2026-11-05
 // (codegen.cpp split, stage 2), moved without a change.
 #include "Emitter.hpp"
+#include "../tests.hpp"
 
 auto codegen::Emitter::debugId(uint32_t local) -> std::string
 {
@@ -25,7 +26,9 @@ auto codegen::Emitter::debugFileOf(const ParsedFile* file) -> const std::string&
   if (text.empty())
   {
     std::error_code ec;
-    std::string path = std::filesystem::absolute(file->path, ec).string();
+    // (a source the driver generates, `<tests>.kpp`: the copy it wrote, CodegenOptions::generatedSources)
+    std::string path = isGeneratedSource(file->path) && !sh.generatedSources.empty() ? generatedSourceFile(sh.generatedSources, file->path)
+                                                                                                    : std::filesystem::absolute(file->path, ec).string();
     if (ec)
       path = file->path;
     std::string escaped;
@@ -301,7 +304,7 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
       // alone (homeDebugClasses), every other module's reference resolved by the identifier.
       auto* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
       const char* tag = cd && cd->keyword == Kw::union_ ? "DW_TAG_union_type" : cd && cd->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
-      return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(debuggerClassName(t)) + ", flags: DIFlagFwdDecl, identifier: " +
+      return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(readableGeneratedName(debuggerClassName(t))) + ", flags: DIFlagFwdDecl, identifier: " +
                  metadataString(spelling) + ")");
     }
     case TyKind::Function:
@@ -667,7 +670,7 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
   std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
   uint32_t list = next++;
   nodes += debugId(list) + " = !{ " + elements + "}\n";
-  nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(debuggerClassName(ct)) : std::string()) +
+  nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(readableGeneratedName(debuggerClassName(ct))) : std::string()) +
            ", size: " + std::to_string(sizeOf(ct, nullptr) * 8) + ", elements: " + debugId(list) +
            (spelling && info.polymorphic && !info.primaryBase ? ", vtableHolder: " + debugId(self) : std::string()) +
            (spelling ? ", identifier: " + metadataString(*spelling) : std::string()) + ")\n";
@@ -953,6 +956,7 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       }
     }
   }
+  spName0 = readableGeneratedName(spName0); // (a test's: its name, `Suite::Name()`)
   out += debugId(0) + " = distinct !DISubprogram(name: \"" + spName0 + "\", scope: " + spScope + ", file: " + file + ", line: " +
          std::to_string(declLine) + ", type: " + spType + ", scopeLine: " + std::to_string(declLine) + ", spFlags: DISPFlagDefinition, unit: !0" + spDeclaration +
          ")\n";

@@ -605,6 +605,27 @@ void runCodegen(Build& build)
         }, true, weight);
       };
     }
+    // --debug-info: the sources the driver generated (the test runner's `<tests>.kpp`, not `<config>`) written beside the
+    // executable, in kpp-generated\NAME (not NAME.something, which a script's `Remove-Item NAME.*` would meet), so that
+    // the debug information names files that exist: a stack trace showed `C:\Factorio\<tests>.kpp(787): __kppRunWhole`
+    // (kovarex, 2026-11-22). A file already holding the text is left as it is.
+    std::string generatedSources;
+    if (options.debugInfo && !options.exe.empty() && !options.check)
+    {
+      std::filesystem::path exe(options.exe);
+      std::string directory = std::filesystem::absolute(exe.parent_path() / "kpp-generated" / exe.stem()).string();
+      for (const std::unique_ptr<ParsedFile>& p : parsed)
+        if (isGeneratedSource(p->path))
+        {
+          std::error_code ec;
+          if (generatedSources.empty())
+            std::filesystem::create_directories(directory, ec);
+          generatedSources = directory;
+          std::string file = generatedSourceFile(directory, p->path);
+          if (readWholeFile(file) != p->text && !writeFile(file, std::string(p->text)))
+            fprintf(stderr, "warning: cannot write %s, which the debug information names\n", file.c_str());
+        }
+    }
     CodegenOptions codegenOptions{.debug = options.debug,
                                   .moduleCount = modules,
                                   .despiteErrors = despiteErrors,
@@ -616,6 +637,7 @@ void runCodegen(Build& build)
                                   .sanitizeThread = options.sanitizeThread,
                                   .coverage = options.coverage,
                                   .debugInfo = options.debugInfo,
+                                  .generatedSources = generatedSources,
                                   .target = &options.target,
                                   .optimize = options.optimize != 0, // (resolved to 0 or 1 by now)
                                   .assemble = !options.check}; // (a check writes nothing: no module text, CodegenOptions::assemble)

@@ -22,6 +22,12 @@ with `/DEBUG` already, for the crash report's function names).
   of its file's tag and its header's tokens, so the name is the same wherever the sources are and
   whatever files come before it, and a lambda added to one function renames none of another's. A file's private entities (design.md 15) carry its name and the
   same tag (`inflate.kpp@3f0c9a12::helper(int32)`).
+- A test, its fixture and a generator are named as written, the suite their scope (`Machines::WiresMigrate()`, a
+  fixture's body `Machines::WiresMigrate::body`, a generator's `Machines::EachSave::generate`), not by the parser's
+  names for them (`__kpp_suite_Machines::__kpp_test_WiresMigrate__<hash>_<n>()`, which keep them apart from the
+  program's names: readableGeneratedName, tests.cpp). The test runner's own functions (`__kppRunWhole`, the runner's
+  main) are in a file the build writes beside the executable, `kpp-generated\NAME\tests.kpp` (the runner's text,
+  `<tests>.kpp` inside the compiler), so a stack trace and the debugger show a file that exists (kovarex, 2026-11-22).
 - Every statement starts a line: its instructions are at the statement's first line. A `for`'s
   condition and step, a `while`'s and `do`'s condition and a range-`for`'s advance are at their own
   lines, so stepping through a loop comes back to its header. A `switch`'s cases are at their own
@@ -49,7 +55,8 @@ with `/DEBUG` already, for the crash report's function names).
 `tests\debuginfo.ps1` (run by run_tests.cmd) builds `tests\debuginfo\lines.kpp`, runs it and checks
 the lines of each of its functions in the PDB (llvm-pdbutil) against `lines.expected`, then
 `tests\debuginfo\values.kpp` as one module and as 64, and its variables and types in the PDB against
-`values.expected`; determinism.ps1 checks that the IR with `--debug-info` does not depend on the
+`values.expected`, then `tests\debuginfo\tests.kpp` with `--tests`, its tests' and runner's names and file;
+determinism.ps1 checks that the IR with `--debug-info` does not depend on the
 thread count.
 
 ## Variables and types
