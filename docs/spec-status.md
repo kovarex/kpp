@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2417 pass, 3 pending, 0 failing, 0 fixed** (2420 snippets, 206.6 s).
+**2418 pass, 3 pending, 0 failing, 0 fixed** (2421 snippets, 203.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1654,6 +1654,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `templates/variable_template_default_args.kpp` | variable templates with default template arguments | pass | force_memcpy_save<T, class = void> used with one argument |  |
 | `templates/variable_template_id_before_operator.kpp` | a variable template's id followed by an arithmetic operator (`pi_v<float> * x`, `two_v<int> - 1`): a template argument that can only be a type makes the `<` a template's, whatever follows the `>` | pass | Numbers::pi_v<float> * x (Attenuation) |  |
 | `templates/variable_template_objects.kpp` | a variable template that is not const is an object for each arguments: read, written, indexed, its size, one object wherever it is named (clang's and g++'s output) | pass |  |  |
+| `templates/variable_template_partial_specialization_of_a_pack.kpp` | a partial specialization of a variable template whose primary ends with a pack (`template<typename T, typename... Ts> constexpr u32 countIn = 0;`) is matched by its own arguments, a pack of its own expanded last taking the rest (`countIn<T, U, Ts...>`), recursively; one that matches no argument list leaves the primary's value; clang prints the same | pass |  |  |
 | `templates/variable_template_partial_specialization_takes_template_arguments.kpp` | a variable template's partial specialization takes its arguments as template arguments, as a class template's does: `T` keeps an array, a reference or a function type (W<int[3], int*>, W<int&, int*>, W<int(char), int*> take `W<T, U*>`), a parameter two arguments deduce must come out the same from both (`W2<T, const T>` not W2<const int, const int>), and `const T` never matches a function type. clang's and g++'s output | pass |  |  |
 | `templates/variable_template_specialisation.kpp` | variable template specialisations, partial and full, chosen as C++ does: the most specialised match, a VoidT detection argument matching only when its member exists, a variable template used inside another's initializer | pass |  |  |
 | `templates/variable_template_specializations_chosen_by_constraints.kpp` | a variable template's partial specializations are chosen by their constraints too ([temp.spec.partial.match] 2, [temp.func.order] 6.2.2): `template<Integral T> constexpr int kind<T>` matches only an integral T, `template<typename T> requires Integral<T> && Big<T> constexpr int kind<T>` is the more constrained of the two, and a requires clause on `pointee<T*>` limits it to the pointers it holds for; a constrained primary takes what satisfies it (clang's output) | pass |  |  |

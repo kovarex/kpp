@@ -1924,7 +1924,10 @@ auto GlobalScope::Impl::variableTemplateSource(VariableDecl* v, const NamePart& 
   for (const Subst::Pair& q : bound.pairs)
     args.push_back(q.type);
   Subst specialised;
-  VariableDecl* source = lastParam->isPack ? v : variableSpecialization(v, args, specialised);
+  // (a pack last: its elements flat, as a partial specialization's own parameters take them)
+  std::vector<const Ty*> flat = given;
+  flat.insert(flat.end(), packElements.begin(), packElements.end());
+  VariableDecl* source = variableSpecialization(v, lastParam->isPack ? flat : args, specialised);
   // The primary for arguments all known: its constraints must hold (`template<class T> requires Big<T> constexpr int
   // v = ...;` named as v<char> is an error, [temp.names] 8; until 2026-11-10 the requires clause was dropped).
   if (source == v && std::all_of(args.begin(), args.end(), [&](const Ty* a) { return a && a->isKnown() && !types.isDependent(a) && !mentionsUnknown(a); }))

@@ -75,9 +75,25 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
     if (!e.decl || e.decl == primary || e.decl->kind != NodeKind::VariableDecl)
       continue;
     auto* v = static_cast<VariableDecl*>(e.decl);
-    if (v->name.empty() || !v->name.last().hasTemplateArgs || v->name.last().templateArgs.size() != args.size())
+    if (v->name.empty() || !v->name.last().hasTemplateArgs)
       continue;
     Span<Node*> written = v->name.last().templateArgs;
+    // A pack of its own expanded last (`template<class T, class U, class... Ts> constexpr int count<T, U, Ts...>` of
+    // `template<class T, class... Ts> constexpr int count`): it takes the arguments from its place on, which a primary
+    // with a pack last gives flat. Until 2026-11-22 none was matched, and the primary's value was taken, silently
+    // (Unreal's TTypeCountInParameterPack_V was 0 for every pack).
+    Decl* restPack = nullptr;
+    if (!written.empty() && written[written.size() - 1] && written[written.size() - 1]->kind == NodeKind::PackType &&
+        isBarePack(static_cast<PackType*>(written[written.size() - 1])->pattern))
+    {
+      uint32_t symbol = static_cast<NamedType*>(static_cast<PackType*>(written[written.size() - 1])->pattern)->name.parts[0].symbol;
+      for (Decl* p : v->templateParams)
+        if (static_cast<TemplateParamDecl*>(p)->isPack && static_cast<TemplateParamDecl*>(p)->name == symbol)
+          restPack = p;
+    }
+    size_t fixed = restPack ? written.size() - 1 : written.size();
+    if (restPack ? args.size() < fixed : args.size() != written.size())
+      continue;
     LocalStack own;
     for (Decl* p : v->templateParams)
       own.push(static_cast<TemplateParamDecl*>(p)->name, p);
@@ -85,9 +101,19 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
                      v->file ? v->file->tokens : nullptr, v->file ? v->file->text : std::string_view()};
     Match m{v, {}, {}};
     bool ok = true;
+    if (restPack)
+    {
+      std::vector<const Ty*> rest(args.begin() + fixed, args.end());
+      m.s.pairs.push_back({restPack, types.pack(Span<const Ty*>{rest.data(), uint32_t(rest.size())})});
+    }
     for (size_t i = 0; i < args.size() && ok; ++i)
     {
-      Decl* param = i < primary->templateParams.size() ? primary->templateParams[i] : nullptr;
+      if (i >= fixed)
+      {
+        m.patterns.push_back(types.param(restPack)); // (the pack's place, for the ordering below)
+        continue;
+      }
+      Decl* param = primary->templateParams.empty() ? nullptr : primary->templateParams[std::min(i, primary->templateParams.size() - 1)];
       const Ty* pattern = templateArgument(written[i], param, sctx, 0);
       m.patterns.push_back(pattern);
       if (!pattern || !pattern->isKnown())
@@ -118,8 +144,8 @@ auto GlobalScope::Impl::variableSpecialization(VariableDecl* primary, const std:
     if (!ok)
       continue;
     TypeContext dctx{sctx.scope, sctx.locals, &m.s, sctx.tokens, sctx.text};
-    for (Node* w : written)
-      ok = ok && wellFormedArgument(w, dctx);
+    for (size_t i = 0; i < fixed; ++i)
+      ok = ok && wellFormedArgument(written[i], dctx);
     // Its constrained template parameters' constraints and its requires clause, for the arguments deduced, as a class's
     // partial specialization's ([temp.spec.partial.match] 2, matchSpecialization): until 2026-11-10 never checked (the
     // requires clause was dropped), so `template<Integral T> constexpr int v<T> = 1;` matched a double, silently.

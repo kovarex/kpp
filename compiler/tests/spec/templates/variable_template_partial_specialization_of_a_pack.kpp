@@ -1,0 +1,16 @@
+// spec: a partial specialization of a variable template whose primary ends with a pack (`template<typename T, typename... Ts> constexpr u32 countIn = 0;`) is matched by its own arguments, a pack of its own expanded last taking the rest (`countIn<T, U, Ts...>`), recursively; one that matches no argument list leaves the primary's value; clang prints the same
+// found by thread UE (2026-11-22): no specialization was ever matched for such a template, and the primary's value was taken, silently (Unreal's TTypeCountInParameterPack_V was 0 for every pack, so TTupleIndex's `static_assert(TTypeCountInParameterPack_V<Type, TupleTypes...> >= 1)` failed for every tuple)
+template<typename T, typename... Types> constexpr u32 countIn = 0;
+template<typename T, typename U, typename... Types> constexpr u32 countIn<T, U, Types...> = countIn<T, Types...> + (std::isSame<T, U> ? 1 : 0);
+template<typename... Ts> constexpr int count = 0;
+template<typename T, typename... Ts> constexpr int count<T, Ts...> = 1 + count<Ts...>;
+template<typename... Ts> constexpr int firstIsInt = 0;
+template<typename... Ts> constexpr int firstIsInt<int, Ts...> = 1;
+static_assert(countIn<int, int> == 1 && countIn<int, char, int, int> == 2 && countIn<float&, double, float&, char&&> == 1);
+static_assert(count<> == 0 && count<int, char, bool> == 3 && firstIsInt<int, char> == 1 && firstIsInt<char, int> == 0 && firstIsInt<> == 0);
+
+int main()
+{
+  std::println(countIn<double, double, float&, char&&>, " ", count<int, int>, " ", firstIsInt<int>);
+  return 0;
+}
