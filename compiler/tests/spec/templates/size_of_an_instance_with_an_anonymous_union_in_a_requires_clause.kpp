@@ -1,0 +1,29 @@
+// spec: the size and alignment of a class template's instance with an anonymous union of its parameter (`union { char unset; T value; };`, as Unreal's TOptional) are constants wherever they are asked, a requires clause too: `requires (sizeof(T) > 0)` holds for it; clang prints the same
+// found by thread UE (2026-11-22): the anonymous union was typed without the instance's arguments, its `T value` dependent, so the size was none in a requires clause asked before the instance's walk ("the requires clause of DestructItems cannot be evaluated for ElementType = FFormatArgumentValue", a TOptional<FText> member)
+template<typename T> struct Optional
+{
+  union
+  {
+    char unset;
+    T value;
+  };
+
+  bool isSet = false;
+};
+
+template<typename T>
+  requires (sizeof(T) > 0)
+constexpr int sizeKnown() { return int(sizeof(T)); }
+template<typename T>
+  requires (alignof(T) > 1)
+constexpr int alignKnown() { return int(alignof(T)); }
+static_assert(sizeKnown<Optional<int>>() == 8 && sizeKnown<Optional<double>>() == 16 && alignKnown<Optional<i64>>() == 8);
+
+int main()
+{
+  Optional<int> o;
+  o.value = 3;
+  o.isSet = true;
+  std::println(o.value, " ", sizeKnown<Optional<char>>(), " ", alignKnown<Optional<double>>());
+  return 0;
+}

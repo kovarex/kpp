@@ -1174,7 +1174,10 @@ auto GlobalScope::Impl::constSizeOf(const Ty* t, int depth) -> std::optional<int
           ft = declaredTypeOf(m, sp, depth + 1);
         else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() &&
                  static_cast<ClassDecl*>(m)->isDefinition)
-          ft = types.classType(m, {});
+          // (an anonymous union of a class template's instance: with the instance's arguments, its `T value` a T;
+          // until 2026-11-22 dependent, so the size was none where the walk had not made it already: Unreal's
+          // TOptional<FText> in a requires clause, "the requires clause of DestructItems cannot be evaluated")
+          ft = sp ? substitute(selfType(m), *sp, depth + 1) : types.classType(m, {});
         else
           continue;
         if (!ft || !ft->isKnown() || types.isDependent(ft))
@@ -1274,7 +1277,7 @@ auto GlobalScope::Impl::constAlignOf(const Ty* t, int depth) -> std::optional<in
         ft = declaredTypeOf(m, sp, depth + 1);
       else if (m->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(m)->name.parts.empty() &&
                static_cast<ClassDecl*>(m)->isDefinition)
-        ft = types.classType(m, {});
+        ft = sp ? substitute(selfType(m), *sp, depth + 1) : types.classType(m, {}); // (as constSizeOf has it)
       else
         continue;
       if (!ft || !ft->isKnown()) return std::nullopt;
