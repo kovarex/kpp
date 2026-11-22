@@ -136,21 +136,23 @@
     }
     // The offset where the declaration of the top-level function whose body is open at offset starts (its return type,
     // specifiers, template header), when every brace open there is that body's or a block in it; UINT32_MAX otherwise
-    // (a namespace, a class, an `extern "C"` block, an initializer).
+    // (a namespace, a class, an initializer). Inside `extern "C" {` blocks, where no declaration is private, the offset of
+    // the outermost block's `extern` (xxhash's functions).
     uint32_t topLevelFunctionStartAt(uint32_t offset) const
     {
-      int depth = 0;
-      uint32_t outer = UINT32_MAX;
+      std::vector<uint32_t> open;
       for (uint32_t k = 0; k < toks.size() && toks[k].offset < offset; ++k)
         if (toks[k].is(P::LBrace))
-        {
-          if (depth++ == 0)
-            outer = k;
-        }
-        else if (toks[k].is(P::RBrace) && depth > 0)
-          --depth;
-      if (depth == 0 || outer == UINT32_MAX)
+          open.push_back(k);
+        else if (toks[k].is(P::RBrace) && !open.empty())
+          open.pop_back();
+      size_t blocks = 0;
+      while (blocks < open.size() && open[blocks] >= 2 && toks[open[blocks] - 1].getKind() == TokenKind::String &&
+             toks[open[blocks] - 2].is(Kw::extern_))
+        ++blocks;
+      if (blocks == open.size())
         return UINT32_MAX;
+      uint32_t outer = open[blocks];
       // back from the body's `{` to what ends the declaration before it, at the top level
       bool call = false;
       int parens = 0;
@@ -169,7 +171,9 @@
           return UINT32_MAX;
         --k;
       }
-      return call && k < outer ? toks[k].offset : UINT32_MAX;
+      if (!call || k >= outer)
+        return UINT32_MAX;
+      return blocks > 0 ? toks[open[0] - 2].offset : toks[k].offset;
     }
     // How many braces are open before offset (0: the file's top level, outside any namespace, class or function).
     int braceDepthAt(uint32_t offset) const

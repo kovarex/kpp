@@ -1,7 +1,12 @@
 // cppinput: a macro constant defined in a top-level function's body is the rest of the file's, as C's macros are (xxhash's
 // `#define XXH_SECRET_MERGEACCS_START 11` in one function, named by a later one too): a private constant before the
-// function, where the converter wrote it a local constant of that function
+// function, where the converter wrote it a local constant of that function; in an `extern "C" {` block (xxhash's), before
+// the block, where no declaration is private
 private const auto STEP = 7;
 private i32 first(i32 x) { return x + STEP; }
 private i32 second(i32 x) { return x * STEP; }
-i32 main() { return first(1) == 8 && second(2) == 14 ? 0 : 1; }
+
+private const auto SHIFT = 3;
+private i32 third(i32 x) { return x << SHIFT; }
+private i32 fourth(i32 x) { return x >> SHIFT; }
+i32 main() { return first(1) == 8 && second(2) == 14 && third(1) == 8 && fourth(16) == 2 ? 0 : 1; }
