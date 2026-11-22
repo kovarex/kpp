@@ -175,9 +175,39 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     if (uint32_t t = find([&](uint32_t t) { return toks[t].is(P::EqEq) || toks[t].is(P::NotEq); }); t != UINT32_MAX)
     {
       out = {toks[t].is(P::EqEq) ? '=' : 'n', from, to, t, {}};
+      // An operand in parentheses is one whatever it holds (FGuid's `((X.A ^ Y.A) | (X.B ^ Y.B)) != 0`); unparenthesized
+      // (`(x) | (y) != z`), the comparison binds tighter than the `|`: no form this reads.
+      auto wrapped = [&](uint32_t f, uint32_t e)
+      {
+        if (f + 1 >= e || !toks[f].is(P::LParen) || !toks[e - 1].is(P::RParen))
+          return false;
+        int depth = 0;
+        for (uint32_t k = f; k < e; ++k)
+        {
+          if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::LBrace))
+            ++depth;
+          else if (toks[k].is(P::RParen) || toks[k].is(P::RBracket) || toks[k].is(P::RBrace))
+            --depth;
+          if (depth == 0 && k + 1 < e)
+            return false;
+        }
+        return true;
+      };
       Node l, r;
-      if (!parse(from, t, l) || !parse(t + 1, to, r) || l.kind != 'a' || r.kind != 'a')
+      if (!parse(from, t, l) || !parse(t + 1, to, r))
         return false;
+      if (l.kind != 'a')
+      {
+        if (!wrapped(from, t))
+          return false;
+        l = {'a', from, t, 0, {}};
+      }
+      if (r.kind != 'a')
+      {
+        if (!wrapped(t + 1, to))
+          return false;
+        r = {'a', t + 1, to, 0, {}};
+      }
       out.kids = {l, r};
       return true;
     }
@@ -405,9 +435,16 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       Stmt* last = b->stmts.empty() ? nullptr : b->stmts[b->stmts.size() - 1];
       if (!last || last->kind != NodeKind::ReturnStmt)
         return false;
-      for (uint32_t t = b->token; t < last->token; ++t)
-        if (toks[t].is(Kw::return_) || toks[t].is(Kw::throw_) || toks[t].is(Kw::goto_) || toks[t].is(Kw::co_return_))
-          return false;
+      // (a lambda's own return is none of the function's: `ensure(c, [&]() { return "..."; });`, the message of Unreal's
+      // ensureMsgf before TRangedForIterator's return)
+      bool leaves = false;
+      for (size_t k = 0; k + 1 < b->stmts.size(); ++k)
+        forEachNodeExcept(
+          b->stmts[k],
+          [&](::Node* x) { leaves = leaves || x->kind == NodeKind::ReturnStmt || x->kind == NodeKind::ThrowExpr || x->kind == NodeKind::GotoStmt; },
+          [](::Node* x) { return x->kind == NodeKind::LambdaExpr; });
+      if (leaves)
+        return false;
       from = last->token + 1;
       int depth = 0;
       for (to = from; to < toks.size(); ++to)
