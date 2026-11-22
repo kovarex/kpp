@@ -1,0 +1,5 @@
+stack inventory number number
+sound on drag off
+stack& inventory&
+deduced stack deduced number deduced other
+from a stack index, from an inventory index

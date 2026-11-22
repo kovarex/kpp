@@ -638,6 +638,25 @@ Build(MapPosition position, Direction direction = Direction::North, BuildMode mo
 Build b(position, BuildMode::Forced); // direction takes its default: C++ has no such call
 ```
 
+### Strong types (built)
+
+- **C++:** `using Index = uint16_t;` is the same type as every other alias of `uint16_t`, so two kinds of index mix
+  silently; a distinct one needs a wrapper class template, an instance and operator functions per type.
+- **kpp:** `using ItemStackIndex = strong u16;` is a type of its own with u16's representation: made from a number
+  and turned back into one only by a cast, arithmetic and comparisons with its own type only, overloaded and deduced as
+  its own type. `strong bool` has False and True and is a condition's bool.
+- **Why:** kovarex (2026-11-22): ItemStackIndex against InventoryIndex, and NamedBool built in; a template costs an
+  instance and an operator call per use in a debug build, the built-in costs a declaration.
+- **See:** [design 33][d33]; specs `kpp/strong_type`, `kpp/strong_type_overloads`, `kpp/strong_bool`,
+  `kpp/strong_type_conversions_need_a_cast`.
+
+```cpp
+using ItemStackIndex = strong u16;
+using InventoryIndex = strong u16;
+void select(ItemStackIndex index);
+select(InventoryIndex(3)); // error: a value of type InventoryIndex does not convert to the strong type ItemStackIndex
+```
+
 ### One definition for const and non-const (later, details not decided)
 
 - **C++:** a getter is written twice, and C++23's deducing `this` helps a little.
@@ -1296,6 +1315,7 @@ rejects (thread J's conversion battery, 2026-11-08; the specs say which compiler
 [d30]: design.md#30-a-struct-keeps-its-member-wise-construction-beside-its-constructors-decided-2026-11-18-built
 [d31]: design.md#31-a-struct-has-an-implicit--decided-2026-11-21-built
 [d32]: design.md#32-arguments-matched-by-type-decided-2026-11-22-built
+[d33]: design.md#33-strong-types-decided-2026-11-22-built
 [dbgv]: debugging.md#debugvalue
 [d15]: design.md#15-file-local-names-private-at-file-scope-decided-2026-11-01
 [d16]: design.md#16-library-scopes-qualified-by-default-a-library-may-be-unscoped-decided-2026-11-01

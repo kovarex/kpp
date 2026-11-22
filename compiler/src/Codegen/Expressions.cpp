@@ -2267,7 +2267,9 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
     // does them, a prefix one's value read back (wrapped to the field's width).
     const BitfieldInfo* bits = bitfieldNamed(u->operand);
     Value old = bits ? loadBitfield(addr, *bits, ot, u) : load(addr, ot, u);
-    Value updated = arithmetic(op == P::PlusPlus ? P::Plus : P::Minus, old, Value{"1", types.intType(32)}, u);
+    // (a strong type's one is of its own type, design.md 33: `++index`)
+    const Ty* one = strongType(ot) ? strongType(ot) : types.intType(32);
+    Value updated = arithmetic(op == P::PlusPlus ? P::Plus : P::Minus, old, Value{"1", one}, u);
     if (bits)
     {
       storeBitfield(convert(updated, ot, u), addr, *bits, u);
@@ -2355,6 +2357,17 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
       return callRvalue(operatorCall(withCheckedConst(v, u->operand), operatorName(op), {}, u, true, operatorResult(u)), u);
     verifyOperatorCall(u, OperatorCall::Builtin);
     v = convert(v, scalar, u);
+  }
+  // A strong type's -, + and ~ (design.md 33): computed as its underlying type, wrapped to it, typed the strong type.
+  if (const Ty* strong = strongType(v.ty); strong && (op == P::Minus || op == P::Plus || op == P::Tilde) && enumUnderlying(strong)->kind != TyKind::Bool)
+  {
+    const Ty* under = enumUnderlying(strong);
+    Value number = convert(v, under, u, true);
+    if (op == P::Minus)
+      number = arithmetic(P::Minus, Value{"0", under}, number, u);
+    else if (op == P::Tilde)
+      number = arithmetic(P::Caret, number, Value{"-1", types.intType(32)}, u);
+    return convert(convert(number, under, u, true), strong, u, true);
   }
   switch (op)
   {

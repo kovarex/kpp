@@ -46,6 +46,7 @@ namespace
       kwDefine = symbols.intern("define");
       kwSuite = symbols.intern("SUITE");
       kwFlags = symbols.intern("flags");
+      kwStrong = symbols.intern("strong");
       kwAssert = symbols.intern("assert");
       kwReleaseAssert = symbols.intern("release_assert");
       kwCaller = symbols.intern("caller");
@@ -3901,6 +3902,47 @@ namespace
         }
         advance();
         skipAttributes();
+        // `using ItemStackIndex = strong u16;`: a type of its own, an enum class of that underlying type with no
+        // values of its own (design.md 33): `strong bool`'s are False and True. Not `strong` named as a type
+        // (`using S = strong;`, `strong::X`, `strong<T>`).
+        if (isKpp() && atIdent(kwStrong) && !at(P::Semi, 1) && !at(P::ColonColon, 1) && !at(P::Less, 1) && !at(P::LBracket, 1))
+        {
+          if (templ.present)
+            error("a strong type is no template: `template<...> using X = strong T;` is not supported (design.md 33)");
+          EnumDecl* e = decl<EnumDecl>(start);
+          NamePart part;
+          part.symbol = u->name;
+          e->name.parts = makeSpanOf(std::vector<NamePart>{part});
+          e->isClass = true;
+          e->isDefinition = true;
+          e->isStrong = true;
+          e->attributes = u->attributes;
+          numberType(e, false);
+          advance();
+          e->underlying = parseType();
+          if (!e->underlying)
+          {
+            error("expected the strong type's underlying type");
+            return;
+          }
+          if (e->underlying->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(e->underlying)->keyword == Kw::bool_)
+          {
+            Decl* savedParent = currentParent;
+            currentParent = e;
+            std::vector<Decl*> values;
+            for (const char* name : {"False", "True"})
+            {
+              EnumeratorDecl* en = decl<EnumeratorDecl>(start);
+              en->name = symbols.intern(name);
+              values.push_back(en);
+            }
+            currentParent = savedParent;
+            e->enumerators = makeSpanOf(values);
+          }
+          expect(P::Semi, "expected ';'");
+          pushDecl(e);
+          return;
+        }
         u->type = parseType();
         if (!u->type)
           error("expected type in alias");
@@ -8575,7 +8617,7 @@ namespace
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCheckValid, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
-             kwTagMethod, kwTypeMember, kwMembers, kwAlternatives, kwSuite, kwFlags;
+             kwTagMethod, kwTypeMember, kwMembers, kwAlternatives, kwSuite, kwFlags, kwStrong;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
     std::vector<ClassDecl::Flag> pendingFlags;
     uint32_t pendingFlagsAt = UINT32_MAX;

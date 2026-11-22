@@ -1,0 +1,31 @@
+// spec: a strong type converts to nothing and nothing converts to it without a cast (design.md 33): not a number (a literal either), not another strong type of the same underlying type, not a strong bool to bool outside a condition; it has arithmetic and comparisons with its own type only, and a strong bool has no arithmetic
+// error: strong_type_conversions_need_a_cast.kpp:17: error: a value of type int32 does not convert to the strong type ItemStackIndex without a cast
+// error: strong_type_conversions_need_a_cast.kpp:18: error: a value of type InventoryIndex does not convert to the strong type ItemStackIndex without a cast
+// error: strong_type_conversions_need_a_cast.kpp:19: error: a value of the strong type ItemStackIndex does not convert to uint16 without a cast
+// error: strong_type_conversions_need_a_cast.kpp:20: error: + of ItemStackIndex and InventoryIndex: a strong type's arithmetic is with its own type only; convert the other by a cast
+// error: strong_type_conversions_need_a_cast.kpp:21: error: + of ItemStackIndex and int32: a strong type's arithmetic is with its own type only; convert the other by a cast
+// error: strong_type_conversions_need_a_cast.kpp:22: error: a comparison of ItemStackIndex and InventoryIndex: a strong type compares with its own type only; convert the other by a cast
+// error: strong_type_conversions_need_a_cast.kpp:23: error: a comparison of ItemStackIndex and int32: a strong type compares with its own type only; convert the other by a cast
+// error: strong_type_conversions_need_a_cast.kpp:24: error: a value of type int32 does not convert to the strong type ItemStackIndex without a cast
+// error: strong_type_conversions_need_a_cast.kpp:25: error: a value of type InventoryIndex does not convert to the strong type ItemStackIndex without a cast
+// error: strong_type_conversions_need_a_cast.kpp:26: error: + on a strong bool (Flag): it has no arithmetic, only !, &&, || and comparisons
+// error: strong_type_conversions_need_a_cast.kpp:27: error: a value of the strong type Flag does not convert to bool without a cast
+using ItemStackIndex = strong u16;
+using InventoryIndex = strong u16;
+using Flag = strong bool;
+void take([[maybe_unused]] ItemStackIndex index) {}
+ItemStackIndex fromLiteral() { ItemStackIndex i = 3; return i; }
+ItemStackIndex fromOther() { ItemStackIndex i = InventoryIndex(3); return i; }
+u16 toNumber() { u16 n = ItemStackIndex(3); return n; }
+ItemStackIndex addOther() { return ItemStackIndex(1) + InventoryIndex(2); }
+ItemStackIndex addNumber() { return ItemStackIndex(1) + 2; }
+bool compareOther() { return ItemStackIndex(1) == InventoryIndex(1); }
+bool compareNumber() { return ItemStackIndex(1) < 2; }
+void passNumber() { take(1); }
+void passOther() { take(InventoryIndex(1)); }
+Flag flagArithmetic() { return Flag::True + Flag::True; }
+bool flagCopy() { bool b = Flag::True; return b; }
+int main()
+{
+  return 0;
+}

@@ -150,6 +150,7 @@ struct EnumDecl : Decl
   Span<Decl*> enumerators;
   Span<Decl*> members; // kpp: methods inside enums.
   bool isKpp = false;  // kpp enum (values in their own brace block): count, values, str(), exhaustive switch.
+  bool isStrong = false; // `using X = strong u16;` (design.md 33): arithmetic and comparisons with its own type only.
 };
 // inheritedDefault: defaultValue is another declaration's of the function, which walks it (mergeDefaultArguments).
 struct ParamDecl : Decl { Type* type; uint32_t name = UINT32_MAX; Expr* defaultValue = nullptr; bool isPack = false; bool inheritedDefault = false; };

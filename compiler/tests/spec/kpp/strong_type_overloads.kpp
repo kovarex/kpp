@@ -1,0 +1,31 @@
+// spec: strong types of one underlying type are different types to overloading (design.md 33, kovarex 2026-11-22: "tests of overloading of the same underlying strong types"): f(ItemStackIndex), f(InventoryIndex) and f(u16) are three overloads, each argument picks its own exactly, a number picks the u16 one and never a strong one, two strong bools overload as two types, and a function template deduces the strong type, not its underlying one
+using ItemStackIndex = strong u16;
+using InventoryIndex = strong u16;
+using PlaySound = strong bool;
+using DragBuild = strong bool;
+const char* kind(u16) { return "number"; }
+const char* kind(ItemStackIndex) { return "stack"; }
+const char* kind(InventoryIndex) { return "inventory"; }
+const char* flag(PlaySound value) { return value ? "sound on" : "sound off"; }
+const char* flag(DragBuild value) { return value ? "drag on" : "drag off"; }
+const char* reference(const ItemStackIndex&) { return "stack&"; }
+const char* reference(const InventoryIndex&) { return "inventory&"; }
+template<class T> const char* deduced(T) { return std::isSame<T, ItemStackIndex> ? "deduced stack" : std::isSame<T, u16> ? "deduced number" : "deduced other"; }
+struct Parameters
+{
+  Parameters(ItemStackIndex) : which("from a stack index") {}
+  Parameters(InventoryIndex) : which("from an inventory index") {}
+  const char* which;
+};
+int main()
+{
+  ItemStackIndex stack = ItemStackIndex(1);
+  InventoryIndex inventory = InventoryIndex(1);
+  u16 number = 1;
+  std::println(kind(stack), " ", kind(inventory), " ", kind(number), " ", kind(2));
+  std::println(flag(PlaySound::True), " ", flag(DragBuild::False));
+  std::println(reference(stack), " ", reference(inventory));
+  std::println(deduced(stack), " ", deduced(number), " ", deduced(inventory));
+  std::println(Parameters(stack).which, ", ", Parameters(inventory).which);
+  return 0;
+}

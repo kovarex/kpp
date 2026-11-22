@@ -1,0 +1,17 @@
+// spec: `using PlaySound = strong bool;` (design.md 33, the built-in NamedBool) has the values PlaySound::False and PlaySound::True, is made from a bool by a cast, is a condition's bool (if, ?:, !, &&, ||, as a class's explicit operator bool is), is turned into a bool by a cast, compares with its own type and is one byte
+using PlaySound = strong bool;
+static_assert(sizeof(PlaySound) == 1 && PlaySound::True != PlaySound::False);
+const char* say(PlaySound sound) { return sound ? "on" : "off"; }
+int main()
+{
+  PlaySound sound = PlaySound(2 > 1);
+  if (sound)
+    std::println("if");
+  std::println(say(sound), " ", say(PlaySound::False), " ", !sound, " ", sound && PlaySound::False, " ", sound || PlaySound::False, " ",
+               bool(sound), " ", sound == PlaySound::True);
+  sound = PlaySound(false);
+  while (sound)
+    sound = PlaySound::False;
+  std::println(say(sound));
+  return 0;
+}

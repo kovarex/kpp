@@ -385,6 +385,22 @@ auto codegen::Emitter::memberCall(Value object, FunctionDecl* f, const Ty* found
 
 auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
 {
+  // A strong type's arithmetic (design.md 33): two of one strong type, or a shift of one by an integer, computed as its
+  // underlying type and wrapped to it, typed the strong type. Never with another type, a strong bool's never.
+  if (const Ty* ls = strongType(l.ty), *rs = strongType(r.ty); ls || rs)
+  {
+    std::string spelling(punctuatorSpelling(op));
+    const Ty* s = ls ? ls : rs;
+    const Ty* u = enumUnderlying(s);
+    bool shift = op == P::Shl || op == P::Shr;
+    bool integer = r.ty->kind == TyKind::Int || r.ty->kind == TyKind::Char;
+    if (u->kind == TyKind::Bool)
+      fail(at, spelling + " on a strong bool (" + types.toString(s, &symbols) + "): it has no arithmetic, only !, &&, || and comparisons");
+    if (!(ls && rs && ls == rs) && !(shift && ls && integer))
+      fail(at, spelling + " of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": a strong type's arithmetic is with its own type only; convert the other by a cast");
+    Value result = arithmetic(op, convert(l, u, at, true), shift ? r : convert(r, u, at, true), at);
+    return convert(convert(result, u, at, true), s, at, true);
+  }
   bool lp = l.ty->kind == TyKind::Pointer, rp = r.ty->kind == TyKind::Pointer;
   std::string res = newTemp();
   if (op == P::Plus || op == P::Minus)
@@ -529,6 +545,14 @@ auto codegen::Emitter::arithmetic(P op, Value l, Value r, Node* at) -> Value
 
 auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
 {
+  // A strong type compares with its own type only (design.md 33), as its underlying type.
+  if (const Ty* ls = strongType(l.ty), *rs = strongType(r.ty); ls || rs)
+  {
+    if (ls != rs)
+      fail(at, "a comparison of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": a strong type compares with its own type only; convert the other by a cast");
+    const Ty* u = enumUnderlying(ls);
+    return compare(op, convert(l, u, at, true), convert(r, u, at, true), at);
+  }
   std::string res = newTemp();
   // Pointers to members (== and != only): both as the member pointer's type (nullptr or the
   // literal 0 becomes its null), a data member's offset (-1 when null) or a function.
@@ -582,8 +606,7 @@ auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
     return {res, types.boolType()};
   }
   // An enum class compares with its own type only (C++: no usual conversions for it).
-  if ((scopedEnum(l.ty) || scopedEnum(r.ty)) && !(l.ty->kind == TyKind::Enum && r.ty->kind == TyKind::Enum &&
-                                                  types.unqualified(l.ty)->decl == types.unqualified(r.ty)->decl))
+  if ((scopedEnum(l.ty) || scopedEnum(r.ty)) && !sameEnumeration(l.ty, r.ty))
     fail(at, "a comparison of a value of an enum class with another type (" + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) +
                  "): an enum class converts to a number only by a cast");
   const Ty* ct = (l.ty->kind == TyKind::Bool && r.ty->kind == TyKind::Bool) ? types.boolType() : commonArithmetic(l.ty, r.ty);

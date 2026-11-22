@@ -50,6 +50,14 @@
     // pointer). Imported C keeps C's rule. True when it failed.
     bool zeroIsNoPointer(Node* at);
 
+    // Whether a and b are one enumeration (two instances of an enumeration template are not).
+    bool sameEnumeration(const Ty* a, const Ty* b);
+    // A strong type's (`using X = strong u16;`, design.md 33): the type, unqualified, or null.
+    const Ty* strongType(const Ty* t) const
+    {
+      t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+      return t && t->kind == TyKind::Enum && t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isStrong ? t : nullptr;
+    }
     // An enumeration declared `enum class` (or `enum struct`).
     bool scopedEnum(const Ty* t) const
     {

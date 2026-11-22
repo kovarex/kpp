@@ -1,0 +1,52 @@
+// spec: `using X = strong u16;` declares a type of its own with u16's representation (design.md 33, kovarex 2026-11-22: NamedInt, ItemStackIndex against InventoryIndex): made from a number and turned back into one by a cast; +, -, *, /, %, &, |, ^ between two of it, unary -, + and ~, ++, -- and compound assignment, wrapped to the underlying type and typed X; a shift by an integer; ==, <, <=> with its own type; usable in constant expressions, as a struct member compared by its implicit ==, in a template, a Vector, a Map key, a switch, a class's own strong type and a local one
+using ItemStackIndex = strong u16;
+using Count = strong i32;
+struct Slot
+{
+  ItemStackIndex index;
+  Count count;
+};
+class Inventory
+{
+public:
+  using Index = strong u8;
+  Index first() const { return Index(1); }
+};
+template<class T> T twice(T value) { return value + value; }
+constexpr ItemStackIndex LAST = ItemStackIndex(7);
+static_assert(LAST > ItemStackIndex(6) && LAST - ItemStackIndex(2) == ItemStackIndex(5));
+static_assert(sizeof(ItemStackIndex) == 2 && sizeof(Count) == 4 && sizeof(Inventory::Index) == 1);
+static_assert(std::isSame<decltype(LAST + LAST), ItemStackIndex> && std::isSame<decltype(-LAST), ItemStackIndex> &&
+              std::isSame<decltype(LAST << 1), ItemStackIndex> && std::isSame<decltype(LAST < LAST), bool>);
+static_assert(!std::isSame<ItemStackIndex, u16>);
+int main()
+{
+  ItemStackIndex a = ItemStackIndex(3);
+  ItemStackIndex b = a + ItemStackIndex(4);
+  b += a;
+  ++b;
+  b--;
+  std::println(u16(b), " ", u16(b * ItemStackIndex(2) / ItemStackIndex(3) % ItemStackIndex(5)), " ", u16(~a & ItemStackIndex(255)), " ",
+               u16(a << 2), " ", u16(-a), " ", u16(ItemStackIndex(65535) + ItemStackIndex(2)));
+  std::println(a < b, " ", a == ItemStackIndex(3), " ", a != b, " ", (a <=> b) < 0);
+  std::println(u16(twice(ItemStackIndex(21))), " ", i32(twice(Count(-4))));
+  Slot first{ItemStackIndex(1), Count(2)};
+  Slot second{ItemStackIndex(1), Count(2)};
+  std::println(first == second);
+  std::Vector<ItemStackIndex> list;
+  for (ItemStackIndex i = ItemStackIndex(0); i < LAST; ++i)
+    list.push_back(i);
+  std::println(list.size(), " ", u16(list.back()));
+  std::Map<ItemStackIndex, i32> map;
+  map[ItemStackIndex(3)] = 30;
+  std::println(map[ItemStackIndex(3)]);
+  switch (Count(-2))
+  {
+    case Count(-2): std::println("minus two");
+    default: std::println("other");
+  }
+  Inventory inventory;
+  using Local = strong u32;
+  std::println(u8(inventory.first()), " ", u32(Local(5) * Local(5)));
+  return 0;
+}

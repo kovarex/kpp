@@ -9048,6 +9048,13 @@ auto GlobalScope::Impl::Walker::operandType(Expr* e, const Ty* t) -> const Ty*
   return promoted ? promoted : t;
 }
 
+// A strong type (`using X = strong u16;`, design.md 33): the type, unqualified, or null.
+static const Ty* strongOf(TypeTable& types, const Ty* t)
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  return t && t->kind == TyKind::Enum && t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isStrong ? t : nullptr;
+}
+
 auto GlobalScope::Impl::Walker::arithmetic(const Ty* a, const Ty* b) -> const Ty*
 {
   a = promote(a);
@@ -10325,6 +10332,20 @@ auto GlobalScope::Impl::Walker::typeOfBinaryOperator(BinaryExpr* b, OperatorCall
       member = isMember;
       return user;
     }
+  // A strong type's arithmetic is of its own type (design.md 33): two of it, or one shifted. Another operand is
+  // codegen's error.
+  if (const Ty* sl = strongOf(types, ls); sl && !static_cast<EnumDecl*>(sl->decl)->enumerators.size())
+    switch (op)
+    {
+      case P::Plus: case P::Minus: case P::Star: case P::Slash: case P::Percent: case P::Amp: case P::Pipe: case P::Caret:
+        if (strongOf(types, rs) == sl)
+          return sl;
+        break;
+      case P::Shl: case P::Shr:
+        return sl;
+      default:
+        break;
+    }
   switch (op)
   {
     case P::Assign: case P::PlusAssign: case P::MinusAssign: case P::StarAssign: case P::SlashAssign:
@@ -10737,6 +10758,8 @@ auto GlobalScope::Impl::Walker::typeOfUnaryOperator(UnaryExpr* u, OperatorCall& 
         return types.pointer(s->inner);
       if (op == P::Plus && s->kind == TyKind::Function)
         return types.pointer(s);
+      if (const Ty* strong = strongOf(types, s)) // (design.md 33: `-index` is an index)
+        return strong;
       return promote(operandType(u->operand, t));
     case P::PlusPlus: case P::MinusMinus:
       checkConstModification(u->token, s, op == P::PlusPlus ? "increment of" : "decrement of", u->operand);

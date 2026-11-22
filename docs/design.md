@@ -3768,6 +3768,32 @@ over `loadArg` overloads: 1,046 calls in about 86 argument-type combinations, ea
 one such pattern in wube/kpp-factorio kpp e66c75eaf3d). Specs: language/arguments_matched_by_type,
 language/arguments_matched_by_type_memberwise, language/arguments_matched_by_type_errors_is_error. docs/differences-from-cpp.md, "Arguments matched by type".
 
+### 33. Strong types (decided 2026-11-22, built)
+kovarex, 2026-11-22, after the NamedBool/NamedInt cost study (option C): "the strong keyword variant seems to be most
+optimal when it comes to compile time, and also the cleanest". `using ItemStackIndex = strong u16;` and
+`using InventoryIndex = strong u16;` are two types, so one is never passed for the other (the reason SelectSlotParameters
+had deleted `i8` and `u8` constructors), and `using PlaySound = strong bool;` is the built-in NamedBool.
+
+- A strong type is an enum class of the underlying type with no values of its own (the parser writes an EnumDecl with
+  isStrong, `strong` a word only after `using X =`): a type of its own for overloads, deduction and `isSame`, its
+  underlying type's size, ABI (a register), debug info and constant evaluation, at the cost of one declaration. No
+  template instance, no function: the study measured a class template NamedInt at about 0.3 ms of build per type and an
+  operator call per use in a debug build.
+- Made from a number, and turned back into one, only by a cast (`ItemStackIndex(3)`, `u16(index)`); a literal too, and
+  another strong type of the same underlying type too.
+- Arithmetic of its own type: `+ - * / % & | ^` between two of it, unary `- + ~`, `++`, `--` and compound assignment,
+  computed as the underlying type, wrapped to it and typed the strong type; a shift by any integer. `== != < <= > >= <=>`
+  with its own type. Any other operand is an error naming both types.
+- `strong bool` has the values False and True, no arithmetic, and is a condition's bool (`if`, `?:`, `!`, `&&`, `||`),
+  as a class's explicit operator bool is; `bool(x)` and `PlaySound(b)` convert.
+- Inside a class or a function too. Not a template (`template<class T> using X = strong T;` is an error). Hover shows
+  the declaration, "strong type X". It is still an enum to the library (`isEnum`), and prints as one
+  (`ItemStackIndex(9)`).
+- Not yet: the game's NamedBool and its typedefs moved to it (fromBool, str(), its serialisers), which is a game change.
+
+Specs: kpp/strong_type, kpp/strong_type_overloads, kpp/strong_bool, kpp/strong_type_conversions_need_a_cast.
+docs/differences-from-cpp.md, "Strong types".
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional

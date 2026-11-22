@@ -152,6 +152,18 @@ auto codegen::Emitter::subscriptIndex(IndexExpr* i, Node* at) -> Value
   return index;
 }
 
+// One declaration is one enumeration only when one side's instance is unknown (no arguments, or the pattern's own: an
+// enumerator of a class template's member enum named through an instance, `Fast::Enum::True`, is still typed Enum<Tag>), as
+// OverloadResolution ranks it: two instances of an enumeration template (NamedBool<SoundTag> and NamedBool<DragTag>) are
+// two types (until 2026-11-22 one converted to the other, and compared with it, silently).
+auto codegen::Emitter::sameEnumeration(const Ty* a, const Ty* b) -> bool
+{
+  a = types.unqualified(a);
+  b = types.unqualified(b);
+  auto unknownInstance = [&](const Ty* t) { return t->args.empty() || types.isDependent(t); };
+  return a->kind == TyKind::Enum && b->kind == TyKind::Enum && (a == b || (a->decl == b->decl && (unknownInstance(a) || unknownInstance(b))));
+}
+
 auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCast, ConversionContext context) -> Value
 {
   const Ty* from = v.ty;
@@ -180,23 +192,20 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
   // scoped one (enum class) converts to nothing; an unscoped one to a number is implicit. Until
   // 2026-11-05 `Color c = 1;`, `int x = Scoped::A;` and `Color c = Scoped::A;` compiled. Imported C
   // keeps C's rule.
+  // A strong bool is a condition's, !'s, &&'s and ||'s bool, as a class's explicit operator bool is (design.md 33).
+  if (const Ty* s = strongType(from); s && context == ConversionContext::Direct && types.unqualified(to)->kind == TyKind::Bool &&
+                                       enumUnderlying(s)->kind == TyKind::Bool)
+    explicitCast = true;
   if (!explicitCast && !operandConversion && !(currentFile && currentFile->isImported))
   {
     const Ty* uf = types.unqualified(from), *ut = types.unqualified(to);
     auto number = [](const Ty* t) { return t->kind == TyKind::Int || t->kind == TyKind::Char || t->kind == TyKind::Bool || t->kind == TyKind::Float; };
     auto scoped = [](const Ty* t) { return t->decl && t->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(t->decl)->isClass; };
-    // One declaration is one enumeration only when one side's instance is unknown (no arguments, or
-    // the pattern's own: an enumerator of a class template's member enum named through an instance,
-    // `Fast::Enum::True`, is still typed Enum<Tag>), as OverloadResolution ranks it: two instances of
-    // an enumeration template (NamedBool<SoundTag> and NamedBool<DragTag>) are two types (until
-    // 2026-11-22 one converted to the other silently).
-    auto unknownInstance = [&](const Ty* t) { return t->args.empty() || types.isDependent(t); };
-    bool sameEnum = uf->kind == TyKind::Enum && ut->kind == TyKind::Enum &&
-                    (uf == ut || (uf->decl == ut->decl && (unknownInstance(uf) || unknownInstance(ut))));
+    bool sameEnum = sameEnumeration(uf, ut);
     if (!sameEnum && ut->kind == TyKind::Enum && (uf->kind == TyKind::Enum || number(uf)))
-      fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the enumeration " + types.toString(to, &symbols) + " without a cast");
+      fail(at, "a value of type " + types.toString(from, &symbols) + " does not convert to the " + (strongType(ut) ? "strong type " : "enumeration ") + types.toString(to, &symbols) + " without a cast");
     if (!sameEnum && uf->kind == TyKind::Enum && scoped(uf) && number(ut))
-      fail(at, "a value of the enum class " + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
+      fail(at, std::string("a value of the ") + (strongType(uf) ? "strong type " : "enum class ") + types.toString(from, &symbols) + " does not convert to " + types.toString(to, &symbols) + " without a cast");
   }
   // (`enum class E : bool`: converts as a bool does, `(E)2` to true, and reads as 0 or 1, never -1.)
   auto kindOf = [&](const Ty* t) { return t->kind == TyKind::Enum ? (enumUnderlying(t)->kind == TyKind::Bool ? TyKind::Bool : TyKind::Int) : t->kind; };
