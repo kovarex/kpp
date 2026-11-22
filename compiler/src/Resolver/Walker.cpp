@@ -1486,8 +1486,11 @@ auto GlobalScope::Impl::Walker::checkRefQualifierMix(FunctionDecl* f) -> void
     if (m->kind != NodeKind::FunctionDecl)
       continue;
     auto* g = static_cast<FunctionDecl*>(m);
+    // (the same name: an operator's is its operator, `operator->() const` no overload of `operator T() const&`, until
+    // 2026-11-22 this error, Unreal's TNotNullBase)
     if ((g->refQualifier == FunctionDecl::RefQualifier::None) == (f->refQualifier == FunctionDecl::RefQualifier::None) || g->name.empty() ||
-        g->name.last().symbol != f->name.last().symbol || g->params.size() != f->params.size() || g->templateParams.size() != f->templateParams.size() ||
+        !Impl::sameNamePart(g->name.last(), f->name.last()) || (g->flags & DF_Conversion) != (f->flags & DF_Conversion) ||
+        g->params.size() != f->params.size() || g->templateParams.size() != f->templateParams.size() ||
         (g->flags & (DF_Const | DF_Static)) != (f->flags & DF_Const) || !f->templateParams.empty())
       continue;
     if (!ft)

@@ -1,0 +1,20 @@
+// spec: a ref-qualified operator beside an operator without one is no overload of it when they are two operators: `operator T() const&` and `operator T() &&` beside `operator->() const` and `operator*() const&`, each its own name ([over.load] 2.3 is about functions of one name); clang prints the same
+// found by thread UE (2026-11-22): every operator was one name to the check, and it was "the member function operator has a ref qualifier and another overload of the same parameters has none" (Unreal's TNotNullBase, TOptional)
+template<typename T> struct Wrapper
+{
+  T val{};
+  implicit operator T() const& { return this.val; }
+  implicit operator T() && { return (T&&)this.val; }
+  const T& operator->() const { return this.val; }
+  int operator*() const& { return this.val + 1; }
+};
+
+int main()
+{
+  Wrapper<int> w;
+  w.val = 4;
+  int a = w;
+  int b = Wrapper<int>{6};
+  std::println(a, " ", *w, " ", b);
+  return 0;
+}
