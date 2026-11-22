@@ -284,7 +284,8 @@ auto GlobalScope::Impl::enumUnderlyingType(const Ty* e, const TypeContext& ctx, 
 auto GlobalScope::Impl::isTypeTraitName(uint32_t symbol) -> bool
 {
   std::string_view name = symbols.name(symbol);
-  return name == "RemoveConst" || name == "RemoveCv" || name == "RemoveReference" || name == "RemoveExtent" || name == "RemovePointer" ||
+  return name == "RemoveConst" || name == "RemoveCv" || name == "RemoveReference" || name == "RemoveExtent" || name == "RemoveAllExtents" ||
+         name == "RemovePointer" ||
          name == "Decay" || name == "UnderlyingType" || name == "AddConst" || name == "AddPointer" || name == "RemoveCvRef" ||
          name == "Conditional" || name == "EnableIf" || name == "VariantAlternative";
 }
@@ -373,6 +374,12 @@ auto GlobalScope::Impl::typeTrait(const NamePart& part, const TypeContext& ctx, 
     return types.unqualified(types.stripRef(t));
   if (name == "RemoveExtent")
     return t->kind == TyKind::Array ? t->inner : t;
+  if (name == "RemoveAllExtents") // (std::remove_all_extents_t: every array's, `int[2][3]` is int)
+  {
+    for (int levels = 0; t->kind == TyKind::Array && levels < 64; ++levels)
+      t = t->inner;
+    return t;
+  }
   if (name == "RemovePointer")
     return t->kind == TyKind::Pointer ? t->inner : t;
   if (name == "AddConst")

@@ -1,0 +1,18 @@
+// spec: the library's IsConstructible (std::is_constructible), isConstructible as a type with `::value`, which std::disjunction and std::conjunction take, and RemoveAllExtents (std::remove_all_extents_t), every array level's element; clang prints the same
+// found by thread UE (2026-11-22): the converter wrote std::is_constructible unqualified, an undeclared name, so Unreal's `TArrayElementsAreCompatible_V = std::disjunction_v<std::is_same<D, std::decay_t<S>>, std::is_constructible<D, S>>` was no constant ("the requires clause of TArray cannot be evaluated"), and std::remove_all_extents_t had no mapping
+struct FromInt
+{
+  FromInt(int v) : v(v) {}
+  int v;
+};
+
+template <typename D, typename S>
+constexpr bool compatible = std::disjunction<std::IsSame<D, std::Decay<S>>, std::IsConstructible<D, S>>;
+
+int main()
+{
+  std::println(std::IsConstructible<FromInt, int>::value, " ", std::IsConstructible<FromInt, const char*>::value, " ", compatible<FromInt, int&&>, " ",
+               compatible<int, int&&>, " ", compatible<FromInt, double*>, " ", std::isSame<std::RemoveAllExtents<int[2][3]>, int>, " ",
+               std::isSame<std::RemoveAllExtents<const char[4]>, const char>, " ", sizeof(std::RemoveAllExtents<double[5][6]>));
+  return 0;
+}

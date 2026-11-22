@@ -171,6 +171,8 @@ std::is_X_v of its name. Since 2026-11-22 also isLvalueReference, isRvalueRefere
 volatile elements is volatile, a reference is not), isObject (no reference, function or void), isScalar (arithmetic,
 enumeration, pointer, member pointer, nullptr), isEmpty (a class with no data member, no virtual function and only
 empty bases; a closure without captures) and isDefaultConstructible (isConstructible<T>; kpp keeps a class's implicit
-default constructor beside its others, design.md 29). core/TypeTraits.kpp has AddVolatile, conjunction and
+default constructor beside its others, design.md 29), and the transformation RemoveAllExtents (std::remove_all_extents_t:
+every array level's element). core/TypeTraits.kpp has IsConstructible (std::is_constructible, isConstructible as a
+type with `::value`, for conjunction and disjunction), AddVolatile, conjunction and
 disjunction (std::conjunction_v, disjunction_v) and CommonType (std::common_type_t: `c ? a : b`'s type, decayed); core/UtilityExt.kpp addressOf (std::addressof: past a class's unary
 operator&) and launder.

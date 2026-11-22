@@ -17,6 +17,11 @@ struct IsSame : FalseType {};
 template<typename T>
 struct IsSame<T, T> : TrueType {};
 
+// std::is_constructible: isConstructible as a type of a ::value, which std::disjunction and std::conjunction take
+// (`std::disjunction_v<std::is_same<T, U>, std::is_constructible<T, U>>`, Unreal's TArrayElementsAreCompatible_V)
+template<typename T, typename... Args>
+struct IsConstructible : BoolConstant<isConstructible<T, Args...>> {};
+
 template<typename T>
 struct IsConst : FalseType {};
 template<typename T>
