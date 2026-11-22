@@ -381,6 +381,7 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
   std::map<std::string, std::string> integerTypes; // constants with a plain integer body, by name
   std::map<std::string, std::string> floatTypes;   // constants with a plain floating literal body (__FLT_MAX__), by name
   std::vector<std::pair<std::string, std::string>> laterAliases; // (name, the macro it names) not typed when read
+  std::set<std::string> constants; // every macro made a constant of a type it shows (`((DWORD )0xC0000005L)`), by name
   std::set<std::string> valueAliases; // constants that alias a declared function or enumerator (values)
   auto identifier = [](const std::string& s)
   {
@@ -482,6 +483,7 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
       continue;
     bool hasNumber = false, ok = true, call = false, namesKnown = true;
     int quotes = 0;
+    std::string stringPrefix; // L before the body's string literal
     for (size_t i = 0; i < body.size(); ++i)
     {
       char c = body[i];
@@ -500,7 +502,11 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
         while (j < body.size() && (isalnum((unsigned char)body[j]) || body[j] == '_'))
           ++j;
         std::string word = body.substr(i, j - i);
-        if (!typeWords.count(word) && !typedefs.count(word) && !candidates.count(word))
+        // (a string literal's prefix, `L"NT Kernel Logger"`: evntrace.h's KERNEL_LOGGER_NAMEW, until 2026-11-22 no constant)
+        bool prefix = j < body.size() && body[j] == '"' && word == "L";
+        if (prefix)
+          stringPrefix = word;
+        if (!prefix && !typeWords.count(word) && !typedefs.count(word) && !candidates.count(word))
           namesKnown = false;
       }
       if (c == '(')
@@ -539,6 +545,11 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
     if (body.rfind("((", 0) == 0 && body.find(')') != std::string::npos)
     {
       std::string cast = body.substr(2, body.find(')') - 2);
+      // (blanks around the type: winnt.h's `#define STATUS_ACCESS_VIOLATION ((DWORD   )0xC0000005L)`)
+      while (!cast.empty() && cast.back() == ' ')
+        cast.pop_back();
+      while (!cast.empty() && cast.front() == ' ')
+        cast.erase(0, 1);
       bool word = !cast.empty();
       for (char ch : cast)
         if (!(isalnum((unsigned char)ch) || ch == '_' || ch == ' '))
@@ -547,7 +558,7 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
         type = cast;
     }
     else if (quotes == 2)
-      type = "char*";
+      type = stringPrefix == "L" ? "wchar_t*" : "char*";
     else if (hasNumber && body.find_first_of("\"") == std::string::npos && floatingNumber(body))
       type = body.back() == 'f' || body.back() == 'F' ? "float" : "double";
     else if (hasNumber && body.find_first_not_of("0123456789xXabcdefABCDEFuUlLi()- +") == std::string::npos &&
@@ -601,6 +612,8 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
     }
     if (type.find("int") != std::string::npos || type.find("long") != std::string::npos)
       integerTypes[name] = type;
+    if (type != "auto")
+      constants.insert(name);
     out += "const " + type + " " + name + " = " + body + ";\n";
   }
   // The aliases of macros typed after them, each once the macro it names is (an alias of such an
@@ -612,6 +625,17 @@ std::string macroConstants(const std::string& defines, const std::map<std::strin
     {
       auto integer = integerTypes.find(it->second);
       auto floating = floatTypes.find(it->second);
+      if (integer == integerTypes.end() && floating == floatTypes.end() && constants.count(it->second) && it->first != it->second)
+      {
+        // An alias of a constant of another type it shows (minwinbase.h's `#define EXCEPTION_ACCESS_VIOLATION
+        // STATUS_ACCESS_VIOLATION`, a DWORD): one of that constant's type. Until 2026-11-22 none, "'EXCEPTION_ACCESS_VIOLATION'
+        // is not declared" (Unreal's AutoRTFM crash handler, GetExitCodeProcess's STILL_ACTIVE).
+        out += "const auto " + it->first + " = " + it->second + ";\n";
+        constants.insert(it->first);
+        it = laterAliases.erase(it);
+        typed = true;
+        continue;
+      }
       if (integer == integerTypes.end() && floating == floatTypes.end())
       {
         // (an alias of a function's or an enumerator's alias, as that one)
@@ -1182,7 +1206,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   }
   uint64_t hash = 1469598103934665603ull;
   // the version of what the cache holds (macroConstants' rules, vaListForSysV: 12 for AAPCS64's va_list), then what it is made from
-  for (unsigned char c : "kpp import 12\n" + wrapper + includeArgs + "\n" + toolchain)
+  for (unsigned char c : "kpp import 13\n" + wrapper + includeArgs + "\n" + toolchain)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
   std::filesystem::create_directories(cacheDir, ec);

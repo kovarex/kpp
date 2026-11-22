@@ -1,0 +1,9 @@
+// spec: an imported C macro that names a macro casting a number to a typedef, blanks in its parentheses (`((my_dword   )0xC0000005L)`), is that constant, of that type, as both are (`3221225477 259 4 3221225477`)
+// found by thread UE (2026-11-22): neither was a constant, the cast's type read with its blanks, and an alias only of an int or a float one: "'EXCEPTION_ARRAY_BOUNDS_EXCEEDED' is not declared" (Unreal's AutoRTFM crash handler, 15; GetExitCodeProcess's STILL_ACTIVE, 2)
+extern "C" import "c_macro_alias_of_a_cast_constant.h";
+
+int main()
+{
+  std::println(AA_VIOLATION, " ", AA_PENDING, " ", sizeof(AA_VIOLATION), " ", ZZ_STATUS_VIOLATION);
+  return 0;
+}

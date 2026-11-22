@@ -1,0 +1,13 @@
+// spec: an imported C macro whose body is a wide string literal (`L"NT Kernel Logger"`) is a constant of its wide characters, as one of a narrow literal is of its chars (`16 NT Kernel Logger true`)
+// found by thread UE (2026-11-22): its `L` read as a name the headers do not declare, no constant: "'KERNEL_LOGGER_NAMEW' is not declared" (Unreal's ETW tracing, 6)
+extern "C" import "c_macro_wide_string_constant.h";
+
+int main()
+{
+  const wchar_t* w = AA_LOGGER_NAMEW;
+  int n = 0;
+  while (w[n] != 0)
+    ++n;
+  std::println(n, " ", AA_LOGGER_NAMEA, " ", w[3] == L'K');
+  return 0;
+}
