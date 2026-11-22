@@ -622,7 +622,14 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
         if (const Ty* q = convertType(&qualifier, ctx, depth + 1); !q || !q->isKnown() || types.isDependent(q) || mentionsUnknown(q))
           return types.unknown();
       }
-      v = constValueOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
+      // `EnableIf<std::conjunction<IsA<Ts>...>>`: a variable template named with its arguments, its value for them (until
+      // 2026-11-22 its initializer without them, no value: Unreal's FCompositeBuffer constructor, `std::enable_if_t<
+      // std::conjunction_v<CanAppendBufferType<std::decay_t<BufferTypes>>...>>* = nullptr`, was no candidate)
+      if (an.last().hasTemplateArgs && l.decl->kind == NodeKind::VariableDecl && !l.decl->templateParams.empty())
+        if (VariableDecl* primary = primaryVariableTemplate(l))
+          v = variableTemplateValue(primary, an.last(), ctx, depth + 1);
+      if (!v)
+        v = constValueOfDecl(l.decl, ctx, depth, qs.pairs.empty() ? nullptr : &qs);
       if (!v && l.decl->kind == NodeKind::TemplateParamDecl)
         return types.param(l.decl); // `Num<I>` in a template: the argument is still the parameter (dependent)
     }
@@ -3776,6 +3783,14 @@ auto GlobalScope::Impl::fillDefaultTemplateArgs(FunctionDecl* f, Subst& s) -> bo
       const Ty* t = convertType(p->valueType, ctx, 0);
       if (!t || !t->isKnown() || mentionsUnknown(t) || namesMissingMember(t))
         return false;
+      // (a default made before its parameter's type was known, `std::EnableIf<...>* = nullptr`: its value of the type the
+      // arguments give, which names the instance; until 2026-11-22 of the parameter's generic type, unknown, and the
+      // call's instance was "the function template f without its argument")
+      for (Subst::Pair& q : s.pairs)
+        if (q.param == d && q.type && q.type->kind == TyKind::Value && !q.type->decl && !q.type->isObjectValue() &&
+            (!q.type->inner || !q.type->inner->isKnown() || types.isDependent(q.type->inner) || mentionsUnknown(q.type->inner)) &&
+            types.stripRef(t)->kind != TyKind::Float && !types.isDependent(t))
+          q.type = types.valueType(t, q.type->value);
     }
   // C++: a trailing pack nothing deduces is empty (`assignIf<Index + 1, Tail...>(widget)` with
   // Tail empty names `assignIf<Index + 1>`, whose `template<size_t Index, class Head, class...

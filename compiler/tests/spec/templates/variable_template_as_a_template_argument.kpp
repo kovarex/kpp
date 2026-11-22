@@ -1,0 +1,34 @@
+// spec: a variable template named with its arguments as a template argument (`Flag<isInt<int>>`, `std::BoolConstant<std::conjunction<IsA<Ts>...>>`) is its value for those arguments, an explicit specialization's or a partial one's where one matches; clang prints the same
+// found by thread UE (2026-11-22): its primary's initializer was taken without the arguments, so `Flag<isInt<int>>::value` was false, silently, and `std::EnableIf<std::conjunction<...>>` no type (Unreal's FCompositeBuffer constructor no candidate)
+template<typename T> constexpr bool isInt = false;
+template<> constexpr bool isInt<int> = true;
+template<typename T> constexpr int rank = 0;
+template<typename T> constexpr int rank<T*> = 1 + rank<T>;
+
+template<bool B> struct Flag
+{
+  static constexpr bool value = B;
+};
+
+template<int N> struct Number
+{
+  static constexpr int value = N;
+};
+
+struct Shared
+{
+};
+
+template<typename B> struct IsShared : std::BoolConstant<std::isSame<Shared, B>>
+{
+};
+
+template<typename... Bs> using AllShared = std::BoolConstant<std::conjunction<IsShared<Bs>...>>;
+static_assert(Flag<isInt<int>>::value && !Flag<isInt<char>>::value && Number<rank<int**>>::value == 2);
+static_assert(AllShared<Shared, Shared>::value && !AllShared<Shared, int>::value);
+
+int main()
+{
+  std::println(Flag<isInt<int>>::value, " ", Flag<isInt<char>>::value, " ", Number<rank<char***>>::value, " ", AllShared<Shared>::value);
+  return 0;
+}

@@ -1,0 +1,29 @@
+// spec: a function template whose last template parameter is a defaulted pointer constant (`std::EnableIf<cond>* = nullptr`, the enable_if idiom of C++ code) is a candidate when cond holds, its pack's conditions too (`std::EnableIf<std::conjunction<CanAppend<std::Decay<Bs>>...>>* = nullptr`), and its instance is named by the default; a constructor template too; clang prints the same
+// found by thread UE (2026-11-22): the default's value kept its parameter's generic type, so the instance had no name ("the function template f without its argument"), and a pack's condition no value (Unreal's FCompositeBuffer constructor, 5 in converted Core)
+struct Shared
+{
+};
+
+template<typename B> struct CanAppend : std::BoolConstant<std::isSame<Shared, B>>
+{
+};
+
+template<typename T, std::EnableIf<std::isIntegral<T>>* = nullptr> int kind(T) { return 1; }
+template<typename T, std::EnableIf<std::isFloatingPoint<T>>* = nullptr> int kind(T) { return 2; }
+
+class Composite
+{
+public:
+  template<typename... Bs, std::EnableIf<std::conjunction<CanAppend<std::Decay<Bs>>...>>* = nullptr>
+  Composite(Bs&&... buffers) : count(int(sizeof...(Bs))) {}
+  Composite(const Composite& other) = default;
+  int count = 0;
+};
+
+int main()
+{
+  Shared a;
+  Composite c(a, a, a);
+  std::println(kind(3), " ", kind(2.5), " ", c.count, " ", std::isConstructible<Composite, Shared&, int>);
+  return 0;
+}
