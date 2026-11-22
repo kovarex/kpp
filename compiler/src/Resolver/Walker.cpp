@@ -3114,7 +3114,22 @@ auto GlobalScope::Impl::Walker::bareMemberRule(const Node* n, const QualifiedNam
 // function named in a static function is the static one, whichever overload the name found first.
 auto GlobalScope::Impl::Walker::bareMemberQualifier(const Decl* d, const Lookup& l, bool& isStatic) -> std::string
 {
-  isStatic = (d->flags & DF_Static) != 0 || (d->kind == NodeKind::FunctionDecl && !thisType);
+  // An overload set with a non-static function among static ones (Unreal's StringBuilder Append): `this.`, which calls either
+  // (it said `This::` or `this.` by the first of the set, and by the walk, two fixes for one name). And a member of the
+  // class the code is in, through its bases, wants its object wherever no `this` is typed yet (a trailing return type,
+  // `-> decltype(Append(...))`, as C++ allows `this` there); a member of an outer class is that class's.
+  bool anyNonStatic = d->kind == NodeKind::FunctionDecl && !(d->flags & DF_Static);
+  if (d->kind == NodeKind::FunctionDecl && l.overloads)
+    for (const Entry& e : *l.overloads)
+      anyNonStatic = anyNonStatic || (e.decl && e.decl->kind == NodeKind::FunctionDecl && !(e.decl->flags & DF_Static));
+  Scope* inner = nullptr;
+  for (Scope* s = scope; s && !inner; s = s->parent)
+    if (s->kind == ScopeKind::Class)
+      inner = s;
+  bool ownClass = inner && reachThroughBases(inner, l.foundIn, 0);
+  bool staticBody = bodyOf && (bodyOf->flags & DF_Static); // (a static function's body has no object: its static overload)
+  isStatic = ((d->flags & DF_Static) != 0 && !anyNonStatic) ||
+             (d->kind == NodeKind::FunctionDecl && !thisType && !(anyNonStatic && ownClass && !staticBody));
   if (!isStatic)
     return "this.";
   Scope* innermost = nullptr;

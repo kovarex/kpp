@@ -1,0 +1,25 @@
+// spec: a bare name of an overload set with static and non-static member functions is written `this.f` (design.md 23c), which calls either, the static one too; in a trailing return type (`-> decltype(add(...))`, where C++ allows `this`) as well: the checker says one fix for each, `this.`, never `This::` by the set's first function or by the walk
+// found by thread UE (2026-11-22): Unreal's StringBuilder Append, whose overloads mix both, got `write this.Append` and `write This::Append` for one name in its trailing return type, so the conversion's fix pass wrote neither (60 errors in converted Core)
+// error: bare_member_of_a_mixed_overload_set.kpp:11: error: twice is a member function: write `this.twice`, not `twice` (design.md 23c)
+// error: bare_member_of_a_mixed_overload_set.kpp:15: error: add is a member function: write `this.add`, not `add` (design.md 23c)
+struct M
+{
+  int n = 1;
+  static int twice(int v) { return v * 2; }
+  int twice() const { return this.n * 2; }
+  int a() const { return this.twice(3) + this.twice(); }
+  int b() const { return twice(3); }
+  M& add(const char* text, int length) { this.n += length + (text ? 0 : 1); return this; }
+  static M& add(M& m) { return m; }
+  template<typename R>
+  auto add(R&& range) -> decltype(add(range.data(), int(0)))
+  {
+    return this.add(range.data(), range.size());
+  }
+};
+
+int main()
+{
+  M m;
+  return m.a() + m.b();
+}
