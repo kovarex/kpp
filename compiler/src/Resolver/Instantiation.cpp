@@ -4317,6 +4317,11 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
         Span<Decl*> params = effectiveParams(t->decl);
         for (size_t i = 0; i + 1 < params.size() && !packPerArgument; ++i)
           packPerArgument = params[i]->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(params[i])->isPack;
+        // (and a partial specialization's own type, an argument per parameter as its match makes its instances:
+        // `Callable` in `template<class R, class... Ps> class Callable<R(Ps...)>` is Callable<int, [char]>, the instance
+        // Callable<int(char)> resolves to; spliced, Callable<int, char> was another type, so `std::isSame<Self,
+        // Callable<int(char)>>` was false, silently, and Unreal's TFunction had no assignment of its own)
+        packPerArgument = packPerArgument || ((t->decl->flags & DF_Specialization) && t->decl->kind == NodeKind::ClassDecl && !params.empty());
         packPerArgument = packPerArgument && t->args.size() == params.size();
       }
       std::vector<const Ty*> args;

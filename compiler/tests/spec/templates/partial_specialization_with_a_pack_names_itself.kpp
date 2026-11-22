@@ -1,0 +1,50 @@
+// spec: inside a partial specialization with a pack (`template<class R, class... Ps> class Callable<R(Ps...)>`), the class's own name is the instance named from outside: `Callable<int(char)>::Self` is Callable<int(char)>, `&this` a Callable<void()>*, and its own `operator=(const Callable&)` is the instance's copy assignment, which a class holding one calls; clang prints the same
+// found by thread UE (2026-11-22): its own name spliced the pack into the arguments where its match keeps one per parameter, two types for one instance: isSame was false, silently, and the assignment its members name was not the instance's (Unreal's TFunction<void()>: "assigned by its implicit assignment, which C++ defines as deleted")
+struct Storage
+{
+  Storage() = default;
+  Storage& operator=(const Storage& other) = delete;
+  Storage& operator=(Storage&& other) = delete;
+  int value = 0;
+};
+
+template<typename F> class Callable;
+
+template<typename R, typename... Ps> class Callable<R(Ps...)> : public Storage
+{
+public:
+  using Self = Callable;
+  Callable() = default;
+  Callable(const Callable& other) { this.value = other.value; }
+
+  Callable& operator=(const Callable& other)
+  {
+    this.value = other.value + 1;
+    return this;
+  }
+
+  Callable* address() { return &this; }
+};
+
+struct Holder
+{
+  Callable<void()> f;
+};
+
+Callable<void()> global;
+static_assert(std::isSame<Callable<int(char)>::Self, Callable<int(char)>> && std::isSame<Callable<void()>::Self, Callable<void()>>);
+static_assert(std::isSame<decltype(global.address()), Callable<void()>*> && std::isCopyAssignable<Holder>);
+
+int main()
+{
+  Callable<void()> a;
+  Callable<void()> b;
+  a.value = 5;
+  b = a;
+  Holder h;
+  Holder g;
+  g.f.value = 7;
+  h = g;
+  std::println(b.value, " ", h.f.value);
+  return 0;
+}
