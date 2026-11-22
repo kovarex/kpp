@@ -1,0 +1,38 @@
+// cppinput: clang's and MSVC's type trait built-ins (`__is_enum(T)`, `__is_polymorphic(T)`, `__is_abstract(T)`,
+// `__is_constructible(T, Args...)`, Unreal's Templates/IsEnumClass.h and IsPolymorphic.h) are kpp's traits of them
+// (std::isEnum<T> ...), as std::isEnum is: the converter left them, "'__is_enum' is not declared"
+enum class Color
+{
+  Red
+};
+
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+
+class Square : public Shape
+{
+public:
+  i32 area() const override { return 4; }
+};
+
+template <typename T>
+struct IsEnumClass
+{
+  enum { Value = std::isEnum<T> };
+};
+
+template <typename T>
+struct IsPolymorphic
+{
+  enum { Value = std::isPolymorphic<T> };
+};
+
+static_assert(IsEnumClass<Color>::Value && !IsEnumClass<i32>::Value, "enum");
+static_assert(std::isAbstract<Shape> && !std::isAbstract<Square>, "abstract");
+static_assert(std::isConstructible<Square> && !std::isConstructible<Square, i32>, "constructible");
+
+i32 main() { return IsPolymorphic<Square>::Value && !IsPolymorphic<Color>::Value ? 0 : 1; }

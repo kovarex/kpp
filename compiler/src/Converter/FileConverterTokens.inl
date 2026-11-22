@@ -2800,6 +2800,27 @@
           i += 3;
           continue;
         }
+        if (t.getKind() == TokenKind::Identifier && i + 1 < toks.size() && toks[i + 1].is(P::LParen) && spelling(i).rfind("__is_", 0) == 0)
+        {
+          // Clang's and MSVC's type trait built-ins (Unreal's Templates: `enum { Value = __is_enum(T) };`, `__is_polymorphic(T)`,
+          // `__is_constructible(T, Args...)`): kpp's trait of each, as std::is_enum_v converts to. One kpp has no trait of
+          // (`__is_pod`, `__is_union`) stays, an error where it is used.
+          static const std::map<std::string, std::string, std::less<>> builtinTraits = {
+            {"__is_abstract", "std::isAbstract"}, {"__is_base_of", "std::isBaseOf"}, {"__is_class", "std::isClass"},
+            {"__is_constructible", "std::isConstructible"}, {"__is_convertible", "std::isConvertible"}, {"__is_convertible_to", "std::isConvertible"},
+            {"__is_empty", "std::isEmpty"}, {"__is_enum", "std::isEnum"}, {"__is_final", "std::isFinal"}, {"__is_polymorphic", "std::isPolymorphic"},
+            {"__is_same", "std::isSame"}, {"__is_trivially_copyable", "std::isTriviallyCopyable"},
+            {"__is_trivially_destructible", "std::isTriviallyDestructible"}};
+          if (auto trait = builtinTraits.find(spelling(i)); trait != builtinTraits.end())
+            if (uint32_t close = closingParenToken(i + 1); close != UINT32_MAX)
+            {
+              replace(t.offset, endOffset(i + 1) - t.offset, trait->second + "<");
+              replace(toks[close].offset, toks[close].length, ">");
+              counts.add("type trait built-ins to kpp's traits");
+              ++i; // (the arguments are converted as any types are)
+              continue;
+            }
+        }
         if (t.getKind() == TokenKind::Identifier && i > 1 && (toks[i - 1].is(P::Comma) || (toks[i - 1].is(P::LParen) && (toks[i - 2].getKind() == TokenKind::Identifier || toks[i - 2].is(P::Greater)))) &&
             (toks[i + 1].is(P::Comma) || toks[i + 1].is(P::RParen)) && (spelling(i).rfind("CLSID_", 0) == 0 || spelling(i).rfind("IID_", 0) == 0))
         {
