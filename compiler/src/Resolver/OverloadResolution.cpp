@@ -2631,7 +2631,9 @@ auto GlobalScope::Impl::deductionsAgree(FunctionDecl* f, const Ty* ft, const std
     // pattern): `template<class T> f(T*, T)` given nullptr and a char is no candidate, rather than
     // one with T = char that converts nullptr (thread J's overload generator: it beat
     // `f(const char*, short)`). A pointee the given arguments name already deduces nothing.
-    if (const Ty* p = types.unqualified(types.stripRef(ft->args[i])); p->kind == TyKind::Pointer && types.isDependent(one.empty() ? p : substitute(p, one)))
+    // (its own parameters: a dependence on another template's, `decltype(&Shift::Requires<T>)*` whose generic type keeps
+    // Requires' V, deduces nothing of f's; until 2026-11-22 it refused nullptr, and the `(...)` overload was chosen, silently)
+    if (const Ty* p = types.unqualified(types.stripRef(ft->args[i])); p->kind == TyKind::Pointer && dependsOn(one.empty() ? p : substitute(p, one), f->templateParams))
     {
       const Ty* pointee = p->inner;
       while (pointee && pointee->kind == TyKind::Pointer)
