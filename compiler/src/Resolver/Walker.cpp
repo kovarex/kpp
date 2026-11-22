@@ -13575,6 +13575,14 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       auto* i = static_cast<IndexExpr*>(e);
       if (i->args.size() == 1 && reflectionSubject(i->base))
         return record(e, typeOfReflectionIndex(i));
+      if (i->args.empty() && file && !file->isImported && file->path.ends_with(".kpp"))
+      {
+        // A `u[]` the parser wrote no switch for: outside any statement (a default argument, a member's initializer)
+        walkExpr(i->base);
+        reportHere(i->token, "u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression "
+                             "statement, a return, a variable's initializer or an if's or while's condition");
+        return record(e, unknown(Why::Unsupported));
+      }
       checkPostfixAfterParenthesisedType(i->base, i->token);
       const Ty* base = walkExpr(i->base);
       const Ty* firstIndex = nullptr;

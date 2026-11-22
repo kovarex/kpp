@@ -130,10 +130,7 @@ namespace
         }
         parseDeclaration(Scope::Namespace);
       }
-      for (const EveryAlternative& e : everyAlternative) // (outside any statement: a default argument, a member's initializer, ...)
-        errorAt(e.open, "u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression statement, a "
-                        "return, a variable's initializer or an if's or while's condition");
-      everyAlternative.clear();
+      everyAlternative.clear(); // (one outside any statement, a default argument's, is the checker's error, Walker's IndexExpr)
       // A --tests build's main is the test runner's (compiler/src/tests.cpp): the program's is renamed.
       if (testsEnabled() && out.path != testRunnerPath)
         for (size_t i = mark; i < scratch.size(); ++i)
@@ -4821,9 +4818,18 @@ namespace
       uint32_t end = pos;
       std::vector<EveryAlternative> found(everyAlternative.begin() + everyMark, everyAlternative.end());
       std::sort(found.begin(), found.end(), [](const EveryAlternative& a, const EveryAlternative& b) { return a.valueStart < b.valueStart; });
-      // (a postfix chain parsed twice, a for's header tried as a range-for first, recorded its `u[]` twice)
+      // (a postfix chain parsed twice, a for's header tried as a range-for first, recorded its `u[]` twice; one read as an
+      // expression and then as a type, `isConstructible<int[], int>`, is no `u[]` of the statement read)
       found.erase(std::unique(found.begin(), found.end(), [](const EveryAlternative& a, const EveryAlternative& b) { return a.valueStart == b.valueStart && a.open == b.open; }),
                   found.end());
+      std::unordered_set<uint32_t> read;
+      forEachNode(s, [&](Node* n) {
+        if (n->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(n)->args.empty())
+          read.insert(n->token);
+      });
+      found.erase(std::remove_if(found.begin(), found.end(), [&](const EveryAlternative& a) { return !read.count(a.open); }), found.end());
+      if (found.empty())
+        return false;
       const EveryAlternative& first = found[0];
       for (const EveryAlternative& f : found)
       {

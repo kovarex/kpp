@@ -1,0 +1,15 @@
+// spec: a `u[]` outside any statement (a default argument) is an error, and an array type of no bound in a template
+// argument (`isConstructible<int[], int>`, first read as an expression) is no `u[]`
+// design.md 8.5 ("Every alternative: u[]")
+// error: typed_union_every_alternative_outside_a_statement_is_error.kpp:9: error: u[] (its statement once per alternative of a typed union, design.md 8.5) is written in an expression statement
+struct A { int a = 1; };
+struct B { int a = 2; };
+union enum U : u8 { { {First, A}, {Second, B} } };
+U global;
+int f(int x = global[].a) { return x; }
+
+int main()
+{
+  bool b = std::isConstructible<int[], int>;
+  return f() + int(b);
+}

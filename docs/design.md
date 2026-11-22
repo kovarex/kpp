@@ -993,8 +993,8 @@ std::String describe() const { return ::describe(this[]); }                // th
   written type (`i64 w = u[].weight();`) and an if's or while's condition are a lambda's switch called in their place,
   the variable's type (or bool) its return type, so each alternative's value converts to it. An `auto` variable is an
   error for now ("write the variable's type"): a deduced lambda's return type from returns in a `for constexpr` is
-  void (pending language/lambda_return_type_from_for_constexpr). Anywhere else (a for's header, a switch's condition,
-  a default argument) is an error. One statement is for one union: `u[].a + w[].a` is an error, `u[].a + u[].b`
+  void (pending language/lambda_return_type_from_for_constexpr). Anywhere else (a for's header, a switch's condition:
+  the parser's error; a default argument, a member's initializer: the checker's) is an error. One statement is for one union: `u[].a + w[].a` is an error, `u[].a + u[].b`
   reads one alternative twice.
 - u is evaluated once, before the switch (`get()[].bump()` calls get once), bound as `auto&&`; const follows it, so a
   const u's alternatives are const and overloads are chosen per alternative and constness.
@@ -1010,7 +1010,8 @@ std::String describe() const { return ::describe(this[]); }                // th
   (the study's measure: the same IR). Format mode reads `u[]` as written. Not yet: `u[A, B]`, some alternatives alone.
 Specs: kpp/typed_union_every_alternative, kpp/typed_union_every_alternative_missing_member_is_error,
 kpp/typed_union_every_alternative_invalid_is_error, kpp/typed_union_every_alternative_of_no_union_is_error,
-kpp/typed_union_every_alternative_placement_errors; tests/format/typed_union_every_alternative.kpp.
+kpp/typed_union_every_alternative_placement_errors, kpp/typed_union_every_alternative_outside_a_statement_is_error;
+tests/format/typed_union_every_alternative.kpp.
 
 *An alternative of type void* (kovarex 2026-11-17, for InputAction's 61 actions without data, which held an empty
 InputActionNoData): `{Stop, void}` carries no value. It is built from its tag alone (`Action(Action::Tag::Stop)`, a
