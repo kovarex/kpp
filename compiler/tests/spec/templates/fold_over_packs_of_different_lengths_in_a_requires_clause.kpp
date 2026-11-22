@@ -1,0 +1,27 @@
+// spec: a requires clause whose fold expands packs the arguments bind to different numbers of elements (`(isConstructible<Types, Args&&> && ...)` with two Types and one Args) is not satisfied, a substitution failure ([temp.variadic] 5, [temp.constr.atomic] 3): the candidate drops out, so the copy constructor, another overload or isConstructible's false answers; clang prints the same
+// found by thread UE (2026-11-22): the call was an error, "the requires clause of TTuple cannot be evaluated" (17 in converted Unreal Core: TTuple's constructors from other tuples)
+struct Name { Name(const char*) {} };
+
+template<typename... Types> class Tuple
+{
+public:
+  template<typename... Args>
+    requires (std::isConstructible<Types, Args&&> && ...)
+  Tuple(Args&&... args) : count(sizeof...(Args)) {}
+  Tuple(const Tuple& other) = default;
+  int count = -1;
+};
+
+template<typename... Types, typename... Args>
+  requires (std::isSame<Types, Args> && ...)
+int pick2(Args...) { return 2; }
+template<typename... Types> int pick2(...) { return 3; }
+
+int main()
+{
+  Tuple<int, int> a(1, 2);
+  Tuple<Name> n("x");
+  Tuple<int, int> b(a);
+  std::println(a.count, " ", n.count, " ", b.count, " ", pick2<int, int>(1, 2), " ", pick2<int, int>(1), " ", std::isConstructible<Tuple<int, int>, int>);
+  return 0;
+}

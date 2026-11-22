@@ -1,0 +1,29 @@
+// spec: a function template whose result or parameter type is a type trait that gives no type under the deduced arguments (`std::EnableIf<std::isIntegral<T>, bool>` for a float, `std::EnableIf<std::isIntegral<typename T::IntType>, bool>` for a class whose IntType does not exist, in a defaulted parameter too) is no candidate ([temp.deduct] 8), so the other overload is chosen; Conditional too; clang prints the same
+// found by thread UE (2026-11-22): both stayed candidates, and the call was ambiguous (Unreal's LWCSerializerPrivate::SerializeFromMismatchedTag, 12 in converted Core)
+struct Matrix
+{
+  using FReal = float;
+};
+
+struct Point
+{
+  using IntType = int;
+};
+
+template<typename T> std::EnableIf<std::isFloatingPoint<T>, const char*> kind(T) { return "floating"; }
+template<typename T> std::EnableIf<std::isIntegral<T>, const char*> kind(T) { return "integral"; }
+template<typename Alt, typename Type> std::EnableIf<std::isFloatingPoint<typename Type::FReal>, int> serialize(Type&) { return 1; }
+template<typename Alt, typename Type> std::EnableIf<std::isIntegral<typename Type::IntType>, int> serialize(Type&) { return 2; }
+template<typename T> int width(T, std::EnableIf<(sizeof(T) <= 2), int> = 0) { return 16; }
+template<typename T> int width(T, std::EnableIf<(sizeof(T) > 2), int> = 0) { return 32; }
+template<typename T> std::Conditional<std::isIntegral<T>, std::EnableIf<sizeof(T) == 8, long>, int> big(T) { return 8; }
+int big(...) { return 0; }
+int main()
+{
+  Matrix m;
+  Point p;
+  short s = 1;
+  std::println(std::StringView(kind(1.5)), " ", std::StringView(kind(2)), " ", serialize<int>(m), " ", serialize<int>(p), " ", width(s), " ",
+               width(1), " ", big(i64(1)), " ", big(1), " ", big(1.5));
+  return 0;
+}

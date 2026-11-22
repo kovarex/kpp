@@ -1789,6 +1789,32 @@ auto GlobalScope::Impl::constraintValue(Expr* e, Decl* f, const Subst& s, int de
     case NodeKind::RequiresExpr:
       // `requires requires (const T& value, PropertyTree& ptree) { value.save(ptree); }`
       return requirementsHold(static_cast<RequiresExpr*>(e), f, s);
+    case NodeKind::FoldExpr:
+    {
+      // A fold whose packs the arguments bind to different numbers of elements (`(isConstructible<Types, ArgTypes&&> &&
+      // ...)` with two Types and no ArgTypes, Unreal's TTuple constructors): the expansion does not form ([temp.variadic]
+      // 5), a substitution failure, so not satisfied ([temp.constr.atomic] 3), where it was no constant and the call an
+      // error ("the requires clause of TTuple cannot be evaluated").
+      std::optional<size_t> count;
+      for (Expr* side : {static_cast<FoldExpr*>(e)->lhs, static_cast<FoldExpr*>(e)->rhs})
+      {
+        Subst probe = s;
+        for (int guard = 0; side && guard < 8; ++guard)
+        {
+          Decl* pack = packNamedIn(side, probe);
+          const Ty* bound = pack ? probe.find(pack) : nullptr;
+          if (!bound || bound->kind != TyKind::Pack)
+            break;
+          if (count && *count != bound->args.size())
+            return false;
+          count = bound->args.size();
+          for (Subst::Pair& q : probe.pairs)
+            if (q.param == pack)
+              q.type = types.unknown(); // looked at: the next one, if any (constExpand's walk of them)
+        }
+      }
+      break;
+    }
     default:
       break;
   }
@@ -2977,6 +3003,28 @@ static bool signatureHasDecltype(const FunctionDecl* f)
   return found;
 }
 
+// Whether f's result or a parameter's type, as written, names a type trait isTrait says is one (`std::EnableIf<std::
+// isFloatingPoint<T>, bool>`, Conditional): the declaration's own typing leaves it no type while its arguments depend on
+// the template's parameters (typeTrait), and typing under the deduced arguments may find it gives none.
+template<typename IsTrait>
+static bool signatureNamesTrait(const FunctionDecl* f, IsTrait isTrait)
+{
+  bool found = false;
+  auto look = [&](Type* t) {
+    if (t && !found)
+      forEachNode(t, [&](Node* n) {
+        found = found || (n->kind == NodeKind::NamedType && !static_cast<NamedType*>(n)->name.empty() &&
+                          static_cast<NamedType*>(n)->name.last().hasTemplateArgs && isTrait(static_cast<NamedType*>(n)->name.last().symbol));
+      });
+  };
+  look(f->returnType);
+  look(f->trailingReturn);
+  for (Decl* p : f->params)
+    if (p && p->kind == NodeKind::ParamDecl)
+      look(static_cast<ParamDecl*>(p)->type);
+  return found;
+}
+
 // Whether t names a member of a class (`typename X<...>::type`), anywhere in it.
 auto GlobalScope::Impl::namesDependentMember(const Ty* t, int depth) -> bool
 {
@@ -3083,7 +3131,7 @@ auto GlobalScope::Impl::candidateRejection(FunctionDecl* f, const std::vector<co
     }
     return "with " + with + ", its constraints are not satisfied";
   }
-  if (namesDependentMember(ft) || signatureHasDecltype(f))
+  if (namesDependentMember(ft) || signatureHasDecltype(f) || signatureNamesTrait(f, [&](uint32_t t) { return t != UINT32_MAX && isTypeTraitName(t); }))
     if (const Ty* typed = declaredTypeOf(f, &deduced, 0); typed && typed->kind == TyKind::Function)
     {
       if (!typed->inner || mentionsUnknown(typed->inner) || namesMissingMember(typed->inner))
@@ -3455,8 +3503,11 @@ auto GlobalScope::Impl::chooseAmong(const std::vector<FunctionDecl*>& candidates
     // is given for too: `typename T::type* = nullptr`), under the deduced arguments, names a member its class does
     // not have (`typename OnlyIf<sizeof(T) == 4, int>::type` for a double, OnlyIf<false> having no type), a member of
     // a type that is no class (`typename T::type` with T = int), or has a decltype whose expression does not form
-    // (`-> decltype(t.size())` for an int), is no candidate. Until 2026-11-10 the result's members only.
-    if (ok && argsConcrete && !f->templateParams.empty() && ft && ft->kind == TyKind::Function && (namesDependentMember(ft) || signatureHasDecltype(f)))
+    // (`-> decltype(t.size())` for an int), or a type trait that gives no type (`std::EnableIf<std::isIntegral<T>, bool>` for a
+    // float: until 2026-11-22 a candidate, Unreal's LWCSerializerPrivate::SerializeFromMismatchedTag ambiguous), is no
+    // candidate. Until 2026-11-10 the result's members only.
+    if (ok && argsConcrete && !f->templateParams.empty() && ft && ft->kind == TyKind::Function &&
+        (namesDependentMember(ft) || signatureHasDecltype(f) || signatureNamesTrait(f, [&](uint32_t t) { return t != UINT32_MAX && isTypeTraitName(t); })))
     {
       // (typed again under the deduced arguments, as the call's result is: the declaration's own
       // typing leaves a value such as `sizeof(T) == 4` uncomputed)
