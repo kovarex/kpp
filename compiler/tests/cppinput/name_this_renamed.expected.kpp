@@ -1,0 +1,17 @@
+// cppinput: a C++ name `This` (Unreal's `FConsoleVariable<T>* This = (FConsoleVariable<T>*)this;`) is renamed, as kpp's
+// `This` names the class the code is in
+struct Counter
+{
+  i32 Value = 1;
+  i32 Twice() const
+  {
+    const Counter* This_ = this;
+    return This_->Value * 2;
+  }
+};
+
+i32 main()
+{
+  Counter c;
+  return c.Twice() == 2 ? 0 : 1;
+}

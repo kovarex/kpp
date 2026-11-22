@@ -2724,6 +2724,14 @@
           counts.add("C names `config` renamed (kpp's configuration namespace)");
           continue;
         }
+        if (t.getKind() == TokenKind::Identifier && spelling(i) == "This")
+        {
+          // `This` is kpp's name of the class the code is in (design.md 23c): a C++ name spelled so (Unreal's locals
+          // `FConsoleVariable<T>* This = (FConsoleVariable<T>*)this;`) is renamed, everywhere it is written.
+          replace(t.offset, t.length, "This_");
+          counts.add("C++ names `This` renamed (kpp's keyword)");
+          continue;
+        }
         if (in.c && t.getKind() == TokenKind::Identifier && lookupKeyword(spelling(i)) != UINT32_MAX)
         {
           // A C name that is a C++ keyword (trio's `class`, curl's `new`): kpp has the keyword.
