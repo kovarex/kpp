@@ -1,0 +1,44 @@
+// spec: an instance of a partial specialization whose first pack comes before another parameter (`template<u32... Indices, typename... Types> struct Tuple<Seq<Indices...>, Types...> : Holder<Types, Indices>...`, Unreal's TTupleBase) is one type however it is named: a function deducing `const Holder<D, I>&` from it finds its base, also from a member's body (`Getter<0>::get(this)`, a decltype(auto) through two calls, TTuple's Get), at run time and in a decltype; clang prints the same
+// found by thread UE (2026-11-22): substituting the specialization's own type spliced its packs into a flat list (0, int32), a second form of the instance whose packs were bound wrong, so the deduction through its bases failed: "codegen does not support the type decltype(auto)", and 192 of TuplesTest's static assertions could not be evaluated
+template<typename T, u32 I>
+struct Holder
+{
+  T value{};
+};
+
+template<u32 Index>
+struct Getter
+{
+  template<typename D, typename Tup>
+  static decltype(auto) getImpl([[maybe_unused]] const volatile Holder<D, Index>& holder, Tup&& tuple) { return (static_cast<Holder<D, Index>&>(tuple).value); }
+  template<typename Tup>
+  static decltype(auto) get(Tup&& tuple) { return This::getImpl(tuple, tuple); }
+};
+
+template<u32... I>
+struct Seq
+{
+};
+
+template<typename S, typename... Types>
+struct Tuple;
+
+template<u32... Indices, typename... Types>
+struct Tuple<Seq<Indices...>, Types...> : Holder<Types, Indices>...
+{
+  template<u32 Index>
+  decltype(auto) get() { return Getter<Index>::get(this); }
+};
+
+Tuple<Seq<0, 1>, int, char> global;
+static_assert(std::isSame<decltype(global.get<0>()), int&>);
+static_assert(std::isSame<decltype(global.get<1>()), char&>);
+
+int main()
+{
+  Tuple<Seq<0, 1>, int, char> t;
+  t.get<0>() = 40;
+  t.get<1>() = 2;
+  std::println(t.get<0>() + t.get<1>(), " ", sizeof(t));
+  return 0;
+}

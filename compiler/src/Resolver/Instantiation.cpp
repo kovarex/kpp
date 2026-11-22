@@ -4157,11 +4157,23 @@ auto GlobalScope::Impl::substitute(const Ty* t, const Subst& s, int depth) -> co
     case TyKind::Lambda:
     case TyKind::Pack:
     {
+      // A class whose parameters have a pack before the last one (a partial specialization's `template<u32... Indices,
+      // typename... Types>`, Unreal's TTupleBase) keeps an argument per parameter, each pack one argument, as its match
+      // made it: spliced, the instance had a second form (0, int32 for Pack(0), Pack(int32)) whose substFor bound the
+      // first pack to every argument, and deduction through its bases failed.
+      bool packPerArgument = false;
+      if (t->kind == TyKind::Class && t->decl)
+      {
+        Span<Decl*> params = effectiveParams(t->decl);
+        for (size_t i = 0; i + 1 < params.size() && !packPerArgument; ++i)
+          packPerArgument = params[i]->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(params[i])->isPack;
+        packPerArgument = packPerArgument && t->args.size() == params.size();
+      }
       std::vector<const Ty*> args;
       for (const Ty* a : t->args)
       {
         const Ty* sub = substitute(a, s, depth);
-        if (t->kind != TyKind::Pack && spliceIfPack(sub, args))
+        if (t->kind != TyKind::Pack && !packPerArgument && spliceIfPack(sub, args))
           continue;
         args.push_back(sub);
       }
