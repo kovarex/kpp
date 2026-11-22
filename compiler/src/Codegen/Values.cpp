@@ -1261,6 +1261,8 @@ auto codegen::Emitter::emitGlobalConstructor(VariableDecl* v, const std::string&
     contextRestore{currentContext, currentContext}, requesterContextRestore{currentRequestedByContext, currentRequestedByContext};
   currentContext = "the initializer of " + (name.size() > 3 && name.compare(0, 2, "@\"") == 0 ? name.substr(2, name.size() - 3) : name);
   currentRequestedByContext.clear();
+  Restore chainRestore(currentChain);
+  currentChain.reset();
   try
   {
     staticTemporaries.clear();

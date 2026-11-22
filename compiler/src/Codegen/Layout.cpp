@@ -1215,8 +1215,10 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
   currentFunctionName = "the vtable of " + types.toString(key, &symbols);
   Restore<std::string> contextRestore(currentContext);
   Restore<std::string> requesterContextRestore(currentRequestedByContext);
+  Restore chainRestore(currentChain);
   currentContext = currentFunctionName;
   currentRequestedByContext.clear();
+  currentChain.reset();
   std::string deleter = deleterFor(key, classIrName(key, info), thunks, at);
   for (size_t t = 0; t < tables.size(); ++t)
   {

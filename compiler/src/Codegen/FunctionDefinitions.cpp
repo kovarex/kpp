@@ -209,7 +209,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   {
     owner = currentFunctionName;
     emittingName = currentFunctionName;
-    emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth, currentRequestedByContext};
+    emittingNow = {original, args, classTy, currentModule, currentRequestedBy, nameOverride, currentDepth, currentRequestedByContext, currentChain};
     inlinedNow.clear();
     positionsNow.clear();
     layoutsNow.clear();
@@ -495,6 +495,8 @@ auto codegen::Emitter::checkLayoutAssert(const GlobalScope::LayoutStaticAssert& 
   currentFile = s->file;
   currentFunctionName.clear();
   currentRequestedBy.clear();
+  Restore chainRestore(currentChain);
+  currentChain.reset();
   std::optional<bool> v;
   GlobalScope::clearConstantReason();
   try
@@ -662,6 +664,7 @@ auto codegen::Emitter::emitStartupGlobal(VariableDecl* v, const Ty* classTy, std
   currentRequestedBy.clear();
   currentContext = "the initializer of " + (classTy ? types.toString(classTy, &symbols) + "::" + sym(v->name.last().symbol) : qualifiedName(v));
   currentRequestedByContext.clear();
+  currentChain.reset();
   currentFile = v->file; // its errors point at its declaration
   try
   {

@@ -9,6 +9,7 @@
 #include "Restore.hpp"
 #include "LineStarts.hpp"
 #include <map>
+#include <memory>
 #include <set>
 #include <unordered_set>
 #include <algorithm>
@@ -113,6 +114,20 @@ namespace codegen
     bool writtenInHashed = false;
   };
 
+  // One step of the chain of instantiations that led to a function, for an error's notes (Emitter::fail):
+  // the requester's statement that first asked for it (its file, null if unknown, and the offset of its
+  // first token: the line is worked out for an error only), the requester as diagnostics show it, and
+  // the requester's own step (null for a function that is no instantiation). Made once per instantiation
+  // when its level is collected; shared, never changed. (An offset, not the node: a compile server keeps
+  // it across builds that graft bodies, and its files with it, as it keeps Instantiation::f.)
+  struct RequestStep
+  {
+    ParsedFile* file = nullptr;
+    uint32_t offset = 0;
+    std::string by;
+    std::shared_ptr<const RequestStep> outer;
+  };
+
   struct Instantiation
   {
     FunctionDecl* f;
@@ -123,6 +138,7 @@ namespace codegen
     std::string name;        // the LLVM name to define it under (the declaration's), or empty
     unsigned depth;          // instantiations in the chain that asked for it, itself included
     std::string requestedByContext; // requestedBy as diagnostics show it (Emitter::currentContext)
+    std::shared_ptr<const RequestStep> chain; // how it was asked for, for an error's notes
   };
 
 #include "SharedText.hpp"
@@ -160,6 +176,9 @@ namespace codegen
     std::string by;
     unsigned depth = 0;
     std::string byContext; // by, as diagnostics show it (Emitter::currentContext)
+    ParsedFile* file = nullptr; // the statement that asked (Emitter::requestingStatement): its file and first token's offset
+    uint32_t offset = 0;
+    std::shared_ptr<const RequestStep> chain; // by's own (Emitter::currentChain)
   };
 
   struct Emitter;

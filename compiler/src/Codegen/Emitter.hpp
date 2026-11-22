@@ -249,6 +249,11 @@ namespace codegen
     // LLVM names above are the program's, never shown. Empty: those names are shown.
     std::string currentContext;
     std::string currentRequestedByContext;
+    // For an instantiation: how it was asked for (Instantiation::chain), an error's notes, one per step
+    // (fail). chainOwner: the function that chain is of, where that is not currentContext (a lambda's
+    // call operator emitted in the function it is written in: that function's).
+    std::shared_ptr<const RequestStep> currentChain;
+    std::string chainOwner;
 
 
     std::string funcletOverride;                              // the pad being emitted, for its calls

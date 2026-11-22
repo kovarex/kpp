@@ -8,6 +8,12 @@
     // shown: false for a failure that follows from an error the checker reported (fail): the
     // checker's error is the build's, and the function fails as it would with this one.
     void error(Node* at, const std::string& message, bool shown = true);
+    // What follows an error in an instantiation: a note for each step of the chain that asked for it
+    // (currentChain), innermost first, at the line of the requester that asked (`path:line: note: in
+    // instantiation of sum<int32>(const Vector<int32>&) requested here`), as C++ compilers give their
+    // "required from here"; the first 8 and the last 4 of a longer chain. Each note on a line of its
+    // own, every line after the first starting with a newline; empty outside an instantiation.
+    std::string instantiationNotes();
 
     // "file:line" of a node in a file ("file:line:column" with --diagnostic-columns when column),
     // "?" when unknown.

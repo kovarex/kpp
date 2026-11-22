@@ -6,7 +6,7 @@
 auto codegen::Emitter::error(Node* at, const std::string& message, bool shown) -> void
 {
   if (shown)
-    errors.push_back(locationOf(at, currentFile, true) + ": error: " + message); // every codegen error is labelled, the gaps too
+    errors.push_back(locationOf(at, currentFile, true) + ": error: " + message + instantiationNotes()); // every codegen error is labelled, the gaps too
   else
     ++hiddenErrors;
   // A program function's own emission (not an instance's, a lambda's operator on demand, a
@@ -21,6 +21,47 @@ auto codegen::Emitter::error(Node* at, const std::string& message, bool shown) -
     erroringInstances.emplace(owner, emittingNow);
   else
     unattributedErrors = true;
+}
+
+// (a --tests build renames the program's main, parser.cpp: to the reader it is main)
+static std::string asShown(std::string name)
+{
+  if (name.rfind("__kpp_program_main(", 0) == 0)
+    name.replace(0, 18, "main");
+  return name;
+}
+
+auto codegen::Emitter::instantiationNotes() -> std::string
+{
+  if (!currentChain)
+    return {};
+  constexpr size_t shownFirst = 8, shownLast = 4;
+  size_t total = 0;
+  for (const RequestStep* step = currentChain.get(); step; step = step->outer.get())
+    ++total;
+  std::string notes;
+  std::string what = asShown(!chainOwner.empty() ? chainOwner : !currentContext.empty() ? currentContext : currentFunctionName);
+  size_t i = 0;
+  for (const RequestStep* step = currentChain.get(); step; step = step->outer.get(), ++i)
+  {
+    std::string by = asShown(step->by);
+    if (total > shownFirst + shownLast && i >= shownFirst && i < total - shownLast)
+    {
+      if (i == shownFirst)
+        notes += "\nnote: (" + std::to_string(total - shownFirst - shownLast) + " more instantiations)";
+      what = std::move(by);
+      continue;
+    }
+    if (step->file)
+    {
+      size_t line = lineStarts.try_emplace(step->file, step->file->text).first->second.line(step->offset);
+      notes += "\n" + sourceLocation(step->file->path, line) + ": note: in instantiation of " + what + " requested here";
+    }
+    else
+      notes += "\nnote: in instantiation of " + what + " requested by " + by;
+    what = std::move(by);
+  }
+  return notes;
 }
 
 auto codegen::Emitter::locationOf(Node* at, ParsedFile* file, bool column) -> std::string

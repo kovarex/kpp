@@ -808,6 +808,15 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
   // tag would not tell a reader (A, 2026-11-04).
   Restore<std::string> contextRestore1(currentContext);
   Restore<std::string> contextRestore2(currentRequestedByContext);
+  // An error's notes: the chain of the function it is written in, when emitted in the middle of that
+  // function's own emission (as its uses emit it); emitted from elsewhere, none.
+  Restore chainRestore(currentChain);
+  Restore chainOwnerRestore(chainOwner);
+  // (a lambda in a lambda: the outer one's owner, still)
+  if (savedName == writer.writtenIn && !writer.writtenIn.empty())
+    chainOwner = chainOwner.empty() ? writer.writtenInContext : chainOwner;
+  else
+    currentChain.reset(), chainOwner.clear();
   {
     size_t line = lineOf(l, l->closure && l->closure->file ? l->closure->file : currentFile);
     currentContext = "a lambda" + (writer.writtenInContext.empty() ? std::string() : " in " + writer.writtenInContext) +

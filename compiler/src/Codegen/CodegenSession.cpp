@@ -255,6 +255,7 @@ static void emitInstantiation(Emitter& em, const Instantiation& item)
   em.currentModule = item.module;
   em.currentRequestedBy = item.requestedBy;
   em.currentRequestedByContext = item.requestedByContext;
+  em.currentChain = item.chain;
   em.currentDepth = item.depth;
   struct EmitCall { Emitter* e; const Instantiation* item; };
   EmitCall call{&em, &item};
@@ -274,7 +275,14 @@ static void emitInstantiation(Emitter& em, const Instantiation& item)
   em.emitFunction(item.f, item.args, item.classTy, item.name);
 #endif
   em.currentRequestedBy.clear();
+  em.currentChain.reset();
   em.currentDepth = 0;
+}
+
+// An instantiation's step of the chain that asked for it (an error's notes): its first request's.
+static std::shared_ptr<const RequestStep> requestStep(const Request& r)
+{
+  return std::make_shared<const RequestStep>(RequestStep{r.file, r.offset, r.byContext.empty() ? r.by : r.byContext, r.chain});
 }
 
 // The next level: what the emitters asked for (each function once: the names were claimed), in
@@ -305,6 +313,7 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
       item.requestedBy = r->by;
       item.requestedByContext = r->byContext;
       item.depth = r->depth;
+      item.chain = requestStep(*r);
     }
   for (auto& em : emitters)
     em->levelRequests.clear();
@@ -359,6 +368,7 @@ static bool collectInParallel(std::vector<std::unique_ptr<Emitter>>& emitters, s
         level[i].requestedBy = r->by;
         level[i].requestedByContext = r->byContext;
         level[i].depth = r->depth;
+        level[i].chain = requestStep(*r);
       }
     std::sort(level.begin() + bounds[c], level.begin() + bounds[c + 1], byName);
   };

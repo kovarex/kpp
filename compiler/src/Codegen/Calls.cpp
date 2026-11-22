@@ -6,9 +6,21 @@
 
 auto codegen::Emitter::noteRequest(const std::string& name) -> void
 {
-  auto [it, first] = levelRequests.try_emplace(name, Request{currentFunctionName, currentDepth + 1, currentContext});
-  if (!first && currentFunctionName < it->second.by)
-    it->second = {currentFunctionName, currentDepth + 1, currentContext};
+  auto [it, first] = levelRequests.try_emplace(name);
+  if (!first && !(currentFunctionName < it->second.by))
+    return;
+  // Where it was asked, for an error's note: the statement being emitted (asked before the body's first,
+  // by a constructor's initializers or a parameter's: the declaration).
+  Node* at = requestingStatement;
+  ParsedFile* file = requestingFile;
+  if (!at && currentFunction && currentFunction->file == currentFile)
+    at = currentFunction, file = currentFile;
+  uint32_t offset = 0;
+  if (at && file && file->tokens && at->token < file->tokens->size())
+    offset = (*file->tokens)[at->token].offset;
+  else
+    file = nullptr;
+  it->second = {currentFunctionName, currentDepth + 1, currentContext, file, offset, currentChain};
 }
 
 auto codegen::Emitter::claimInstantiation(const std::string& name) -> bool

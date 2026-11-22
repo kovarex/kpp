@@ -2816,9 +2816,13 @@ UniquePtr". The research is docs/unique-pointer-research.md (option B as sugar).
   `T^` (TypeTable.cpp, toString), and so does an error's `(in ...)`, which names the function as the
   program writes it (`(in owned(Item^&))`, `(in sum<int32>(const Vector<int32>&), requested by
   main())`, `(in a lambda in main(), line 29)`; codegen's displayFunctionName, B, 2026-11-04), no
-  longer by its IR name (`@"owned(UniquePtr<Item, DefaultDelete<Item>>&)"`). Qualified names (the
-  IR's, debug information's) keep the class's own, so the IR does not change; the debugger's display
-  names are F's (natvis, debug type names).
+  longer by its IR name (`@"owned(UniquePtr<Item, DefaultDelete<Item>>&)"`). An error in an
+  instantiation is followed by a note per step of the chain that asked for it, innermost first, at
+  the requester's statement (`path(line): note: in instantiation of inner<int32>(int32) requested
+  here`, as C++ compilers' "required from here"; the first 8 and the last 4 of a longer chain;
+  codegen's instantiationNotes, 2026-11-22). Qualified names (the IR's, debug information's) keep
+  the class's own, so the IR does not change; the debugger's display names are F's (natvis, debug
+  type names).
   The debug information names the class `T^` (its identifier stays the qualified name), so Visual
   Studio's Watch and Locals show `Item^` as the type (docs/debugging.md, "Values in Visual
   Studio"); its evaluator reads `^` in an expression as C++/CLI's handle, so a cast to `Item^*`

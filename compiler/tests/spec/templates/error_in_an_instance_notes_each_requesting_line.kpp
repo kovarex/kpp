@@ -1,0 +1,21 @@
+// spec: an error in a template instance's code is followed by a note for each instantiation that led to it, innermost first, at the line that asked for it (as C++ compilers' "required from here"), so the line of the program that started the chain is one click away
+// error: error_in_an_instance_notes_each_requesting_line.kpp:9: error: a pointer (int32*) does not convert to int32 without a cast (in inner<int32>(int32), requested by middle<int32>(int32))
+// error: error_in_an_instance_notes_each_requesting_line.kpp:15: note: in instantiation of inner<int32>(int32) requested here
+// error: error_in_an_instance_notes_each_requesting_line.kpp:20: note: in instantiation of middle<int32>(int32) requested here
+template<typename T>
+int inner(T v)
+{
+  int* first = nullptr;
+  int total = first;
+  return total + v;
+}
+template<typename T>
+int middle(T v)
+{
+  return inner(v) + 1;
+}
+int main()
+{
+  int a = 2;
+  return middle(a);
+}

@@ -1024,6 +1024,9 @@ auto codegen::Emitter::statement(Stmt* s) -> void
   if (blockTerminated)
     startBlock(newLabel("dead"));
   struct DebugBlockGuard { ~DebugBlockGuard() { block = outer; } uint32_t& block; uint32_t outer; } debugBlockGuard{debugBlock, debugBlock};
+  Restore<Node*> requestingRestore(requestingStatement);
+  Restore<ParsedFile*> requestingFileRestore(requestingFile);
+  requestingStatement = s, requestingFile = currentFile;
   if (declaresInHead(s))
     openDebugBlock(s);
   debugLine(s);

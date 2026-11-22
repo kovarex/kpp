@@ -155,6 +155,10 @@
     uint32_t namedPlaces = 0;
     uint32_t lineSlots = 0; // the line constants this emission has named (lineOperand), in the order it meets them
     bool blockTerminated = false;
+    // The statement being emitted and its file (statement()): where an instantiation it asks for was
+    // asked for (Request::at), an error's note. Null before the first: the function's declaration.
+    Node* requestingStatement = nullptr;
+    ParsedFile* requestingFile = nullptr;
     std::string currentBlock = "entry";
     // The body being emitted: the function's, or the lambda's whose call operator is (its static
     // locals are declared in it, staticLocal).
