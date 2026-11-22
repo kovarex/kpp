@@ -684,6 +684,21 @@ namespace
 
 bool TypeTable::isDependent(const Ty* t) const { return dependent(t, nullptr); }
 
+std::string TypeTable::namespaceName(const Decl* ns, const SymbolTable& symbols)
+{
+  auto* n = static_cast<const NamespaceDecl*>(ns);
+  if (n->name == UINT32_MAX)
+    return {};
+  if (n->nested.parts.size() <= 1)
+    return std::string(symbols.name(n->name));
+  // (until 2026-11-22 the first part alone: `UE::Core::Private::Helper` and `UE::Net::Private::Helper` were both
+  // `UE::Helper`, one IR symbol, which clang refused in one module and the linker could merge across two)
+  std::string out;
+  for (const NamePart& part : n->nested.parts)
+    out += (out.empty() ? "" : "::") + std::string(symbols.name(part.symbol));
+  return out;
+}
+
 std::string TypeTable::enclosingSourcePath(const Decl* d, const SymbolTable& symbols, std::string& why)
 {
   std::string path;
@@ -691,7 +706,7 @@ std::string TypeTable::enclosingSourcePath(const Decl* d, const SymbolTable& sym
     if (p->kind == NodeKind::NamespaceDecl)
     {
       if (static_cast<const NamespaceDecl*>(p)->name != UINT32_MAX)
-        path = std::string(symbols.name(static_cast<const NamespaceDecl*>(p)->name)) + "::" + path;
+        path = namespaceName(p, symbols) + "::" + path;
     }
     else if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
     {
@@ -906,7 +921,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
       std::string spaces;
       const Decl* p = d->parent;
       for (; p && p->kind == NodeKind::NamespaceDecl && static_cast<const NamespaceDecl*>(p)->name != UINT32_MAX; p = p->parent)
-        spaces = std::string(symbols->name(static_cast<const NamespaceDecl*>(p)->name)) + "::" + spaces;
+        spaces = namespaceName(p, *symbols) + "::" + spaces;
       return !p && !spaces.empty() ? spaces + name : name;
     }
     if (!qualified || !d || (d->kind != NodeKind::ClassDecl && d->kind != NodeKind::EnumDecl && d->kind != NodeKind::UsingAliasDecl))
@@ -915,7 +930,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
     name += elementOf(d);
     for (Decl* p = d->parent; p; p = p->parent)
       if (p->kind == NodeKind::NamespaceDecl && symbols && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
-        name = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + name;
+        name = namespaceName(p, *symbols) + "::" + name;
       else if (p->kind == NodeKind::ClassDecl || p->kind == NodeKind::EnumDecl)
         name = ownName(p) + elementOf(p) + "::" + name;
       else if (p->kind == NodeKind::FunctionDecl)
@@ -1029,7 +1044,7 @@ std::string TypeTable::toString(const Ty* t, const SymbolTable* symbols, bool qu
         std::string path = ownName(t->decl);
         for (Decl* p = t->decl->parent; p; p = p->parent)
           if (p->kind == NodeKind::NamespaceDecl && symbols && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
-            path = std::string(symbols->name(static_cast<NamespaceDecl*>(p)->name)) + "::" + path;
+            path = namespaceName(p, *symbols) + "::" + path;
           else if (p->kind == NodeKind::ClassDecl)
             path = ownName(p) + "::" + path;
         s += "&" + path;

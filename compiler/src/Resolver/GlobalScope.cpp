@@ -1527,11 +1527,7 @@ std::string GlobalScope::qualifiedName(Decl* d)
   {
     switch (x->kind)
     {
-      case NodeKind::NamespaceDecl:
-      {
-        uint32_t n = static_cast<NamespaceDecl*>(x)->name;
-        return n == UINT32_MAX ? std::string() : std::string(impl->symbols.name(n));
-      }
+      case NodeKind::NamespaceDecl: return TypeTable::namespaceName(x, impl->symbols); // (every part of `namespace A::B`)
       case NodeKind::ClassDecl: case NodeKind::EnumDecl:
       {
         const QualifiedName& q = x->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(x)->name : static_cast<EnumDecl*>(x)->name;

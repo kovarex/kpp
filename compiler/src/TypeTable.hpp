@@ -149,6 +149,10 @@ public:
   // at the top level; empty with why set when d is declared where no name reaches it from outside (a function, a class
   // template, an unnamed class).
   static std::string enclosingSourcePath(const Decl* d, const SymbolTable& symbols, std::string& why);
+  // A namespace's name as code names it, every part of a nested namespace definition (`namespace UE::Logging::Private`
+  // is UE::Logging::Private, the one declaration holding the three: its `name` is the first alone); empty for an
+  // unnamed one.
+  static std::string namespaceName(const Decl* ns, const SymbolTable& symbols);
   size_t size() const;
   // The types made that mention no unknown one: the report's count, the same at every thread count.
   // (A lookup another thread has not finished yet answers unknown for a moment, and a type made of

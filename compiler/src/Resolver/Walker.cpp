@@ -6467,7 +6467,7 @@ auto GlobalScope::Impl::Walker::scopePath(Decl* d) -> std::optional<std::string>
     if (d->kind == NodeKind::NamespaceDecl)
     {
       if (static_cast<NamespaceDecl*>(d)->name != UINT32_MAX) // (an unnamed namespace's names are its file's)
-        path = std::string(symbols.name(static_cast<NamespaceDecl*>(d)->name)) + "::" + path;
+        path = TypeTable::namespaceName(d, symbols) + "::" + path;
     }
     else if (d->kind == NodeKind::ClassDecl && d->templateParams.empty() && !d->isTemplate && !(d->flags & DF_Specialization))
     {

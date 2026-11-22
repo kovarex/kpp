@@ -1,0 +1,55 @@
+// spec: entities of one name in two nested namespace definitions (`namespace A::B` and `namespace A::C`: function templates' instances, functions, globals, classes and their members) stay apart, each its namespace's; clang prints the same
+// found by thread UE (2026-11-22): a nested namespace definition's names were qualified by its first part alone, A::helper<10> for both: the instances merged, silently, A::C::helper<10>() returning A::B's 11 (the functions' and members' symbols clashed, "invalid redefinition of function 'A::X::get() const'"); Unreal declares namespace UE::Core::Private, UE::Net::Private ... with helpers of one name
+namespace A::B
+{
+  template <int N>
+  int helper()
+  {
+    return N + 1;
+  }
+
+  int plain()
+  {
+    return 100;
+  }
+
+  int counter = 1000;
+
+  struct X
+  {
+    int v = 1;
+    int get() const { return this.v + 10; }
+  };
+}
+
+namespace A::C
+{
+  template <int N>
+  int helper()
+  {
+    return N + 2;
+  }
+
+  int plain()
+  {
+    return 200;
+  }
+
+  int counter = 2000;
+
+  struct X
+  {
+    double v = 2.5;
+    int w = 7;
+    int get() const { return int(this.v) + this.w + 20; }
+  };
+}
+
+int main()
+{
+  A::B::X b;
+  A::C::X c;
+  std::println(A::B::helper<10>(), " ", A::C::helper<10>(), " ", A::B::plain(), " ", A::C::plain(), " ", A::B::counter, " ", A::C::counter, " ", b.get(), " ",
+               c.get());
+  return 0;
+}
