@@ -1,0 +1,21 @@
+// spec: a reference parameter given a variable no constant expression reads (a global array of no constexpr, one of const elements, a function's local array) refers to it, and a constant function that reads nothing of it is a constant: `std::size(names) == 2` holds in a static assertion, at namespace scope and in a function, as in C++; clang prints the same (`2 3 4`)
+// found by thread UE (2026-11-22): the call was no constant, as the argument's value was read first: "static assertion whose condition the compiler cannot evaluate yet" for Unreal's `static_assert(std::size(GetIoErrorText_ErrorCodeTextArray) == static_cast<uint32>(EIoErrorCode::Last), ...)`
+private const char* Names[2] = {"a", "b"};
+private const int Numbers[] = {1, 2, 3};
+
+template<typename T, i32 N>
+constexpr i32 count([[maybe_unused]] const T (&array)[N])
+{
+  return N;
+}
+
+static_assert(std::size(Names) == 2, "names");
+static_assert(count(Numbers) == 3, "numbers");
+
+int main()
+{
+  int local[4] = {};
+  static_assert(std::size(local) == 4, "local");
+  std::println(std::size(Names), " ", count(Numbers), " ", std::size(local));
+  return 0;
+}

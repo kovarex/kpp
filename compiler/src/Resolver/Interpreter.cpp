@@ -1911,6 +1911,21 @@ auto GlobalScope::Impl::constArguments(Span<Expr*> args, const TypeContext& ctx,
     if (!v && places && constPure(a))
       if (std::optional<ConstPlace> at = constPlaceOf(a, ctx, depth + 1); at && !constRead(*at))
         v = ConstValue::unset(at->type); // `appendSlot(grown)` of `T* grown;`: a reference to it reads nothing
+    // A variable no constant expression reads (a global or a local array of no constexpr: `const char* names[2]`, or one
+    // outside the run, a static assertion's in a function), named as the argument: a reference parameter refers to it and
+    // reads nothing of it (`std::size(names)`), as in C++; unset, so that a read of it is no constant. Until 2026-11-22
+    // the call was no constant: "static assertion whose condition the compiler cannot evaluate yet" for Unreal's
+    // `static_assert(std::size(GetIoErrorText_ErrorCodeTextArray) == static_cast<uint32>(EIoErrorCode::Last))`.
+    if (!v && places && category == 1 && constPure(a))
+    {
+      Expr* named = a;
+      while (named && named->kind == NodeKind::ParenExpr)
+        named = static_cast<ParenExpr*>(named)->inner;
+      Decl* d = named && named->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(named)->resolved : nullptr;
+      const Ty* declared = d && d->kind == NodeKind::VariableDecl ? static_cast<VariableDecl*>(d)->cachedType.load(std::memory_order_acquire) : nullptr;
+      if (declared && !(d->flags & DF_Typedef) && !declared->isReference() && a->ty && a->ty->isKnown() && !types.isDependent(a->ty))
+        v = ConstValue::unset(a->ty); // (not a reference variable's, whose referent is read to bind it)
+    }
     if (!v)
       return false;
     values.push_back(*v);
@@ -9183,6 +9198,17 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     alias.aliasPath.insert(alias.aliasPath.end(), basePart->begin(), basePart->end());
     env.push_back(std::move(alias));
     env.back().decl = p;
+    return true;
+  }
+  if (type && type->isReference() && given && args[i].isUnset() && basePart && basePart->empty() && !(places && i < places->size() && (*places)[i]))
+  {
+    // A variable no constant expression reads, named as the argument (constArguments: `std::size(names)` of a global
+    // array of no constexpr): the reference refers to it and reads nothing of it. Unset, so a read of it is no
+    // constant, and no write: one changes no object the evaluation made (C++'s, a global that keeps its value).
+    env.push_back(constBinding(p->name, args[i], type));
+    env.back().decl = p;
+    env.back().writable = false;
+    env.back().referenceToTemporary = true;
     return true;
   }
   std::optional<ConstValue> v;

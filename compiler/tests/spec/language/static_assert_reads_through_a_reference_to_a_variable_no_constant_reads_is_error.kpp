@@ -1,0 +1,16 @@
+// spec: a constant function given a variable no constant expression reads (a global of no const) by reference may refer to it, never read or write it: a read, a write and a copy of it for a by-value parameter make the call no constant, as in C++ (clang: "static assertion expression is not an integral constant expression"), so a static assertion never holds with a value the program does not have (the write is not the global's at run time)
+// error: static_assert_reads_through_a_reference_to_a_variable_no_constant_reads_is_error.kpp:10: error: static assertion whose condition the compiler cannot evaluate yet: "read"
+// error: static_assert_reads_through_a_reference_to_a_variable_no_constant_reads_is_error.kpp:11: error: static assertion whose condition the compiler cannot evaluate yet: "write"
+// error: static_assert_reads_through_a_reference_to_a_variable_no_constant_reads_is_error.kpp:12: error: static assertion whose condition the compiler cannot evaluate yet: "by value"
+private int Counter[2] = {1, 2};
+private int Single = 3;
+constexpr int first(const int (&a)[2]) { return a[0]; }
+constexpr int bump(int (&a)[2]) { a[0] = 5; return a[0]; }
+constexpr int byValue([[maybe_unused]] int x) { return 1; }
+static_assert(first(Counter) == 1, "read");
+static_assert(bump(Counter) == 5, "write");
+static_assert(byValue(Single) == 1, "by value");
+int main()
+{
+  return Counter[0] + Single == 4 ? 0 : 1;
+}
