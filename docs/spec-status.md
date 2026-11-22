@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2423 pass, 2 pending, 0 failing, 0 fixed** (2425 snippets, 204.5 s).
+**2424 pass, 2 pending, 0 failing, 0 fixed** (2426 snippets, 205.2 s).
 
 ## Language: statements, expressions, declarations
 
@@ -1133,6 +1133,7 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `classes/postincrement_assignment.kpp` | postincrement_assignment | pass |  |  |
 | `classes/private_default_constructor_reached_by_a_friend.kpp` | a class that a class declares its friend default-constructs it as a base or a member though its default constructor is private (`friend class ::Task;` beside a private `TaskBase() = default;`): the friend's defaulted default constructor is no deleted one; for any other class, and std::isDefaultConstructible, the private constructor stays out of reach; clang prints the same | pass |  |  |
 | `classes/protected_member_in_instance_with_parameter_base.kpp` | a class template deriving from its parameter (`class Dragging : public W`) may name the protected members of the base an instance's argument makes (`Inherited::paint()` with W a Table) | pass | DragPaneWidget<agui::Table, ...> calling agui::Layout's and agui::Widget's protected recursivePaint functions |  |
+| `classes/protected_member_through_a_friend_of_an_intermediate_base.kpp` | a protected member of a base, named through a derived class's object, is accessible in a friend of a class between them ([class.access.base] 5.4: accessible when named in that class, which derives from the member's): `allocator.trimEpoch` of a Binned2 in Utils, a friend of Common<Binned2>, CommonBase's derived class; clang prints the same | pass |  |  |
 | `classes/protected_member_through_friend_of_naming_class.kpp` | a protected member of a base named through a class N (`c->forceID` with a Character*, `handle->forceID` through a Handle<Character>'s operator->) may be named in a friend of N, as C++'s [class.access.base] 5 has it | pass | EntityWithOwner::forceID in AssociatedCharacters (a friend of Character, through Targeter<Character>), SegmentEngine and LatencyState |  |
 | `classes/qualified_call_of_implicit_assignment.kpp` | `Inherited::operator=(other)` (or `Base::operator=(other)`) of a class that declares no operator= calls its implicit assignment on this object's base part, as `this->Inherited::operator=(other)` does: the base's members are assigned, member by member | pass |  |  |
 | `classes/qualified_call_through_template_with_parameter_base.kpp` | a qualified call of a member that a class template instance inherits from its template parameter (`template<class WidgetType> class DragPaneWidget : public WidgetType, public DragPane`), through an alias of the instance: `Inherited::paintBackgroundGlow(...)` with `using Inherited = DragPaneVerticalFlow;` calls agui::Widget's, without virtual dispatch | pass | ConditionDragPane::paintBackgroundGlow's `super::paintBackgroundGlow(paintEvent, absolutePosition);`, DragPaneVerticalFlow = DragPaneWidget<agui::VerticalFlow, DragPane::DragMode::MOVE, DragPane::VERTICAL> |  |

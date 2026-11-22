@@ -1,0 +1,32 @@
+// spec: a protected member of a base, named through a derived class's object, is accessible in a friend of a class between them ([class.access.base] 5.4: accessible when named in that class, which derives from the member's): `allocator.trimEpoch` of a Binned2 in Utils, a friend of Common<Binned2>, CommonBase's derived class; clang prints the same
+// found by thread UE (2026-11-22): it was "CommonBase::trimEpoch is protected, named in Utils::epochOf" (Unreal's FMallocBinnedCommonUtils, a friend of TMallocBinnedCommon, reading FMallocBinnedCommonBase::MemoryTrimEpoch)
+class Utils;
+
+class CommonBase
+{
+protected:
+  int trimEpoch = 3;
+};
+
+template<typename Alloc> class Common : public CommonBase
+{
+  friend class ::Utils;
+};
+
+class Binned2 : public Common<Binned2>
+{
+};
+
+class Utils
+{
+public:
+  template<typename Alloc> static int epochOf(Alloc& allocator) { return allocator.trimEpoch; }
+  static int direct(Binned2& b) { return b.trimEpoch; }
+};
+
+int main()
+{
+  Binned2 b;
+  std::println(Utils::epochOf(b), " ", Utils::direct(b));
+  return 0;
+}

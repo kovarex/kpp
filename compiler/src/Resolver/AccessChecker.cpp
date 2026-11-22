@@ -202,6 +202,32 @@ auto GlobalScope::Impl::accessOf(Decl* used, FunctionDecl* fn, const std::vector
   a.grantedBy = grantingFriend(owner, fn, context);
   if (!a.grantedBy && isProtected && naming && naming != owner->ownScope && naming->owner && naming->owner->kind == NodeKind::ClassDecl)
     a.grantedBy = grantingFriend(naming->owner, fn, context);
+  // A friend of a class between the naming class and the member's (`allocator.trimEpoch` of a Binned2, in a friend of
+  // its base Common, the member Common's base's protected one): the member is accessible named in that base, and so
+  // through the class derived from it ([class.access.base] 5.4). Until 2026-11-22 refused: Unreal's
+  // FMallocBinnedCommonUtils, a friend of TMallocBinnedCommon, reading FMallocBinnedCommonBase::MemoryTrimEpoch.
+  if (!a.grantedBy && isProtected && naming && naming != owner->ownScope)
+  {
+    std::vector<Scope*> pending{naming};
+    std::set<Scope*> seen;
+    while (!pending.empty() && !a.grantedBy)
+    {
+      Scope* b = pending.back();
+      pending.pop_back();
+      if (!b || !seen.insert(b).second || seen.size() > 64)
+        continue;
+      ensureBases(b, 0);
+      for (Scope* up : b->baseScopes)
+        if (up && up != owner->ownScope && isBaseScope(owner->ownScope, up))
+        {
+          if (up->owner && up->owner->kind == NodeKind::ClassDecl)
+            a.grantedBy = grantingFriend(up->owner, fn, context);
+          if (a.grantedBy)
+            break;
+          pending.push_back(up);
+        }
+    }
+  }
   a.allowed = a.grantedBy != nullptr;
   return a;
 }
