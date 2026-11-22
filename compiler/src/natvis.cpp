@@ -1819,6 +1819,39 @@ namespace
       TypeTable& types = v.global.types();
       const Ty* base = types.unqualified(types.stripRef(x->base->ty));
       bool vector = isLibraryClass(base, v.symbols, "Vector");
+      if (base->kind == TyKind::Class && base->decl && base->decl->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(base->decl)->isTypedUnion)
+      {
+        // A union enum's alternative, `this[Entity]` (kovarex, 2026-11-22: UpgradeIDBase's debugValue): its storage member,
+        // as the union's own rule shows it (the parser's names, the PDB's).
+        auto* u = static_cast<ClassDecl*>(base->decl);
+        Expr* index = x->args[0];
+        while (index && index->kind == NodeKind::ParenExpr)
+          index = static_cast<ParenExpr*>(index)->inner;
+        Decl* named = index && index->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(index)->resolved : nullptr;
+        size_t which = SIZE_MAX;
+        if (named && u->tagEnum && u->tagEnum->kind == NodeKind::EnumDecl)
+          for (size_t i = 0; i < static_cast<EnumDecl*>(u->tagEnum)->enumerators.size(); ++i)
+            if (static_cast<EnumDecl*>(u->tagEnum)->enumerators[i] == named)
+              which = i;
+        if (which == SIZE_MAX || which >= u->alternatives.size())
+          return fail(v, e, "an alternative of a union enum other than one it names");
+        auto* field = static_cast<const VariableDecl*>(u->alternatives[which]);
+        if (u->inlineLimit || field->voidAlternative)
+          return fail(v, e, "an alternative of a union enum kept on the heap (inline(N)) or of type void");
+        std::string name = nameOf(field->name, v.symbols);
+        if (isThisObject(x->base))
+        {
+          if (v.object)
+            return memberOf(v, e, name, out);
+          out = v.prefix + name;
+          return true;
+        }
+        std::string object;
+        if (!natvisExpression(v, x->base, object))
+          return false;
+        out = object == "(*this)" ? v.prefix + name : wrap(object) + "." + name;
+        return true;
+      }
       if (!vector && base->kind == TyKind::Class)
       {
         // A class's own operator[] (CompactDeque's, its index wrapped): its const one, inlined on the object.
@@ -3446,6 +3479,8 @@ std::string makeNatvis(const std::vector<ParsedFile*>& files, GlobalScope& globa
       if (!d.type->decl || d.type->decl->kind != NodeKind::ClassDecl || !unions.count(static_cast<const ClassDecl*>(d.type->decl)))
         continue;
       auto* c = static_cast<const ClassDecl*>(d.type->decl);
+      if (std::any_of(c->members.begin(), c->members.end(), [&](const Decl* m) { return isDebugValue(m, symbols); }))
+        continue; // (its debugValue's rule shows it, below: one rule per type, or the debugger takes the first)
       std::string tag = nameOf(static_cast<const VariableDecl*>(c->tagField)->name, symbols);
       std::string shown, items;
       for (size_t i = 0; i < c->alternatives.size(); ++i)

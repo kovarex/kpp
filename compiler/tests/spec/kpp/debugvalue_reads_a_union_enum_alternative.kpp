@@ -1,0 +1,37 @@
+// spec: a debugValue (design.md 26) may read a union enum's alternative, `this[Entity]`, and its tag(), as the debugger reads the alternative's storage and the tag (kovarex, 2026-11-22: UpgradeIDBase's debugValue, "an index of a class without one const operator[]"); a class holding one calls its debugValue (IDWithQuality's `this.baseID.debugValue()`)
+struct EntityID
+{
+  int index = 0;
+  std::String debugValue() const { return std::toString("entity ", this.index); }
+};
+struct ItemID
+{
+  int index = 0;
+  std::String debugValue() const { return std::toString("item ", this.index); }
+};
+union enum class Upgrade : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  std::String debugValue() const
+  {
+    if (this.tag() == Tag::Entity)
+      return this[Entity].debugValue();
+    return this[Item].debugValue();
+  }
+};
+struct WithQuality
+{
+  Upgrade base;
+  int quality = 0;
+  std::String debugValue() const { return std::toString(this.base.debugValue(), " of quality ", this.quality); }
+};
+int main()
+{
+  WithQuality w;
+  w.base[Item] = ItemID(7);
+  w.quality = 2;
+  std::println(w.debugValue());
+  w.base[Entity] = EntityID(3);
+  std::println(w.debugValue());
+  return 0;
+}

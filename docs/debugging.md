@@ -289,7 +289,9 @@ game. It shows the library's values as values (compiler\src\natvis.cpp):
   RbNode<E>) by name;
 - a typed union (`union enum`) as its active alternative, `Integer 12`: one rule per class (and per
   instance of one in a template) by its tag `__tag`, valued in the alternatives' order, and the
-  alternatives' storage `__alt_<Name>`, the names the parser gives them and the PDB keeps.
+  alternatives' storage `__alt_<Name>`, the names the parser gives them and the PDB keeps. A union with a debugValue is
+  shown by it instead, which may read an alternative, `this[Entity]` (its `__alt_Entity`), and `this.tag()` (2026-11-22,
+  UpgradeIDBase; not an alternative kept on the heap, inline(N), nor a void one). Spec kpp/debugvalue_reads_a_union_enum_alternative.
 
 The type names are kpp's (TypeTable::toString, qualified: `HashTable<Pair<String, int32>, String,
 HashMapKey<String, int32>, Hash<String>, EqualTo<String>, true>`), each instance's full argument
