@@ -134,6 +134,43 @@
           return UINT32_MAX;
       return open.front() - 2;
     }
+    // The offset where the declaration of the top-level function whose body is open at offset starts (its return type,
+    // specifiers, template header), when every brace open there is that body's or a block in it; UINT32_MAX otherwise
+    // (a namespace, a class, an `extern "C"` block, an initializer).
+    uint32_t topLevelFunctionStartAt(uint32_t offset) const
+    {
+      int depth = 0;
+      uint32_t outer = UINT32_MAX;
+      for (uint32_t k = 0; k < toks.size() && toks[k].offset < offset; ++k)
+        if (toks[k].is(P::LBrace))
+        {
+          if (depth++ == 0)
+            outer = k;
+        }
+        else if (toks[k].is(P::RBrace) && depth > 0)
+          --depth;
+      if (depth == 0 || outer == UINT32_MAX)
+        return UINT32_MAX;
+      // back from the body's `{` to what ends the declaration before it, at the top level
+      bool call = false;
+      int parens = 0;
+      uint32_t k = outer;
+      while (k > 0)
+      {
+        const Token& t = toks[k - 1];
+        if (t.is(P::RParen))
+          ++parens, call = true;
+        else if (t.is(P::LParen))
+          --parens;
+        else if (parens == 0 && (t.is(P::Semi) || t.is(P::RBrace) || t.is(P::LBrace)))
+          break;
+        else if (parens == 0 && (t.is(Kw::namespace_) || t.is(Kw::class_) || t.is(Kw::struct_) || t.is(Kw::union_) || t.is(Kw::enum_) ||
+                                 t.is(P::Assign) || t.getKind() == TokenKind::String))
+          return UINT32_MAX;
+        --k;
+      }
+      return call && k < outer ? toks[k].offset : UINT32_MAX;
+    }
     // How many braces are open before offset (0: the file's top level, outside any namespace, class or function).
     int braceDepthAt(uint32_t offset) const
     {

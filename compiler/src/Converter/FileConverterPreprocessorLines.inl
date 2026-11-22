@@ -539,6 +539,29 @@
               counts.add("macro constants of a source file written private");
               return std::string();
             }
+            // (in a top-level function's body: the macro is the rest of the file's, not the function's, xxhash's
+            // `#define XXH_SECRET_MERGEACCS_START 11` in XXH3_hashLong_64b_internal, which XXH3_hashLong_128b_internal
+            // names too: before the function, unless the file defines the name again)
+            size_t definitions = 0;
+            for (size_t at = text.find("define"); at != std::string_view::npos; at = text.find("define", at + 6))
+            {
+              size_t n = at + 6;
+              while (n < text.size() && (text[n] == ' ' || text[n] == '\t'))
+                ++n;
+              definitions += n > at + 6 && text.compare(n, name.size(), name) == 0 &&
+                             (n + name.size() >= text.size() || !isIdentChar(text[n + name.size()]));
+            }
+            if (uint32_t start = definitions == 1 ? topLevelFunctionStartAt(offset) : UINT32_MAX; start != UINT32_MAX)
+            {
+              size_t lineStart = text.rfind('\n', start);
+              std::string constant = "private const auto " + name + " = " + body + ";" + trailing;
+              if (lineStart == std::string_view::npos)
+                insert(0, constant + "\n");
+              else
+                insert(uint32_t(lineStart), "\n" + constant);
+              counts.add("macro constants of a source file's function written private before it");
+              return std::string();
+            }
           }
           return indent + (innermost && innermost->classBody ? "static constexpr auto " : "const auto ") + name + " = " + body + ";" + trailing;
         }
