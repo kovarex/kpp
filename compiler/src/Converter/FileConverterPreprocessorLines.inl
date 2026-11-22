@@ -456,30 +456,32 @@
               constant = false; // a list (`2,1,0` for a resource script), not a value
           }
         }
-        // A body of declaration words (`#define STBDDEF static`) is no value either.
+        // A body of declaration words (`#define STBDDEF static`) is no value either; its comments' words are none
+        // (lz4hc.h's `#define LZ4_STREAMHC_MINSIZE  262200  /* static size, for inter-version compatibility */`,
+        // until 2026-11-22 a TODO, "'LZ4_STREAMHC_MINSIZE' is not declared" in Unreal's copy of LZ4).
         static const std::set<std::string> declarationWords = {"static", "inline", "extern", "const", "volatile", "register", "thread_local",
                                                               "constexpr", "virtual", "explicit", "friend", "typedef", "struct", "class",
                                                               "union", "enum", "template", "typename", "using", "namespace", "__forceinline",
                                                               "__inline", "__declspec", "__cdecl", "__stdcall", "__fastcall"};
-        for (size_t k = 0; k < body.size() && constant;)
+        for (size_t k = 0; k < checked.size() && constant;)
         {
-          if (body[k] == '"')
+          if (checked[k] == '"')
           {
-            size_t e = body.find('"', k + 1);
-            k = e == std::string::npos ? body.size() : e + 1;
+            size_t e = checked.find('"', k + 1);
+            k = e == std::string::npos ? checked.size() : e + 1;
           }
-          else if (isalpha((unsigned char)body[k]) || body[k] == '_')
+          else if (isalpha((unsigned char)checked[k]) || checked[k] == '_')
           {
             size_t e = k;
-            while (e < body.size() && isIdentChar(body[e]))
+            while (e < checked.size() && isIdentChar(checked[e]))
               ++e;
-            if (declarationWords.count(body.substr(k, e - k)))
+            if (declarationWords.count(checked.substr(k, e - k)))
               constant = false;
             k = e;
           }
-          else if (isdigit((unsigned char)body[k]))
+          else if (isdigit((unsigned char)checked[k]))
           {
-            while (k < body.size() && isIdentChar(body[k]))
+            while (k < checked.size() && isIdentChar(checked[k]))
               ++k;
           }
           else
