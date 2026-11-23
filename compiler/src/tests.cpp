@@ -2985,6 +2985,20 @@ std::string readableGeneratedName(std::string_view name)
             shown = written(id.substr(prefix.size()));
             break;
           }
+      // A fixture test's class, local to its test function and numbered there (`Suite::Name::Name@1a2b3c4d_0::body`, parseTest):
+      // the test's name once, `Suite::Name::body`.
+      if (id.starts_with("__kpp_fixture_") && end < name.size() && name[end] == '@')
+      {
+        size_t after = end + 1;
+        while (after < name.size() && (word(name[after])))
+          ++after;
+        end = after;
+        if (out.ends_with(shown + "::") && name.substr(end, 2) == "::")
+        {
+          shown.clear();
+          end += 2;
+        }
+      }
       out += shown;
       i = end;
     }

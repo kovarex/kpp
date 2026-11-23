@@ -1,0 +1,96 @@
+// spec: a compile server's builds after a fixture test is added, renamed and removed are what a build from scratch gives: the fixture's class is local to the test's function (parseTest), which the server adds and removes as a whole function, its class indexed with it (kovarex, 2026-11-23: until then the class was the file's, and a fixture test added built the game's tests from scratch)
+// kpp: --tests
+//--- step: the program
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Stops : BeltFixture(0) { std::println("Belts.Stops ", this.speed); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Stops 0
+// expect: 2 tests, 0 failed
+//--- step: a fixture test added between the two
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Turns : BeltFixture(30)
+  {
+    struct Turn
+    {
+      int degrees = 90;
+    };
+    std::println("Belts.Turns ", this.speed, " ", Turn{}.degrees);
+  }
+  test Stops : BeltFixture(0) { std::println("Belts.Stops ", this.speed); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Turns 30 90
+// expect: Belts.Stops 0
+// expect: 3 tests, 0 failed
+//--- step: that test renamed and its fixture's argument changed
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Bends : BeltFixture(45)
+  {
+    struct Turn
+    {
+      int degrees = 90;
+    };
+    std::println("Belts.Bends ", this.speed, " ", Turn{}.degrees);
+  }
+  test Stops : BeltFixture(0) { std::println("Belts.Stops ", this.speed); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Bends 45 90
+// expect: Belts.Stops 0
+// expect: 3 tests, 0 failed
+//--- step: that test removed
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Stops : BeltFixture(0) { std::println("Belts.Stops ", this.speed); }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Stops 0
+// expect: 2 tests, 0 failed

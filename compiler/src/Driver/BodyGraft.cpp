@@ -619,13 +619,15 @@ bool plainFunction(const DeclaredFunction& d, const std::vector<Token>& tokens)
   for (uint32_t k = f->token; k < end && k < tokens.size(); ++k)
     if (tokens[k].is(Kw::auto_) || tokens[k].is(Kw::decltype_))
       return false;
-  bool localType = false;
-  forEachNode(f->body, [&](Node* n)
-  {
-    if ((n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl)
-      localType = true;
-  });
-  return !localType;
+  // (a class or enumeration its body declares is indexed with it, graftFunctions, as a body edit's is: a fixture test's class,
+  // parseTest; until 2026-11-23 such a function added or removed built the program from scratch)
+  return true;
+}
+
+// Whether a node is a class or enumeration a body declares (a lambda's closure aside).
+bool localTypeNode(Node* n)
+{
+  return (n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl;
 }
 
 bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out, std::string& why)
@@ -857,6 +859,18 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
     removed.insert(f);
     global.unindexFunction(f);
     forEachNode(f, [&](Node* n) { dropped.insert(n); });
+    // (the classes and enumerations its body declared are types no code names now: their layouts go in codegen, as a
+    // replaced body's do)
+    forEachNode(f->body, [&](Node* n)
+    {
+      if (!localTypeNode(n))
+        return;
+      auto* d = static_cast<Decl*>(n);
+      if (n->kind == NodeKind::EnumDecl)
+        kept.droppedClasses.push_back(global.types().enumType(d));
+      else if (static_cast<ClassDecl*>(n)->isDefinition && d->templateParams.empty())
+        kept.droppedClasses.push_back(global.types().classType(d, {}));
+    });
   }
   for (auto& [v, container] : c.removedMembers)
   {
@@ -938,6 +952,13 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
   global.indexMembers(addedMembers);
   if (!global.indexFunctions(added))
     return why = "an added function needs the whole index (a definition matching no declaration, an object declaration)", false;
+  for (FunctionDecl* f : added) // (the classes and enumerations its body declares get their scopes, as a body edit's do)
+  {
+    bool declaresTypes = false;
+    forEachNode(f->body, [&](Node* n) { declaresTypes = declaresTypes || localTypeNode(n); });
+    if (declaresTypes)
+      global.indexGraftedBody(f);
+  }
   return true;
 }
 

@@ -5296,10 +5296,11 @@ namespace
     // (ATTR_Startup, Emitter::ctorsText), and is a whole function a compile server adds and removes with the test (until
     // 2026-11-22 a global: a test added, removed or renamed built the program from scratch, 18 s of the game's tests).
     // S is the test's name and a count of that name in the file (testSuffix): one test added leaves the others' as they were. With a fixture
-    // the body is a member of a class derived from it, which the test function builds and runs:
-    //   class __kpp_fixture_S : public Fixture { public: __kpp_fixture_S() : Fixture(arguments) {}
-    //     void __kpp_body() { body } };
-    //   void __kpp_test_S() { __kppRunFixture<__kpp_fixture_S>("Fixture"); }
+    // the body is a member of a class derived from it, local to the test function, which builds and runs it (a local class:
+    // the test is one whole function, which a compile server adds and removes; until 2026-11-23 the class was the file's,
+    // and a fixture test added built the program from scratch):
+    //   void __kpp_test_S() { class __kpp_fixture_S : public Fixture { public: __kpp_fixture_S() : Fixture(arguments) {}
+    //     void __kpp_body() { body } }; __kppRunFixture<__kpp_fixture_S>("Fixture"); }
     void parseTest(Scope scope)
     {
       uint32_t from = pos;
@@ -5376,7 +5377,7 @@ namespace
         std::string cls = "__kpp_fixture_" + suffix;
         auto append = [&](std::vector<Token> more) { head.insert(head.end(), more.begin(), more.end()); };
         auto copy = [&](uint32_t a, uint32_t b) { head.insert(head.end(), toks.begin() + a, toks.begin() + b); };
-        append(synthesize("class " + cls + " : public", from));
+        append(synthesize("void __kpp_test_" + suffix + "() { class " + cls + " : public", from));
         copy(fixtureFrom, fixtureTo);
         append(synthesize("{ public: " + cls + "() :", from));
         copy(fixtureFrom, fixtureTo);
@@ -5384,7 +5385,7 @@ namespace
         if (argumentsFrom)
           copy(argumentsFrom, argumentsTo);
         append(synthesize(") {} void __kpp_body()", from));
-        tail = synthesize("}; void __kpp_test_" + suffix + "() { __kppRunFixture<" + cls + ">(__kpp_text __kpp_text_slot); } " + registration, from,
+        tail = synthesize("}; __kppRunFixture<" + cls + ">(__kpp_text __kpp_text_slot); } " + registration, from,
                           {tokensText(fixtureFrom, fixtureTo), name, suite});
       }
       spliceAround(from, i, head, tail);

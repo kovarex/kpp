@@ -202,9 +202,27 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
 // 2026-11-22 a release build's server kept them: --verify-incremental, "what it wrote differs", after a test was renamed).
 // The module's record of each literal dropped goes with it (Shared::LiteralShard::modules, each emitter's constantCache), so
 // that a later use defines it again (until 2026-11-23 a literal changed and changed back named an undefined literal).
-static void dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>& emitters, unsigned k, std::vector<std::string>& entries)
+// Whether it dropped any (the module's text changed beyond its lines then: compiled, never patched).
+static bool dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>& emitters, unsigned k, std::vector<std::string>& entries)
 {
+  // (and the vtables and type descriptors a use put in the module, Emitter::useVtable: those of a class an edit took out, or
+  // whose user it emitted elsewhere, which a build from scratch does not have; until 2026-11-23 a fixture test added kept
+  // another fixture's vtable in a module that no longer named it)
   auto literal = [](const std::string& e) { return e.starts_with("$.str.") || e.starts_with("$.wstr.") || e.starts_with("$.data."); };
+  auto layoutEntry = [](const std::string& e) { return e.starts_with("$\"vtable.") || e.starts_with("$\"typeinfo."); };
+  auto candidate = [&](const std::string& e) { return literal(e) || layoutEntry(e); };
+  auto defines = [](std::string_view e, auto&& each)
+  {
+    for (size_t at = 0; at < e.size();)
+    {
+      size_t end = e.find('\n', at);
+      std::string_view line = e.substr(at, end == std::string_view::npos ? std::string_view::npos : end - at);
+      if (line.starts_with("@"))
+        if (size_t eq = line.find(" = "); eq != std::string_view::npos)
+          each(line.substr(0, eq));
+      at = end == std::string_view::npos ? e.size() : end + 1;
+    }
+  };
   std::unordered_set<std::string_view> named;
   auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { named.insert(text.substr(at, length)); }); };
   for (const Shared::Definition& d : sh.definitions[k])
@@ -212,25 +230,38 @@ static void dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>
   for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
     scan(o.text);
   for (const std::string& e : entries)
-    if (!literal(e))
+    if (!candidate(e))
       scan(e);
-  // (a literal named by another literal's data, a constant array of pointers to them, stays with it)
+  // (one named by another kept one, a literal in a constant array of pointers, a descriptor in a vtable, stays with it)
+  auto used = [&](const std::string& e)
+  {
+    bool any = false;
+    defines(e, [&](std::string_view name) { any = any || named.count(name); });
+    return any;
+  };
+  std::vector<char> scanned(entries.size(), 0);
   for (bool more = true; more;)
   {
     more = false;
-    for (const std::string& e : entries)
-      if (literal(e) && named.count("@" + e.substr(1, e.find(" = comdat") - 1)))
+    for (size_t n = 0; n < entries.size(); ++n)
+      if (!scanned[n] && candidate(entries[n]) && used(entries[n]))
+      {
+        scanned[n] = 1;
+        const std::string& e = entries[n];
         irNamesIn(e, [&](size_t at, size_t length) { more |= named.insert(std::string_view(e).substr(at, length)).second; });
+      }
   }
-  std::vector<std::string> dropped;
+  std::vector<std::string> dropped, droppedLayouts;
   std::erase_if(entries, [&](const std::string& e)
   {
-    std::string name = "@" + e.substr(1, e.find(" = comdat") - 1);
-    if (!literal(e) || named.count(name))
+    if (!candidate(e) || used(e))
       return false;
-    dropped.push_back(std::move(name));
+    defines(e, [&](std::string_view name) { (literal(e) ? dropped : droppedLayouts).push_back(std::string(name)); });
     return true;
   });
+  for (const std::string& name : droppedLayouts)
+    if (k < sh.vtablesIn.size())
+      sh.vtablesIn[k].erase(name); // (a later use puts it in again)
   for (const std::string& name : dropped)
   {
     Shared::LiteralShard& shard = sh.literalShard(name);
@@ -247,6 +278,7 @@ static void dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>
     for (auto& em : emitters)
       em->constantCache.erase(key);
   }
+  return !dropped.empty() || !droppedLayouts.empty();
 }
 
 unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
@@ -1618,6 +1650,12 @@ static std::string withoutLines(std::string_view text)
   for (size_t at = text.find("ine: "); at != std::string_view::npos; at = text.find("ine: ", at + 5))
   {
     if (at == 0 || (text[at - 1] != 'l' && text[at - 1] != 'L'))
+      continue;
+    // (a class's line is in its CodeView type record, which the patch leaves: a class declared in a body that moved, a
+    // fixture test's (parseTest), makes its module's object compiled again)
+    size_t lineStart = text.rfind('\n', at);
+    lineStart = lineStart == std::string_view::npos ? 0 : lineStart + 1;
+    if (text.substr(lineStart, at - lineStart).find("DICompositeType(") != std::string_view::npos)
       continue;
     size_t digits = at + 5;
     while (digits < text.size() && isdigit((unsigned char)text[digits]))
@@ -3027,6 +3065,15 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     out.declined = std::to_string(added.size()) + " first use(s) added to the shared declarations, the first: " + cut(added.front());
     return out;
   }
+  // A class or enumeration a body declares dropped or made (a function that declares one added, removed or edited: a fixture
+  // test's, parseTest): its member functions are emitted anew, maybe in another module, and a module that holds one is
+  // compiled, never patched (2026-11-23: a fixture test added left a patched object without the moved fixture's body).
+  bool localTypesChanged = !droppedClasses.empty();
+  for (FunctionDecl* f : added)
+    forEachNode(f->body, [&](Node* n)
+    {
+      localTypesChanged = localTypesChanged || (n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl;
+    });
   std::vector<unsigned> which;
   std::vector<bool> linesOnly(sh.moduleCount, false); // (texts changed in their lines alone, debug or assert lines: linesOnlyModules)
   for (unsigned k = 0; k < sh.moduleCount; ++k)
@@ -3046,7 +3093,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
                            [](const std::string& a, const Shared::Definition& b) { return a == b.text; });
     // (or the same but for its lines: a function emitted again because an edit moved its lines or its positions, its code the
     // one it had; the server patches the object's line tables and assert lines, LinePatch.hpp)
-    bool linesCandidate = !same && !declared && !layoutsReplaced && sh.patchableLines && defs.size() - was.keptDefinitions == was.definitions.size();
+    bool linesCandidate = !same && !declared && !layoutsReplaced && !localTypesChanged && sh.patchableLines && defs.size() - was.keptDefinitions == was.definitions.size();
     if (same || linesCandidate)
     {
       std::vector<std::string> ownedNow;
@@ -3057,7 +3104,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         same = ownedNow == was.owned;
       // (its definitions the same but for their debug lines, its owned entries but for their lines; without --debug-info its
       // definitions are the same, and its assert lines' constants changed alone)
-      if (!same && !layoutsReplaced && sh.patchableLines)
+      if (!same && !layoutsReplaced && !localTypesChanged && sh.patchableLines)
         linesOnly[k] = sameButLines(was.definitions, defs.begin() + was.keptDefinitions, defs.end()) && sameButLines(was.owned, ownedNow);
     }
     std::inplace_merge(defs.begin(), defs.begin() + was.keptDefinitions, defs.end(), byText);
@@ -3069,7 +3116,8 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     std::vector<std::string>& kept = sh.keptModuleEntries[k];
     kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
     dropSharedLiterals(sh, kept);
-    dropUnusedLiterals(sh, emitters, k, kept);
+    if (dropUnusedLiterals(sh, emitters, k, kept))
+      linesOnly[k] = false;
     std::vector<std::string> entries = kept;
     appendOwnedEntries(sh, k, entries);
     sh.moduleDecls[k].entries = std::move(entries);
@@ -3118,7 +3166,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       if (sh.debugGlobals[key] != before && std::find(which.begin(), which.end(), home->second.home) == which.end())
       {
         which.push_back(home->second.home);
-        linesOnly[home->second.home] = true;
+        linesOnly[home->second.home] = !localTypesChanged;
       }
     }
     std::sort(which.begin(), which.end());
