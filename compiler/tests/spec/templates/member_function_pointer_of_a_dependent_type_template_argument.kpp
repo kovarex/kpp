@@ -1,0 +1,26 @@
+// spec: a pointer to a member function as the argument of a parameter whose type names an earlier template parameter (`template<typename R, R (Obj::*m)()>` given `<double, &Obj::weight>`): the earlier argument gives the parameter its type, called directly, through the address of the instance (`&viaTyped<double, &Obj::weight>`) and in a captureless lambda the function template returns (clang gives the same numbers)
+// pending: the parameter's type is converted without the earlier arguments (functionArgument), so no function matches it: "codegen does not support a constant argument the compiler could not evaluate in the address of a function template yet", and a call or the lambda "emitting the function template ... without its argument m"
+// found by thread luatyped (2026-11-23, typed Lua accessors of the game's LuaBinder; the binder takes `template<auto m>`, templates/member_function_pointer_auto_template_argument)
+extern "C" import "stdio.h";
+
+class Obj
+{
+public:
+  int v = 5;
+  double weight() { return this.v + 0.25; }
+  int constant() const { return 7; }
+};
+
+using Call = double (*)(Obj*);
+
+template<typename R, R (Obj::*m)()> double viaTyped(Obj* o) { return (o->*m)(); }
+template<typename R, R (Obj::*m)() const> double viaTypedConst(Obj* o) { return (o->*m)(); }
+template<typename R, R (Obj::*m)()> Call viaTypedLambda() { return [](Obj* o) -> double { return (o->*m)(); }; }
+
+int main()
+{
+  Obj o;
+  Call calls[2] = {&viaTyped<double, &Obj::weight>, viaTypedLambda<double, &Obj::weight>()};
+  printf("%g %g %g %g\n", viaTyped<double, &Obj::weight>(&o), viaTypedConst<int, &Obj::constant>(&o), calls[0](&o), calls[1](&o));
+  return 0;
+}

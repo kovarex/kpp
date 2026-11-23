@@ -653,6 +653,9 @@ public:
   // capturing a parameter pack lays out, whichever function needs the closure first.
   const Ty* typeInInstanceOf(Decl* d, const Decl* in);
   const Ty* typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args);
+  // The template argument arg written in context for parameter param under args, as an instantiation takes it: a type, or a
+  // constant's value type (`&call<&Obj::weight>`: the member pointer's value, functionValue).
+  const Ty* templateArgumentIn(Node* arg, Decl* param, Decl* context, const TemplateArgs& args);
   // The value of the constant expression e (read from file, written in context: a function, the
   // variable whose initializer it is, a class) under args: the checker's compile-time evaluator,
   // with the code generator's arithmetic mode, enumeration storage and layouts (hooks). Null when
@@ -835,6 +838,7 @@ public:
   std::optional<bool> typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args);
 private:
   struct Impl;
+  const Ty* inTypeContextOf(Node* t, Decl* param, bool asArgument, Decl* context, const TemplateArgs& args);
   // aliasNameOf's table, made again after the index changed (under Impl::aliasNamesMutex).
   void makeAliasNames();
   // Types `nodes` (f itself, or an instantiation's copy of f's nodes) for one instantiation of f;

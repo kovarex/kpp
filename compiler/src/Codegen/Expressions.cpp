@@ -51,9 +51,16 @@ auto codegen::Emitter::addressedTemplateArgs(FunctionDecl* f, NameExpr* n, Expr*
       // `checkArray<16>`: a constant argument, its parameter's type.
       Decl* param = i < f->templateParams.size() ? f->templateParams[i] : nullptr;
       std::optional<int64_t> v = evalConst(static_cast<Expr*>(arg));
-      if (!v)
-        unsupported(e, "a constant argument the compiler could not evaluate in the address of a function template");
-      t = types.valueType(valueParamType(param), *v);
+      if (v)
+        t = types.valueType(valueParamType(param), *v);
+      else
+      {
+        // `&call<&Obj::weight>`, `&viaTyped<double, &Obj::weight>`: a function or a member as the argument, the value an
+        // instantiation takes for it (until 2026-11-23 "a constant argument the compiler could not evaluate").
+        t = global.templateArgumentIn(arg, param, typingContext(), currentArgs ? *currentArgs : none);
+        if (!t || !t->isKnown() || types.isDependent(t) || !t->decl)
+          unsupported(e, "a constant argument the compiler could not evaluate in the address of a function template");
+      }
     }
     else
       t = global.typeOfAstIn(static_cast<Type*>(arg), typingContext(), currentArgs ? *currentArgs : none);

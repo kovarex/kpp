@@ -513,10 +513,21 @@ auto GlobalScope::Impl::functionArgument(const Lookup& l, Decl* param, int depth
     return types.unknown();
   const Ty* pt = types.unqualified(convertType(p->valueType, TypeContext{lexicalScopeOf(param), nullptr, nullptr}, depth + 1));
   const Ty* wanted = pt && (pt->kind == TyKind::Pointer || pt->kind == TyKind::MemberPointer) ? pt->inner : pt;
-  // `template<auto F>` given one function: a pointer to it, noexcept as it is.
+  // `template<auto F>` given one function: a pointer to it, noexcept as it is; given a member function that is not
+  // static (`registerRead<&Train::weight>`), a pointer to that member, `R (C::*)(Args...)` const as the function is
+  // (until 2026-11-23 a pointer to a function, `double()*`, so that decltype(F) matched no member pointer pattern
+  // and `(obj->*F)()` was "a member pointer of unknown type").
   if (pt && pt->kind == TyKind::Auto && l.decl && l.decl->kind == NodeKind::FunctionDecl && (!l.overloads || l.overloads->size() <= 1) && l.decl->templateParams.empty())
     if (const Ty* t = declaredTypeOf(l.decl, nullptr, depth + 1); t && t->kind == TyKind::Function)
-      return types.functionValue(types.pointer(namedFunctionType(l.decl, t, nullptr)), l.decl);
+    {
+      const Ty* named = namedFunctionType(l.decl, t, nullptr);
+      if (l.decl->parent && l.decl->parent->kind == NodeKind::ClassDecl && !(l.decl->flags & DF_Static))
+      {
+        const Ty* cls = selfType(l.decl->parent);
+        return cls && cls->isKnown() ? types.functionValue(types.memberPointer(named, cls), l.decl) : types.unknown();
+      }
+      return types.functionValue(types.pointer(named), l.decl);
+    }
   if (!wanted || wanted->kind != TyKind::Function)
     return types.unknown();
   std::vector<Decl*> candidates;
