@@ -1108,9 +1108,14 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
     args = "ptr " + thisArg;
     s.paramTypes.push_back("ptr");
   }
+  // A result returned in memory into a slot of its own is a temporary the statement owns, destroyed with its others,
+  // as callFunction's is (until 2026-11-23 never: `sink((obj->*pmf)())`, `fp();` and `sink(fp())` leaked the result,
+  // the game's typed Lua reads returning a PropertyTree or a String, found by LeakSanitizer).
+  bool resultTemp = false;
   if (s.hasSret)
   {
-    resultAddr = sret.empty() ? newObjectSlot(ret, c) : sret;
+    resultTemp = sret.empty();
+    resultAddr = resultTemp ? newObjectSlot(ret, c) : sret;
     args += (args.empty() ? "" : ", ") + std::string("ptr ") + resultAddr;
     s.paramTypes.push_back("ptr");
   }
@@ -1140,6 +1145,8 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
   if (s.returnType == "void")
   {
     emitCall("", sig + " " + fnText + "(" + args + ")");
+    if (resultTemp)
+      statementTemps.push_back({resultAddr, ret}); // not before: a call that throws built no result to destroy
     if (s.hasSret)
       return {resultAddr, ret, sret.empty()};
     return {"", types.voidType()};

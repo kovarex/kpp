@@ -1,0 +1,73 @@
+// spec: a class object returned by value through a pointer to a member function (`(o->*m)()`, the pointer a variable or an `auto` template argument) or through a pointer to a function (`fp()`) is a temporary of the full expression: an argument (`sink((o->*m)())`) and a discarded result (`fp();`) are destroyed at its end, also when the expression throws after the call returned; a result that initializes a local is that local, destroyed with it (clang gives the same numbers)
+// found by thread luatyped (2026-11-23): the game's typed Lua reads, `LuaHelper::push(L, (obj->*method)())` returning a PropertyTree or a String, leaked every result (LeakSanitizer on the game's debug-asan tests); a direct call's result was destroyed, an indirect call's never
+i32 constructed = 0;
+i32 destroyed = 0;
+
+struct Counted
+{
+  std::String text = "a text longer than the string's own small buffer";
+  Counted() { constructed += 1; }
+  Counted(const Counted& other) : text(other.text) { constructed += 1; }
+  ~Counted() { destroyed += 1; }
+};
+
+i32 sink(const Counted& c) { return i32(c.text.size()) > 0 ? 1 : 0; }
+i32 sinkThenThrow(const Counted&) { throw 7; }
+Counted make() { return Counted(); }
+
+class Obj
+{
+public:
+  virtual ~Obj() {}
+  Counted read() { return Counted(); }
+  virtual Counted readVirtual() const { return Counted(); }
+};
+
+using Call = i32 (*)(Obj*);
+
+template<auto method>
+Call argument() { return [](Obj* o) -> i32 { return sink((o->*method)()); }; }
+
+template<auto method>
+Call discarded() { return [](Obj* o) -> i32 { (o->*method)(); return 0; }; }
+
+void counts(const char* what)
+{
+  std::println(what, ": ", constructed, " made, ", destroyed, " destroyed");
+  constructed = 0;
+  destroyed = 0;
+}
+
+int main()
+{
+  Obj o;
+  argument<&Obj::read>()(&o);
+  discarded<&Obj::read>()(&o);
+  argument<&Obj::readVirtual>()(&o);
+  counts("auto template argument");
+  Counted (Obj::*read)() = &Obj::read;
+  sink((o.*read)());
+  (o.*read)();
+  Obj* p = &o;
+  sink((p->*read)());
+  counts("member pointer variable");
+  Counted (*fp)() = &make;
+  sink(fp());
+  fp();
+  {
+    Counted kept = fp();
+    sink(kept);
+    std::println("a local: ", destroyed, " destroyed before its end");
+  }
+  counts("function pointer");
+  try
+  {
+    sinkThenThrow((o.*read)());
+  }
+  catch (i32 e)
+  {
+    std::println("caught ", e, " with ", destroyed, " of ", constructed, " destroyed");
+  }
+  counts("thrown");
+  return 0;
+}
