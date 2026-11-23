@@ -1,0 +1,76 @@
+// spec: methods(T) lists the member functions declared in T itself that have an address, in declaration order, each overload an entry of its own: no static function, constructor, destructor, operator, conversion, template, `= default`, nor one under a false `when`, nor a base's; f.name is its name, f.isNoDiscard whether it is [[nodiscard]], f.pointer the pointer to it as a constant, of its member pointer type (const as the function is), a template argument as `&T::f` is (one instance for both), a value calling the override of a virtual one; methods(T)[i] and methods(T).size; a class template's instance's; a class without such functions lists none
+// design.md 8.3 (kovarex, 2026-11-23: the game's LuaBinder registers its accessors from methods(T))
+class Base
+{
+public:
+  virtual ~Base() {}
+  i32 fromBase() { return 1; }
+  virtual i32 speed() const { return 10; }
+};
+
+class Train : public Base
+{
+public:
+  Train() {}
+  ~Train() {}
+  static i32 count() { return 3; }
+  f64 weight() { return 2.5; }
+  [[nodiscard]] i32 length() const { return 7; }
+  void set(i32 value) { this.stored = value; }
+  void set(f64 value) { this.stored = i32(value * 2); }
+  i32 speed() const override { return 20; }
+  bool operator==(const Train&) const = default;
+  template<typename T> T as() { return T(this.stored); }
+  when (false) i32 hidden() { return 0; }
+  i32 stored = 0;
+};
+
+class Empty
+{
+public:
+  i32 value = 0;
+};
+
+template<typename T>
+class Box
+{
+public:
+  T get() const { return this.value; }
+  void put(T v) { this.value = v; }
+  T value{};
+};
+
+template<typename M> struct Kind { static constexpr i32 value = 0; };
+template<typename C, typename R> struct Kind<R (C::*)()> { static constexpr i32 value = 1; };
+template<typename C, typename R> struct Kind<R (C::*)() const> { static constexpr i32 value = 2; };
+template<typename C, typename A> struct Kind<void (C::*)(A)> { static constexpr i32 value = 3; };
+
+template<auto m> i32 kindOf() { return Kind<decltype(m)>::value; }
+template<auto m> i32 instance() { static i32 calls = 0; calls += 1; return calls; }
+
+template<typename T>
+void list()
+{
+  for constexpr (auto f : methods(T))
+    std::println(f.name, " kind ", kindOf<f.pointer>(), " nodiscard ", f.isNoDiscard);
+  std::println(methods(T).size, " methods");
+}
+
+int main()
+{
+  list<Train>();
+  list<Box<i32>>();
+  list<Empty>();
+  Train t;
+  std::println(methods(Train)[0].name, " ", methods(Train)[3].name, " ", methods(Base).size);
+  for constexpr (auto f : methods(Train))
+    if constexpr (Kind<decltype(f.pointer)>::value == 3)
+      (t.*f.pointer)(5);
+  std::println("stored ", t.stored);
+  const Base& asBase = t;
+  i32 (Base::*virtualSpeed)() const = methods(Base)[1].pointer;
+  std::println("speed ", (asBase.*virtualSpeed)(), " length ", (t.*methods(Train)[1].pointer)());
+  instance<&Train::weight>();
+  std::println("one instance: ", instance<methods(Train)[0].pointer>());
+  return 0;
+}

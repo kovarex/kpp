@@ -656,6 +656,8 @@ public:
   // The template argument arg written in context for parameter param under args, as an instantiation takes it: a type, or a
   // constant's value type (`&call<&Obj::weight>`: the member pointer's value, functionValue).
   const Ty* templateArgumentIn(Node* arg, Decl* param, Decl* context, const TemplateArgs& args);
+  // methods(T)'s descriptors of class cls, in declaration order (design.md 8.3); false when the compiler cannot list them.
+  bool methodDescriptorsOf(const Ty* cls, std::vector<const Ty*>& out);
   // The value of the constant expression e (read from file, written in context: a function, the
   // variable whose initializer it is, a class) under args: the checker's compile-time evaluator,
   // with the code generator's arithmetic mode, enumeration storage and layouts (hooks). Null when

@@ -590,6 +590,17 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
       !static_cast<TemplateParamDecl*>(param)->isType)
     arg = static_cast<ArrayType*>(arg)->asIndex; // `Take<table[2]>`: an index, for a constant parameter
   std::optional<ConstValue> v;
+  if (arg->kind == NodeKind::MemberExpr && !static_cast<MemberExpr*>(arg)->dynamicMember && static_cast<MemberExpr*>(arg)->op == P::Dot &&
+      static_cast<MemberExpr*>(arg)->member.parts.size() == 1 && symbols.name(static_cast<MemberExpr*>(arg)->member.parts[0].symbol) == "pointer")
+  {
+    // `registerRead<f.pointer>` of a methods(T) descriptor (design.md 8.3): the pointer to its member function, the value
+    // `&T::f` gives (functionArgument), so that both are one argument.
+    auto* m = static_cast<MemberExpr*>(arg);
+    const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+    t = t ? types.stripRef(t) : nullptr;
+    if (t && t->kind == TyKind::Member && t->decl && t->decl->kind == NodeKind::FunctionDecl)
+      return t->inner && t->inner->isKnown() && !types.isDependent(t->inner) ? types.functionValue(t->inner, t->decl) : types.unknown();
+  }
   if (arg->kind == NodeKind::NamedType)
   {
     const QualifiedName& an = static_cast<NamedType*>(arg)->name;

@@ -1,0 +1,12 @@
+// spec: methods(T)[i] and methods(T).size of a type that is no class are errors, as members(T)'s are; so is methods(T)[i] past the last method, naming the count
+// design.md 8.3
+// error: reflection_methods_of_a_type_that_is_no_class_is_error.kpp:9: error: methods(T)[i] of a type that is no class
+// error: reflection_methods_of_a_type_that_is_no_class_is_error.kpp:10: error: methods(Pos)[1] is past its last method: Pos has 1
+struct Pos { i32 x = 0; i32 sum() const { return this.x; } };
+int main()
+{
+  std::println(methods(Pos)[0].name);
+  std::println(methods(i32)[0].name);
+  std::println(methods(Pos)[1].name);
+  return 0;
+}

@@ -1,0 +1,57 @@
+// spec: a reflection descriptor's name is a constant expression, the string literal it is (m.name of members(T), a.name of alternatives(U), f.name of methods(T)): an `if constexpr` reads it (`std::StringView(f.name).startsWith("luaRead")`, a constexpr function over it), and only the branch it picks is instantiated, so a loop over methods(T) skips a function before naming its pointer
+// design.md 8.3 (kovarex, 2026-11-23: the game's LuaBinder tells reads, writes and methods apart by their names' prefixes)
+struct Pos
+{
+  i32 x = 1;
+  i32 yy = 2;
+};
+
+struct Walking { i32 steps; };
+struct Waiting { i32 ticks; };
+union enum State : u8
+{
+  { {Walk, Walking}, {Wait, Waiting} }
+};
+
+class Api
+{
+public:
+  i32 luaReadWeight() { return 5; }
+  void luaWriteWeight(i32 value) { this.weight = value; }
+  i32 helper(i32 a, i32 b) { return a + b; } // (no pointer of it is named: its branch is never taken)
+  i32 weight = 0;
+};
+
+constexpr bool hasPrefix(const char* text, const char* prefix)
+{
+  for (u64 i = 0; prefix[i] != 0; ++i)
+    if (text[i] != prefix[i])
+      return false;
+  return true;
+}
+
+template<auto m> i32 read(Api& api) { return (api.*m)(); }
+
+static_assert(std::StringView(members(Pos)[1].name) == "yy");
+static_assert(hasPrefix(methods(Api)[0].name, "luaRead"));
+
+int main()
+{
+  for constexpr (auto m : members(Pos))
+    if constexpr (std::StringView(m.name).size() == 2)
+      std::println("two letters: ", m.name);
+  for constexpr (auto a : alternatives(State))
+    if constexpr (std::StringView(a.name).startsWith("Wai"))
+      std::println("waiting is ", a.name);
+  Api api;
+  i32 total = 0;
+  for constexpr (auto f : methods(Api))
+  {
+    if constexpr (std::StringView(f.name).startsWith("luaRead"))
+      total += read<f.pointer>(api);
+    else if constexpr (hasPrefix(f.name, "luaWrite"))
+      (api.*f.pointer)(7);
+  }
+  std::println("read ", total, ", written ", api.weight);
+  return 0;
+}

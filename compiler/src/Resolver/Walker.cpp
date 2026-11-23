@@ -161,17 +161,18 @@ auto GlobalScope::Impl::Walker::reflectionElements(Node* list, bool withBases, s
   // template's parameter yet. A class with bases lists theirs first only withBases (`members(T)[i]`): a for constexpr's
   // walk leaves such a class's elements to the code generator, as it always has.
   dependent = false;
-  bool alternatives = list && list->kind == NodeKind::CallExpr && static_cast<CallExpr*>(list)->callee &&
-                      static_cast<CallExpr*>(list)->callee->kind == NodeKind::NameExpr &&
-                      symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(list)->callee)->name.last().symbol) == "alternatives";
-  const Ty* cls = reflectedType(reflectionSubject(list));
+  Expr* subject = reflectionSubject(list);
+  if (!subject)
+    return false;
+  ReflectionList which = *reflectionListNamed(symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(list)->callee)->name.last().symbol));
+  const Ty* cls = reflectedType(subject);
   dependent = cls && types.isDependent(cls);
   if (!cls || cls->kind != TyKind::Class || dependent)
     return false;
-  if (!alternatives && !withBases)
+  if (which == ReflectionList::Members && !withBases)
     if (ClassDecl* def = impl.classDefinition(cls); !def || !def->bases.empty())
       return false;
-  return impl.reflectedElementsOf(cls, alternatives, out, 0);
+  return impl.reflectedElementsOf(cls, which, out, 0);
 }
 
 auto GlobalScope::Impl::Walker::typeOfReflectionSize(MemberExpr* m) -> const Ty*
@@ -181,7 +182,7 @@ auto GlobalScope::Impl::Walker::typeOfReflectionSize(MemberExpr* m) -> const Ty*
   std::vector<const Ty*> elements;
   bool dependent = false;
   if (!reflectionElements(m->base, true, elements, dependent) && !dependent && !inGenericTemplate())
-    reportHere(m->token, "members(T).size of a type that is no class, or alternatives(U).size of one that is no typed union");
+    reportHere(m->token, "members(T).size or methods(T).size of a type that is no class, or alternatives(U).size of one that is no typed union");
   m->resolved = nullptr;
   ++stats.membersBound;
   return types.sizeType();
@@ -221,7 +222,7 @@ auto GlobalScope::Impl::Walker::typeOfReflectionIndex(IndexExpr* i) -> const Ty*
   std::string list(symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(i->base)->callee)->name.last().symbol));
   if (!known)
   {
-    reportHere(i->token, list == "members" ? "members(T)[i] of a type that is no class" : "alternatives(U)[i] of a type that is no typed union");
+    reportHere(i->token, list == "alternatives" ? "alternatives(U)[i] of a type that is no typed union" : list + "(T)[i] of a type that is no class");
     return unknown(Why::Unsupported);
   }
   std::optional<int64_t> at = impl.constEval(i->args[0], ctx());
@@ -235,7 +236,7 @@ auto GlobalScope::Impl::Walker::typeOfReflectionIndex(IndexExpr* i) -> const Ty*
   if (*at < 0 || uint64_t(*at) >= elements.size())
   {
     std::string named = types.toString(reflectedType(subject), &symbols);
-    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" ? "member" : "alternative") +
+    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" ? "member" : list == "methods" ? "method" : "alternative") +
                            ": " + named + " has " + std::to_string(elements.size()));
     return unknown(Why::Unsupported);
   }
@@ -386,8 +387,7 @@ auto GlobalScope::Impl::Walker::reflectionSubject(Node* list) const -> Expr*
   const QualifiedName& name = static_cast<NameExpr*>(c->callee)->name;
   if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
     return nullptr;
-  std::string_view which = symbols.name(name.parts[0].symbol);
-  return which == "members" || which == "alternatives" ? c->args[0] : nullptr;
+  return reflectionListNamed(symbols.name(name.parts[0].symbol)) ? c->args[0] : nullptr;
 }
 
 auto GlobalScope::Impl::Walker::alternativeNamed(ClassDecl* u, Expr* index) -> EnumeratorDecl*
@@ -4527,6 +4527,19 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
     std::string_view which = symbols.name(symbol);
     if (which == "name")
       return types.pointer(types.qualified(types.charType(), true, false));
+    if (descriptor->decl && descriptor->decl->kind == NodeKind::FunctionDecl)
+    {
+      // A descriptor of methods(T) (design.md 8.3): f.pointer, the pointer to the member function, a constant; f.isNoDiscard.
+      if (which == "pointer")
+      {
+        m->resolved = descriptor->decl; // (named here: its access is checked, and it counts as used, as `&T::f` would)
+        return descriptor->inner ? descriptor->inner : types.unknown();
+      }
+      if (which == "isNoDiscard")
+        return types.boolType();
+      reportHere(m->token, "a descriptor of methods(T) has name, pointer and isNoDiscard only");
+      return unknown(Why::Member);
+    }
     if (which == "type")
       return descriptor->inner ? descriptor->inner : types.unknown();
     size_t index = 0;
