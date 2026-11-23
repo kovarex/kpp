@@ -1,0 +1,140 @@
+// heavyboard: shows PRACOVNA's heavy slot (tools\heavy) on kovarex.com, as a CGI program (kovarex,
+// 2026-11-23: "a simple kpp program to be run as web service there, you get a password to post
+// changes, it will keep db and everything"; the page is public).
+//   GET  index.cgi          the page; it reads ?json every 5 s and draws the tables
+//   GET  index.cgi?json     the status as PRACOVNA last posted it (status.json)
+//   POST index.cgi?update   a new status: a JSON object, with the header X-Heavy-Password
+// The data directory (HEAVYBOARD_DATA, else /home/protected/heavyboard: NearlyFreeSpeech's directory
+// the web cannot read) holds `password` (its first line) and status.json, which an update replaces
+// whole (a new file renamed over the old one).
+
+constexpr i64 boardMaxUpdateBytes = 1024 * 1024;
+
+struct BoardError
+{
+  i32 status;
+  std::String message;
+};
+
+std::String boardDataDirectory()
+{
+  const char* value = std::getenv("HEAVYBOARD_DATA");
+  return value != nullptr && value[0] != 0 ? std::String(value) : std::String("/home/protected/heavyboard");
+}
+
+bool boardReadFile(const std::String& path, std::String& text)
+{
+  FILE* file = fopen(path.c_str(), "rb");
+  if (!file)
+    return false;
+  char buffer[65536];
+  while (true)
+  {
+    usize n = fread(buffer, 1, 65536, file);
+    if (n == 0)
+      break;
+    text << std::StringView(buffer, n);
+  }
+  fclose(file);
+  return true;
+}
+
+void boardWriteFile(const std::String& path, std::StringView content)
+{
+  std::String temporary = path + ".new";
+  FILE* file = fopen(temporary.c_str(), "wb");
+  if (!file)
+    throw BoardError{500, std::toString("cannot write ", temporary)};
+  bool written = fwrite(content.data(), 1, content.size(), file) == usize(content.size());
+  if (fclose(file) != 0 || !written)
+    throw BoardError{500, std::toString("cannot write ", temporary)};
+  std::filesystem::rename(std::filesystem::path(temporary), std::filesystem::path(path));
+}
+
+// The password's first line, without the line break and trailing spaces; empty when there is none.
+std::String boardPassword(const std::String& directory)
+{
+  std::String text;
+  if (!boardReadFile(directory + "/password", text))
+    return std::String();
+  i32 end = 0;
+  while (end < text.size() && text[end] != '\n' && text[end] != '\r')
+    ++end;
+  while (end > 0 && (text[end - 1] == ' ' || text[end - 1] == '\t'))
+    --end;
+  return std::String(std::StringView(text).substr(0, end));
+}
+
+// Compares in a time that does not depend on where they differ.
+bool boardSame(std::StringView a, std::StringView b)
+{
+  u32 difference = a.size() == b.size() ? 0u : 1u;
+  for (i32 i = 0; i < a.size(); ++i)
+    difference |= u32(u8(a[i])) ^ u32(u8(i < b.size() ? b[i] : 0));
+  return difference == 0;
+}
+
+void boardUpdate(const http::HttpRequest& request, http::HttpResponse& response, const std::String& directory)
+{
+  if (request.method != "POST")
+    throw BoardError{405, "an update is a POST"};
+  std::String password = boardPassword(directory);
+  if (password.empty())
+    throw BoardError{503, "no password is set"};
+  const std::String* given = request.header("x-heavy-password");
+  if (given == nullptr || !boardSame(*given, password))
+    throw BoardError{403, "wrong password"};
+  if (request.body.size() > boardMaxUpdateBytes)
+    throw BoardError{413, "the status is too large"};
+  json::JsonValue status;
+  json::JsonParseError error;
+  if (!json::tryParseJson(request.body, status, &error))
+    throw BoardError{400, std::toString("not JSON: ", error.what())};
+  if (!status.isObject())
+    throw BoardError{400, "the status is not a JSON object"};
+  boardWriteFile(directory + "/status.json", json::writeJson(status));
+  response.status = 204;
+  response.body = std::String();
+}
+
+void boardHandleIn(const http::HttpRequest& request, http::HttpResponse& response, const std::String& directory)
+{
+  response.setHeader("Cache-Control", "no-store");
+  try
+  {
+    if (request.parameter("update") != nullptr)
+    {
+      boardUpdate(request, response, directory);
+      return;
+    }
+    if (request.parameter("json") != nullptr)
+    {
+      std::String text;
+      if (!boardReadFile(directory + "/status.json", text))
+        text = "{}";
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.body = text;
+      return;
+    }
+    response.body = std::String(boardPage);
+  }
+  catch (const BoardError& error)
+  {
+    response.status = error.status;
+    response.setHeader("Content-Type", "text/plain; charset=utf-8");
+    response.body = error.message + "\n";
+  }
+}
+
+void boardHandle(const http::HttpRequest& request, http::HttpResponse& response) { boardHandleIn(request, response, boardDataDirectory()); }
+
+int main()
+{
+  if (std::getenv("REQUEST_METHOD") != nullptr)
+    return http::httpCgi(boardHandle);
+  // On one's own machine: http://127.0.0.1:8765/ (HEAVYBOARD_DATA names the data directory).
+  http::HttpServerOptions options;
+  options.port = 8765;
+  http::httpServe(options, boardHandle);
+  return 0;
+}

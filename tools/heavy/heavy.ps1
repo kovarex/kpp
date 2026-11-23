@@ -53,6 +53,7 @@ $historyFile = Join-Path $root 'history.tsv'
 $pageFile = Join-Path $root 'status.html'
 
 function Html([string]$text) { return [System.Net.WebUtility]::HtmlEncode($text) }
+function Iso([DateTime]$time) { return $time.ToString('yyyy-MM-ddTHH:mm:sszzz') }
 function MdText([string]$text) { return ($text -replace '`', "'" -replace '\|', '/') }
 
 function Who([string]$cwd)
@@ -83,6 +84,7 @@ function Write-Page
   try
   {
     $md = New-Object System.Text.StringBuilder
+    $jRunning = $null; $jQueue = New-Object System.Collections.ArrayList; $jFinished = New-Object System.Collections.ArrayList
     $now = Get-Date
     $rows = New-Object System.Text.StringBuilder
     $holder = $null
@@ -90,6 +92,7 @@ function Write-Page
     if ($holder -and (Alive $holder.Pid))
     {
       $iso = $holder.Since.ToString('s')
+      $jRunning = [ordered]@{ kind = $holder.Kind; folder = (Who $holder.Cwd); label = $holder.Label; since = (Iso $holder.Since) }
       [void]$rows.Append("<tr><td class='kind $($holder.Kind)'>$($holder.Kind)</td><td>$(Html (Who $holder.Cwd))</td><td class='cmd'>$(Html $holder.Label)</td><td>$($holder.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$iso'></td><td>$($holder.Pid)</td></tr>")
       [void]$md.Append("| $($holder.Kind) | $(Who $holder.Cwd) | ``$(MdText $holder.Label)`` | $($holder.Since.ToString('HH:mm')) | $(Duration ($now - $holder.Since)) |`n")
     }
@@ -102,6 +105,7 @@ function Write-Page
       $r = Parse-Record ((Get-Content -Raw $w.FullName -ErrorAction SilentlyContinue) + '').Trim()
       if (-not $r -or -not (Alive $r.Pid)) { continue }
       $n++
+      [void]$jQueue.Add([ordered]@{ kind = $r.Kind; folder = (Who $r.Cwd); label = $r.Label; since = (Iso $r.Since) })
       [void]$queue.Append("<tr><td>$n</td><td class='kind $($r.Kind)'>$($r.Kind)</td><td>$(Html (Who $r.Cwd))</td><td class='cmd'>$(Html $r.Label)</td><td>$($r.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$($r.Since.ToString('s'))'></td></tr>")
       [void]$mdQueue.Append("| $n | $($r.Kind) | $(Who $r.Cwd) | ``$(MdText $r.Label)`` | $($r.Since.ToString('HH:mm')) | $(Duration ($now - $r.Since)) |`n")
     }
@@ -117,6 +121,7 @@ function Write-Page
       if ($f.Count -lt 7) { continue }
       $queued = [DateTime]$f[0]; $started = [DateTime]$f[1]; $ended = [DateTime]$f[2]
       $ok = if ($f[3] -eq '0') { 'ok' } else { 'bad' }
+      if ($jFinished.Count -lt 100) { [void]$jFinished.Add([ordered]@{ kind = $f[4]; folder = (Who $f[5]); label = $f[6]; queued = (Iso $queued); started = (Iso $started); ended = (Iso $ended); exit = [int]$f[3] }) }
       [void]$history.Append("<tr><td class='kind $($f[4])'>$($f[4])</td><td>$(Html (Who $f[5]))</td><td class='cmd'>$(Html $f[6])</td><td>$($started.ToString('MM-dd HH:mm'))</td><td>$(Duration ($started - $queued))</td><td>$(Duration ($ended - $started))</td><td class='$ok'>$($f[3])</td></tr>")
       if ($mdHistory.Length -lt 20000) { [void]$mdHistory.Append("| $($f[4]) | $(Who $f[5]) | ``$(MdText $f[6])`` | $($started.ToString('MM-dd HH:mm')) | $(Duration ($started - $queued)) | $(Duration ($ended - $started)) | $(if ($f[3] -eq '0') { '0' } else { '**' + $f[3] + '**' }) |`n") }
     }
@@ -153,16 +158,21 @@ tick(); setInterval(tick, 1000);
     $temp = "$pageFile.$PID.tmp"
     [IO.File]::WriteAllText($temp, $page, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -Force $temp $pageFile
-    # The same as markdown, for publish.ps1 (the status from other places than PRACOVNA).
+    # The same as markdown (status.md), for reading in a terminal or an editor; publish.ps1 uploads the page.
     $noneQueue = if ($mdQueue.Length) { '' } else { "| | nobody waiting | | | | |`n" }
     $text = "# PRACOVNA heavy slot`n`nWritten $($now.ToString('yyyy-MM-dd HH:mm:ss')) (times are PRACOVNA's; durations as of then).`n`n" +
       "## Running`n`n| kind | folder | command | started | running |`n|---|---|---|---|---|`n" + $md.ToString() +
       "`n## Waiting`n`n| # | kind | folder | command | queued | waiting |`n|---|---|---|---|---|---|`n" + $mdQueue.ToString() + $noneQueue +
       "`n## Finished`n`n| kind | folder | command | started | waited | took | exit |`n|---|---|---|---|---|---|---|`n" + $mdHistory.ToString()
     $mdFile = Join-Path $root 'status.md'
+    # And as JSON (status.json), which publish.ps1 posts to heavyboard on kovarex.com (board\README.md).
+    $json = ([ordered]@{ written = (Iso $now); running = $jRunning; queue = @($jQueue); finished = @($jFinished) } | ConvertTo-Json -Depth 4 -Compress)
+    $jsonFile = Join-Path $root 'status.json'
+    [IO.File]::WriteAllText("$jsonFile.$PID.tmp", $json, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -Force "$jsonFile.$PID.tmp" $jsonFile
     [IO.File]::WriteAllText("$mdFile.$PID.tmp", $text, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -Force "$mdFile.$PID.tmp" $mdFile
-    if (Test-Path (Join-Path $root 'publish\.git'))
+    if (Test-Path (Join-Path $root 'publish.txt'))
     {
       Start-Process powershell -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSScriptRoot\publish.ps1`"")
     }
