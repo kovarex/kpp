@@ -1945,6 +1945,11 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
   return inTypeContextOf(t, nullptr, false, context, args);
 }
 
+bool GlobalScope::methodDescriptorsOf(const Ty* cls, std::vector<const Ty*>& out)
+{
+  return impl->reflectedElementsOf(cls, Impl::ReflectionList::Methods, out, 0);
+}
+
 const Ty* GlobalScope::templateArgumentIn(Node* arg, Decl* param, Decl* context, const TemplateArgs& args)
 {
   return inTypeContextOf(arg, param, true, context, args);

@@ -1,0 +1,10 @@
+// spec: a descriptor of methods(T) has name, pointer and isNoDiscard only: f.type or f.offset is an error
+// design.md 8.3
+// error: reflection_methods_descriptor_has_no_type_is_error.kpp:8: error: a descriptor of methods(T) has name, pointer and isNoDiscard only
+struct Pos { i32 x = 0; i32 sum() const { return this.x; } };
+int main()
+{
+  for constexpr (auto f : methods(Pos))
+    std::println(f.offset);
+  return 0;
+}

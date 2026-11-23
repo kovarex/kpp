@@ -1,0 +1,14 @@
+weight kind 1 nodiscard false
+length kind 2 nodiscard true
+set kind 3 nodiscard false
+set kind 3 nodiscard false
+speed kind 2 nodiscard false
+5 methods
+get kind 2 nodiscard false
+put kind 3 nodiscard false
+2 methods
+0 methods
+weight set 2
+stored 10
+speed 20 length 7
+one instance: 2

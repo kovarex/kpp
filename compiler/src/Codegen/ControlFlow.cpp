@@ -8,7 +8,7 @@ auto codegen::Emitter::isTypesList(const NamedType* n) -> bool
   return n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && sym(n->name.parts[0].symbol) == "types";
 }
 
-auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives) -> Expr*
+auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* methods) -> Expr*
 {
   if (!list || list->kind != NodeKind::CallExpr)
     return nullptr;
@@ -19,10 +19,12 @@ auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives) -> Expr
   if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
     return nullptr;
   std::string which = sym(name.parts[0].symbol);
-  if (which != "members" && which != "alternatives")
+  if (which != "members" && which != "alternatives" && which != "methods")
     return nullptr;
   if (alternatives)
     *alternatives = which == "alternatives";
+  if (methods)
+    *methods = which == "methods";
   return c->args[0];
 }
 
@@ -161,12 +163,13 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
       elements.push_back(types.valueType(elementTy, *v));
     }
   }
-  else if (bool alternatives = false; Expr* subject = reflectionSubject(list, &alternatives))
+  else if (bool alternatives = false, methods = false; Expr* subject = reflectionSubject(list, &alternatives, &methods))
   {
     // `members(T)`: T's non-static data members, bases first, in declaration order;
-    // `alternatives(U)`: a typed union's alternatives, in declaration order.
+    // `alternatives(U)`: a typed union's alternatives, in declaration order;
+    // `methods(T)`: the member functions declared in T that have an address, in declaration order (design.md 8.3).
     if (var->isType)
-      unsupported(f, "members(T) or alternatives(U) for a for constexpr type variable");
+      unsupported(f, "members(T), methods(T) or alternatives(U) for a for constexpr type variable");
     const Ty* cls = nullptr;
     if (subject->kind == NodeKind::NameExpr && static_cast<NameExpr*>(subject)->resolved && locals.count(static_cast<NameExpr*>(subject)->resolved) &&
         sym(static_cast<NameExpr*>(subject)->name.last().symbol).starts_with("__kpp_union"))
@@ -182,7 +185,12 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
     if (!isClass(cls))
       unsupported(f, alternatives ? "alternatives(U) where U is not a class" : "members(T) where T is not a class");
     cls = canonicalClass(cls, f);
-    if (alternatives)
+    if (methods)
+    {
+      if (!global.methodDescriptorsOf(cls, elements))
+        unsupported(f, "methods(T) of a class whose member functions the compiler cannot list");
+    }
+    else if (alternatives)
     {
       ClassDecl* u = typedUnionOf(cls, f);
       if (!u)

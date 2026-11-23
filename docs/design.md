@@ -756,6 +756,26 @@ A message writes a class by its own name (`ID<P>` for both `ID<A::P>` and `ID<B:
 prints alike stays as printed, and so does one that is part of a longer name. The rewrite is of the finished text
 (GlobalScope::withAliasNames), as the printer's text also makes the IR's names; its table is made at the first message
 with a `<`. Specs kpp/error_message_names_instance_by_alias, error_message_keeps_instance_printed_alike.
+*methods(T)* (kovarex, 2026-11-23, for the game's LuaBinder: registration lines generated from the accessors themselves,
+`for constexpr (auto f : methods(T)) LuaBinder<T>::registerByName<f.pointer>(f.name, f.isNoDiscard);`): the twin of
+members(T) for member functions, in the same forms: `for constexpr (auto f : methods(T))`, `methods(T)[i]` and
+`methods(T).size`. It lists the member functions declared in T itself that have an address, in declaration order: not
+static, not a constructor or destructor, not an operator or a conversion function, not a template, not `= default` or
+`= delete`, nothing implicitly declared, and not those of T's bases (a base's are `methods(Base)`, whose pointers a derived
+class's code may use as any pointer to a base's member). Each overload is an entry of its own. A member under a `when`
+whose condition is false is not there (it is not declared), as for members(T). Only public functions are listed (unlike
+members(T), which lists private fields): a generic loop over a class with private helpers cannot skip one by its name
+before naming its pointer, whose access would be checked there. Each `f` has
+`f.name`, the function's name as a string literal; `f.pointer`, the pointer to the member function as a constant, typed
+`R (T::*)(Args...)`, const and noexcept as the function is, usable as a template argument (`registerRead<f.pointer>`),
+in constant expressions and as a value; `f.isNoDiscard`, a `bool` constant, true for a function declared `[[nodiscard]]`.
+Nothing else: no parameter names, no attributes beyond nodiscard. A descriptor's name is a constant expression, the
+string literal it is, for members(T), alternatives(U) and methods(T) alike (2026-11-23: until then only the code generator
+read it): `if constexpr (std::StringView(f.name).startsWith("luaRead"))` or a constexpr function over it picks a branch, and
+the branches not picked are not instantiated, so a loop over methods(T) skips a function before naming its pointer (kpp has no
+attributes of its own the loop could read instead). Spec kpp/reflection_name_is_a_constant. A class without such functions lists none (`.size` is
+0). methods(T) of a type that is no class is an error, as members(T)'s is. Like members(T) it is read only where it is
+written: a program that does not use it pays nothing.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```
