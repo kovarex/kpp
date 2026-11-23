@@ -488,7 +488,7 @@ void runCodegen(Build& build)
   struct ModuleFailure
   {
     unsigned module;
-    int rc; // clang's exit code; 0: LLVM's back end in this process
+    int rc; // clang's exit code; 0: LLVM's back end in this process; -1: kpp's C++ back end (--via-cpp)
     std::string path, output;
   };
   std::vector<ModuleFailure> moduleFailures;
@@ -501,7 +501,7 @@ void runCodegen(Build& build)
   // (their objects not compared with clang's) stay clang's; so does any build with
   // KPP_BACKEND=clang (the comparison).
   const char* backendChoice = getenv("KPP_BACKEND");
-  bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() &&
+  bool inProcess = inProcessBackend() && !options.optimize && options.target.windows() && options.clangFlags.empty() && !options.viaCpp &&
                    !(backendChoice && std::string(backendChoice) == "clang");
   // KPP_TEST_BROKEN_MODULE=K (run_tests' "rejected module"): module K gets a function LLVM's verifier
   // rejects (a use its definition does not dominate), as an IR bug of kpp's would be.
@@ -522,11 +522,13 @@ void runCodegen(Build& build)
   if (!objectCacheDir.empty())
   {
     objectCacheCompiler = inProcess ? "kpp " + objectcache::stamp(compilerPath()) : "clang " + objectcache::stamp(clangPath());
+    if (options.viaCpp) // (the C++ is this kpp's writing of the module: another kpp writes another)
+      objectCacheCompiler += " kpp " + objectcache::stamp(compilerPath());
     // (and the directory it is compiled in, which clang writes into the object's debug information as its compilation
     // directory: a snippet's object made from another directory differed from its compile there, and a compile server's
     // --verify-incremental reported the patched kept object "not what its compile gives", 2026-11-21)
     std::error_code cwdError;
-    objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections") +
+    objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections") + (options.viaCpp ? " via-cpp" : "") +
                        (options.target.mac() ? " compact-unwind-non-canonical" : "") + " in " + std::filesystem::current_path(cwdError).string();
   }
   std::vector<std::string> objectCacheKeys(outputModules);
@@ -547,6 +549,9 @@ void runCodegen(Build& build)
       h = (h ^ c) * 1099511628211ull;
     if (!functionSections)
       h = (h ^ 0xff) * 1099511628211ull;
+    if (options.viaCpp) // (an object made through C++ is not the one made from the IR, nor one another kpp wrote)
+      for (unsigned char c : "via-cpp " + objectcache::stamp(compilerPath()))
+        h = (h ^ c) * 1099511628211ull;
     hashText = std::to_string(h);
     std::error_code ec;
     if (readWholeFile(options.exe + "." + std::to_string(k) + ".hash") == hashText && std::filesystem::exists(objects[k], ec))
@@ -815,7 +820,20 @@ void runCodegen(Build& build)
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
       return;
     placeSanitizerRuntime(options);
-    std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " \"" + llPath + "\" -o \"" + options.exe + "\" " +
+    // --via-cpp: the program as one C++ translation unit (EXE.cpp), compiled and linked with the C++ runtime.
+    std::string source = "\"" + llPath + "\"";
+    if (options.viaCpp)
+    {
+      std::string cppPath = options.exe + ".cpp", cpp, error;
+      if (!writeCppModule(cg.ir, CppWriterOptions{llPath, 0}, cpp, error) || !writeFile(cppPath, cpp))
+      {
+        fprintf(stderr, "%s: error: %s\n", llPath.c_str(), error.empty() ? ("cannot write " + cppPath).c_str() : error.c_str());
+        codegenExit = 1;
+        return;
+      }
+      source = cppCompileFlags() + (options.debugInfo ? cppDebugFlags(options) : std::string()) + " \"" + cppPath + "\" -x none" + cppLinkFlags(options);
+    }
+    std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + source + " -o \"" + options.exe + "\" " +
                           (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target)) +
                           splitDebugInfoCommand(options);
     if (options.deferLink) // (one module: its compile goes with the link)
@@ -902,7 +920,7 @@ void runCodegen(Build& build)
       return;
     // A text that changed only in its lines (an edit moved them: debug lines, assert lines): the kept object's line tables and
     // assert lines patched, as the edit's line maps say (kovarex, 2026-11-10), its hash file written once it is.
-    if (k < cg.linesOnlyModules.size() && cg.linesOnlyModules[k] && !build.lineMaps.empty() && options.target.windows())
+    if (k < cg.linesOnlyModules.size() && cg.linesOnlyModules[k] && !build.lineMaps.empty() && options.target.windows() && !options.viaCpp)
     {
       std::string hashPath = options.exe + "." + std::to_string(k) + ".hash", why;
       std::error_code ec;
@@ -931,10 +949,23 @@ void runCodegen(Build& build)
     // clang's messages go to a file of the module's, printed with the failure below (32 clangs
     // writing to one stderr at once interleave).
     std::string errPath = options.exe + "." + std::to_string(k) + ".clang.txt";
-    std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + options.clangFlags + " -c \"" + llPath + "\" -o \"" + objects[k] +
-                          "\" 2> \"" + errPath + "\"";
+    // --via-cpp: the module written as C++ beside its IR (EXE.k.cpp), and that compiled; what the writer does not
+    // translate fails the module with its name, as a module clang rejects does.
+    std::string source = llPath;
+    if (options.viaCpp)
+    {
+      source = options.exe + "." + std::to_string(k) + ".cpp";
+      std::string cpp, error;
+      if (!writeCppModule(cg.modules[k], CppWriterOptions{llPath, unsigned(k)}, cpp, error) || !writeFile(source, cpp))
+      {
+        moduleFailed(k, -1, llPath, error.empty() ? "cannot write " + source : error);
+        return;
+      }
+    }
+    std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + options.clangFlags + (options.viaCpp ? " " + cppCompileFlags() + (options.debugInfo ? cppDebugFlags(options) : std::string()) : std::string()) +
+                          " -c \"" + source + "\" -o \"" + objects[k] + "\" 2> \"" + errPath + "\"";
     if (int rc = host::shell(command); rc != 0)
-      moduleFailed(k, rc, llPath, readWholeFile(errPath));
+      moduleFailed(k, rc, source, readWholeFile(errPath));
     else
     {
       std::error_code removed;
@@ -1008,7 +1039,8 @@ void runCodegen(Build& build)
       said += "\n  " + line;
       ++lines;
     }
-    std::string who = f.rc ? "clang rejected module " + std::to_string(f.module) + " (exit " + std::to_string(f.rc) + ")"
+    std::string who = f.rc < 0 ? "module " + std::to_string(f.module) + " was not written as C++ (--via-cpp)"
+                      : f.rc ? "clang rejected module " + std::to_string(f.module) + " (exit " + std::to_string(f.rc) + ")"
                            : "LLVM's back end rejected module " + std::to_string(f.module);
     fprintf(stderr, "%s: error: %s%s\n", f.path.c_str(), who.c_str(), said.empty() ? " and said nothing" : said.c_str());
   }
@@ -1036,6 +1068,9 @@ void runCodegen(Build& build)
       continue; // a module clang rejected (--keep-going): the link reports what it would have defined
     response += "\"" + slashes(o) + "\"\n";
   }
+  if (options.viaCpp)
+    for (const std::string& flag : splitFlags(cppLinkFlags(options)))
+      response += "\"" + slashes(flag) + "\"\n";
   response += "-o \"" + slashes(options.exe) + "\"\n";
   if (thinLTO)
   {

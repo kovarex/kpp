@@ -37,6 +37,7 @@
     bool cTypeWarnings = false;  // --c-type-warnings
     bool quiet = false;
     std::string emitLLVM; // --emit-llvm <path>
+    bool viaCpp = false;  // --via-cpp: each module written as C++ (cppwriter.hpp) and compiled by clang as that
     std::string implicitUses; // --implicit-uses <path> (source.hpp's setImplicitUses)
     std::string exe;      // --exe <path>
     std::string runBuild; // --run-build CONFIGURATION: print build.kpp's description (GlobalScope::runBuild)

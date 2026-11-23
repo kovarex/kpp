@@ -1,0 +1,7 @@
+# The known failures of the spec built through kpp's C++ back end (run_spec.py --via-cpp, docs/cpp-backend.md).
+# One line each:
+#   fails area/name  why   the snippet builds and does not print what it should
+#   build area/name  why   the snippet does not build
+# A known failure is reported as "known"; one that starts working fails the run until its line goes, and so
+# does a line naming no snippet. 2026-11-23: 2488 of 2489 pass.
+fails interop/release_entry_keeps_the_lines_inlined_into_it  a release build's frame inlined into the entry is found at the entry's line (40), not its own (43): the C++ compiler's inline sites in the PDB, not kpp's

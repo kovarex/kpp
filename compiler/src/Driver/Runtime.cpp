@@ -88,6 +88,30 @@ std::string madeOnce(const std::string& stem, const std::string& ext, const std:
   return ec ? output.string() : file.string();
 }
 
+std::string cppCompileFlags()
+{
+  return "-x c++ -std=c++17 -fexceptions -fcxx-exceptions -fno-rtti -fno-strict-aliasing -fno-threadsafe-statics -Wno-everything -Werror=global-constructors";
+}
+
+std::string cppDebugFlags(const Options& options)
+{
+  return options.target.windows() ? " -g -gcodeview" : " -g";
+}
+
+std::string cppRuntime(const Options& options)
+{
+  std::string object = madeOnce("kpp_cpp_runtime", ".o", cppRuntimeSource(), options, [&](const std::string& in, const std::string& out)
+  {
+    return "\"" + clangPath() + "\"" + targetFlags(options) + " -c -O2 -ffunction-sections -x c++ -std=c++17 -fexceptions -fcxx-exceptions -fno-rtti -w \"" + in + "\" -o \"" + out + "\"";
+  });
+  return object.empty() ? std::string() : " \"" + object + "\"";
+}
+
+std::string cppLinkFlags(const Options& options)
+{
+  return cppRuntime(options) + (options.target.msvc() ? "" : options.target.mac() ? " -lc++" : " -lstdc++");
+}
+
 std::string itaniumRuntime(const Options& options)
 {
   static const char* personality = R"(/* kpp's personality (main.cpp's itaniumRuntime). */

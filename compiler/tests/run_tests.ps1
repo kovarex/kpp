@@ -57,6 +57,9 @@ Add 'rejected module' (Inline @('rejected')) -seconds 2
 # The same through LLVM's back end in kpp (tests\backend.ps1), when this kpp has it: an IR bug (the
 # verifier) or what the back end rejects (LLVM's diagnostics) fails its module with LLVM's message.
 Add 'LLVM back end' (PsCheck 'tests\backend.ps1') -seconds 5 -skip @{ 3 = 'LLVM back end (none in this kpp)' }
+# kpp's C++ back end (tests\viacpp.ps1), when this kpp has LLVM in it: a program built through C++ prints what
+# its plain build prints.
+Add 'via C++' (PsCheck 'tests\viacpp.ps1') -seconds 12 -skip @{ 3 = 'via C++ (no LLVM in this kpp)' }
 Add 'verifier' (PsCheck 'tests\verifier.ps1') -seconds 17
 Add 'stubs' (PsCheck 'tests\stubs.ps1') -seconds 7
 Add 'static constants' (PsCheck 'tests\staticconstants.ps1') -seconds 1

@@ -122,6 +122,8 @@ int compile(int argc, char** argv)
       options.implicitUses = argv[++i];
     else if (arg == "--emit-llvm" && i + 1 < argc)
       options.emitLLVM = argv[++i];
+    else if (arg == "--via-cpp")
+      options.viaCpp = true;
     else if (arg == "--exe" && i + 1 < argc)
       options.exe = argv[++i];
     else if (arg == "--run-build" && i + 1 < argc)
@@ -546,6 +548,12 @@ int compile(int argc, char** argv)
       fprintf(stderr, "%s\n", error.c_str());
       return 2;
     }
+    // --via-cpp: the code generator writes the Itanium model's landing pads for every target (Target::seh).
+    if (options.viaCpp && !cppWriterAvailable())
+    {
+      fprintf(stderr, "--via-cpp needs a kpp built with LLVM in it (CMake's KPP_LLVM_DIR), which reads the modules it writes as C++\n");
+      return 2;
+    }
     // The bundled toolchain (llvm-mingw) builds Windows programs in the GNU dialect: it has no Visual
     // Studio's headers and libraries for the MSVC one, and Visual Studio's clang has no MinGW-w64's.
     if (bundledToolchain() && options.target.msvc())
@@ -565,6 +573,7 @@ int compile(int argc, char** argv)
                       "naming such a clang\n");
       return 2;
     }
+    options.target.cpp = options.viaCpp; // (once the target is settled: a --target after --via-cpp replaces it whole)
     // --subsystem (docs/build.md, "Options"): the PE header's, which no other platform's executable has;
     // said before anything about the target's tools (its sysroot, its SDK).
     if (!windowsSubsystemGiven.empty() && !options.target.windows())

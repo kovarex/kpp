@@ -11,7 +11,7 @@
 
     // The personality of a function with exception handling: SEH's on Windows, kpp's own (main.cpp's
     // itaniumRuntime) on the other targets.
-    std::string personality() const { return sh.target.windows() ? "@__C_specific_handler" : "@__kpp_personality_v0"; }
+    std::string personality() const { return sh.target.seh() ? "@__C_specific_handler" : "@__kpp_personality_v0"; }
 
     bool handlerDeclared = false; // this emitter saw the personality declared
     void markEH();

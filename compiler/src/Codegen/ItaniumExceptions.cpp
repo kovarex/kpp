@@ -404,7 +404,7 @@ auto codegen::Emitter::tryBody(TryStmt* t) -> void
 auto codegen::Emitter::tryStatement(TryStmt* t) -> void
 {
   usesExceptions = true;
-  if (!sh.target.windows())
+  if (!sh.target.seh())
   {
     itaniumTry(t);
     return;
@@ -674,7 +674,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
     if (declaredNames.claim(name))
       decls += line + "\n";
   };
-  if (usesExceptions && !sh.target.windows())
+  if (usesExceptions && !sh.target.seh())
   {
     // Off Windows, the Itanium model (itaniumUnwindDestination, itaniumTry, main.cpp's
     // itaniumRuntime). kpp_throw puts the object, its descriptor and its destructor after the
@@ -879,7 +879,7 @@ auto codegen::Emitter::finishExceptionRuntime() -> void
   // the throw site on the stack (C++'s std::terminate), as off Windows the personality does at the
   // empty filter. Another exception (an access violation) goes on searching. A program that throws
   // nothing has no kpp exception to stop.
-  if (usesNoexceptFilter && sh.target.windows())
+  if (usesNoexceptFilter && sh.target.seh())
   {
     // (one append: the shared text is taken definition by definition)
     shared += sharedComdat("@kpp.eh.filter.noexcept") + std::string(kppEhFilterNoexceptHeader) + "\nentry:\n" +
@@ -959,7 +959,7 @@ auto codegen::Emitter::emitEntry(const std::string& mainName) -> bool
   // reaches when no handler of the program takes a kpp exception: it reports the exception and ends
   // the program from the search, so the handler itself is never entered. (Off Windows, kpp_throw
   // reports and aborts itself.)
-  bool reports = usesExceptions && sh.target.windows();
+  bool reports = usesExceptions && sh.target.seh();
   std::string code = utf8 ? wideArguments() : "";
   if (!reports)
     code += "  %r = call " + call + "\n  ret i32 %r\n";

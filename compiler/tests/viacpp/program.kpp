@@ -1,0 +1,124 @@
+// tests\viacpp.ps1's program: built plainly and through kpp's C++ back end (--via-cpp), the two outputs compared.
+class Shape
+{
+public:
+  virtual ~Shape() { std::println("~Shape ", this.name); }
+  virtual f64 area() const = 0;
+  std::String name;
+};
+
+class Square : public Shape
+{
+public:
+  Square(f64 side) : side(side) { this.name = std::String("square"); }
+  f64 area() const override { return this.side * this.side; }
+  f64 side;
+};
+
+class Circle : public Shape
+{
+public:
+  Circle(f64 radius) : radius(radius) { this.name = std::String("circle"); }
+  f64 area() const override { return 3.25 * this.radius * this.radius; }
+  f64 radius;
+};
+
+class Failure : public std::Exception
+{
+public:
+  Failure(i32 code) : std::Exception("failure"), code(code) {}
+  i32 code;
+};
+
+struct Guard
+{
+  Guard(i32 id) : id(id) {}
+  ~Guard() { std::println("guard ", this.id, " ends"); }
+  i32 id;
+};
+
+i32 risky(i32 n)
+{
+  Guard guard(n);
+  if (n % 3 == 0)
+    throw Failure(n);
+  if (n % 5 == 0)
+    throw std::RuntimeError("five");
+  return n * 2;
+}
+
+u64 mix(u64 x)
+{
+  x ^= x >> 33;
+  x *= 0xff51afd7ed558ccd;
+  x ^= x >> 29;
+  return x;
+}
+
+i32 classify(i32 n)
+{
+  switch (n & 3)
+  {
+  case 0: return 10;
+  case 1, 2: return 20;
+  default: return 30;
+  }
+}
+
+int main()
+{
+  std::Vector<Shape^> shapes;
+  shapes.push_back(std::makeUnique<Square>(2.5));
+  shapes.push_back(std::makeUnique<Circle>(1.5));
+  f64 total = 0;
+  for (const auto& shape : shapes)
+    total += shape->area();
+  std::println("total area ", total);
+
+  i32 sum = 0;
+  for (i32 i = 1; i <= 6; ++i)
+  {
+    try
+    {
+      sum += risky(i);
+    }
+    catch (const Failure& failure)
+    {
+      std::println("failure ", failure.code);
+    }
+    catch (const std::Exception& exception)
+    {
+      std::println("exception ", exception.what());
+    }
+  }
+  std::println("sum ", sum);
+
+  try
+  {
+    try
+    {
+      risky(9);
+    }
+    catch (...)
+    {
+      std::println("thrown on");
+      throw;
+    }
+  }
+  catch (const std::Exception& exception)
+  {
+    std::println("outer ", exception.what());
+  }
+
+  std::HashMap<std::String, i32> counts;
+  for (const char* word : {"one", "two", "one", "three", "one"})
+    ++counts[std::String(word)];
+  std::println("one ", counts[std::String("one")], " two ", counts[std::String("two")]);
+
+  i8 small = 100;
+  small += 100;
+  u16 product = u16(300) * u16(300);
+  i32 shifted = i32(-64) >> 3;
+  std::println(i32(small), " ", product, " ", shifted, " ", mix(42), " ", classify(5), " ", 0.1 + 0.2, " ", f32(1) / f32(3));
+  return 0;
+}

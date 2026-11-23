@@ -44,7 +44,7 @@ auto codegen::Emitter::emitCall(const std::string& prefix, const std::string& ca
   // when the constructor's body then called a function that may throw (E's battery, 2026-11-06,
   // classes/member_whose_constructor_throws_is_not_destroyed). However the blocks are laid out, a
   // call before an invoke now returns to this nop, outside the entry.
-  if (sh.target.windows())
+  if (sh.target.seh())
     fn += "  call void asm sideeffect \"nop\", \"\"() #0" + bundle() + "\n";
   std::string cont = newLabel("invoke.cont");
   fn += "  " + prefix + "invoke " + callee + bundle() + " to label %" + cont + " unwind label %" + dest + "\n";
@@ -63,7 +63,7 @@ auto codegen::Emitter::emitCall(const std::string& prefix, const std::string& ca
 
 auto codegen::Emitter::unwindDestination() -> std::string
 {
-  if (!sh.target.windows())
+  if (!sh.target.seh())
     return itaniumUnwindDestination();
   size_t limit = ehFrames.empty() ? 0 : ehFrames.back().scopeDepth;
   std::vector<Object> objects;

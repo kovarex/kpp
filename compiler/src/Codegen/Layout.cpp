@@ -1258,7 +1258,8 @@ auto codegen::Emitter::emitVtables(const Ty* key, StructInfo& info, Node* at) ->
     // linker keeps one copy by the comdat's key and nothing names the private copies it drops. (A
     // second external name in the comdat, the table's own, was defined twice: LNK2005.)
     std::string symbol;
-    if (sh.target.windows() && sh.fullDebugInfo) // (a debug build's, which the debugger reads: ThinLTO left an imported table's alias undefined)
+    // (Not through kpp's C++ back end: an alias into a comdat is the assembler's, and its debug information describes no types.)
+    if (sh.target.windows() && sh.fullDebugInfo && !sh.target.cpp) // (a debug build's, which the debugger reads: ThinLTO left an imported table's alias undefined)
     {
       std::string self = msvcClassName(key);
       const Ty* holder = table.path.empty() && info.primaryBase ? info.primaryBase : key; // (the primary table is its primary base's)

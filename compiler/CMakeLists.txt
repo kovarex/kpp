@@ -27,6 +27,7 @@ add_executable(kpp
   src/Driver/Options.cpp
   src/Driver/Runtime.cpp
   src/convert.cpp
+  src/cppwriter.cpp
   src/format.cpp
   src/lexer.cpp
   src/SymbolTable.cpp
@@ -154,6 +155,6 @@ if (KPP_LLVM_DIR)
   target_link_libraries(kpp PRIVATE ${kpp_llvm_libs} psapi shell32 ole32 uuid advapi32 ws2_32 ntdll)
   if (MSVC)
     # (LLVM's headers are not warning-free at /W4.)
-    set_source_files_properties(src/backend.cpp PROPERTIES COMPILE_OPTIONS "/W0;/WX-")
+    set_source_files_properties(src/backend.cpp src/cppwriter.cpp PROPERTIES COMPILE_OPTIONS "/W0;/WX-")
   endif()
 endif()

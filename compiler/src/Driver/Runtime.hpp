@@ -58,3 +58,20 @@
   // kpp_eh_offset and kpp_eh_terminate are the runtime's that codegen writes (finishExceptionRuntime),
   // weak here: a program without exceptions has neither, and its link drops this (--gc-sections).
   std::string itaniumRuntime(const Options& options);
+
+  // --via-cpp: what the program's C++ translation units call besides the program (cppwriter.hpp, cppRuntimeSource:
+  // a kpp exception thrown and thrown on as a C++ exception), compiled once per target into the import cache.
+  // The object, quoted for the link; empty, with an error printed, when it cannot be made.
+  std::string cppRuntime(const Options& options);
+
+  // --via-cpp: what compiles a module's C++ besides the level and the target: the dialect, exceptions, no
+  // aliasing by type (the translation units read memory as LLVM does), and an error for a global the C++
+  // compiler would initialize at startup (the writer's globals are all constants).
+  std::string cppCompileFlags();
+  // With --debug-info: the C++ compiler writes the debug information (the modules' C++ has #line directives of
+  // kpp's sources): CodeView for a Windows target, as kpp's own.
+  std::string cppDebugFlags(const Options& options);
+
+  // --via-cpp: what the link takes besides the modules' objects: the runtime (cppRuntime) and, off Windows, the C++
+  // library that throws and catches (the Visual C++ runtime, which every Windows program links, has it).
+  std::string cppLinkFlags(const Options& options);

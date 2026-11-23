@@ -166,6 +166,8 @@ KNOWN_MACOS = os.path.join(HERE, "macos-known-failures.txt")
 # A Mac's own run (run_spec.py on a Mac: the snippets built and run there): macos-host-known-failures.txt,
 # `fails area/name  why` for a snippet that does not pass there yet.
 KNOWN_MACOS_HOST = os.path.join(HERE, "macos-host-known-failures.txt")
+# --via-cpp (kpp's C++ back end): via-cpp-known-failures.txt, `fails area/name  why`, read the same way.
+KNOWN_VIA_CPP = os.path.join(HERE, "via-cpp-known-failures.txt")
 MACOS_TARGETS = ("macos", "macos-x64")
 # Without KPP_SDK_MACOS a snippet that imports C headers, or has a C source, is skipped: the stand-in
 # has none.
@@ -701,6 +703,8 @@ def main():
     ap.add_argument("--no-doc", action="store_true")
     ap.add_argument("--release", action="store_true")
     ap.add_argument("--debug-info", action="store_true")
+    # --via-cpp: every snippet built through kpp's C++ back end (docs/cpp-backend.md), into build\spec-via-cpp.
+    ap.add_argument("--via-cpp", action="store_true")
     ap.add_argument("--target", choices=["linux", "linux-arm64", "freebsd", "windows-gnu", "macos", "macos-x64"])
     ap.add_argument("--shard", default="")
     ap.add_argument("--out", default="")
@@ -739,7 +743,7 @@ def main():
         print("spec: FAILED: bad --shard"); return 2
     if shard:
         args.no_doc = True
-    for flag in ("release", "debug_info"):
+    for flag in ("release", "debug_info", "via_cpp"):
         if getattr(args, flag):
             option = "--" + flag.replace("_", "-")
             EXTRA.append(option)
@@ -846,6 +850,8 @@ def main():
         stale = apply_known_freebsd(results, not args.filter and not only, KNOWN_MACOS, bundle=False)
     elif TARGET in MACOS_TARGETS:
         stale = apply_known_freebsd(results, not args.filter and not only and not shard, KNOWN_MACOS_HOST, bundle=False)
+    elif args.via_cpp:
+        stale = apply_known_freebsd(results, not args.filter and not only and not shard, KNOWN_VIA_CPP, bundle=False)
     for r in results:
         tag = {"pass": "ok     ", "built": "built  ", "known": "known  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]
         line = f"{tag} {r['area']}/{r['name']}"
@@ -854,7 +860,7 @@ def main():
         print(line)
     counts = {s: sum(1 for r in results if r["status"] == s) for s in ("pass", "built", "known", "pending", "FAIL", "fixed")}
     for entry in stale:
-        print(f"FAIL    {entry}  -- {os.path.basename((KNOWN_MACOS_HOST if NATIVE else KNOWN_MACOS) if TARGET in MACOS_TARGETS else KNOWN_FREEBSD)} names no such snippet")
+        print(f"FAIL    {entry}  -- {os.path.basename((KNOWN_MACOS_HOST if NATIVE else KNOWN_MACOS) if TARGET in MACOS_TARGETS else KNOWN_VIA_CPP if args.via_cpp else KNOWN_FREEBSD)} names no such snippet")
     print((f"{counts['built']} built (run.sh runs them on FreeBSD: {os.path.relpath(OUT, ROOT)}), {counts['known']} known not to build, " if TARGET == "freebsd" else
            f"{counts['built']} built for {TARGET} (Mach-O, not run here), {counts['known']} known not to build, " if TARGET in MACOS_TARGETS and not NATIVE else "") + f"{counts['pass']} pass, {counts['pending']} pending, {counts['FAIL']} failing, {counts['fixed']} fixed" +
           (f", {skipped} skipped for {TARGET or 'windows'}" if skipped else "") + f" ({elapsed:.1f} s)")

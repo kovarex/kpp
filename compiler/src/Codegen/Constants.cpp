@@ -2092,9 +2092,11 @@ auto codegen::Emitter::finishProgramExitRuntime() -> void
             "  call void @free(ptr %node)\n  invoke void %dtor(ptr %object)\n    to label %end unwind label %dispatch\n"
             "end:\n  ret void\n"
             // (a destructor that throws ends the program, as out of a noexcept function; the C library has no frame that would)
-            "dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
-            "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.noexcept]\n  unreachable\n}\n";
-  usesNoexceptFilter = true;
+            // (through kpp's C++ back end, the Itanium model's pad of a noexcept function: the empty filter)
+            + (sh.target.seh() ? std::string("dispatch:\n  %cs = catchswitch within none [label %handler] unwind to caller\n"
+                                             "handler:\n  %pad = catchpad within %cs [ptr @kpp.eh.filter.noexcept]\n  unreachable\n}\n")
+                               : std::string("dispatch:\n  %lp = landingpad { ptr, i32 } filter [0 x ptr] zeroinitializer\n  unreachable\n}\n"));
+  usesNoexceptFilter = usesNoexceptFilter || sh.target.seh();
   shared += sharedComdat("@kpp_atexit") + std::string(kppAtExitHeader) +
             "\nentry:\n  %node = call ptr @malloc(i64 24)\n  %dp = getelementptr inbounds i8, ptr %node, i64 8\n  store ptr %dtor, ptr %dp\n"
             "  %op = getelementptr inbounds i8, ptr %node, i64 16\n  store ptr %object, ptr %op\n  br label %push\n"

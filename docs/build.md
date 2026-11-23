@@ -36,6 +36,7 @@ only the choice of kpp's arguments.
 | `--lib F` | passed to the link: a `.lib`, `-lname`, `-Wl,/OPT`, a `.res` |
 | `--cinclude D` | a directory searched by the C headers the code imports |
 | `--clang-flags F` | more flags for clang's compile of the modules |
+| `--via-cpp` | each module written as C++ (`EXE.k.cpp`) and compiled as that, for a platform whose own C++ compiler builds the program ([cpp-backend.md](cpp-backend.md)); needs a kpp with LLVM in it |
 | `--sanitize L` | sanitizers, `address`, `thread` (clang's), `undefined` and `overflow` (kpp's own) ("Sanitizers" below); `config::sanitizeAddress`, `config::sanitizeThread`, `config::sanitizeUndefined` and `config::sanitizeOverflow` say which |
 | `--incremental-link` | debug builds only: link.exe `/INCREMENTAL`, so the next link redoes only changed objects; the modules have no section per function (the link keeps every function) |
 | `--subsystem S` | a Windows program's subsystem: `console` (the default) or `windows`, the GUI one, which opens no console window when the program starts (link.exe's `/SUBSYSTEM:WINDOWS` with main's entry named, `/ENTRY:mainCRTStartup` or wmain's; windows-gnu `--subsystem windows`). What it prints still reaches a redirection. Factorio's release and final builds of the game take it, as its C++ Release and FinalRelease link (kovarex, 2026-11-14); debug ones and the tests stay console programs. Another target's build refuses it |

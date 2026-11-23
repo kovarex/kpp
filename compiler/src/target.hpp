@@ -24,6 +24,9 @@ struct Target
   bool windows() const { return os == Os::Windows; }
   bool msvc() const { return os == Os::Windows && !gnu; } // Visual Studio's headers, libraries and link.exe
   bool posix() const { return os != Os::Windows; }
+  // Whether exceptions are Windows' structured ones (funclets, filter functions). Not through kpp's C++ back end
+  // (--via-cpp, cpp): its translation units are written from the Itanium model's landing pads on every target.
+  bool seh() const { return os == Os::Windows && !cpp; }
   bool mac() const { return os == Os::Mac; } // Mach-O, ld64.lld, the SDK (--sysroot or SDKROOT)
   bool arm64() const { return arch == Arch::Arm64; }
   // Whether the target's C reads a char, short or bool argument or result from its whole 32-bit
@@ -44,6 +47,8 @@ struct Target
   // MSVC's, but MinGW-w64's headers and import libraries (the C runtime is the UCRT's ucrtbase.dll)
   // and lld's GNU driver: what the bundled toolchain (llvm-mingw) builds, with no Visual Studio.
   bool gnu = false;
+  // --via-cpp (docs/cpp-backend.md): the modules are written as C++ and compiled by the target's C++ compiler.
+  bool cpp = false;
 };
 
 // The platforms' names, one table (thread J's refactoring list, 2026-11-05): config::platform's

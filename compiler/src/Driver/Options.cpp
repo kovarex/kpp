@@ -81,6 +81,8 @@ void usage(FILE* out)
           "  --diagnostic-columns  the column too where it is known: path:line:column, path(line,column)\n"
           "                (`kpp --lsp`, docs/ide.md)\n"
           "  --emit-llvm F write LLVM IR for the program to F\n"
+          "  --via-cpp     each module written as C++ (EXE.k.cpp) and compiled as that: for a platform whose own C++\n"
+          "                compiler builds the program (docs/cpp-backend.md)\n"
           "  --exe F       compile the program to the executable F (needs clang)\n"
           "  --check       every error a build reports, codegen's included, writing nothing\n"
           "  --packages    the code packages (each directory, named as it is; docs/design.md, \"Code packages\")\n"

@@ -19,6 +19,7 @@
 #include "natvis.hpp"
 #include "source.hpp"
 #include "backend.hpp"
+#include "cppwriter.hpp"
 #include "packages.hpp"
 #include "sha256.hpp"
 #include "allocator.hpp"

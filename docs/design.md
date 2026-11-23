@@ -3885,6 +3885,29 @@ passed for the other (the reason SelectSlotParameters had deleted `i8` and `u8` 
 Specs: kpp/explicit_type, kpp/explicit_type_overloads, kpp/explicit_bool, kpp/explicit_type_conversions_need_a_cast.
 docs/differences-from-cpp.md, "Explicit types".
 
+### 34. A C++ back end: `--via-cpp` (decided 2026-11-23)
+
+Nintendo's releases are built with Nintendo's own C++ compiler (a clang), "and we probably won't make them use kpp
+anytime soon" (kovarex, 2026-11-23). Once the game's C++ master stops, a Nintendo build has to come from the kpp
+source, so kpp writes C++ for that compiler to build. Three ways were studied; kovarex's choices:
+
+- **C++ source is required.** Nintendo's clang compiling kpp's LLVM IR, which needs no C++ at all, was refused ("No,
+  we need to generate C++ code").
+- **The C++ is written after the code generator, not from the typed tree** ("Yes, do B. The generated code doesn't
+  have to be nice at all, it is just an intermediate build step basically."). At that point every kpp feature is
+  lowered already, so the writer translates LLVM's operations and never learns a language feature; a writer from
+  the typed tree would be a second code generator, each later feature built twice, the two free to disagree
+  silently.
+
+`kpp --via-cpp` writes each module as a C++ translation unit and compiles that (compiler/src/cppwriter.cpp). The
+mapping, what keeps the program the same, the exceptions (C++ exceptions carrying kpp's record, the search still
+two-phase) and what it does not write are in [cpp-backend.md](cpp-backend.md). The code generator writes the
+Itanium model's landing pads for every target under `--via-cpp` (`Target::seh()`), Windows included, so that one
+writer serves them all and the Windows specification suite runs through it.
+
+Still to do for a Nintendo build (the study's phase P): the Switch as a target and a platform of the game, whose
+code the conversion dropped, and the SDK's C++ API behind C functions.
+
 ## Code packages (proposed 2026-10-27, decided 2026-11-04)
 
 **Decided** (kovarex, 2026-11-04): a directory is a package, named after the directory; an optional
