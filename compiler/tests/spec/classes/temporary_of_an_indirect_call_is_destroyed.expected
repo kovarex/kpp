@@ -1,0 +1,6 @@
+auto template argument: 3 made, 3 destroyed
+member pointer variable: 3 made, 3 destroyed
+a local: 2 destroyed before its end
+function pointer: 3 made, 3 destroyed
+caught 7 with 1 of 1 destroyed
+thrown: 1 made, 1 destroyed
