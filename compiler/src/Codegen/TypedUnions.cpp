@@ -328,8 +328,23 @@ auto codegen::Emitter::constructAlternative(ClassDecl* c, const Ty* t, const std
 
 auto codegen::Emitter::destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at) -> void
 {
-  forHeldAlternative(c, t, obj, at,
-                     [&](size_t i) { return boxedAlternative(c, t, i, at) || needsDestruction(alternativeType(c, t, i, at), at); },
+  auto destroyed = [&](size_t i) { return boxedAlternative(c, t, i, at) || needsDestruction(alternativeType(c, t, i, at), at); };
+  // More than two alternatives to destroy: through the union's helper, not a switch spelled out here.
+  // The game's InputAction (120 alternatives) is set alternative by alternative in its loading
+  // (`this[a.tag] = input.load<a.type>()` in a `for constexpr` over them), each setting destroying the
+  // one held first: 120 such switches in one function, 13.7 MB of IR (factorio-test debug, 2026-11-23).
+  size_t count = 0;
+  for (size_t i = 0; i < c->alternatives.size(); ++i)
+    count += destroyed(i) ? 1 : 0;
+  if (count > 2 && types.stripRef(t) != alternativeHelperFor)
+  {
+    bool mayThrow = false;
+    for (size_t i = 0; i < c->alternatives.size() && !mayThrow; ++i)
+      mayThrow = destroyed(i) && destructionMayThrow(alternativeType(c, t, i, at), at);
+    callDestructor(alternativeDestructorHelper(c, t, at), obj, mayThrow);
+    return;
+  }
+  forHeldAlternative(c, t, obj, at, destroyed,
                      [&](size_t i)
                      {
                        if (boxedAlternative(c, t, i, at))
@@ -337,6 +352,48 @@ auto codegen::Emitter::destroyAlternative(ClassDecl* c, const Ty* t, const std::
                        else
                          destroy(alternativeAddress(c, t, obj, i, at), alternativeType(c, t, i, at), at);
                      });
+}
+
+auto codegen::Emitter::alternativeDestructorHelper(ClassDecl* c, const Ty* t, Node* at) -> std::string
+{
+  t = types.stripRef(t);
+  std::string name = "@kpp.dtor.alt." + structFor(t, at).name.substr(8);
+  auto lock = sharedLock(); // held while the helper is emitted: one emitter writes it (as destructorThunk)
+  if (emittedShared[name])
+    return name;
+  emittedShared[name] = true;
+  FunctionState saved = saveState();
+  std::string savedOverride = funcletOverride;
+  const Ty* savedHelperFor = alternativeHelperFor;
+  alternativeHelperFor = t; // (its own body spells the switch out)
+  funcletOverride.clear();
+  resetFunctionState();
+  choicesRecorded = false;
+  auto restore = [&]
+  {
+    restoreState(saved);
+    funcletOverride = savedOverride;
+    alternativeHelperFor = savedHelperFor;
+  };
+  try
+  {
+    bool mayThrow = false;
+    for (size_t i = 0; i < c->alternatives.size() && !mayThrow; ++i)
+      mayThrow = destructionMayThrow(alternativeType(c, t, i, at), at);
+    noexceptDestructorHelper = !mayThrow;
+    destroyAlternative(c, t, "%o", at);
+    fn += "  ret void\n";
+    shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %o) comdat " + (usesEH ? "personality ptr " + personality() + " " : std::string()) +
+              "{\nentry:\n" + allocas + fn + ehBlocks + "}\n";
+  }
+  catch (Unsupported&)
+  {
+    restore();
+    ++sh.failuresRemembered; // (marked emitted: its later uses do not fail)
+    throw;
+  }
+  restore();
+  return name;
 }
 
 auto codegen::Emitter::ownMembers(ClassDecl* c, const Ty* t, Node* at) -> std::vector<std::pair<uint32_t, Decl*>>

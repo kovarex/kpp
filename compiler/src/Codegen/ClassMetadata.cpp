@@ -533,6 +533,16 @@ auto codegen::Emitter::destroy(const std::string& addr, const Ty* t, Node* at, b
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
+    // A typed union is destroyed through its destructor helper, its switch over the alternatives
+    // spelled out once there, not inline wherever one is destroyed: the game's InputAction (a union
+    // enum of 120 alternatives since kpp-factorio's #8778) put that switch into every test that
+    // performs an action, at each end of scope and in each cleanup, 333 -> 718 MB of the tests' IR
+    // (factorio-test debug, 2026-11-23). The helper's own body spells it out.
+    if (t != destructorHelperFor)
+    {
+      callDestructor(destructorThunk(t, at), addr, destructionMayThrow(t, at));
+      return;
+    }
     destroyTypedUnion(c, t, addr, at);
     return;
   }

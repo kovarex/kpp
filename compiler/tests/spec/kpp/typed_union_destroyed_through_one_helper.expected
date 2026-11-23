@@ -1,0 +1,12 @@
+~l ~f | count
+~a ~l ~f | one
+~x ~l ~f | boxed
+~l ~f | void
+~p ~q set ~q ~r set ~r ~l ~f | replaced
+~t ~l ~f read t | temporary
+~1 ~l ~f ~0 ~l ~f | array
+~v ~l ~f ~v ~l ~f | vector
+~h ~l ~f ~b | member
+~u ~l ~f caught | unwound
+~throwing caught 5 | throwing destructor
+live 0

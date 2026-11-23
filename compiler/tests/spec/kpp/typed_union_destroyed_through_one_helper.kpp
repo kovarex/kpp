@@ -1,0 +1,115 @@
+// spec: a typed union is destroyed wherever it ends, as any class: at the end of its scope whichever alternative it holds (none for a void one), its alternative first and then its own data members, last first; a boxed alternative (inline(N)) destroyed and freed; as a temporary, as an element of an array and of a vector, as a member of a class, when another alternative is set (the held one destroyed first), while an exception unwinds past it, and when its alternative's destructor throws (noexcept(false)), the exception leaving it destroyed
+// factorio: the game's InputAction (a union enum of 120 alternatives) had its destruction, a switch over every alternative, spelled out wherever one ended: 333 -> 718 MB of factorio-test's IR in its tests (2026-11-23); since then each typed union is destroyed through one helper of its own, and this checks the helper does what the inline destruction did
+int live = 0;
+struct Noisy
+{
+  char name = 'n';
+  Noisy(char name) : name(name) { live += 1; }
+  Noisy(const Noisy& other) : name(other.name) { live += 1; }
+  ~Noisy()
+  {
+    live -= 1;
+    std::print("~", this.name, " ");
+  }
+};
+struct Throwing
+{
+  int id = 0;
+  ~Throwing() noexcept(false)
+  {
+    std::print("~throwing ");
+    if (this.id == 1)
+      throw 5;
+  }
+};
+struct Big
+{
+  Noisy noisy;
+  char bytes[64];
+  Big(char name) : noisy(name) {}
+};
+union enum Action : u16 inline(16)
+{
+  { {Count, int}, {One, Noisy}, {Large, Big}, {Two, Noisy}, {Stop, void} }
+  Noisy first = Noisy('f');
+  Noisy last = Noisy('l');
+};
+union enum Risky : u8
+{
+  { {Count, int}, {Bad, Throwing} }
+};
+struct Holder
+{
+  Noisy before = Noisy('b');
+  Action action = Action(Action::One, Noisy('h'));
+};
+Action make(char name) { return Action(Action::One, Noisy(name)); }
+int main()
+{
+  {
+    Action a;
+    a[Action::Count] = 3;
+  }
+  std::println("| count");
+  {
+    Action a(Action::One, Noisy('a'));
+  }
+  std::println("| one");
+  {
+    Action a(Action::Large, 'x');
+  }
+  std::println("| boxed");
+  {
+    Action a;
+    a[Action::Stop] = void();
+  }
+  std::println("| void");
+  {
+    Action a(Action::Large, 'p');
+    a[Action::Two] = Noisy('q');
+    std::print("set ");
+    a[Action::One] = Noisy('r');
+    std::print("set ");
+  }
+  std::println("| replaced");
+  {
+    int n = make('t')[Action::One].name;
+    std::print("read ", char(n), " ");
+  }
+  std::println("| temporary");
+  {
+    Action array[2] = {Action(Action::One, Noisy('0')), Action(Action::One, Noisy('1'))};
+  }
+  std::println("| array");
+  {
+    std::Vector<Action> v;
+    v.push_back(make('v'));
+  }
+  std::println("| vector");
+  {
+    Holder h;
+  }
+  std::println("| member");
+  try
+  {
+    Action a(Action::One, Noisy('u'));
+    throw 1;
+  }
+  catch (int)
+  {
+    std::print("caught ");
+  }
+  std::println("| unwound");
+  try
+  {
+    Risky r(Risky::Bad, Throwing());
+    r[Risky::Bad].id = 1;
+  }
+  catch (int e)
+  {
+    std::print("caught ", e, " ");
+  }
+  std::println("| throwing destructor");
+  std::println("live ", live);
+  return 0;
+}

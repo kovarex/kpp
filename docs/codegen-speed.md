@@ -944,6 +944,35 @@ yesterday's game (8cd8320d04) in the same time, and master built yesterday's and
 
   The pieces now take cores from codegen while it runs, 0.3 s of the median build; the stalls are gone.
 
+**Typed unions destroyed through helpers (2026-11-23).** kovarex: the whole build of factorio-test took about
+22 s where the readme says 15.9 s. The kpp releases of the two days before were not it: 0.2.1670, 0.2.1703 and
+0.2.1738 built the same game (wube/kpp-factorio kpp 8cd00415e0) in 22.5 to 25.1 s. Each day's game built with
+that day's nightly kpp showed the step: 2.18 GB of IR on 11-14 (f5b0ea31c7, kpp 0.2.1471), 2.68 GB on 11-16
+(377c9d4ccd, 0.2.1523) and 2.81 GB on 11-20, the function count the same (332,000 in the IR). The tests' bodies
+alone went from 333 to 718 MB: the game's InputAction had become a union enum of 120 alternatives (kpp-factorio's
+#8778), and its destruction, a switch over every alternative, was spelled out inline wherever an InputAction
+ended, at each end of scope and in each cleanup. One test's body went from 64 KB to 1.18 MB of IR, 30 such
+switches. And InputAction's loading sets the alternative it reads (`this[a.tag] = input.load<a.type>()` in a
+`for constexpr`), each setting destroying the one held first: 120 switches of 120 cases in one function, 14 MB.
+- **What.** A typed union is destroyed through its destructor helper (`@kpp.dtor.<struct>`, as a class with
+  many members already was), and the alternative it holds through a helper of its own (`@kpp.dtor.alt.<struct>`)
+  where more than two alternatives need destroying: the switch is spelled out once, in the helper.
+- **Measured:** `kpp factorio-test debug --no-server --verbose`, whole builds (build\debug and build\clib
+  removed), kpp-factorio kpp 0c18a3229e, kpp 0.2.1738 against it with the change, interleaved, each round
+  started at 4 to 10% load:
+
+  | | 0.2.1738 | destruction through the helper | and the alternative's helper |
+  |---|---:|---:|---:|
+  | IR | 2,809 MB | 2,228 MB | 2,213 MB |
+  | codegen | 11.5 to 12.7 s | 9.2 to 10.0 s | 9.1 to 9.9 s |
+  | kpp | 21.1 to 21.6 s | 17.6 to 18.2 s | 18.0 to 18.6 s |
+  | total | 23.4 to 24.5 s | 20.2 to 20.5 s | 20.3 to 21.6 s |
+
+  The two columns with the change are two windows of three rounds each, 0.2.1738 in both (23.2 to 24.7 s
+  in the second): the alternative's helper removes 15 MB more, its time inside the noise. The build is back where the
+  game of 11-14 was (kpp 17.3 to 18.0 s); the readme's 15.9 s (0.2.1340, factorio-in-kpp 8dc0c25e2) is
+  still 4 to 5 s away.
+
 **Step 5: codegen's mutexes spin before they sleep (item 6's first lever; thread D, 2026-11-04).**
 - **Why.** A's profile of the clean build (A-clean-build-profile.md in the coordinator's notes) had
   codegen at 20.5 of 32 cores, its threads waiting 66.7 s on locks held 3.05 s in all: 1.3 million

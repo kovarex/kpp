@@ -65,6 +65,11 @@
       startBlock(endL);
     }
     void destroyAlternative(ClassDecl* c, const Ty* t, const std::string& obj, Node* at);
+    // The helper destroying the alternative a typed union of type t holds (`@kpp.dtor.alt.<struct>`, one
+    // definition): destroyAlternative calls it where more than two alternatives need destroying, its
+    // switch spelled out once, in the helper (alternativeHelperFor: the union whose helper is emitted).
+    std::string alternativeDestructorHelper(ClassDecl* c, const Ty* t, Node* at);
+    const Ty* alternativeHelperFor = nullptr;
     // `inline(N)` (design.md 8.5): whether typed union u (under args) keeps an alternative of type
     // altTy on the heap, altTy being larger than N bytes; its storage member then holds the address.
     bool boxesAlternative(ClassDecl* u, const TemplateArgs& args, const Ty* altTy, Node* at);
