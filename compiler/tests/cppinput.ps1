@@ -29,7 +29,8 @@ foreach ($case in $cases)
   if (-not (Test-Path $expected)) { $failed += "${name}: no cppinput\$name.expected.kpp (the conversion wrote $converted)"; continue }
   if ($got -ne ((Get-Content -Raw $expected) -replace "`r`n", "`n")) { $failed += "${name}: the conversion differs from $name.expected.kpp (written to $converted)"; continue }
   $ErrorActionPreference = 'Continue'
-  $run = & $KppExe --this-pointer --quiet --run $converted 2>&1 | Out-String
+  # (--no-server: a compile server per case stayed idle for an hour after each gate, 41 of them, 2026-11-23)
+  $run = & $KppExe --this-pointer --quiet --no-server --run $converted 2>&1 | Out-String
   $ErrorActionPreference = 'Stop'
   if ($LASTEXITCODE -ne 0) { $failed += "${name}: the converted program returned $LASTEXITCODE`: $($run.Trim())" }
 }
