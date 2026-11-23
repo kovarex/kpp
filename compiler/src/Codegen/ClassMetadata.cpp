@@ -2958,7 +2958,16 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
-    copyTypedUnion(c, t, dst, src, move, at);
+    // Through its helper (typedUnionHelper), the switch over its alternatives spelled out once there, not at each copy:
+    // InputAction's (a union enum of 120 alternatives) was 0.29 MB of IR at each of its 21 copies in the game's tests and
+    // 0.24 MB at each of its 17 moves (factorio-test debug, 2026-11-23).
+    const Ty* u = types.unqualified(types.stripRef(t));
+    if (typedUnionThroughHelper(c))
+    {
+      emitCall("", "void " + typedUnionHelper(u, move, false, at) + "(ptr " + dst + ", ptr " + src + ")", !global.constructsWithoutThrowing(u, move));
+      return;
+    }
+    copyTypedUnion(c, u, dst, src, move, at);
     return;
   }
   TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
@@ -3194,31 +3203,15 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
 {
   if (ClassDecl* c = typedUnionOf(t, at))
   {
-    // One alternative in both: its operator=, as std::variant. Else the alternative held goes, the
-    // source's alternative and tag come. Nothing for `u = u`, which copied from the alternative it
-    // had destroyed (until 2026-11-06: a String's freed text).
-    std::string same = newTemp(), assignL = newLabel("union.assign"), heldL = newLabel("union.same"), otherL = newLabel("union.other"),
-                doneL = newLabel("union.assigned");
-    fn += "  " + same + " = icmp eq ptr " + dst + ", " + src + "\n";
-    fn += "  br i1 " + same + ", label %" + doneL + ", label %" + assignL + "\n";
-    startBlock(assignL);
-    assignOwnMembers(c, t, dst, src, move, at); // (its own members first, in layout order)
-    std::string sameTag = newTemp(), toTag = loadTag(c, t, dst, at), fromTag = loadTag(c, t, src, at);
-    fn += "  " + sameTag + " = icmp eq " + llType(tagType(c), at) + " " + toTag + ", " + fromTag + "\n";
-    fn += "  br i1 " + sameTag + ", label %" + heldL + ", label %" + otherL + "\n";
-    startBlock(heldL);
-    assignHeldAlternative(c, t, dst, src, move, at);
-    emitBranch(doneL);
-    startBlock(otherL);
-    if (move)
+    // Through its helper (typedUnionHelper), as its copy: InputAction's assignment was 0.83 MB of IR at each of its uses
+    // in the game's tests, its move assignment 0.62 MB (factorio-test debug, 2026-11-23).
+    const Ty* u = types.unqualified(types.stripRef(t));
+    if (typedUnionThroughHelper(c))
     {
-      destroyAlternative(c, t, dst, at);
-      copyAlternative(c, t, dst, src, true, at);
+      emitCall("", "void " + typedUnionHelper(u, move, true, at) + "(ptr " + dst + ", ptr " + src + ")");
+      return;
     }
-    else
-      copyOverAlternative(c, t, dst, src, at);
-    emitBranch(doneL);
-    startBlock(doneL);
+    assignTypedUnion(c, u, dst, src, move, at);
     return;
   }
   const Ty* foundIn = nullptr;

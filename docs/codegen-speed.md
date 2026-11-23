@@ -1000,6 +1000,23 @@ read them first.
   | link | 57.8 to 58.0 s | 56.9 to 57.2 s |
   | total | 77.4 to 77.5 s | 74.5 to 74.6 s |
 
+**Typed unions copied, moved and assigned through helpers (2026-11-23).** kovarex: "this should be rule for all
+functions ... isn't it the reason why single InputAction generated destructor slowed down the compilation so much?".
+A measurement of the special members codegen writes where they are used (a temporary count of the bytes copyConstruct,
+moveConstruct, assignObject and destroy add to the function being emitted, never committed): in the game's debug
+build 69 MB of its 1,639 MB of IR, in factorio-test's 94 of 2,244 MB, most of it single calls (a String's destructor,
+190,000 times in the tests); the bodies of over 2 KB at their places were 25 and 29 MB, and InputAction's copies,
+moves and assignments about half of them: 0.29 MB of IR at each of its 21 copies, 0.24 MB at each of its 17 moves,
+0.6 to 0.8 MB at each of its 5 assignments, the switch over 120 alternatives spelled out each time (the next were
+classes copied member by member: ElementImageSet 1.4 MB at 54 places, MapSettings and ScenarioExecutionContext 0.6 MB
+each).
+- **What.** A typed union of more than two alternatives is copied, moved, copy-assigned and move-assigned through a
+  helper of its own (`@kpp.copy.`, `@kpp.move.`, `@kpp.assign.` and `@kpp.moveassign.` and its struct), as it is
+  destroyed: the switch spelled out once, in the helper. The call cannot throw where the union's copy (or move) cannot.
+- **Measured:** `kpp factorio-test debug --no-server --verbose`, build\debug's outputs removed before each build,
+  three interleaved pairs under `heavy.cmd --exclusive`: IR 2,244 -> 2,225 MB, clang 9.51 to 9.78 -> 9.09 to 9.36 s,
+  codegen, kpp and the total within the noise (kpp 17.2 to 18.3 s and 17.2 to 18.0 s).
+
 
 **Step 5: codegen's mutexes spin before they sleep (item 6's first lever; thread D, 2026-11-04).**
 - **Why.** A's profile of the clean build (A-clean-build-profile.md in the coordinator's notes) had

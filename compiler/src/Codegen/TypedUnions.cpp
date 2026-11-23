@@ -466,6 +466,71 @@ auto codegen::Emitter::copyTypedUnion(ClassDecl* c, const Ty* t, const std::stri
   copyAlternative(c, t, dst, src, move, at);
 }
 
+auto codegen::Emitter::assignTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at) -> void
+{
+  // One alternative in both: its operator=, as std::variant. Else the alternative held goes, the
+  // source's alternative and tag come. Nothing for `u = u`, which copied from the alternative it
+  // had destroyed (until 2026-11-06: a String's freed text).
+  std::string same = newTemp(), assignL = newLabel("union.assign"), heldL = newLabel("union.same"), otherL = newLabel("union.other"),
+              doneL = newLabel("union.assigned");
+  fn += "  " + same + " = icmp eq ptr " + dst + ", " + src + "\n";
+  fn += "  br i1 " + same + ", label %" + doneL + ", label %" + assignL + "\n";
+  startBlock(assignL);
+  assignOwnMembers(c, t, dst, src, move, at); // (its own members first, in layout order)
+  std::string sameTag = newTemp(), toTag = loadTag(c, t, dst, at), fromTag = loadTag(c, t, src, at);
+  fn += "  " + sameTag + " = icmp eq " + llType(tagType(c), at) + " " + toTag + ", " + fromTag + "\n";
+  fn += "  br i1 " + sameTag + ", label %" + heldL + ", label %" + otherL + "\n";
+  startBlock(heldL);
+  assignHeldAlternative(c, t, dst, src, move, at);
+  emitBranch(doneL);
+  startBlock(otherL);
+  if (move)
+  {
+    destroyAlternative(c, t, dst, at);
+    copyAlternative(c, t, dst, src, true, at);
+  }
+  else
+    copyOverAlternative(c, t, dst, src, at);
+  emitBranch(doneL);
+  startBlock(doneL);
+}
+
+auto codegen::Emitter::typedUnionHelper(const Ty* t, bool move, bool assign, Node* at) -> std::string
+{
+  std::string name = std::string(assign ? (move ? "@kpp.moveassign." : "@kpp.assign.") : (move ? "@kpp.move." : "@kpp.copy.")) +
+                     structFor(t, at).name.substr(8);
+  auto lock = sharedLock(); // held while the helper is emitted: one emitter writes it
+  if (emittedShared[name])
+    return name;
+  emittedShared[name] = true;
+  FunctionState saved = saveState();
+  std::string savedOverride = funcletOverride;
+  funcletOverride.clear();
+  resetFunctionState();
+  choicesRecorded = false;
+  try
+  {
+    ClassDecl* c = classDef(t->decl, at);
+    if (assign)
+      assignTypedUnion(c, t, "%dst", "%src", move, at);
+    else
+      copyTypedUnion(c, t, "%dst", "%src", move, at);
+    fn += "  ret void\n";
+    shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %dst, ptr %src) comdat " +
+              (usesEH ? "personality ptr " + personality() + " " : std::string()) + "{\nentry:\n" + allocas + fn + ehBlocks + "}\n";
+  }
+  catch (Unsupported&)
+  {
+    restoreState(saved);
+    funcletOverride = savedOverride;
+    ++sh.failuresRemembered; // (marked emitted: its later uses do not fail)
+    throw;
+  }
+  restoreState(saved);
+  funcletOverride = savedOverride;
+  return name;
+}
+
 auto codegen::Emitter::destroyTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at) -> void
 {
   destroyAlternative(c, t, addr, at);

@@ -1,0 +1,8 @@
+copy a [one a] 9 | copy
+copy x [large x] [large x] | boxed copy and move
+move a [one a] | move
+assign a over b [one a] copy a [one a] copy a [one a] [one a] | assign
+move-assign a over b [one a] move t [two t] | move-assign
+caught 13 caught 13 | throwing copy
+copy b copy h [one h] move v copy v [two v] | member and vector
+live 0

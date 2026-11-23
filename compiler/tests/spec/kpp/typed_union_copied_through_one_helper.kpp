@@ -1,0 +1,156 @@
+// spec: a typed union of more than two alternatives is copied, moved, copy-assigned and move-assigned as any class: its own data members and the alternative it holds (none for a void one), a boxed alternative (inline(N)) allocated anew; an assignment between two values of one alternative assigns it, between two of different alternatives destroys the held one and copies the other, `u = u` changes nothing; a copy whose alternative's copy throws leaves nothing built and the exception passes; a member of a class copied with it, a vector's element copied with the vector
+// factorio: the game's InputAction (a union enum of 120 alternatives) had its copies, moves and assignments, a switch over every alternative, spelled out wherever one was copied: 0.29 MB of IR at each of its 21 copies in the game's tests, 0.83 MB at each assignment (2026-11-23); since then each is a helper of the union's own, and this checks the helpers do what the inline code did
+int live = 0;
+struct Noisy
+{
+  char name = 'n';
+  Noisy(char name) : name(name) { live += 1; }
+  Noisy(const Noisy& other) : name(other.name)
+  {
+    live += 1;
+    std::print("copy ", this.name, " ");
+  }
+  Noisy(Noisy&& other) : name(other.name)
+  {
+    live += 1;
+    other.name = 'm';
+    std::print("move ", this.name, " ");
+  }
+  Noisy& operator=(const Noisy& other)
+  {
+    std::print("assign ", other.name, " over ", this.name, " ");
+    this.name = other.name;
+    return this;
+  }
+  Noisy& operator=(Noisy&& other)
+  {
+    std::print("move-assign ", other.name, " over ", this.name, " ");
+    this.name = other.name;
+    other.name = 'm';
+    return this;
+  }
+  ~Noisy() { live -= 1; }
+};
+struct Fragile
+{
+  int id = 0;
+  Fragile(int id) : id(id) {}
+  Fragile(const Fragile& other) : id(other.id)
+  {
+    if (other.id == 13)
+      throw 13;
+  }
+};
+struct Big
+{
+  Noisy noisy;
+  char bytes[64];
+  Big(char name) : noisy(name) {}
+};
+union enum Action : u16 inline(16)
+{
+  { {Count, int}, {One, Noisy}, {Large, Big}, {Two, Noisy}, {Stop, void}, {Weak, Fragile} }
+  int serial = 7;
+};
+struct Holder
+{
+  Noisy before = Noisy('b');
+  Action action = Action(Action::One, Noisy('h'));
+};
+void show(const Action& a)
+{
+  switch (a.tag())
+  {
+    case Action::Count: std::print("[count ", a[Action::Count], "] ");
+    case Action::One: std::print("[one ", a[Action::One].name, "] ");
+    case Action::Large: std::print("[large ", a[Action::Large].noisy.name, "] ");
+    case Action::Two: std::print("[two ", a[Action::Two].name, "] ");
+    case Action::Stop: std::print("[stop] ");
+    case Action::Weak: std::print("[weak ", a[Action::Weak].id, "] ");
+  }
+}
+int main()
+{
+  {
+    Action a(Action::One, Noisy('a'));
+    a.serial = 9;
+    Action b = a;
+    show(b);
+    std::print(b.serial, " ");
+  }
+  std::println("| copy");
+  {
+    Action a(Action::Large, 'x');
+    Action b = a;
+    show(b);
+    Action c = std::move(a);
+    show(c);
+  }
+  std::println("| boxed copy and move");
+  {
+    Action a(Action::One, Noisy('a'));
+    Action b = std::move(a);
+    show(b);
+  }
+  std::println("| move");
+  {
+    Action a(Action::One, Noisy('a'));
+    Action b(Action::One, Noisy('b'));
+    b = a;
+    show(b);
+    Action c(Action::Two, Noisy('c'));
+    c = a;
+    show(c);
+    Action d;
+    d[Action::Stop] = void();
+    d = a;
+    show(d);
+    a = a;
+    show(a);
+  }
+  std::println("| assign");
+  {
+    Action a(Action::One, Noisy('a'));
+    Action b(Action::One, Noisy('b'));
+    b = std::move(a);
+    show(b);
+    Action c(Action::Large, 'c');
+    c = Action(Action::Two, Noisy('t'));
+    show(c);
+  }
+  std::println("| move-assign");
+  {
+    Action a(Action::Weak, Fragile(13));
+    try
+    {
+      Action b = a;
+      show(b);
+    }
+    catch (int e)
+    {
+      std::print("caught ", e, " ");
+    }
+    Action c(Action::One, Noisy('c'));
+    try
+    {
+      c = a;
+    }
+    catch (int e)
+    {
+      std::print("caught ", e, " ");
+    }
+  }
+  std::println("| throwing copy");
+  {
+    Holder h;
+    Holder g = h;
+    show(g.action);
+    std::Vector<Action> v;
+    v.push_back(Action(Action::Two, Noisy('v')));
+    std::Vector<Action> w = v;
+    show(w[0]);
+  }
+  std::println("| member and vector");
+  std::println("live ", live);
+  return 0;
+}

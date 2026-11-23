@@ -113,6 +113,15 @@
     bool ownConstructorTakes(ClassDecl* c, const Ty* t, Span<Expr*> args, Node* at);
     // A copy (or move) of a typed union: its own members, then the alternative src holds.
     void copyTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
+    // An assignment of a typed union (move: from an rvalue): its own members, then the alternative, as std::variant's.
+    void assignTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
+    // Whether typed union c is copied, moved and assigned through typedUnionHelper rather than inline: one of more than two
+    // alternatives, whose switch would otherwise be spelled out wherever one is copied (as destroyAlternative's helper).
+    bool typedUnionThroughHelper(ClassDecl* c) const { return c->alternatives.size() > 2; }
+    // The function copying (or moving: move) typed union t into the storage dst from src (`void (ptr %dst, ptr %src)`), or
+    // assigning it (assign), defined once in the shared definitions as its destructor helper is (destructorThunk):
+    // `@kpp.copy.`, `@kpp.move.`, `@kpp.assign.` or `@kpp.moveassign.` and t's struct. Its body spells the switch out.
+    std::string typedUnionHelper(const Ty* t, bool move, bool assign, Node* at);
     // The destruction of a typed union: the alternative it holds, then its own members, last first.
     void destroyTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at);
     // The assignment of a typed union's own members (its alternative's is assignObject's).
