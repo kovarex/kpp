@@ -35,6 +35,18 @@ while ($true)
   break
 }
 
+# Writes a file other jobs read all the time (holder.txt, the queue's, the flag): a reader holding it
+# open for a moment made Set-Content fail and the job end ("being used by another process", 2026-11-23),
+# so it tries again for up to 5 seconds.
+function Write-Shared([string]$path, [string]$text)
+{
+  for ($i = 0; ; $i++)
+  {
+    try { [IO.File]::WriteAllText($path, $text + "`r`n", (New-Object System.Text.UTF8Encoding($true))); return }
+    catch { if ($i -ge 50) { throw }; Start-Sleep -Milliseconds 100 }
+  }
+}
+
 function Alive([int]$id) { return $null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue) }
 
 function Show-Status
@@ -221,6 +233,13 @@ function Run-Command
 if ($env:KPP_HEAVY_HELD -or $env:GITHUB_ACTIONS -or -not (Test-Path 'C:\kpp-sandbox')) { exit (Run-Command) }
 
 New-Item -ItemType Directory -Force $queueDir | Out-Null
+# A machine too slow or too different for timing (kovarex, 2026-11-23: OBYVAK-POMOCNIK "shouldn't be used for
+# benchmarks") has C:\kpp-sandbox\heavy\no-benchmarks: an --exclusive job is refused there at once.
+if ($exclusive -and (Test-Path (Join-Path $root 'no-benchmarks')))
+{
+  [Console]::Error.WriteLine("heavy: $($env:COMPUTERNAME) does not run benchmarks or timing runs ($root\no-benchmarks): run --exclusive jobs on a benchmark machine.")
+  exit 2
+}
 $label = if ($name) { $name } else { $line }
 if ($label.Length -gt 160) { $label = $label.Substring(0, 160) + '...' }
 $kind = if ($exclusive) { 'exclusive' } else { 'heavy' }
@@ -228,7 +247,7 @@ $thread = Thread-Title
 $me = if ($thread) { "pid $PID, $kind, since {0}, cwd {1}, thread $($thread): {2}" } else { "pid $PID, $kind, since {0}, cwd {1}: {2}" }
 $ticket = Join-Path $queueDir ('{0:D20}-{1}.txt' -f [DateTime]::UtcNow.Ticks, $PID)
 $queuedAt = Get-Date
-Set-Content -Path $ticket -Value ($me -f $queuedAt.ToString('MM-dd HH:mm:ss'), (Get-Location).Path, $label) -Encoding UTF8
+Write-Shared $ticket ($me -f $queuedAt.ToString('MM-dd HH:mm:ss'), (Get-Location).Path, $label)
 Write-Page
 
 function First-In-Queue
@@ -280,12 +299,12 @@ try
   }
   Remove-Item $ticket -Force -ErrorAction SilentlyContinue
   $startedAt = Get-Date
-  Set-Content -Path $holderFile -Value ($me -f $startedAt.ToString('MM-dd HH:mm:ss'), (Get-Location).Path, $label) -Encoding UTF8
+  Write-Shared $holderFile ($me -f $startedAt.ToString('MM-dd HH:mm:ss'), (Get-Location).Path, $label)
   Write-Page
 
   if ($exclusive)
   {
-    Set-Content -Path $flag -Value "heavy pid $PID ($label)" -Encoding UTF8
+    Write-Shared $flag "heavy pid $PID ($label)"
     # Otherwise idle: total CPU under 15% for 20 seconds in a row (the Claude app alone keeps it near 7%).
     $quiet = 0
     $said = ''
@@ -302,6 +321,15 @@ try
     }
   }
   $code = Run-Command
+  # Stopped from outside (C:\kpp-sandbox\heavy\stopped-PID.txt says why, e.g. its machine was closed): said
+  # here, so the thread knows to run the job again, there or elsewhere.
+  $stopped = Join-Path $root "stopped-$PID.txt"
+  if (Test-Path $stopped)
+  {
+    [Console]::Error.WriteLine('heavy: STOPPED: ' + ((Get-Content -Raw $stopped -ErrorAction SilentlyContinue) + '').Trim() + ' Run it again.')
+    Remove-Item $stopped -Force -ErrorAction SilentlyContinue
+    if ($code -eq 0) { $code = 1 }
+  }
 }
 finally
 {
