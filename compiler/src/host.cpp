@@ -273,6 +273,24 @@ namespace host
   }
 
   void useCompilerStackForThreads() {} // (the executable's /STACK is every thread's default)
+
+  void noCrashReports()
+  {
+    // (A top-level filter that returns EXCEPTION_EXECUTE_HANDLER ends the process with the
+    // exception's code; WerFault runs only for EXCEPTION_CONTINUE_SEARCH. The server sets its own,
+    // which logs the stack, the same way.)
+    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* e) -> LONG
+    {
+      char line[128];
+      int n = snprintf(line, sizeof line, "kpp crashed: exception 0x%08lX at %p\n", e->ExceptionRecord->ExceptionCode,
+                       e->ExceptionRecord->ExceptionAddress);
+      DWORD written = 0;
+      if (n > 0)
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), line, DWORD(n), &written, nullptr);
+      return EXCEPTION_EXECUTE_HANDLER;
+    });
+    _set_abort_behavior(0, _CALL_REPORTFAULT); // (abort's __fastfail goes to WerFault whatever the filter)
+  }
   int runOnCompilerStack(int (*fn)(int, char**), int argc, char** argv) { return fn(argc, argv); }
 
   FILE* openFile(const fs::path& path, const char* mode) { return _wfopen(path.c_str(), wide(mode).c_str()); }
@@ -683,6 +701,8 @@ namespace host
     pthread_attr_destroy(&attributes);
 #endif
   }
+
+  void noCrashReports() {}
 
   int runOnCompilerStack(int (*fn)(int, char**), int argc, char** argv)
   {

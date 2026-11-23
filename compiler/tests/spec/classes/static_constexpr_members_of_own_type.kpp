@@ -1,0 +1,13 @@
+// spec: static constexpr data members of the class's own type are its constants, each evaluated once: clang's `1 0`
+struct S
+{
+  u32 i = 0;
+  constexpr S(u32 i) : i(i) {}
+  static constexpr S empty = S(1);
+  static constexpr S first = S(0);
+};
+int main()
+{
+  std::println(S::empty.i, " ", S::first.i);
+  return 0;
+}

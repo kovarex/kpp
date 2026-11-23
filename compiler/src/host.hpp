@@ -55,6 +55,12 @@ namespace host
   void useCompilerStackForThreads();
   int runOnCompilerStack(int (*fn)(int, char**), int argc, char** argv);
 
+  // A crash of kpp's ends it at once with the exception's code as its exit code, after a line on
+  // stderr: on Windows without Windows Error Reporting, whose WerFault writes a dump of the whole
+  // process first (minutes for a server holding gigabytes) while the build waits on it, and without
+  // an abort's report. The programs kpp starts keep their own error mode. Nothing on a POSIX host.
+  void noCrashReports();
+
   // Whether the host's file names ignore case (Windows'), and the key two spellings of one path share
   // (lower-cased there; its text as it is on POSIX).
 #ifdef _WIN32

@@ -2774,6 +2774,12 @@ namespace
         if (scope == Scope::Local && (v->flags & (DF_Static | DF_ThreadLocal)))
           v->number = numberedLocals++;
         v->bitfield = d.bitfield;
+        // `constexpr T x = ...;` in a class without static: ill-formed in C++, an error here. Until
+        // 2026-11-23 kpp took it for a data member, silently, and two of the class's own type made each
+        // object hold more of it, their evaluation never ending (kovarex's SurfaceIndex: the build hung).
+        // `static constexpr` declares the class's constant.
+        if (scope == Scope::Class && (v->flags & DF_Constexpr) && !(v->flags & (DF_Static | DF_Typedef)))
+          error("a constexpr data member must be static: `static constexpr` declares the class's constant");
         if (pendingAttributes & ATTR_NoUniqueAddress)
         {
           if (scope != Scope::Class || (v->flags & (DF_Static | DF_Typedef)) || v->bitfield)

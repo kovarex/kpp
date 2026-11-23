@@ -188,6 +188,7 @@ static int compilerMain(int argc, char** argv)
 // come before any thread's stack ends).
 int main(int argc, char** argv)
 {
+  host::noCrashReports();
   host::useCompilerStackForThreads();
   return host::runOnCompilerStack(compilerMain, argc, argv);
 }

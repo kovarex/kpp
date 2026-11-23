@@ -1,0 +1,10 @@
+// spec: a constexpr data member must be static, as C++ has it (clang: "non-static data member cannot be constexpr"); until 2026-11-23 kpp took it for a data member, silently (sizeof grew), and two of the class's own type each constructed the other until the build hung (kovarex's SurfaceIndex)
+// error: a constexpr data member must be static
+struct S
+{
+  u32 i = 0;
+  constexpr S(u32 i) : i(i) {}
+  constexpr S empty = S(1);
+  constexpr S first = S(0);
+};
+int main() { return 0; }
