@@ -1,0 +1,58 @@
+// spec: `class X : explicit T { members };` is an explicit type (design.md 33) with members, as a kpp enum has them (kovarex, 2026-11-23, the game's SurfaceIndex): constructors (`X(n)` of one number stays the cast), methods, static functions, conversion operators and operators, `this` the value, every member public; its own members come before the built-in rules: a constructor makes `X(args)`, `X x(args)` and a member initializer's `m(args)`, its operator bool is a condition's, its implicit conversion converts, and compares it with other types, its member operators are found (a friend in it is an error: not found yet); it keeps the built-in arithmetic and comparisons with itself, ++, its text and str(), its size and isExplicitType; std::hasConstructor and std::isConstructible see its constructors (until 2026-11-23 false for every enum)
+class Reader
+{
+public:
+  u32 next() { return this.value++; }
+  u32 value = 300;
+};
+
+class SurfaceIndex : explicit u32
+{
+public:
+  using IndexType = u32;
+
+  SurfaceIndex(Reader& input) { this = SurfaceIndex(input.next()); }
+  constexpr IndexType asLuaIndex() const { return IndexType(this) + 1; }
+  implicit constexpr operator IndexType() const { return IndexType(this); }
+  constexpr operator bool() const { return IndexType(this) != IndexType(-1); }
+  constexpr bool isEmpty() const { return IndexType(this) == IndexType(-1); }
+  static constexpr SurfaceIndex emptyIndex() { return SurfaceIndex(IndexType(-1)); }
+  constexpr SurfaceIndex operator+(IndexType i) const { return SurfaceIndex(IndexType(this) + i); }
+  constexpr bool operator>(i32 i) const { return i32(IndexType(this)) > i; }
+};
+
+struct Holder
+{
+  Holder(Reader& input) : surface(input) {}
+  SurfaceIndex surface;
+};
+
+u32 takesNumber(u32 n) { return n; }
+
+static_assert(sizeof(SurfaceIndex) == 4 && std::isExplicitType<SurfaceIndex> && !std::isSame<SurfaceIndex, u32>);
+static_assert(std::hasConstructor<SurfaceIndex, Reader&> && std::isConstructible<SurfaceIndex, Reader&> && !std::hasConstructor<SurfaceIndex, i32> &&
+              !std::hasConstructor<u32, Reader&>);
+static_assert(SurfaceIndex::emptyIndex().isEmpty() && SurfaceIndex(2).asLuaIndex() == 3 && !SurfaceIndex(2).isEmpty());
+
+int main()
+{
+  Reader reader;
+  SurfaceIndex a(reader);
+  SurfaceIndex b = SurfaceIndex(reader);
+  Holder holder(reader);
+  SurfaceIndex zero;
+  std::println(u32(a), " ", u32(b), " ", u32(holder.surface), " ", u32(zero));
+  if (a)
+    std::println("a is set");
+  if (!SurfaceIndex::emptyIndex())
+    std::println("the empty index is not");
+  std::println(a && !SurfaceIndex::emptyIndex() ? "both" : "neither");
+  std::Vector<int> list(5);
+  usize size = 5;
+  std::println(SurfaceIndex(3) < size, " ", size < SurfaceIndex(3), " ", SurfaceIndex(3) < list.size(), " ", SurfaceIndex(3) > -1);
+  std::println(takesNumber(a), " ", u32(a + 2u), " ", u32(a + a), " ", a == b, " ", SurfaceIndex(1) < SurfaceIndex(2));
+  SurfaceIndex c = SurfaceIndex(4);
+  ++c;
+  std::println(c, " ", c.str(), " ", list[SurfaceIndex(1)]);
+  return 0;
+}

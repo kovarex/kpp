@@ -650,6 +650,20 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
     const Ty* t = types.unqualified(types.stripRef(a[0]));
     if (!t->isKnown() || types.isDependent(t))
       return std::nullopt;
+    // A kpp enum's or an explicit type's own constructors (design.md 8.4, 33: `class SurfaceIndex : explicit u32` with
+    // `SurfaceIndex(Deserialiser&)`; until 2026-11-23 false for every enum, so the game's DeserialiserHelper would load such
+    // a type as its plain value, silently): one of them taking Args.
+    if (t->kind == TyKind::Enum)
+    {
+      if (!enumWithConstructors(t))
+        return false;
+      for (size_t i = 1; i < a.size(); ++i)
+        if (!a[i] || !a[i]->isKnown() || types.isDependent(a[i]))
+          return std::nullopt;
+      std::vector<const Ty*> args(a.begin() + 1, a.end());
+      bool ambiguous = false;
+      return chooseConstructor(t, args, nullptr, nullptr, false, &ambiguous) != nullptr || ambiguous;
+    }
     if (t->kind != TyKind::Class)
       return false;
     ClassDecl* def = classDefinition(t);
@@ -700,6 +714,17 @@ auto GlobalScope::Impl::traitValueUncached(std::string_view name, const std::vec
         if (!traitValue("isConvertible", {arg, t->inner}).value_or(false))
           return false;
       return args.size() == t->count || defaultConstructible(t->inner).value_or(false);
+    }
+    // A kpp enum's or an explicit type's own constructor (`E(args)` that is no conversion of one number or enumeration
+    // value, design.md 8.4): one of them taking the arguments (until 2026-11-23 false, silently).
+    if (t->kind == TyKind::Enum && enumWithConstructors(t) &&
+        !(args.size() == 1 && (types.unqualified(types.stripRef(args[0]))->isArithmetic() || types.unqualified(types.stripRef(args[0]))->kind == TyKind::Enum)))
+    {
+      for (const Ty* arg : args)
+        if (!arg || !arg->isKnown() || types.isDependent(arg))
+          return std::nullopt;
+      bool ambiguous = false;
+      return chooseConstructor(t, args, nullptr, nullptr, false, &ambiguous) != nullptr;
     }
     if (t->kind == TyKind::Class)
     {

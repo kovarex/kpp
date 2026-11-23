@@ -28,6 +28,9 @@
     // condition, an operand of ! && || ?:, a direct-initialization or a cast converts (contextual), an implicit one anywhere;
     // null when the enum declares none.
     FunctionDecl* enumConversionOperator(const Ty* from, const Ty* to, bool contextual);
+    // The type an explicit type's one implicit conversion operator gives (`implicit operator u32() const` of `class X : explicit
+    // u32`, design.md 33), or null: none, or several to different types.
+    const Ty* implicitConversionOfExplicitType(const Ty* t);
 
     // The conversion operator the one rule chooses (GlobalScope::chooseConversion, design.md 24), the
     // class declaring it canonical.

@@ -1,0 +1,29 @@
+// spec: an explicit type with members (`class X : explicit T { ... };`, design.md 33) holds no data member (its value is the underlying type's), has no private part, and its friends are not supported yet (not found by a call: an error where declared); and a kpp enum's body holds none either (2026-11-23: one was accepted and dropped)
+// error: explicit_type_class_errors_is_error.kpp:9: error: an enum holds no data member: its value is its underlying type's (a static member is the enum's)
+// error: explicit_type_class_errors_is_error.kpp:13: error: an explicit type's members are all public: its value is the underlying type's, with no private part (design.md 33)
+// error: explicit_type_class_errors_is_error.kpp:19: error: an enum holds no data member: its value is its underlying type's (a static member is the enum's)
+// error: explicit_type_class_errors_is_error.kpp:24: error: a friend function in an explicit type is not supported yet: declare the operator a member, or rely on an implicit conversion operator (design.md 33)
+class WithData : explicit u32
+{
+public:
+  u32 extra;
+};
+class WithPrivate : explicit u32
+{
+private:
+  u32 hidden() const { return u32(this); }
+};
+enum class Plain : u8
+{
+  { A }
+  u8 extra;
+};
+class WithFriend : explicit u32
+{
+public:
+  friend bool operator<(WithFriend a, u64 b) { return u32(a) < b; }
+};
+int main()
+{
+  return 0;
+}

@@ -3839,6 +3839,22 @@ passed for the other (the reason SelectSlotParameters had deleted `i8` and `u8` 
   the declaration, "explicit type X". It is still an enum to the library (`isEnum`); `isExplicitType<T>` tells it.
 - The game's NamedBool aliases are `explicit bool` (wube/kpp-factorio PR 21), its serialisers and Lua push taking any explicit
   type as its underlying value.
+- With members (kovarex, 2026-11-23, the game's SurfaceIndex, whose class kept a space-optimized save of its own:
+  "if I had class derived from u32, wouldn't it be almost the same?"): `class SurfaceIndex : explicit u32 { ... };` is
+  the explicit type with the members a kpp enum may have (design.md 8.4): constructors (one taking one number stays the
+  cast), methods, static functions and constants, types, conversion operators and member operators, `this` the value. All
+  public (`public:` may stand there; `private:` and `protected:` are errors), no data member (an error in any enum's body
+  since then: one was accepted and dropped, silently), no friend yet (an error: an enum's friends are no hidden friends a
+  call finds), no template. Its own members come before the built-in rules: a constructor makes `X(args)`, `X x(args)`
+  and a member initializer's `m(args)`; its `operator bool` is a condition's; an implicit conversion operator converts,
+  and compares the value with another type as that conversion's value (`index < v.size()`), as a class's would; its
+  member operators are found. A cast to the underlying type is always the value (`u32(this)` in its own `operator u32()`
+  never calls itself). The built-in arithmetic and comparisons with itself, `++`, its text and `str()` stay. So the
+  game's serialiser asks the type (`requires { target.save(output); }`, a constructor taking the deserialiser), and
+  SurfaceIndex saves itself space-optimized with no case of its own there. `std::hasConstructor` and
+  `std::isConstructible` see an enum's constructors since then (they were false for every enum, so a loader would have
+  taken the plain value, silently; the game's RailLayer loader, `input >> this` in its own loading constructor, relied on
+  it and recursed). Specs kpp/explicit_type_class, kpp/explicit_type_class_errors_is_error.
 
 Specs: kpp/explicit_type, kpp/explicit_type_overloads, kpp/explicit_bool, kpp/explicit_type_conversions_need_a_cast.
 docs/differences-from-cpp.md, "Explicit types".

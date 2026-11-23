@@ -548,6 +548,11 @@ auto codegen::Emitter::compare(P op, Value l, Value r, Node* at) -> Value
   // An explicit type compares with its own type only (design.md 33), as its underlying type.
   if (const Ty* ls = explicitType(l.ty), *rs = explicitType(r.ty); ls || rs)
   {
+    // One declaring an implicit conversion (`class SurfaceIndex : explicit u32 { implicit operator u32() const; }`, design.md
+    // 33) compares with another type as that conversion's value, as a class with one does.
+    if (ls != rs)
+      if (const Ty* lt = ls ? implicitConversionOfExplicitType(ls) : nullptr, *rt = rs ? implicitConversionOfExplicitType(rs) : nullptr; lt || rt)
+        return compare(op, lt ? convert(l, lt, at) : l, rt ? convert(r, rt, at) : r, at);
     if (ls != rs)
       fail(at, "a comparison of " + types.toString(l.ty, &symbols) + " and " + types.toString(r.ty, &symbols) + ": an explicit type compares with its own type only; convert the other by a cast");
     const Ty* u = enumUnderlying(ls);

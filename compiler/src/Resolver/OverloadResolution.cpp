@@ -184,7 +184,7 @@ auto GlobalScope::Impl::enumWithConstructors(const Ty* t) -> EnumDecl*
     if (Scope* s = scopeOfEntry(e, 0))
       def = s->owner;
   }
-  if (!def || def->kind != NodeKind::EnumDecl || !static_cast<EnumDecl*>(def)->isKpp)
+  if (!def || def->kind != NodeKind::EnumDecl || !(static_cast<EnumDecl*>(def)->isKpp || static_cast<EnumDecl*>(def)->isExplicitType))
     return nullptr;
   for (Decl* m : static_cast<EnumDecl*>(def)->members)
     if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor))

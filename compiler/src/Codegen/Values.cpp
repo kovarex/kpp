@@ -67,7 +67,7 @@ auto codegen::Emitter::enumConversionOperator(const Ty* from, const Ty* to, bool
     return nullptr;
   Decl* defined = global.definitionOf(f->decl);
   auto* e = static_cast<EnumDecl*>(defined && defined->kind == NodeKind::EnumDecl ? defined : f->decl);
-  if (!e->isKpp)
+  if (!e->isKpp && !e->isExplicitType) // (an explicit type with members, `class X : explicit T`, design.md 33)
     return nullptr;
   for (Decl* m : e->members)
   {
@@ -78,6 +78,30 @@ auto codegen::Emitter::enumConversionOperator(const Ty* from, const Ty* to, bool
       return static_cast<FunctionDecl*>(m);
   }
   return nullptr;
+}
+
+auto codegen::Emitter::implicitConversionOfExplicitType(const Ty* t) -> const Ty*
+{
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || t->kind != TyKind::Enum || !t->decl)
+    return nullptr;
+  Decl* defined = global.definitionOf(t->decl);
+  auto* e = static_cast<EnumDecl*>(defined && defined->kind == NodeKind::EnumDecl ? defined : t->decl);
+  if (!e->isExplicitType)
+    return nullptr;
+  const Ty* found = nullptr;
+  for (Decl* m : e->members)
+    if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Conversion) && (m->flags & DF_Implicit))
+    {
+      const Ty* ft = declType(m);
+      if (!ft || ft->kind != TyKind::Function || !ft->inner)
+        continue;
+      const Ty* target = types.unqualified(types.stripRef(ft->inner));
+      if (found && found != target)
+        return nullptr; // (two: no one conversion)
+      found = target;
+    }
+  return found;
 }
 
 auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, const Ty* owner, const std::string& addr, Node* at, const TemplateArgs* opArgs,
@@ -177,7 +201,9 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     unsupported(at, "a conversion from a value of unknown type to " + types.toString(to, &symbols));
   // A kpp enum's own conversion operator (`operator bool() const`, kovarex 2026-11-11), called on the value as a class's is on
   // its object: the value in a slot of its own, `this` there.
-  if (from->kind == TyKind::Enum)
+  // (An explicit type's cast to its underlying type is its value, never its own operator: `u32(this)` in its `implicit
+  // operator u32()` would call itself, design.md 33.)
+  if (from->kind == TyKind::Enum && !(explicitCast && explicitType(from) && types.unqualified(to) == types.unqualified(enumUnderlying(explicitType(from)))))
     if (FunctionDecl* op = enumConversionOperator(from, to, explicitCast || context != ConversionContext::Copy))
     {
       const Ty* et = types.unqualified(from);

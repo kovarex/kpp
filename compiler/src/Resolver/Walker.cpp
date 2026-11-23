@@ -9317,7 +9317,8 @@ auto GlobalScope::Impl::Walker::operatorFunction(P op, const Ty* lhs, const Ty* 
   isMember = false;
   // A class's own operators, and a kpp enum's (design.md 8.4: its methods are a class's; thread B, 2026-11-12: `a + b`
   // with `Dir operator+(const Dir&) const` in the enum was typed int32, and codegen refused "+ on a value of an enum class").
-  bool enumMembers = l && l->kind == TyKind::Enum && l->decl && l->decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(l->decl)->isKpp;
+  bool enumMembers = l && l->kind == TyKind::Enum && l->decl && l->decl->kind == NodeKind::EnumDecl &&
+                     (static_cast<EnumDecl*>(l->decl)->isKpp || static_cast<EnumDecl*>(l->decl)->isExplicitType); // (`class X : explicit T`)
   if (l && (l->kind == TyKind::Class || enumMembers))
   {
     MemberResult r = memberOf(l, symbol, nullptr, token, false);

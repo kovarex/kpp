@@ -1793,6 +1793,16 @@ namespace
     // the value is one of the enumerators (kovarex, 2026-11-20: the check after loading one from a deserialiser;
     // `E(raw)` stays the plain conversion). The code generator writes its body (Decl::builtin).
     // Whether the members parsed since mark declare a function of that name (one the enum writes itself replaces the generated).
+    // A data member in an enum's body, a kpp enum's or an explicit type's (design.md 33): an error, as the enum's value is
+    // its underlying type's and has no room for one (2026-11-23: one was accepted and dropped, silently). A static one is
+    // the enum's, as a class's is.
+    void enumDataMembersAreErrors(size_t mark)
+    {
+      for (size_t i = mark; i < scratch.size(); ++i)
+        if (scratch[i]->kind == NodeKind::VariableDecl && !(static_cast<Decl*>(scratch[i])->flags & DF_Static))
+          errorAt(static_cast<Decl*>(scratch[i])->token, "an enum holds no data member: its value is its underlying type's (a static member is the enum's)");
+    }
+
     bool declaresMember(size_t mark, uint32_t symbol) const
     {
       for (size_t i = mark; i < scratch.size(); ++i)
@@ -3880,6 +3890,102 @@ namespace
       pushDecl(ns);
     }
 
+    // An explicit type (design.md 33), from `explicit` on: an enum class of that underlying type with no values of its own
+    // (`explicit bool`'s are False and True). `using X = explicit T;` has none but the str() the parser writes; `class X :
+    // explicit T { members };` (kovarex, 2026-11-23, SurfaceIndex) has the members a kpp enum may have, `this` the value,
+    // all public (`public:` may stand among them; `private:` and `protected:` are errors: the value has no private part).
+    void parseExplicitType(uint32_t start, uint32_t name, uint16_t attributes, bool body)
+    {
+      EnumDecl* e = decl<EnumDecl>(start);
+      NamePart part;
+      part.symbol = name;
+      e->name.parts = makeSpanOf(std::vector<NamePart>{part});
+      e->isClass = true;
+      e->isDefinition = true;
+      e->isExplicitType = true;
+      e->attributes = attributes;
+      numberType(e, false);
+      advance();
+      e->underlying = parseType();
+      if (!e->underlying)
+      {
+        error("expected the explicit type's underlying type");
+        return;
+      }
+      if (e->underlying->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(e->underlying)->keyword == Kw::bool_)
+      {
+        Decl* savedParent = currentParent;
+        currentParent = e;
+        std::vector<Decl*> values;
+        for (const char* valueName : {"False", "True"})
+        {
+          EnumeratorDecl* en = decl<EnumeratorDecl>(start);
+          en->name = symbols.intern(valueName);
+          values.push_back(en);
+        }
+        currentParent = savedParent;
+        e->enumerators = makeSpanOf(values);
+      }
+      Decl* savedParent = currentParent;
+      currentParent = e;
+      size_t mark = scratch.size();
+      ++enumBodies;
+      bool closed = false;
+      if (body)
+      {
+        if (expect(P::LBrace, "expected '{' after the explicit type's underlying type"))
+        {
+          while (!at(P::RBrace) && !at(TokenKind::End))
+          {
+            if (accept(P::Semi))
+              continue;
+            if (at(Kw::public_) && at(P::Colon, 1))
+            {
+              advance();
+              advance();
+              continue;
+            }
+            if ((at(Kw::private_) || at(Kw::protected_)) && at(P::Colon, 1))
+            {
+              error("an explicit type's members are all public: its value is the underlying type's, with no private part (design.md 33)");
+              advance();
+              advance();
+              continue;
+            }
+            // (an enum's friends are no hidden friends a call finds, kpp's lookup has them for classes only: an error here, not
+            // at each use)
+            if (at(Kw::friend_) || (at(Kw::constexpr_) && at(Kw::friend_, 1)))
+              error("a friend function in an explicit type is not supported yet: declare the operator a member, or rely on an implicit conversion operator (design.md 33)");
+            parseDeclaration(Scope::Enum);
+            if (inRecovery)
+              break;
+          }
+          closed = at(P::RBrace);
+        }
+      }
+      // Its text is its value's (design.md 33; the library's appendTo writes the underlying value), and str() is that
+      // text, as appendTo makes str() of other types: `index.str()` is "9", an explicit bool's "true". One the type
+      // declares replaces it. (`using X = explicit T;`'s is written after the declaration's `;`, so its own tokens stay
+      // the declaration's: hover shows them.)
+      bool written = body ? closed : expect(P::Semi, "expected ';'");
+      if (written && !declaresMember(mark, kwStr))
+      {
+        std::vector<Token> made = synthesize("std::String str() const { return std::toString(this); }", body ? pos : pos - 1);
+        toks.insert(toks.begin() + pos, made.begin(), made.end());
+        parseDeclaration(Scope::Enum);
+      }
+      --enumBodies;
+      enumDataMembersAreErrors(mark);
+      e->members = makeSpan<Decl*>(mark);
+      currentParent = savedParent;
+      if (body && closed)
+      {
+        advance();
+        expect(P::Semi, "expected ';' after the explicit type");
+      }
+      pushDecl(e);
+    }
+
     void parseUsing(TemplateHeader templ)
     {
       uint32_t start = pos;
@@ -3919,53 +4025,7 @@ namespace
         {
           if (templ.present)
             error("an explicit type is no template: `template<...> using X = explicit T;` is not supported (design.md 33)");
-          EnumDecl* e = decl<EnumDecl>(start);
-          NamePart part;
-          part.symbol = u->name;
-          e->name.parts = makeSpanOf(std::vector<NamePart>{part});
-          e->isClass = true;
-          e->isDefinition = true;
-          e->isExplicitType = true;
-          e->attributes = u->attributes;
-          numberType(e, false);
-          advance();
-          e->underlying = parseType();
-          if (!e->underlying)
-          {
-            error("expected the explicit type's underlying type");
-            return;
-          }
-          if (e->underlying->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(e->underlying)->keyword == Kw::bool_)
-          {
-            Decl* savedParent = currentParent;
-            currentParent = e;
-            std::vector<Decl*> values;
-            for (const char* name : {"False", "True"})
-            {
-              EnumeratorDecl* en = decl<EnumeratorDecl>(start);
-              en->name = symbols.intern(name);
-              values.push_back(en);
-            }
-            currentParent = savedParent;
-            e->enumerators = makeSpanOf(values);
-          }
-          // Its text is its value's (design.md 33; the library's appendTo writes the underlying value), and str() is that
-          // text, as appendTo makes str() of other types: `index.str()` is "9", an explicit bool's "true".
-          // (written after the declaration's `;`, so its own tokens stay the declaration's: hover shows them)
-          if (expect(P::Semi, "expected ';'"))
-          {
-            std::vector<Token> made = synthesize("std::String str() const { return std::toString(this); }", pos - 1);
-            toks.insert(toks.begin() + pos, made.begin(), made.end());
-            Decl* savedParent = currentParent;
-            currentParent = e;
-            size_t mark = scratch.size();
-            ++enumBodies;
-            parseDeclaration(Scope::Enum);
-            --enumBodies;
-            e->members = makeSpan<Decl*>(mark);
-            currentParent = savedParent;
-          }
-          pushDecl(e);
+          parseExplicitType(start, u->name, u->attributes, false);
           return;
         }
         u->type = parseType();
@@ -5707,6 +5767,19 @@ namespace
         return false;
       };
       Kw keyword = Kw(tok().id);
+      // `class SurfaceIndex : explicit u32 { members };`: an explicit type with members (design.md 33), no class.
+      if (isKpp() && keyword == Kw::class_ && atIdent(1) && at(P::Colon, 2) && at(Kw::explicit_, 3))
+      {
+        if (templ.present)
+          error("an explicit type is no template: `template<...> class X : explicit T` is not supported (design.md 33)");
+        advance();
+        uint32_t name = tok().id;
+        advance();
+        advance();
+        uint16_t attributes = uint16_t(pendingAttributes & (ATTR_NoDiscard | ATTR_Deprecated));
+        parseExplicitType(start, name, attributes, true);
+        return true;
+      }
       advance();
       skipAttributes();
       skipMacroSpecifier();
@@ -6138,6 +6211,8 @@ namespace
             break;
         }
       }
+      if (isKpp())
+        enumDataMembersAreErrors(mark);
       if (e->isKpp)
         addEnumBuiltins(e, start, mark);
       if (e->isKpp || e->isClass)

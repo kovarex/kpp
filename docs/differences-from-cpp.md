@@ -645,10 +645,12 @@ Build b(position, BuildMode::Forced); // direction takes its default: C++ has no
 - **kpp:** `using ItemStackIndex = explicit u16;` is a type of its own with u16's representation: made from a number
   and turned back into one only by a cast, arithmetic and comparisons with its own type only, overloaded and deduced as
   its own type. Two `explicit u16` aliases are two types. `explicit bool` has False and True and is a condition's bool.
+  `class SurfaceIndex : explicit u32 { ... };` is one with members (constructors, methods, conversion operators,
+  member operators), its value the u32 itself, which C++ cannot derive a class from.
 - **Why:** kovarex (2026-11-22): ItemStackIndex against InventoryIndex, and NamedBool built in; a template costs an
   instance and an operator call per use in a debug build, the built-in costs a declaration.
 - **See:** [design 33][d33]; specs `kpp/explicit_type`, `kpp/explicit_type_overloads`, `kpp/explicit_bool`,
-  `kpp/explicit_type_conversions_need_a_cast`.
+  `kpp/explicit_type_conversions_need_a_cast`, `kpp/explicit_type_class`, `kpp/explicit_type_class_errors_is_error`.
 
 ```cpp
 using ItemStackIndex = explicit u16;
