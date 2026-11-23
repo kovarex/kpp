@@ -1891,7 +1891,8 @@ std::optional<std::string> GlobalScope::runBuild(std::string_view configuration,
   return impl->runBuild(configuration, error);
 }
 
-const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args)
+// typeOfAstIn's and templateArgumentIn's context: the scope, parameters and aliases at node t written in context, under args.
+const Ty* GlobalScope::inTypeContextOf(Node* t, Decl* param, bool asArgument, Decl* context, const TemplateArgs& args)
 {
   Impl::DeclContext dc;
   impl->declContextFor(context, dc);
@@ -1932,7 +1933,17 @@ const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& a
     ctx.elementPacks = &args.elementPacks;
     ctx.elementIndex = args.elementIndex;
   }
-  return impl->convertType(t, ctx, 0);
+  return asArgument ? impl->templateArgument(t, param, ctx, 0) : impl->convertType(static_cast<Type*>(t), ctx, 0);
+}
+
+const Ty* GlobalScope::typeOfAstIn(Type* t, Decl* context, const TemplateArgs& args)
+{
+  return inTypeContextOf(t, nullptr, false, context, args);
+}
+
+const Ty* GlobalScope::templateArgumentIn(Node* arg, Decl* param, Decl* context, const TemplateArgs& args)
+{
+  return inTypeContextOf(arg, param, true, context, args);
 }
 
 std::optional<bool> GlobalScope::typeTraitValue(NameExpr* e, Decl* context, const TemplateArgs& args)

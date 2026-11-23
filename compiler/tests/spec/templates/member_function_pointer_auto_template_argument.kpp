@@ -1,0 +1,75 @@
+// spec: a pointer to a member function as an `auto` template argument (`registerRead<&Obj::weight>("weight")`) is of its member pointer type, `R (C::*)(Args...)`, const as the function is (`decltype(m)` matches `R (C::*)() const`), the class the one that declares it (`&Base::raw` is `int (Base::*)(int)`); `(obj->*m)(args)` through it calls that member, an override for a virtual one; the call is made in a function template, in the address of one (`&call<&Obj::weight>`), and in a captureless lambda a function template returns as a plain function pointer (clang gives the same numbers); a parameter whose type names another template parameter is templates/member_function_pointer_of_a_dependent_type_template_argument
+// found by thread luatyped (2026-11-23, typed Lua accessors of the game's LuaBinder): `decltype(m)` was `double()*`, a pointer to a function, so that no member pointer pattern matched it, silently; `(obj->*m)()` was "codegen does not support a member pointer of unknown type yet"; `&call<&Obj::weight>` was "a constant argument the compiler could not evaluate in the address of a function template"
+extern "C" import "stdio.h";
+
+class Base
+{
+public:
+  int base = 1;
+  virtual ~Base() {}
+  int raw(int x) { return x + this.base; }
+  virtual double virt() const { return 1.5; }
+};
+
+class Obj : public Base
+{
+public:
+  int v = 5;
+  int twice(int x) { return x * 2 + this.v; }
+  double weight() { return this.v + 0.25; }
+  int constant() const { return 7; }
+  double virt() const override { return 2.5; }
+};
+
+template<typename M> struct Kind { static constexpr int value = 0; };
+template<typename C, typename R> struct Kind<R (C::*)()> { static constexpr int value = 1; };
+template<typename C, typename R> struct Kind<R (C::*)() const> { static constexpr int value = 2; };
+template<typename C, typename R, typename A> struct Kind<R (C::*)(A)> { static constexpr int value = 3; };
+template<typename R> struct Kind<R (*)()> { static constexpr int value = 4; };
+
+template<auto m> int kindOf() { return Kind<decltype(m)>::value; }
+
+double plain() { return 0.5; }
+
+using Call = double (*)(Obj*, int);
+
+template<auto m>
+double call(Obj* o, int x)
+{
+  if constexpr (Kind<decltype(m)>::value == 3)
+    return (o->*m)(x);
+  else
+    return (o->*m)();
+}
+
+template<auto m> Call viaLambda() { return [](Obj* o, int x) -> double { return call<m>(o, x); }; }
+
+
+template<typename T>
+struct Binder
+{
+  using Wrapper = int (*)(T*, int);
+  static Wrapper last;
+
+  template<auto m>
+  static void registerRead()
+  {
+    Binder<T>::last = [](T* object, int x) -> int { return int((object->*m)(x)) + 1000; };
+  }
+};
+
+template<typename T> typename Binder<T>::Wrapper Binder<T>::last = nullptr;
+
+int main()
+{
+  Obj o;
+  printf("%d %d %d %d %d %d\n", kindOf<&Obj::weight>(), kindOf<&Obj::constant>(), kindOf<&Obj::twice>(), kindOf<&Base::virt>(), kindOf<&Base::raw>(), kindOf<&plain>());
+  Call calls[6] = {&call<&Obj::twice>, &call<&Obj::weight>, &call<&Obj::constant>, &call<&Base::virt>, viaLambda<&Base::raw>(), viaLambda<&Obj::weight>()};
+  printf("%g %g %g %g %g %g\n", calls[0](&o, 10), calls[1](&o, 10), calls[2](&o, 10), calls[3](&o, 10), calls[4](&o, 10), calls[5](&o, 10));
+  Binder<Obj>::registerRead<&Obj::twice>();
+  int first = Binder<Obj>::last(&o, 1);
+  Binder<Obj>::registerRead<&Base::raw>();
+  printf("%d %d\n", first, Binder<Obj>::last(&o, 1));
+  printf("%d %g\n", o.v, call<&Obj::weight>(&o, 0));
+  return 0;
+}
