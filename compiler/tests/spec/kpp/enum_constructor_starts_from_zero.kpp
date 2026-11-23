@@ -1,0 +1,53 @@
+// spec: a kpp enum's constructor starts from the zero, as a value declared without an initializer does (kpp
+// zero-initializes): one that assigns `this` on some paths only makes the zero on the others, in a local, a member
+// initializer, `new`, a call's temporary, a global and the constant evaluation (until 2026-11-23 the storage's old bytes:
+// the game's ActivationType(input, key) { if (auto type = input.findp(key)) this = ...; } read garbage when the key was missing)
+// design.md 29; coordinator 2026-11-23
+enum class Activation : u8
+{
+  { First = 1, Second = 2 }
+  Activation(int a, int b) { if (a > b) this = Second; }
+};
+
+class User
+{
+public:
+  User(int a) : type(a, 5) {}
+  Activation type;
+};
+
+constexpr Activation constantMissing = Activation(0, 5);
+constexpr Activation constantMade = Activation(9, 5);
+static_assert(int(constantMissing) == 0 && constantMade == Activation::Second);
+Activation global = Activation(0, 5);
+
+[[noinline]] void dirty()
+{
+  volatile u8 bytes[4096];
+  for (int i = 0; i < 4096; ++i)
+    bytes[i] = 0xAB;
+}
+
+[[noinline]] void show(int a)
+{
+  Activation local(a, 5);
+  User user(a);
+  std::println(int(local), " ", int(user.type), " ", int(Activation(a, 5)));
+}
+
+int main()
+{
+  dirty();
+  show(0);
+  show(9);
+  u8* raw = new u8[16];
+  for (int i = 0; i < 16; ++i)
+    raw[i] = 0xAB;
+  delete[] raw;
+  User* user = new User(0);
+  Activation* made = new Activation(0, 5);
+  std::println(int(user->type), " ", int(*made), " ", int(global), " ", int(constantMissing));
+  delete user;
+  delete made;
+  return 0;
+}

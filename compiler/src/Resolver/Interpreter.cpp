@@ -6279,7 +6279,9 @@ auto GlobalScope::Impl::constEnumConstruct(const Ty* t, const std::vector<ConstV
       return std::nullopt;
   }
   size_t self = env.size();
-  env.push_back(constBinding(constThisSymbol, ConstValue::unset(t), t));
+  // `this` starts from the zero, as the code generator's does (a constructor assigning it on some paths only)
+  std::optional<ConstValue> zero = constConverted(ConstValue::integer(0), t);
+  env.push_back(constBinding(constThisSymbol, zero ? *zero : ConstValue::unset(t), t));
   env.back().writable = true;
   std::optional<ConstValue> result;
   ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);

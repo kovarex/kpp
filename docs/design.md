@@ -790,7 +790,9 @@ an enum: "Direction class had default constructor to set the direction to none";
 Its default constructor makes every value of it that has no initializer, wherever kpp would make it zero: a
 local, a global, a static, a member, an array's elements, `E()`, `E{}`, `return {};`, new and new[], a
 container's new elements, the members of an aggregate its braces leave out. One with parameters makes `E(args)`,
-`E x(args);`, `E x{args}` and a member initializer's `m(args)`; `this` is the value made, as in its methods.
+`E x(args);`, `E x{args}` and a member initializer's `m(args)`; `this` is the value made, as in its methods. `this`
+starts as the zero, so a constructor that assigns it on some paths only makes the zero on the others (2026-11-23: the
+storage's old bytes, the game's ActivationType read garbage; spec kpp/enum_constructor_starts_from_zero).
 `E(x)` of one number or enumeration value stays the conversion, so a constructor taking one is an error at its
 declaration, as is a member initializer (an enum has no members). An enum that declares constructors and no default one
 keeps its implicit default constructor, which makes the zero value, as a class keeps its own beside its other

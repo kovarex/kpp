@@ -420,6 +420,11 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     // initialize, kovarex 2026-11-11)
     if ((f->flags & DF_Constructor) && !isClass(currentClassTy) && !f->ctorInits.empty() && !global.checkerErrorWithin(f->file, f->token, f->token))
       fail(f, "an enum's constructor has no members to initialize: it assigns `this` in its body");
+    // A kpp enum's constructor starts from the zero, as a value declared without one does (kpp zero-initializes): one that
+    // assigns `this` on some paths only (`ActivationType(input, key) { if (auto t = input.findp(key)) this = ...; }`) left
+    // the storage's garbage on the others (coordinator 2026-11-23, a later switch on it aborted).
+    if ((f->flags & DF_Constructor) && !isClass(currentClassTy) && currentClassTy && currentClassTy->kind == TyKind::Enum)
+      fn += "  store " + llType(currentClassTy, f) + " 0, ptr " + thisPointer(f) + "\n";
     if ((f->flags & DF_Constructor) && isClass(currentClassTy) && !constructorTryOf(f))
     {
       std::string held = holdTestCall(f);
