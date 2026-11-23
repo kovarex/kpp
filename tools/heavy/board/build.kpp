@@ -1,9 +1,0 @@
-﻿// heavyboard: the heavy slot's status on kovarex.com (README.md). `kpp` here builds it, `kpp --test`
-// runs its tests, `kpp --release --target freebsd heavyboard` builds the site's CGI program.
-void build(Project& project)
-{
-  Executable& board = project.executable("heavyboard", {"src"});
-  board.argument("--this-reference"); // `this` is the object, written `this.x` and `&this` (kpp's design.md 23d)
-  for (std::StringView name : {"http", "json", "net", "url"})
-    board.use(name, local(std::String("../../../libraries/") + name));
-}

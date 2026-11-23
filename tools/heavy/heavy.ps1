@@ -56,6 +56,25 @@ function Html([string]$text) { return [System.Net.WebUtility]::HtmlEncode($text)
 function Iso([DateTime]$time) { return $time.ToString('yyyy-MM-ddTHH:mm:sszzz') }
 function MdText([string]$text) { return ($text -replace '`', "'" -replace '\|', '/') }
 
+function Owner([string]$thread, [string]$cwd) { if ($thread) { return $thread } return (Who $cwd) }
+
+# The title of the Claude session (the thread) that started this job, from the desktop app's record of
+# it (CLAUDE_CODE_HOST_SESSION_ID); empty outside one. ':' is written '-' (the records use ': ').
+function Thread-Title
+{
+  $id = $env:CLAUDE_CODE_HOST_SESSION_ID
+  if (-not $id) { return '' }
+  try
+  {
+    $file = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Claude-Data\*\claude-code-sessions') -Directory -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.FullName -Recurse -Depth 2 -Filter "$id.json" -ErrorAction SilentlyContinue } | Select-Object -First 1
+    if (-not $file) { return '' }
+    $text = [IO.File]::ReadAllText($file.FullName)
+    if ($text -match '"title"\s*:\s*"((?:[^"\\]|\\.)*)"') { return (('"' + $matches[1] + '"' | ConvertFrom-Json -ErrorAction SilentlyContinue) -replace '[:\t\r\n]', '-') }
+  }
+  catch { }
+  return ''
+}
+
 function Who([string]$cwd)
 {
   if ($cwd -match 'worktrees\\([^\\]+)') { return $matches[1] }
@@ -66,10 +85,10 @@ function Who([string]$cwd)
 # "pid N, KIND, since MM-dd HH:mm:ss, cwd DIR: LABEL" (holder.txt and the queue's files)
 function Parse-Record([string]$text)
 {
-  if ($text -notmatch '^pid (\d+), (\w+), since (\d\d-\d\d \d\d:\d\d:\d\d), cwd (.*?): (.*)$') { return $null }
+  if ($text -notmatch '^pid (\d+), (\w+), since (\d\d-\d\d \d\d:\d\d:\d\d), cwd (.*?)(?:, thread (.*?))?: (.*)$') { return $null }
   $since = [DateTime]::ParseExact("$((Get-Date).Year)-$($matches[3])", 'yyyy-MM-dd HH:mm:ss', $null)
   if ($since -gt (Get-Date).AddDays(1)) { $since = $since.AddYears(-1) }
-  return [pscustomobject]@{ Pid = [int]$matches[1]; Kind = $matches[2]; Since = $since; Cwd = $matches[4]; Label = $matches[5].Trim() }
+  return [pscustomobject]@{ Pid = [int]$matches[1]; Kind = $matches[2]; Since = $since; Cwd = $matches[4]; Thread = $matches[5]; Label = $matches[6].Trim() }
 }
 
 function Duration([TimeSpan]$t)
@@ -92,9 +111,9 @@ function Write-Page
     if ($holder -and (Alive $holder.Pid))
     {
       $iso = $holder.Since.ToString('s')
-      $jRunning = [ordered]@{ kind = $holder.Kind; folder = (Who $holder.Cwd); label = $holder.Label; since = (Iso $holder.Since) }
-      [void]$rows.Append("<tr><td class='kind $($holder.Kind)'>$($holder.Kind)</td><td>$(Html (Who $holder.Cwd))</td><td class='cmd'>$(Html $holder.Label)</td><td>$($holder.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$iso'></td><td>$($holder.Pid)</td></tr>")
-      [void]$md.Append("| $($holder.Kind) | $(Who $holder.Cwd) | ``$(MdText $holder.Label)`` | $($holder.Since.ToString('HH:mm')) | $(Duration ($now - $holder.Since)) |`n")
+      $jRunning = [ordered]@{ kind = $holder.Kind; thread = (Owner $holder.Thread $holder.Cwd); folder = (Who $holder.Cwd); label = $holder.Label; since = (Iso $holder.Since) }
+      [void]$rows.Append("<tr><td class='kind $($holder.Kind)'>$($holder.Kind)</td><td>$(Html (Owner $holder.Thread $holder.Cwd))</td><td class='cmd'>$(Html $holder.Label)</td><td>$($holder.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$iso'></td><td>$($holder.Pid)</td></tr>")
+      [void]$md.Append("| $($holder.Kind) | $(Owner $holder.Thread $holder.Cwd) | ``$(MdText $holder.Label)`` | $($holder.Since.ToString('HH:mm')) | $(Duration ($now - $holder.Since)) |`n")
     }
     else { [void]$rows.Append("<tr><td colspan='6' class='none'>free</td></tr>"); [void]$md.Append("| free | | | | |`n") }
     $mdQueue = New-Object System.Text.StringBuilder
@@ -105,9 +124,9 @@ function Write-Page
       $r = Parse-Record ((Get-Content -Raw $w.FullName -ErrorAction SilentlyContinue) + '').Trim()
       if (-not $r -or -not (Alive $r.Pid)) { continue }
       $n++
-      [void]$jQueue.Add([ordered]@{ kind = $r.Kind; folder = (Who $r.Cwd); label = $r.Label; since = (Iso $r.Since) })
-      [void]$queue.Append("<tr><td>$n</td><td class='kind $($r.Kind)'>$($r.Kind)</td><td>$(Html (Who $r.Cwd))</td><td class='cmd'>$(Html $r.Label)</td><td>$($r.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$($r.Since.ToString('s'))'></td></tr>")
-      [void]$mdQueue.Append("| $n | $($r.Kind) | $(Who $r.Cwd) | ``$(MdText $r.Label)`` | $($r.Since.ToString('HH:mm')) | $(Duration ($now - $r.Since)) |`n")
+      [void]$jQueue.Add([ordered]@{ kind = $r.Kind; thread = (Owner $r.Thread $r.Cwd); folder = (Who $r.Cwd); label = $r.Label; since = (Iso $r.Since) })
+      [void]$queue.Append("<tr><td>$n</td><td class='kind $($r.Kind)'>$($r.Kind)</td><td>$(Html (Owner $r.Thread $r.Cwd))</td><td class='cmd'>$(Html $r.Label)</td><td>$($r.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$($r.Since.ToString('s'))'></td></tr>")
+      [void]$mdQueue.Append("| $n | $($r.Kind) | $(Owner $r.Thread $r.Cwd) | ``$(MdText $r.Label)`` | $($r.Since.ToString('HH:mm')) | $(Duration ($now - $r.Since)) |`n")
     }
     if ($n -eq 0) { [void]$queue.Append("<tr><td colspan='6' class='none'>nobody waiting</td></tr>") }
     $mdHistory = New-Object System.Text.StringBuilder
@@ -119,11 +138,11 @@ function Write-Page
       # queued, started, finished (ISO), exit code, kind, cwd, label
       $f = $l -split "`t"
       if ($f.Count -lt 7) { continue }
-      $queued = [DateTime]$f[0]; $started = [DateTime]$f[1]; $ended = [DateTime]$f[2]
+      $owner = if ($f.Count -ge 8) { Owner $f[7] $f[5] } else { Who $f[5] }; $queued = [DateTime]$f[0]; $started = [DateTime]$f[1]; $ended = [DateTime]$f[2]
       $ok = if ($f[3] -eq '0') { 'ok' } else { 'bad' }
-      if ($jFinished.Count -lt 100) { [void]$jFinished.Add([ordered]@{ kind = $f[4]; folder = (Who $f[5]); label = $f[6]; queued = (Iso $queued); started = (Iso $started); ended = (Iso $ended); exit = [int]$f[3] }) }
-      [void]$history.Append("<tr><td class='kind $($f[4])'>$($f[4])</td><td>$(Html (Who $f[5]))</td><td class='cmd'>$(Html $f[6])</td><td>$($started.ToString('MM-dd HH:mm'))</td><td>$(Duration ($started - $queued))</td><td>$(Duration ($ended - $started))</td><td class='$ok'>$($f[3])</td></tr>")
-      if ($mdHistory.Length -lt 20000) { [void]$mdHistory.Append("| $($f[4]) | $(Who $f[5]) | ``$(MdText $f[6])`` | $($started.ToString('MM-dd HH:mm')) | $(Duration ($started - $queued)) | $(Duration ($ended - $started)) | $(if ($f[3] -eq '0') { '0' } else { '**' + $f[3] + '**' }) |`n") }
+      if ($jFinished.Count -lt 100) { [void]$jFinished.Add([ordered]@{ kind = $f[4]; thread = $owner; folder = (Who $f[5]); label = $f[6]; queued = (Iso $queued); started = (Iso $started); ended = (Iso $ended); exit = [int]$f[3] }) }
+      [void]$history.Append("<tr><td class='kind $($f[4])'>$($f[4])</td><td>$(Html $owner)</td><td class='cmd'>$(Html $f[6])</td><td>$($started.ToString('MM-dd HH:mm'))</td><td>$(Duration ($started - $queued))</td><td>$(Duration ($ended - $started))</td><td class='$ok'>$($f[3])</td></tr>")
+      if ($mdHistory.Length -lt 20000) { [void]$mdHistory.Append("| $($f[4]) | $owner | ``$(MdText $f[6])`` | $($started.ToString('MM-dd HH:mm')) | $(Duration ($started - $queued)) | $(Duration ($ended - $started)) | $(if ($f[3] -eq '0') { '0' } else { '**' + $f[3] + '**' }) |`n") }
     }
     if ($lines.Count -eq 0) { [void]$history.Append("<tr><td colspan='7' class='none'>none yet</td></tr>") }
     $page = @"
@@ -142,11 +161,11 @@ th { background: var(--head); font-weight: 600; } td.cmd { font-family: Consolas
 <h1>PRACOVNA heavy slot</h1>
 <div class="muted">One heavy job at a time (tools\heavy\heavy.cmd). Written $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); reloads every 5 s.</div>
 <h2>Running</h2>
-<table><tr><th>kind</th><th>folder</th><th>command</th><th>started</th><th>running</th><th>pid</th></tr>$($rows.ToString())</table>
+<table><tr><th>kind</th><th>thread</th><th>command</th><th>started</th><th>running</th><th>pid</th></tr>$($rows.ToString())</table>
 <h2>Waiting</h2>
-<table><tr><th>#</th><th>kind</th><th>folder</th><th>command</th><th>queued</th><th>waiting</th></tr>$($queue.ToString())</table>
+<table><tr><th>#</th><th>kind</th><th>thread</th><th>command</th><th>queued</th><th>waiting</th></tr>$($queue.ToString())</table>
 <h2>Finished (last 200)</h2>
-<table><tr><th>kind</th><th>folder</th><th>command</th><th>started</th><th>waited</th><th>took</th><th>exit</th></tr>$($history.ToString())</table>
+<table><tr><th>kind</th><th>thread</th><th>command</th><th>started</th><th>waited</th><th>took</th><th>exit</th></tr>$($history.ToString())</table>
 <script>
 function d(s) { s = Math.max(0, Math.floor(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
   return h ? h + 'h ' + String(m).padStart(2, '0') + 'm' : m ? m + 'm ' + String(x).padStart(2, '0') + 's' : x + 's'; }
@@ -158,23 +177,24 @@ tick(); setInterval(tick, 1000);
     $temp = "$pageFile.$PID.tmp"
     [IO.File]::WriteAllText($temp, $page, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -Force $temp $pageFile
-    # The same as markdown (status.md), for reading in a terminal or an editor; publish.ps1 uploads the page.
+    # The same as markdown (status.md), for reading in a terminal or an editor.
     $noneQueue = if ($mdQueue.Length) { '' } else { "| | nobody waiting | | | | |`n" }
     $text = "# PRACOVNA heavy slot`n`nWritten $($now.ToString('yyyy-MM-dd HH:mm:ss')) (times are PRACOVNA's; durations as of then).`n`n" +
-      "## Running`n`n| kind | folder | command | started | running |`n|---|---|---|---|---|`n" + $md.ToString() +
-      "`n## Waiting`n`n| # | kind | folder | command | queued | waiting |`n|---|---|---|---|---|---|`n" + $mdQueue.ToString() + $noneQueue +
-      "`n## Finished`n`n| kind | folder | command | started | waited | took | exit |`n|---|---|---|---|---|---|---|`n" + $mdHistory.ToString()
+      "## Running`n`n| kind | thread | command | started | running |`n|---|---|---|---|---|`n" + $md.ToString() +
+      "`n## Waiting`n`n| # | kind | thread | command | queued | waiting |`n|---|---|---|---|---|---|`n" + $mdQueue.ToString() + $noneQueue +
+      "`n## Finished`n`n| kind | thread | command | started | waited | took | exit |`n|---|---|---|---|---|---|---|`n" + $mdHistory.ToString()
     $mdFile = Join-Path $root 'status.md'
-    # And as JSON (status.json), which publish.ps1 posts to heavyboard on kovarex.com (board\README.md).
+    # And as JSON (status.json), for whatever shows the status elsewhere: C:\kpp-sandbox\heavy\publish.ps1,
+    # when there is one, is started after every change (on PRACOVNA it posts to kovarex.com).
     $json = ([ordered]@{ written = (Iso $now); running = $jRunning; queue = @($jQueue); finished = @($jFinished) } | ConvertTo-Json -Depth 4 -Compress)
     $jsonFile = Join-Path $root 'status.json'
     [IO.File]::WriteAllText("$jsonFile.$PID.tmp", $json, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -Force "$jsonFile.$PID.tmp" $jsonFile
     [IO.File]::WriteAllText("$mdFile.$PID.tmp", $text, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -Force "$mdFile.$PID.tmp" $mdFile
-    if (Test-Path (Join-Path $root 'publish.txt'))
+    if (Test-Path (Join-Path $root 'publish.ps1'))
     {
-      Start-Process powershell -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSScriptRoot\publish.ps1`"")
+      Start-Process powershell -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$root\publish.ps1`"")
     }
   }
   catch { try { Set-Content -Path (Join-Path $root 'page-error.txt') -Value "$(Get-Date -Format s) $_ $($_.InvocationInfo.PositionMessage)" } catch { } } # (the page is a view: a failed write never stops a job)
@@ -204,7 +224,8 @@ New-Item -ItemType Directory -Force $queueDir | Out-Null
 $label = if ($name) { $name } else { $line }
 if ($label.Length -gt 160) { $label = $label.Substring(0, 160) + '...' }
 $kind = if ($exclusive) { 'exclusive' } else { 'heavy' }
-$me = "pid $PID, $kind, since {0}, cwd {1}: {2}"
+$thread = Thread-Title
+$me = if ($thread) { "pid $PID, $kind, since {0}, cwd {1}, thread $($thread): {2}" } else { "pid $PID, $kind, since {0}, cwd {1}: {2}" }
 $ticket = Join-Path $queueDir ('{0:D20}-{1}.txt' -f [DateTime]::UtcNow.Ticks, $PID)
 $queuedAt = Get-Date
 Set-Content -Path $ticket -Value ($me -f $queuedAt.ToString('MM-dd HH:mm:ss'), (Get-Location).Path, $label) -Encoding UTF8
@@ -291,7 +312,7 @@ finally
     Remove-Item $holderFile -Force -ErrorAction SilentlyContinue
     $mutex.ReleaseMutex()
     $clean = ($label -replace "[`t`r`n]", ' ')
-    $record = @($queuedAt.ToString('s'), $startedAt.ToString('s'), (Get-Date).ToString('s'), "$code", $kind, (Get-Location).Path, $clean) -join "`t"
+    $record = @($queuedAt.ToString('s'), $startedAt.ToString('s'), (Get-Date).ToString('s'), "$code", $kind, (Get-Location).Path, $clean, $thread) -join "`t"
     try { Add-Content -Path $historyFile -Encoding UTF8 -Value $record } catch { }
   }
   $mutex.Dispose()
