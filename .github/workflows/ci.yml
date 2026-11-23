@@ -188,25 +188,28 @@ jobs:
         shell: cmd
         run: compiler\tests\run_tests.cmd --full --part ${{ matrix.part }}
 
-  # The spec in shards (run_spec.py --shard I/N), in debug, --release, --debug-info and windows-gnu on
-  # every run: debug in 2 (1.2-1.9 min a shard in 4, 2026-11-08), the others in 4; 14 jobs at once,
-  # leaving more of GitHub's 20 jobs at a time to the Linux jobs, which waited for them.
+  # The spec in shards (run_spec.py --shard I/N), in debug, --release, --debug-info, --via-cpp and
+  # windows-gnu on every run: debug and via-cpp in 2 (1.2-1.9 min a shard in 4, 2026-11-08), the others
+  # in 4; 16 jobs at once, leaving some of GitHub's 20 jobs at a time to the Linux jobs, which waited
+  # for them. (via-cpp: every snippet through kpp's C++ back end, docs/cpp-backend.md, 2026-11-24.)
   spec:
     needs: build
     runs-on: ${{ vars.KPP_CI_RUNNER || 'windows-2022' }}
     timeout-minutes: 60
-    name: spec ${{ matrix.config }} ${{ matrix.shard }}/${{ matrix.config == 'debug' && 2 || 4 }}
+    name: spec ${{ matrix.config }} ${{ matrix.shard }}/${{ (matrix.config == 'debug' || matrix.config == 'via-cpp') && 2 || 4 }}
     strategy:
       fail-fast: false
       matrix:
         # (windows-gnu: --target windows-gnu --release, what an installation's `kpp --release` builds, as
         # the bundled toolchain is its default: until 2026-11-06 only debug builds of tests\run met that
         # configuration, and its globals were built in reverse for four days)
-        config: [debug, release, debug-info, windows-gnu]
+        config: [debug, release, debug-info, via-cpp, windows-gnu]
         shard: [1, 2, 3, 4]
         exclude:
           - { config: debug, shard: 3 }
           - { config: debug, shard: 4 }
+          - { config: via-cpp, shard: 3 }
+          - { config: via-cpp, shard: 4 }
     env:
       # Upstream SDL 3.4.18's headers stand in for C:\Factorio\libraries\SDL3\include (the same release;
       # the game's copy adds one function) for the two interop snippets that import SDL3/SDL.h. The zip
@@ -266,7 +269,7 @@ jobs:
 
       - name: spec
         shell: cmd
-        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/${{ matrix.config == 'debug' && 2 || 4 }} ${{ matrix.config == 'windows-gnu' && '--target windows-gnu --release' || matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
+        run: compiler\tests\spec.cmd --no-doc --shard ${{ matrix.shard }}/${{ (matrix.config == 'debug' || matrix.config == 'via-cpp') && 2 || 4 }} ${{ matrix.config == 'windows-gnu' && '--target windows-gnu --release' || matrix.config != 'debug' && format('--{0}', matrix.config) || '' }}
 
   # The differential tests (compiler/tests/differential/README.md; kovarex, 2026-11-16): the threads'
   # comparison programs and random program generators, each built by kpp and as C++ by clang++ (MSVC's

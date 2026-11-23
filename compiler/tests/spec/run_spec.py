@@ -850,7 +850,7 @@ def main():
         stale = apply_known_freebsd(results, not args.filter and not only, KNOWN_MACOS, bundle=False)
     elif TARGET in MACOS_TARGETS:
         stale = apply_known_freebsd(results, not args.filter and not only and not shard, KNOWN_MACOS_HOST, bundle=False)
-    elif args.via_cpp:
+    elif args.via_cpp and not TARGET: # (the list is the Windows run's: its one line is a snippet of that target alone)
         stale = apply_known_freebsd(results, not args.filter and not only and not shard, KNOWN_VIA_CPP, bundle=False)
     for r in results:
         tag = {"pass": "ok     ", "built": "built  ", "known": "known  ", "pending": "pending", "FAIL": "FAIL   ", "fixed": "FIXED  "}[r["status"]]

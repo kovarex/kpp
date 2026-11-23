@@ -118,7 +118,8 @@ translation unit's `a3` and `t17`, not kpp's variables, and no kpp types.
 
 - `compiler\tests\spec.cmd --via-cpp` builds every specification snippet through C++ (into `build\spec-via-cpp`)
   and compares its output as the plain run does. `compiler/tests/spec/via-cpp-known-failures.txt` lists what fails
-  that way; a line that starts passing fails the run until it goes.
+  that way; a line that starts passing fails the run until it goes. CI runs it on every push (ci.yml's spec
+  job, config via-cpp, in 2 shards).
 - `run_tests.cmd`'s "via C++" (tests\viacpp.ps1, when kpp has LLVM in it) builds one program both ways and
   compares what the two print.
 - The game: `kpp factorio-test debug --via-cpp` in a kpp-factorio checkout, its tests run with
