@@ -1,0 +1,22 @@
+// spec: a compile server's build that uses a literal again after an earlier build dropped it from its module (no text named it then) defines it again: a literal changed and changed back (2026-11-23: 20d102884 dropped the literal's definition but not the module's record that it had one, and the next use named an undefined literal: "use of undefined value @.str...")
+//--- step: the program
+int main()
+{
+  std::println("first");
+  return 0;
+}
+// expect: first
+//--- step: the literal changed
+int main()
+{
+  std::println("second");
+  return 0;
+}
+// expect: second
+//--- step: the literal changed back
+int main()
+{
+  std::println("first");
+  return 0;
+}
+// expect: first

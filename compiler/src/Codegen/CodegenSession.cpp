@@ -200,14 +200,15 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
 // A module's own literals (`$.str.X = comdat any` with its definition) that none of its texts names any more: the ones of a
 // body edited or removed since (its literal changed, its function gone), which a build from scratch does not have (until
 // 2026-11-22 a release build's server kept them: --verify-incremental, "what it wrote differs", after a test was renamed).
-static void dropUnusedLiterals(const Shared& sh, unsigned k, std::vector<std::string>& entries)
+// The module's record of each literal dropped goes with it (Shared::LiteralShard::modules, each emitter's constantCache), so
+// that a later use defines it again (until 2026-11-23 a literal changed and changed back named an undefined literal).
+static void dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>& emitters, unsigned k, std::vector<std::string>& entries)
 {
   auto literal = [](const std::string& e) { return e.starts_with("$.str.") || e.starts_with("$.wstr.") || e.starts_with("$.data."); };
   std::unordered_set<std::string_view> named;
   auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { named.insert(text.substr(at, length)); }); };
   for (const Shared::Definition& d : sh.definitions[k])
-    for (auto [at, length] : d.names)
-      named.insert(std::string_view(d.text).substr(at, length));
+    scan(d.text); // (its whole text: Definition::names leaves out what the module defines, its literals)
   for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
     scan(o.text);
   for (const std::string& e : entries)
@@ -221,7 +222,31 @@ static void dropUnusedLiterals(const Shared& sh, unsigned k, std::vector<std::st
       if (literal(e) && named.count("@" + e.substr(1, e.find(" = comdat") - 1)))
         irNamesIn(e, [&](size_t at, size_t length) { more |= named.insert(std::string_view(e).substr(at, length)).second; });
   }
-  std::erase_if(entries, [&](const std::string& e) { return literal(e) && !named.count("@" + e.substr(1, e.find(" = comdat") - 1)); });
+  std::vector<std::string> dropped;
+  std::erase_if(entries, [&](const std::string& e)
+  {
+    std::string name = "@" + e.substr(1, e.find(" = comdat") - 1);
+    if (!literal(e) || named.count(name))
+      return false;
+    dropped.push_back(std::move(name));
+    return true;
+  });
+  for (const std::string& name : dropped)
+  {
+    Shared::LiteralShard& shard = sh.literalShard(name);
+    std::string contents;
+    {
+      std::lock_guard lock(shard.mutex);
+      if (k < shard.modules.size())
+        shard.modules[k].erase(name);
+      if (auto it = shard.contents.find(name); it != shard.contents.end())
+        contents = it->second;
+    }
+    size_t dot = name.find('.', 2); // (`@.str.`, `@.wstr.`, `@.data.`: the prefix constantName was given)
+    std::string key = std::to_string(k) + "|" + name.substr(0, dot + 1) + "|" + contents;
+    for (auto& em : emitters)
+      em->constantCache.erase(key);
+  }
 }
 
 unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
@@ -3044,7 +3069,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     std::vector<std::string>& kept = sh.keptModuleEntries[k];
     kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
     dropSharedLiterals(sh, kept);
-    dropUnusedLiterals(sh, k, kept);
+    dropUnusedLiterals(sh, emitters, k, kept);
     std::vector<std::string> entries = kept;
     appendOwnedEntries(sh, k, entries);
     sh.moduleDecls[k].entries = std::move(entries);
