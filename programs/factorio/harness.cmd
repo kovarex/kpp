@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem A library's differential harness (docs/path-to-factorio.md, "Converting the C libraries"): the
 rem gate a converted library passes before factorio-in-kpp's build.kpp links it instead of the C one.
 rem

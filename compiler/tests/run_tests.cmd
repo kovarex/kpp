@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem run_tests: compiles every tests\run\*.kpp with kpp, runs it, and compares stdout with the .expected
 rem file; then the other checks (tests\*.ps1, tests\inline.cmd's sections, the libraries' tests). They
 rem run side by side, each a process of its own (tests\run_tests.ps1, which lists them). The last line

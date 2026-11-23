@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem The first run of the converted game (docs/path-to-factorio.md, "The first run"). Links it as
 rem link.cmd does, but with --stub-missing, a bring-up tool and never a way to ship: every function the
 rem code generator left out (or found no definition of) is a stub that prints its name and line and

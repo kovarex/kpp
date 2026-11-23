@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem The Lua trial (docs/path-to-factorio.md, "Converting Lua"): converts libraries\Lua on its own, its
 rem .c files as the C++ the game compiles them as (lua.c and luac.c left out, as fbuild.bff leaves them
 rem out), into the directory given as the first argument (%TEMP%\kpp-lua-trial by default), and

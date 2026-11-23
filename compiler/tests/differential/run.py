@@ -344,5 +344,14 @@ def main():
         sys.exit(1)
     print('ALL PASSED')
 
+def heavy():
+    """One heavy job at a time on PRACOVNA: run again under tools\\heavy\\heavy.cmd (it says how)."""
+    if os.name != 'nt' or os.environ.get('KPP_HEAVY_HELD') or os.environ.get('GITHUB_ACTIONS') or not os.path.isdir('C:\\kpp-sandbox'):
+        return
+    lock = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools', 'heavy', 'heavy.cmd')
+    command = subprocess.list2cmdline([sys.executable, *sys.argv])
+    sys.exit(subprocess.call('"%s" %s' % (os.path.normpath(lock), command), shell=True))
+
 if __name__ == '__main__':
+    heavy()
     main()

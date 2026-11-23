@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem kpp format's round trip on the converted game (kovarex 2026-11-08, through the coordinator): the game's
 rem src\ and tests\ in a factorio-in-kpp checkout (the first argument, else FACTORIO_IN_KPP), each file first
 rem formatted in kpp's default style in a copy, then compiler\tests\format\run_format.py's checks in the

@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem Converts the whole Factorio source (CommonUtil, Agui, src, and the tests with UnitTest++, the
 rem unit-test library they are written in) to kpp into a factorio-in-kpp checkout (the directory given
 rem as the first argument, else FACTORIO_IN_KPP: a thread's own copy, setup-checkout.cmd; C:\factorio-in-kpp

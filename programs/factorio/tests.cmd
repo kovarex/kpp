@@ -1,4 +1,6 @@
 @echo off
+rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
+if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
 rem The converted game's unit tests (C:\Factorio\tests, written in UnitTest++, converted to kpp's own
 rem suites and tests, design.md 8.7: kpp --tests, the runner's options and the game's hooks in
 rem overrides\added\tests\TestHooks.kpp), built and run as run.cmd builds and runs the game. They come from a conversion that has them: convert.cmd's whole
