@@ -1,0 +1,73 @@
+// spec: a default member initializer that names this (its address, another member, a member function, a lambda capturing it, in one branch of a condition only, more than once) gets the object it initializes: in a constructor of its class, in an implicit constructor run inside its caller, in a base at an offset of a derived object, in a member of a member, in an aggregate, and in every element of an array; the members beside it whose initializers name no this are initialized as written
+// factorio: each default member initializer got a stack slot holding its object's address, whether it named this or not: 75,773 slots that were only written and 109,782 stores into them, 1.7% of the game's instructions (2026-11-23); the slot is now made where an initializer names this, and this checks every such initializer still finds its object
+// (a value the compiler cannot know)
+int opaque(int n) { return std::getenv("KPP_SPEC_NEVER_SET") ? 0 : n; }
+struct Node
+{
+  int plain = 7;
+  Node* self = &this;
+  int twice = this.plain * 2;
+  int viaFunction = this.triple();
+  int oneBranch = opaque(1) == 1 ? this.plain + 100 : 5;
+  int otherBranch = opaque(1) == 2 ? this.plain + 100 : 5;
+  int last = 9;
+  int triple() const { return this.plain * 3; }
+  bool whole() const { return this.self == &this; }
+};
+struct WithConstructor
+{
+  int first;
+  Node* self = nullptr;
+  int both = this.first + this.offsetOfSelf();
+  WithConstructor* me = &this;
+  WithConstructor(int first) : first(first) {}
+  int offsetOfSelf() const { return (int)((const char*)&this.self - (const char*)&this); }
+};
+struct Padding
+{
+  i64 before = 11;
+};
+struct Derived : Padding, Node
+{
+  int own = this.plain + this.twice;
+};
+struct Outer
+{
+  int tag = 1;
+  Node inner;
+  Node* innerSelf = this.inner.self;
+};
+struct Capturing
+{
+  int base = 40;
+  std::Function<int(int)> add = [&this](int n) { return this.base + n; };
+};
+struct Aggregate
+{
+  int given;
+  int derived = this.given * 10;
+  Aggregate* self = &this;
+};
+int main()
+{
+  Node n;
+  std::println(n.whole(), " ", n.plain, " ", n.twice, " ", n.viaFunction, " ", n.oneBranch, " ", n.otherBranch, " ", n.last);
+  WithConstructor w(30);
+  std::println(w.me == &w, " ", w.first, " ", w.both - w.offsetOfSelf(), " ", w.self == nullptr);
+  Derived d;
+  Node* asNode = &d;
+  std::println(d.self == asNode, " ", (void*)asNode != (void*)&d, " ", d.whole(), " ", d.own, " ", d.before, " ", d.oneBranch);
+  Outer o;
+  std::println(o.innerSelf == &o.inner, " ", o.inner.whole(), " ", o.tag, " ", o.inner.viaFunction);
+  Capturing c;
+  c.base = 50;
+  std::println(c.add(2));
+  Aggregate a{4};
+  std::println(a.self == &a, " ", a.derived);
+  Node many[3];
+  std::println(many[0].whole(), " ", many[1].whole(), " ", many[2].whole(), " ", many[2].twice);
+  Node* heap = new Node();
+  std::println(heap->whole(), " ", heap->viaFunction);
+  delete heap;
+  return 0;
+}

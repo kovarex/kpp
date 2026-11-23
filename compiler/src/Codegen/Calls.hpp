@@ -51,6 +51,16 @@
     // is kpp's, and it may throw kpp's exceptions).
     bool definedInKpp(FunctionDecl* f, const TemplateArgs& args);
 
+    // Whether a call of f can throw to its caller. Not a C function's (it throws no kpp exception), and
+    // not a direct call of a function whose definition is `noexcept` (no condition): its own body ends
+    // the program where an exception would leave it ([except.spec] 5: emittingNoexcept, as the function
+    // is emitted), so its caller writes a plain call, with no unwind edge, no nop before it and no
+    // cleanup pad for it: 9,736 of the game's 327,504 invokes, and 4,917 of its 160,630 cleanup pads
+    // (2026-11-23; a third of the invokes called a function that cannot throw, most of them not declared
+    // noexcept). Through a pointer or a vtable (indirect) the function reached is not known: it may
+    // throw. Spec language/call_of_a_noexcept_function_among_calls_that_throw.
+    bool callMayThrow(FunctionDecl* f, const TemplateArgs& args, bool indirect);
+
 
     // The arguments of f's instantiation as its definition def names them: a definition separate
     // from the declaration has its own parameter declarations (`template<typename Policy>

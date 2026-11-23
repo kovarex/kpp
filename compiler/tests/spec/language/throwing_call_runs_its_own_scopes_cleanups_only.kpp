@@ -1,0 +1,107 @@
+// spec: a call that throws runs the cleanups of its own scope only, wherever the next call's scope begins: straight after it in a loop, in the arguments of one call, and after a call that has nothing to clean up
+// factorio: each call that may throw had a nop before it and one after it, 655,003 of the game's 10.7 million instructions (2026-11-23); the one before a call is enough to keep its scope entry apart from the call before, and this checks the scopes stay apart
+int live = 0;
+struct Item
+{
+  int id;
+  Item(int id) : id(id) { live += 1; }
+  Item(const Item& other) : id(other.id) { live += 1; }
+  ~Item()
+  {
+    live -= 1;
+    std::print("~", this.id, " ");
+  }
+};
+// (a value the optimizer cannot know: the calls stay calls)
+int opaque(int n) { return std::getenv("KPP_SPEC_NEVER_SET") ? 0 : n; }
+Item make(int id, int failAt)
+{
+  if (opaque(id) == failAt)
+    throw std::RuntimeError(std::String("no item"));
+  return Item(id);
+}
+int value(const Item& item) { return opaque(item.id); }
+int pair(const Item& a, const Item& b) { return opaque(a.id) * 100 + opaque(b.id); }
+void plain(int n)
+{
+  if (opaque(n) == 99)
+    throw std::RuntimeError(std::String("plain"));
+}
+// One scope after another in a loop: b's making begins where a's returns, and the next turn's a where pair returns.
+int loop(int failAt)
+{
+  int sum = 0;
+  for (int i = 1; i <= 3; ++i)
+  {
+    Item a = make(i, failAt);
+    Item b = make(i + 10, failAt);
+    sum += pair(a, b);
+  }
+  return sum;
+}
+// Two temporaries of one call: the second's making begins where the first's returns.
+int arguments(int failAt) { return pair(make(1, failAt), make(2, failAt)); }
+// A call with nothing to clean up, then one with: the first returns to where the second's scope begins.
+int afterPlain(int failAt)
+{
+  plain(failAt);
+  Item a = make(5, failAt);
+  plain(failAt);
+  return value(a);
+}
+// A call with nothing of its own to clean up, inside a scope that has: it unwinds through that scope.
+int plainInside(int failAt)
+{
+  Item a = make(6, 0);
+  plain(failAt);
+  Item b = make(7, 0);
+  plain(failAt + 1);
+  return pair(a, b);
+}
+// Three scopes nested, each call the last thing before the next begins.
+int nested(int failAt)
+{
+  Item a = make(1, failAt);
+  {
+    Item b = make(2, failAt);
+    {
+      Item c = make(3, failAt);
+      return pair(a, b) + value(c);
+    }
+  }
+}
+void run(const char* name, int failAt, int (*f)(int))
+{
+  try
+  {
+    int result = f(failAt);
+    std::print("-> ", result, " ");
+  }
+  catch (const std::Exception&)
+  {
+    std::print("-> caught ");
+  }
+  std::println("| ", name, " ", failAt, " live ", live);
+}
+int main()
+{
+  run("loop", 0, loop);
+  run("loop", 1, loop);
+  run("loop", 11, loop);
+  run("loop", 2, loop);
+  run("loop", 13, loop);
+  run("arguments", 0, arguments);
+  run("arguments", 1, arguments);
+  run("arguments", 2, arguments);
+  run("afterPlain", 0, afterPlain);
+  run("afterPlain", 5, afterPlain);
+  run("afterPlain", 99, afterPlain);
+  run("plainInside", 0, plainInside);
+  run("plainInside", 99, plainInside);
+  run("plainInside", 98, plainInside);
+  run("nested", 0, nested);
+  run("nested", 1, nested);
+  run("nested", 2, nested);
+  run("nested", 3, nested);
+  return 0;
+}

@@ -1,0 +1,126 @@
+// spec: a call of a noexcept function takes no part in its caller's unwinding (no exception leaves it), and the calls around it that throw still destroy exactly what was built before them: a noexcept function, member, constructor and operator, one defined out of its class, one whose noexcept is a condition (true for one instance, false for another, which throws to its caller as any function), a try block whose only call is noexcept; and an exception that would leave a noexcept function still ends the program
+// factorio: a third of the game's 327,504 calls with an unwind edge call a function that cannot throw (2026-11-23); for one declared noexcept (9,736 of them) the edge, the nop before the call and often the cleanup pad (4,917) are no longer written
+class Boom : public std::Exception { public: Boom() : Exception("boom") {} };
+int live = 0;
+struct Noisy
+{
+  int id;
+  Noisy(int id) : id(id) { live += 1; }
+  ~Noisy()
+  {
+    live -= 1;
+    std::print("~", this.id, " ");
+  }
+};
+// (a value the compiler cannot know)
+int opaque(int n) { return std::getenv("KPP_SPEC_NEVER_SET") ? 0 : n; }
+int quiet(int n) noexcept { return opaque(n) + 1; }
+int loud(int n)
+{
+  if (opaque(n) == 3)
+    throw Boom();
+  return n;
+}
+struct Counter
+{
+  int count = 0;
+  Counter() noexcept {}
+  Counter(int start) noexcept : count(start) {}
+  int next() noexcept;
+  Counter& operator+=(int n) noexcept
+  {
+    this.count += opaque(n);
+    return this;
+  }
+};
+int Counter::next() noexcept
+{
+  this.count += 1;
+  return this.count;
+}
+template<typename T>
+T twice(T v) noexcept(sizeof(T) == 8)
+{
+  if (opaque((int)v) == 21)
+    throw Boom();
+  return v + v;
+}
+int passesOn(int n) noexcept { return loud(n) + 1; }
+// noexcept calls between the objects and the calls that throw
+int mix(int n)
+{
+  Noisy a(1);
+  int x = quiet(n);
+  Noisy b(2);
+  int y = loud(x);
+  Counter counter(quiet(y));
+  counter += quiet(1);
+  Noisy c(3);
+  return loud(counter.next() - 2) + quiet(0);
+}
+// a try block whose only call cannot throw: its handler is never entered
+int onlyQuiet(int n)
+{
+  Noisy a(4);
+  try
+  {
+    return quiet(n);
+  }
+  catch (const Boom&)
+  {
+    return -1;
+  }
+}
+// the same function template: this instance may throw, to its caller
+int throwingInstance(int n)
+{
+  Noisy a(5);
+  return twice<int>(n);
+}
+i64 quietInstance(i64 n)
+{
+  Noisy a(6);
+  return twice<i64>(n);
+}
+void run(const char* name, int n, int (*f)(int))
+{
+  try
+  {
+    int result = f(n);
+    std::print("-> ", result, " ");
+  }
+  catch (const Boom&)
+  {
+    std::print("-> caught ");
+  }
+  std::println("| ", name, " ", n, " live ", live);
+}
+void onTerminate()
+{
+  std::println("| terminate, live ", live);
+  fflush(nullptr);
+  exit(0);
+}
+int main()
+{
+  std::setTerminate(onTerminate);
+  run("mix", 0, mix);
+  run("mix", 2, mix);
+  run("mix", 1, mix);
+  run("onlyQuiet", 7, onlyQuiet);
+  run("throwingInstance", 4, throwingInstance);
+  run("throwingInstance", 21, throwingInstance);
+  std::println(quietInstance(4), " | quietInstance 4 live ", live);
+  // An exception that would leave a noexcept function ends the program in it: its caller's handler is not entered
+  // and its caller's objects are not destroyed.
+  try
+  {
+    Noisy last(7);
+    std::println(passesOn(3));
+  }
+  catch (const Boom&)
+  {
+    std::println("caught: not reached");
+  }
+  return 0;
+}

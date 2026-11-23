@@ -199,15 +199,14 @@
       const Ty* cls = canonicalClass(t, v);
       TemplateArgs classArgs = global.classArgsOf(cls);
       Expr* init = global.instanceInitializer(v, classArgs);
-      std::string slot;
-      if (!inlining.empty())
-        slot = inlineSlot(std::to_string(inlining.size()) + ".member", "ptr"); // in a constructor inlined here: one slot for its members' initializers
-      else
-      {
-        slot = "%v" + std::to_string(temp++);
-        allocas += "  " + slot + " = alloca ptr\n";
-      }
-      fn += "  store ptr " + addr + ", ptr " + slot + "\n";
+      // `this` in the initializer is the object at addr, read through a slot as a function's own is. The
+      // slot is made and filled where the initializer names this (thisPointer): most name none
+      // (`T* p = nullptr;`), and each had an alloca and a store of its own, 75,773 slots the game's code only
+      // wrote and 109,782 stores into them, 1.7% of its instructions (2026-11-23; spec
+      // classes/default_member_initializer_naming_this_gets_its_own_object).
+      Local object{std::string(), nullptr, false};
+      object.pendingThis = addr;
+      object.pendingInlining = inlining.size();
       struct Restore
       {
         ~Restore()
@@ -229,7 +228,7 @@
         ParsedFile* file;
         Decl* initializer;
       } restore{*this, locals.count(nullptr) ? std::optional<Local>(locals[nullptr]) : std::nullopt, currentClassTy, currentArgs, currentFile, initializerOf};
-      locals[nullptr] = {slot, nullptr, false};
+      locals[nullptr] = object;
       currentClassTy = cls;
       currentArgs = &classArgs;
       currentFile = v->file;

@@ -1,0 +1,18 @@
+~11 ~1 ~12 ~2 ~13 ~3 -> 636 | loop 0 live 0
+-> caught | loop 1 live 0
+~1 -> caught | loop 11 live 0
+~11 ~1 -> caught | loop 2 live 0
+~11 ~1 ~12 ~2 ~3 -> caught | loop 13 live 0
+~2 ~1 -> 102 | arguments 0 live 0
+-> caught | arguments 1 live 0
+~1 -> caught | arguments 2 live 0
+~5 -> 5 | afterPlain 0 live 0
+-> caught | afterPlain 5 live 0
+-> caught | afterPlain 99 live 0
+~7 ~6 -> 607 | plainInside 0 live 0
+~6 -> caught | plainInside 99 live 0
+~7 ~6 -> caught | plainInside 98 live 0
+~3 ~2 ~1 -> 105 | nested 0 live 0
+-> caught | nested 1 live 0
+~1 -> caught | nested 2 live 0
+~2 ~1 -> caught | nested 3 live 0

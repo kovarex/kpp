@@ -1,0 +1,8 @@
+~3 ~2 ~1 -> caught | mix 0 live 0
+~2 ~1 -> caught | mix 2 live 0
+~3 ~2 ~1 -> 5 | mix 1 live 0
+~4 -> 8 | onlyQuiet 7 live 0
+~5 -> 8 | throwingInstance 4 live 0
+~5 -> caught | throwingInstance 21 live 0
+~6 8 | quietInstance 4 live 0
+| terminate, live 1

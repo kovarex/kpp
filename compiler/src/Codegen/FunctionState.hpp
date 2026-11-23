@@ -61,6 +61,12 @@
       // A thread_local static local's: addr is its global, whose address in the current thread each use takes
       // (localAddress, Emitter::threadLocalAddress).
       bool threadLocal = false;
+      // `this` of a default member initializer (withMemberInitializer): the address of the object it
+      // initializes. Its slot (addr, empty until then) is made and filled where the initializer names this
+      // (thisPointer); pendingInlining is inlining.size() when the initializer began (the slot's key in a
+      // constructor inlined into its caller, 0 in a function's own code).
+      std::string pendingThis;
+      size_t pendingInlining = 0;
     };
     // An argument of the call a check tests (design.md 8.7): its address, or a scalar's value and
     // LLVM type. No type: it has no value to show.

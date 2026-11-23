@@ -188,6 +188,39 @@ auto codegen::Emitter::sameEnumeration(const Ty* a, const Ty* b) -> bool
   return a->kind == TyKind::Enum && b->kind == TyKind::Enum && (a == b || (a->decl == b->decl && (unknownInstance(a) || unknownInstance(b))));
 }
 
+// The decimal integer literal `text`, of an integer type of fromBits bits (unsigned or not), converted to
+// an integer type of toBits bits: extended by its own type's sign, cut to the target's bits, written as
+// the target's signed value (LLVM reads a negative literal as its bits). Null if text is no such literal.
+static std::optional<std::string> convertedIntegerLiteral(const std::string& text, unsigned fromBits, unsigned toBits, bool fromUnsigned)
+{
+  if (text.empty() || fromBits == 0 || fromBits > 64 || toBits == 0 || toBits > 64)
+    return std::nullopt;
+  const size_t first = text[0] == '-' ? 1 : 0;
+  if (first == text.size())
+    return std::nullopt;
+  uint64_t magnitude = 0;
+  for (size_t i = first; i < text.size(); ++i)
+  {
+    if (text[i] < '0' || text[i] > '9')
+      return std::nullopt;
+    const uint64_t digit = uint64_t(text[i] - '0');
+    if (magnitude > (UINT64_MAX - digit) / 10)
+      return std::nullopt; // (more than 64 bits: no literal kpp writes)
+    magnitude = magnitude * 10 + digit;
+  }
+  uint64_t bits = first ? uint64_t(0) - magnitude : magnitude; // (its low 64 bits, two's complement)
+  auto signExtended = [](uint64_t value, unsigned width) { return width < 64 && (value >> (width - 1) & 1) ? value | ~((uint64_t(1) << width) - 1) : value; };
+  if (fromBits < 64)
+  {
+    bits &= (uint64_t(1) << fromBits) - 1;
+    if (!fromUnsigned)
+      bits = signExtended(bits, fromBits);
+  }
+  if (toBits < 64)
+    bits = signExtended(bits & ((uint64_t(1) << toBits) - 1), toBits);
+  return std::to_string(int64_t(bits));
+}
+
 auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCast, ConversionContext context) -> Value
 {
   const Ty* from = v.ty;
@@ -434,6 +467,11 @@ auto codegen::Emitter::convert(Value v, const Ty* to, Node* at, bool explicitCas
     uint8_t fb = bitsOf(from), tb = bitsOf(to);
     if (fb == tb)
       return {v.text, to};
+    // A literal is written converted: `size + 1` was `sext i32 1 to i64` and the add (140,909 of the game's
+    // 10.7 million instructions converted an integer literal, 2026-11-23; spec
+    // language/integer_literal_converted_where_it_is_used).
+    if (std::optional<std::string> literal = convertedIntegerLiteral(v.text, fb, tb, unsignedOf(from)))
+      return {*literal, to};
     fn += "  " + result() + " = " + (fb > tb ? "trunc" : unsignedOf(from) ? "zext" : "sext") + " " + fromT + " " + v.text + " to " + toT + "\n";
     return {r, to};
   }
@@ -846,6 +884,23 @@ auto codegen::Emitter::thisPointer(Node* at) -> std::string
   auto it = locals.find(nullptr);
   if (it == locals.end())
     unsupported(at, "a member used outside a method");
+  if (Local& self = it->second; !self.pendingThis.empty())
+  {
+    // A default member initializer's object (withMemberInitializer): its slot is made here, where the
+    // initializer names this, and filled before each read (a first use may be in a branch that a later
+    // one is not behind).
+    if (self.addr.empty())
+    {
+      if (self.pendingInlining)
+        self.addr = inlineSlot(std::to_string(self.pendingInlining) + ".member", "ptr"); // in a constructor inlined here: one slot for its members' initializers
+      else
+      {
+        self.addr = "%v" + std::to_string(temp++);
+        allocas += "  " + self.addr + " = alloca ptr\n";
+      }
+    }
+    fn += "  store ptr " + self.pendingThis + ", ptr " + self.addr + "\n";
+  }
   std::string r = newTemp();
   fn += "  " + r + " = load ptr, ptr " + it->second.addr + "\n";
   return r;

@@ -161,6 +161,24 @@ auto codegen::Emitter::definedInKpp(FunctionDecl* f, const TemplateArgs& args) -
   return d && d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->body && !(d->file && d->file->isImported);
 }
 
+auto codegen::Emitter::callMayThrow(FunctionDecl* f, const TemplateArgs& args, bool indirect) -> bool
+{
+  if (global.isExternC(f) && !definedInKpp(f, args))
+    return false;
+  if (indirect)
+    return true;
+  // The definition kpp emits for it, with the specifier as emittingNoexcept reads it there: a body of
+  // its own (a defaulted function has none: its members' operations throw through it), no destructor
+  // (which goes by its class, destructionMayThrow, where it is called), and `noexcept` with no
+  // condition: a condition is evaluated for the instance's own copy of the function when that is
+  // emitted, and only a specifier both readings must agree on makes a call plain here.
+  Decl* d = global.definitionOf(f, args);
+  if (!d || d->kind != NodeKind::FunctionDecl || (d->file && d->file->isImported))
+    return true;
+  auto* definition = static_cast<FunctionDecl*>(d);
+  return !(definition->body && !(definition->flags & DF_Destructor) && (definition->flags & DF_Noexcept) && !definition->noexceptCondition);
+}
+
 auto codegen::Emitter::useFunction(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy, Node* at) -> std::string
 {
   // A method of an enumeration of a class template is the instance's (`S<long long>::Dir::str`): its
@@ -1243,7 +1261,8 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   // kpp body defines is kpp's own, whichever declaration the call names, and may throw as any does
   // (the game's Lua: lua_error throws Lua's error; until 2026-11-15 its callers' cleanups and handlers
   // never ran, spec language/extern_c_function_defined_in_kpp_throws_to_its_callers).
-  bool mayThrow = !global.isExternC(f) || definedInKpp(f, args);
+  // And a function whose definition is noexcept throws nothing to its caller (callMayThrow).
+  bool mayThrow = callMayThrow(f, args, !indirect.empty());
   if (s.returnType == "void")
   {
     emitCall("", sig + name + "(" + argText + ")", mayThrow);
