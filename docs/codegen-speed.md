@@ -973,6 +973,34 @@ switches. And InputAction's loading sets the alternative it reads (`this[a.tag] 
   game of 11-14 was (kpp 17.3 to 18.0 s); the readme's 15.9 s (0.2.1340, factorio-in-kpp 8dc0c25e2) is
   still 4 to 5 s away.
 
+**A release build's shared definitions only where they are reached (2026-11-23).** kovarex, on generated
+functions written into every module: "this should be rule for all functions ... make the IR as small as
+possible". A debug build gives each shared function and each global of the shared declarations one home module
+(step 2 above, the destructor helpers before); a release build (ThinLTO) kept every one of them in every module,
+whether the module named it or not. The game's release IR (kpp-factorio kpp c0ffbea92) was 2,462 MB, of it 1,253
+MB copies in modules that never named them: 1,098 MB the two tint tables `Tile::waterEffectTints` and
+`pollutedWaterEffectTints` (65,536 colours each, 8.7 MB of IR) in all 64 modules, then constants, string
+literals, vtables and the generated enum functions. clang threw them away (the objects were the same bytes), but
+read them first.
+- **What.** prepareModuleTexts indexes the shared units (a global's line, a comdat, a function's definition) by
+  the names that define them and the names they use; moduleText keeps those its own definitions, declarations and
+  startup list reach, closed over what the kept units name. A unit in a section, an appending one and LLVM's own
+  stay in every module, as declarations do, and what they name is reached. The objects stay what they were: every
+  module that names a unit has it, as before.
+- **Measured:** `kpp factorio release --no-server --verbose`, the game's module outputs and the LTO cache removed
+  before each build, kpp master 171c3bef2 against it with the change, two interleaved pairs under
+  `heavy.cmd --exclusive`:
+
+  | | 171c3bef2 | shared units where reached |
+  |---|---:|---:|
+  | IR | 2,458 MB | 1,229 MB |
+  | codegen | 4.80 to 4.93 s | 4.17 to 4.61 s |
+  | clang | 11.73 to 12.09 s | 10.56 to 10.77 s |
+  | kpp | 19.5 to 19.6 s | 17.4 to 17.6 s |
+  | link | 57.8 to 58.0 s | 56.9 to 57.2 s |
+  | total | 77.4 to 77.5 s | 74.5 to 74.6 s |
+
+
 **Step 5: codegen's mutexes spin before they sleep (item 6's first lever; thread D, 2026-11-04).**
 - **Why.** A's profile of the clean build (A-clean-build-profile.md in the coordinator's notes) had
   codegen at 20.5 of 32 cores, its threads waiting 66.7 s on locks held 3.05 s in all: 1.3 million

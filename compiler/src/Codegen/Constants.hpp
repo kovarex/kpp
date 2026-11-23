@@ -342,6 +342,14 @@
     // keeps), else left out. In one pass over the shared declarations.
     std::string homedDeclsFor(unsigned k, const NameViewKeySet* programNames, const NameKeySet& seen);
 
+    // A release build's (Shared::reachShared): which of the shared units the names reach, closed over the names the units
+    // reached use in turn (a vtable its functions and strings, a function the globals it reads), by index.
+    std::vector<char> reachedSharedUnits(std::vector<std::string_view> names);
+    // text without the shared units not reached, every other line and definition as it was.
+    std::string withReachedUnits(std::string_view text, const std::vector<char>& reached);
+    // declsFor's shared declarations of module k (without the type definitions), the units not reached left out.
+    std::string reachedDeclsFor(unsigned k, const NameViewKeySet* programNames, const std::vector<char>& reached);
+
     // A release build's placement (Shared::importableModules). ThinLTO imports short functions into
     // their callers' modules, and its cache keeps a module's back end only while every module it
     // imports from is unchanged: with functions spread by file and name, every module imported from

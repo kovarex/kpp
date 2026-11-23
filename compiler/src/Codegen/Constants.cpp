@@ -1186,6 +1186,26 @@ auto codegen::Emitter::localLine(std::string_view line) -> bool
          line.starts_with("define private ") || line.starts_with("define internal ");
 }
 
+// A unit of the shared texts a release build's module carries only where its texts reach it (Shared::reachShared): a
+// global's definition (not an external declaration), a comdat, a function's definition. Never one of LLVM's own globals,
+// nor one placed in a section by name or appended to: what the linker keeps whether a name reaches it or not.
+static bool reachableUnit(std::string_view unit)
+{
+  if (unit.find(" section \"") != std::string_view::npos || unit.find(" appending ") != std::string_view::npos)
+    return false;
+  if (unit.starts_with("define "))
+    return true;
+  if (unit.starts_with("$"))
+    return unit.find(" = comdat ") != std::string_view::npos;
+  size_t eq = unit.find(" = ");
+  if (!unit.starts_with("@") || eq == std::string_view::npos || unit.starts_with("@llvm.") || unit.starts_with("@\"llvm."))
+    return false;
+  // (an external declaration names a global defined elsewhere: carried as declarations are)
+  std::string_view rest = unit.substr(eq + 3);
+  std::string_view head = rest.substr(0, std::min(rest.find("global "), rest.find("constant ")));
+  return head.find("external") == std::string_view::npos && head.find("extern_weak") == std::string_view::npos;
+}
+
 auto codegen::Emitter::prepareModuleTexts() -> void
 {
   declaredIn(decls.text, sharedDeclared);
@@ -1223,6 +1243,38 @@ auto codegen::Emitter::prepareModuleTexts() -> void
       if (auto it = sh.typeIndex.find(name); it != sh.typeIndex.end())
         t.uses.push_back(it->second);
     });
+  // A release build's shared units by the names that define them and the names they use (Shared::reachShared), and the
+  // names the lines every module keeps use.
+  sh.reachShared = moduleCount > 1 && sh.importableModules != 0;
+  sh.reachUnitNames.clear();
+  sh.reachUnitAt.clear();
+  sh.reachUnitsDefining.clear();
+  sh.reachRoots.clear();
+  if (sh.reachShared)
+    for (std::string_view all : {std::string_view(sh.decls.text), std::string_view(sh.shared.text)})
+      forEachLine(all, [&](std::string_view unit)
+      {
+        std::vector<std::string_view> names;
+        irNamesIn(unit, [&](size_t at, size_t length) { names.push_back(unit.substr(at + 1, length - 1)); });
+        // (a global in another's comdat: `comdat($"??_7...")`)
+        for (size_t at = unit.find("comdat($"); at != std::string_view::npos; at = unit.find("comdat($", at + 8))
+          if (size_t end = unit.find(')', at + 8); end != std::string_view::npos)
+            names.push_back(unit.substr(at + 8, end - at - 8));
+        if (!reachableUnit(unit))
+        {
+          if (!isTypeLine(unit))
+            sh.reachRoots.insert(sh.reachRoots.end(), names.begin(), names.end());
+          return;
+        }
+        auto index = uint32_t(sh.reachUnitNames.size());
+        sh.reachUnitAt.emplace(unit.data(), index);
+        sh.reachUnitsDefining[definedBy(unit)].push_back(index);
+        sh.reachUnitNames.push_back(std::move(names));
+      });
+  // (--stub-missing: a stub, written where a module uses a function left out (declsFor, declareUndefined after the
+  // assembly), calls kpp_missing, which no module's own text names)
+  if (sh.reachShared && sh.stubMissing)
+    sh.reachRoots.push_back("kpp_missing");
   // A debug build's homed globals (Shared::homeGlobals), with debug info too: its line tables
   // (DICompileUnit's LineTablesOnly) put no metadata on a global's line. (A release build's ThinLTO
   // imports constants into the modules that read them: not changed here.)
@@ -1324,6 +1376,60 @@ auto codegen::Emitter::homedDeclsFor(unsigned k, const NameViewKeySet* programNa
     out.append(line);
     out += '\n';
   }
+  return out;
+}
+
+auto codegen::Emitter::reachedSharedUnits(std::vector<std::string_view> names) -> std::vector<char>
+{
+  std::vector<char> reached(sh.reachUnitNames.size(), 0);
+  NameViewKeySet done;
+  while (!names.empty())
+  {
+    std::string_view name = names.back();
+    names.pop_back();
+    if (!done.insert(name).second)
+      continue;
+    auto it = sh.reachUnitsDefining.find(name);
+    if (it == sh.reachUnitsDefining.end())
+      continue;
+    for (uint32_t u : it->second)
+      if (!reached[u])
+      {
+        reached[u] = 1;
+        names.insert(names.end(), sh.reachUnitNames[u].begin(), sh.reachUnitNames[u].end());
+      }
+  }
+  return reached;
+}
+
+auto codegen::Emitter::withReachedUnits(std::string_view text, const std::vector<char>& reached) -> std::string
+{
+  std::string out;
+  out.reserve(text.size() / 8);
+  forEachLine(text, [&](std::string_view unit)
+  {
+    if (auto it = sh.reachUnitAt.find(unit.data()); it != sh.reachUnitAt.end() && !reached[it->second])
+      return;
+    out.append(unit);
+    out += '\n';
+  });
+  return out;
+}
+
+auto codegen::Emitter::reachedDeclsFor(unsigned k, const NameViewKeySet* programNames, const std::vector<char>& reached)
+  -> std::string
+{
+  std::string out;
+  out.reserve(decls.text.size() / 8);
+  forEachLine(decls.text, [&](std::string_view unit)
+  {
+    if (auto it = sh.reachUnitAt.find(unit.data()); it != sh.reachUnitAt.end() && !reached[it->second])
+      return;
+    if (isTypeLine(unit) || declarationLeftOut(k, unit, programNames, out))
+      return;
+    out.append(unit);
+    out += '\n';
+  });
   return out;
 }
 
@@ -1799,13 +1905,33 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
   for (const Shared::Definition* d : definitions)
     for (auto [at, length] : d->names)
       consider(std::string_view(d->text).substr(at, length));
-  scan(shared.text);
+  // A release build: the shared units the module's texts reach, the others left out (Shared::reachShared).
+  bool reaching = sh.reachShared && !instancePiece;
+  std::vector<char> reachedUnits;
+  std::string reachedShared;
+  if (reaching)
+  {
+    std::vector<std::string_view> names(sh.reachRoots);
+    auto add = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { names.push_back(text.substr(at + 1, length - 1)); }); };
+    add(ownDecls);
+    add(sh.placedDecls[k]);
+    add(ctors);
+    for (const Shared::Definition* d : definitions)
+      for (auto [at, length] : d->names)
+        names.push_back(std::string_view(d->text).substr(at + 1, length - 1));
+    reachedUnits = reachedSharedUnits(std::move(names));
+    reachedShared = withReachedUnits(shared.text, reachedUnits);
+  }
+  std::string_view sharedText = reaching ? std::string_view(reachedShared) : std::string_view(shared.text);
+  scan(sharedText);
   scan(ctors);
   // The functions the shared declarations name: every module but the defining one declares them.
   for (const std::string& name : sh.sharedReferences)
     if (const unsigned* in = sh.moduleDefining(name); in && (*in != k || programNames.count(name)) && !already.count(name) && seen.insert(name).second)
       declare(name);
-  decls = sh.homeGlobals ? homedDeclsFor(k, instancePiece ? &programNames : nullptr, seen) : declsFor(k, false, instancePiece ? &programNames : nullptr);
+  decls = sh.homeGlobals ? homedDeclsFor(k, instancePiece ? &programNames : nullptr, seen)
+          : reaching      ? reachedDeclsFor(k, nullptr, reachedUnits)
+                          : declsFor(k, false, instancePiece ? &programNames : nullptr);
   // The type definitions the module names, and those they name in turn (every module had all of
   // the game's 24 k), in the shared declarations' order.
   std::vector<char> used(sh.typeLines.size(), 0);
@@ -1828,7 +1954,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
   for (const Shared::Definition* d : definitions)
     for (auto [at, length] : d->types)
       markName(std::string_view(d->text).substr(at, length));
-  typeNamesIn(shared.text, markName);
+  typeNamesIn(sharedText, markName);
   typeNamesIn(ctors, markName);
   typeNamesIn(decls, markName);
   typeNamesIn(declares, markName);
@@ -1847,7 +1973,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
       types += '\n';
     }
   size_t size = prefix.size() + types.size() + decls.size() + ownDecls.size() + sh.placedDecls[k].size() + ctors.size() + 1 +
-                shared.text.size() + declares.size() + 1;
+                sharedText.size() + declares.size() + 1;
   for (const Shared::Definition* d : definitions)
     size += d->text.size();
   std::string out;
@@ -1859,7 +1985,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
   out += sh.placedDecls[k];
   out += ctors;
   out += '\n';
-  out += shared.text;
+  out += sharedText;
   out += declares;
   out += '\n';
   uint32_t nextDebugId = debugFirstId;

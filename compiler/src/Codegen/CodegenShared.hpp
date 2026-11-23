@@ -525,6 +525,16 @@ namespace codegen
     NameViewKeyMap<unsigned> homedComdats;     // `$name` -> its global's home
     std::vector<std::vector<std::string_view>> homeNames;            // per module: the names its homed globals' initializers use
     std::vector<std::string_view> namedByShared;                     // the names the shared lines every module keeps use
+    // A release build's (ThinLTO's) shared units: each line of the shared declarations that defines a global or its comdat,
+    // and each unit of the shared definitions (a function, a global, a comdat), with the names it uses (prepareModuleTexts).
+    // A module carries those its own texts reach, not all of them (moduleText): every module carried every one before, and
+    // the game's two tint tables (8.7 MB of IR each, Tile::waterEffectTints and pollutedWaterEffectTints) were in all 64 of
+    // its modules, 1,098 of its 2,462 MB of release IR (copies in all 1,253 MB), which clang parsed to throw away.
+    bool reachShared = false;
+    std::vector<std::vector<std::string_view>> reachUnitNames;                     // per unit: the names it uses, without the sigil
+    std::unordered_map<const char*, uint32_t> reachUnitAt;                          // a unit's first character -> its index
+    NameViewKeyMap<std::vector<uint32_t>> reachUnitsDefining;                     // a name without the sigil -> the units defining it
+    std::vector<std::string_view> reachRoots; // the names the shared lines every module carries use (declarations, LLVM's own globals)
     std::vector<std::vector<const Definition*>> placedHere; // per module: the definitions placed in it
     std::vector<std::string> placedDecls;                    // per module: what they name from where they were emitted
     NameKeyMap<unsigned> placedIn;      // a placed definition's name -> its module
