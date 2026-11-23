@@ -52,6 +52,9 @@ Each is a small value whose `appendTo` writes the text described; the names are 
   before it, as the flag does: `zeroPadded(fixed(-inf, 2), 8)` is `    -inf`.
 - `address(p)`: a pointer as 16 uppercase hexadecimal digits, no prefix, as MSVC's `%p`. It is the
   only way to print a pointer, but a char pointer: any other pointer is no piece by itself.
+- `counted(text, n)`: at most n characters of a C text (`const char*` or `const wchar_t*`), fewer where its zero
+  comes first, all of it for a negative n, as C's `%.*s`; a wide text's as UTF-8, as a wide pointer piece. A null
+  text stops at a release_assert, as a C text piece does (kovarex, 2026-11-22).
 
 Infinities and NaN are `inf`, `-inf` and `nan` in every floating piece, on every platform.
 

@@ -1207,6 +1207,10 @@
       std::string flags, length;
       int width = -1, precision = -1;
       bool starWidth = false; // the width is an argument (`%*c`), read before the value
+      // `%.*s`: the precision is an argument, read before the value (after a `*` width), the most characters of the text
+      // written: std::counted(text, precision) (kovarex, 2026-11-22; Unreal's `"%.*s", View.Len(), View.GetData()`)
+      bool starPrecision = false;
+      std::string precisionText; // that argument's text
       char conversion = 0;
     };
     // The format's raw text (its literals' contents, escapes as written) cut at its conversions:
@@ -1255,10 +1259,11 @@
           ++p;
           if (p < raw.size() && raw[p] == '*')
           {
-            unsupported = "`*` precision";
-            return false;
+            c.starPrecision = true;
+            ++p;
           }
-          c.precision = 0;
+          else
+            c.precision = 0;
           while (p < raw.size() && isdigit((unsigned char)raw[p]))
             c.precision = c.precision * 10 + (raw[p++] - '0');
         }
@@ -1276,6 +1281,11 @@
         }
         c.conversion = raw[p];
         k = p;
+        if (c.starPrecision && c.conversion != 's')
+        {
+          unsupported = "`*` precision on %" + std::string(1, c.conversion);
+          return false;
+        }
         if (!strchr("diuxXocsfegp", c.conversion) || c.flags.find(' ') != std::string::npos || c.flags.find('\'') != std::string::npos ||
             (c.length == "L") || (c.length == "l" && (c.conversion == 's' || c.conversion == 'c')))
         {
@@ -1458,6 +1468,13 @@
             valueOpen = "char(", valueClose = ")";
           break;
         case 's':
+          if (c.starPrecision)
+          {
+            if (c.precisionText.empty())
+              return false;
+            valueOpen = "std::counted(", valueClose = ", " + c.precisionText + ")";
+            break;
+          }
           if (plain && plain->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(plain)->literalKind == TokenKind::String)
             break;
           if (toCStrPiece(plain, argEnd))
@@ -1739,7 +1756,8 @@
           auto literal = [&](const std::string& x)
           { return rawLiterals > 0 ? "R\"" + rawDelimiter + "(" + x + ")" + rawDelimiter + "\"" : "\"" + x + "\""; };
           if (literals && splitPrintfFormat(raw, rawLiterals > 0, segments, conversions, unsupported) &&
-              conversions.size() + (starsHere = size_t(std::count_if(conversions.begin(), conversions.end(), [](const PrintfConversion& c) { return c.starWidth; }))) == following &&
+              conversions.size() + (starsHere = size_t(std::count_if(conversions.begin(), conversions.end(), [](const PrintfConversion& c) { return c.starWidth; })) +
+                                    size_t(std::count_if(conversions.begin(), conversions.end(), [](const PrintfConversion& c) { return c.starPrecision; }))) == following &&
               !(word != "ssprintf" && !printLike && conversions.empty() && following == 0 && raw.find('%') == std::string::npos))
           {
             std::vector<std::string> pieces;
@@ -1749,8 +1767,10 @@
               std::string o, cl;
               uint32_t noDot = UINT32_MAX;
               std::string widthText = conversions[n].starWidth ? texts[a++] : std::string();
+              std::string precisionText = conversions[n].starPrecision ? texts[a++] : std::string();
               const std::string& value = texts[a++];
               PrintfConversion conversion = conversions[n];
+              conversion.precisionText = precisionText;
               // (C text, a literal or a pointer, is a piece itself)
               ok = printfPiece(conversion, nullptr, 0, !printLike, o, cl, noDot, widthText);
               if (ok)
@@ -2287,7 +2307,7 @@
       // one name or number, which the piece takes)
       size_t stars = 0;
       for (const PrintfConversion& c : conversions)
-        stars += c.starWidth;
+        stars += c.starWidth + c.starPrecision;
       std::vector<std::pair<uint32_t, uint32_t>> all = ranges;
       std::vector<size_t> valueArgument(conversions.size());
       std::vector<std::string> widthTexts(conversions.size());
@@ -2304,6 +2324,15 @@
               widthTexts[k] = std::string(spelling(b));
             else if (e == b + 2 && toks[b].is(P::Minus) && toks[b + 1].getKind() == TokenKind::Number)
               widthTexts[k] = "-" + std::string(spelling(b + 1));
+            else
+              widthsKnown = false;
+          }
+          if (conversions[k].starPrecision)
+          {
+            // (any expression, `View.Len()`: its text, which the piece takes as the count)
+            auto [b, e] = all[r++];
+            if (e > b)
+              conversions[k].precisionText = std::string(text.substr(toks[b].offset, endOffset(e - 1) - toks[b].offset));
             else
               widthsKnown = false;
           }

@@ -1,0 +1,8 @@
+// cppinput: `%.*s` (a text's first n characters, n the argument before it, Unreal's `"%.*s", View.Len(),
+// View.GetData()`) is the piece std::counted(text, n); the converter left the call as it was ("`*` precision")
+i32 main()
+{
+  const char* name = "abcdef";
+  auto text = std::toString("[", std::counted(name, 3), "|", (const char*)(name + 4), "]");
+  return text == "[abc|ef]" ? 0 : 1;
+}

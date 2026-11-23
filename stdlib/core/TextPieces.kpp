@@ -215,3 +215,42 @@ struct AddressText
 };
 
 AddressText address(const void* pointer) { return AddressText{pointer}; }
+
+// At most `count` characters of a C text, fewer where its zero comes first: C's `%.*s` (kovarex, 2026-11-22; Unreal's
+// `"%.*s", View.Len(), View.GetData()`, a view with no zero of its own). A wide text's (`%.*ls`) are its code units,
+// written as UTF-8 as a wide char pointer's are. A negative count is none given: the text to its zero, as C has it. A
+// null text is no text: it stops, as a C text piece's does.
+struct CountedText
+{
+  const char* text;
+  i64 count;
+
+  void appendTo(String& out) const
+  {
+    release_assert(this.text != nullptr);
+    i64 length = 0;
+    while ((this.count < 0 || length < this.count) && this.text[length] != 0)
+      ++length;
+    out.append(this.text, length);
+  }
+};
+
+struct CountedWideText
+{
+  const wchar_t* text;
+  i64 count;
+
+  void appendTo(String& out) const
+  {
+    release_assert(this.text != nullptr);
+    i32 length = 0;
+    while ((this.count < 0 || length < this.count) && this.text[length] != 0)
+      ++length;
+    out.append(platform::narrowWide(this.text, length));
+  }
+};
+
+template<typename Count>
+CountedText counted(const char* text, Count count) { return CountedText{text, i64(count)}; }
+template<typename Count>
+CountedWideText counted(const wchar_t* text, Count count) { return CountedWideText{text, i64(count)}; }

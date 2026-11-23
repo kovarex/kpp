@@ -1,0 +1,10 @@
+// spec: std::counted(text, n) is a piece of at most n characters of a C text, fewer where its zero comes first, the whole text for a negative n, as C's `%.*s` writes (`[abc] [abcdef] [abcdef]`, clang's printf the same); of a wide text its code units as UTF-8, as a wide pointer piece writes (`[wx] [wxyz!]`)
+// found by thread UE (2026-11-22, kovarex: a counted piece for `%.*s`): Unreal's `"%.*s", View.Len(), View.GetData()` of a string view, which has no zero of its own, had no piece; the converter left the call, "'ssprintf' is not declared"
+int main()
+{
+  const char* name = "abcdef";
+  const wchar_t* wide = L"wxyz!";
+  std::String s = std::toString("[", std::counted(name, 3), "] [", std::counted(name, 99), "] [", std::counted(name, -1), "] [", std::counted(wide, 2), "] [", std::counted(wide, 5), "]");
+  std::println(s);
+  return 0;
+}
