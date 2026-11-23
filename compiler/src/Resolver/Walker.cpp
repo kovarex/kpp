@@ -14447,7 +14447,9 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         Type* copy = copier.typeAlone(t);
         uint32_t errorsBefore = probe.probeErrors;
         probe.walkType(copy); // (its names resolved, for their access)
-        if (const Ty* ty = probe.typeOf(copy); !ty || !ty->isKnown() || probe.probeErrors != errorsBefore || (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
+        // (`typename W<int>::Short` with W<int> no such member: a dependent member of a class that is not, namesMissingMember)
+        if (const Ty* ty = probe.typeOf(copy); !ty || !ty->isKnown() || probe.probeErrors != errorsBefore || impl.namesMissingMember(ty, 0) ||
+            (!impl.types.isDependent(ty) && !impl.namesOnlyAccessible(copy, bodyOf, context, self)))
           satisfied = false;
       }
       std::vector<const Ty*> resultTypes;

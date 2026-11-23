@@ -2107,7 +2107,7 @@ auto GlobalScope::Impl::requirementsHold(RequiresExpr* r, Decl* owner, const Sub
     uint32_t errorsBefore = probe.probeErrors;
     probe.walkType(copy); // (its names resolved, for their access)
     const Ty* ty = probe.typeOf(copy);
-    if (!ty || !ty->isKnown() || probe.probeErrors != errorsBefore)
+    if (!ty || !ty->isKnown() || probe.probeErrors != errorsBefore || namesMissingMember(ty, 0)) // (`typename W<int>::Short`: W<int> has none)
       return false;
     if (types.isDependent(ty))
       dependent = true;

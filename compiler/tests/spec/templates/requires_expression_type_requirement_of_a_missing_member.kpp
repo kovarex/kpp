@@ -1,0 +1,20 @@
+// spec: a type requirement naming a member a known class does not have (`typename W<int>::Short`, `typename Q::Nothing`) is not met, in a function template and in a variable template ([expr.prim.req.type]; clang prints the same) and outside any template (where clang rejects it, kpp's expression requirements are false already)
+// found by thread explicitsave (2026-11-23): such a requirement was met, the missing member taken for a dependent member of the class; the variable template's value stayed undecided: "codegen does not support a variable template whose value is not a constant yet"
+struct Q { using Short = u8; };
+template<class T> struct W {};
+template<> struct W<char> { using Short = u8; };
+
+template<class T>
+bool has() { return requires { typename T::Short; }; }
+template<class T>
+bool hasW() { return requires { typename W<T>::Short; }; }
+template<class T>
+constexpr bool hasV = requires { typename W<T>::Short; };
+
+int main()
+{
+  std::println(has<Q>(), " ", hasW<int>(), " ", hasW<char>(), " ", has<W<int>>(), " ", has<W<char>>());
+  std::println(hasV<int>, " ", hasV<char>);
+  std::println(requires { typename W<int>::Short; }, " ", requires { typename W<char>::Short; }, " ", requires { typename Q::Short; }, " ", requires { typename Q::Nothing; });
+  return 0;
+}
