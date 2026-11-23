@@ -1,0 +1,32 @@
+// spec: a debugValue (design.md 26) may be `return this[].debugValue();` (design.md 8.5): the debugger's rule has a case per alternative, as the hand-written switch on the tag gives (kovarex, 2026-11-23: UpgradeIDBase's `std::String debugValue() const { return this[].debugValue(); }`); built with --debug-info, which writes the rule and fails the build on one it cannot write
+// kpp: --debug-info
+struct EntityID
+{
+  int index = 0;
+  std::String debugValue() const { return std::toString("entity ", this.index); }
+};
+struct ItemID
+{
+  int index = 0;
+  std::String debugValue() const { return std::toString("item ", this.index); }
+};
+union enum class Upgrade : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  std::String debugValue() const { return this[].debugValue(); }
+};
+struct WithQuality
+{
+  Upgrade base;
+  int quality = 0;
+  std::String debugValue() const { return std::toString(this.base.debugValue(), " of quality ", this.quality); }
+};
+int main()
+{
+  WithQuality w;
+  std::println(w.debugValue());
+  w.base[Item] = ItemID(7);
+  w.quality = 2;
+  std::println(w.debugValue());
+  return 0;
+}

@@ -507,6 +507,9 @@ namespace
         return true; // (a static data member: a global, read where the debugger stops)
       if (d && d->kind == NodeKind::ParamDecl)
         return true; // (an inlined call's parameter: its argument)
+      if (d && d->kind == NodeKind::VariableDecl && !(d->flags & (DF_Static | DF_Constexpr)) && static_cast<VariableDecl*>(d)->init &&
+          !(d->parent && d->parent->kind == NodeKind::ClassDecl))
+        return readsObject(static_cast<VariableDecl*>(d)->init); // (a local bound to a value: the u a `u[]` binds, design.md 8.5)
       return d && d->kind == NodeKind::VariableDecl && !(d->flags & DF_Static) && d->parent && d->parent->kind == NodeKind::ClassDecl;
     }
     case NodeKind::IndexExpr:
@@ -588,6 +591,28 @@ namespace
   };
 
   bool natvisExpression(DebugValue& v, Expr* e, std::string& out);
+
+  // The loop of the switch the parser writes for a `u[]` (design.md 8.5), s being `{ auto&& __kpp_unionN = u; switch
+  // (__kpp_unionN.tag()) { for constexpr (auto __kpp_alternativeN : ...) case ...: S } }` with a copy of S per
+  // alternative (the checker's, in a debugValue); null: s is another statement.
+  ForConstexprStmt* everyAlternativeLoop(DebugValue& v, Stmt* s)
+  {
+    if (!s || s->kind != NodeKind::BlockStmt || static_cast<BlockStmt*>(s)->stmts.size() != 2)
+      return nullptr;
+    Stmt* first = static_cast<BlockStmt*>(s)->stmts[0];
+    Stmt* second = static_cast<BlockStmt*>(s)->stmts[1];
+    if (first->kind != NodeKind::DeclStmt || static_cast<DeclStmt*>(first)->decls.size() != 1 || second->kind != NodeKind::SwitchStmt)
+      return nullptr;
+    Decl* d = static_cast<DeclStmt*>(first)->decls[0];
+    if (d->kind != NodeKind::VariableDecl || !static_cast<VariableDecl*>(d)->init || static_cast<VariableDecl*>(d)->name.parts.empty() ||
+        !v.symbols.name(static_cast<VariableDecl*>(d)->name.last().symbol).starts_with("__kpp_union"))
+      return nullptr;
+    Stmt* body = static_cast<SwitchStmt*>(second)->body;
+    if (body && body->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(body)->stmts.size() == 1)
+      body = static_cast<BlockStmt*>(body)->stmts[0];
+    return body && body->kind == NodeKind::ForConstexprStmt ? static_cast<ForConstexprStmt*>(body) : nullptr;
+  }
+
   bool natvisObject(DebugValue& v, Expr* e, std::shared_ptr<ObjectValue>& out);
   bool lambdaCall(DebugValue& v, CallExpr* call, const LambdaValue& lambda, std::string& out);
   std::string objectPath(const DebugValue& v);
@@ -885,6 +910,31 @@ namespace
                std::all_of(static_cast<DeclStmt*>(s)->decls.begin(), static_cast<DeclStmt*>(s)->decls.end(),
                            [](Decl* d) { return d->kind == NodeKind::VariableDecl && (d->flags & DF_Constexpr); }))
         continue; // (a constexpr local: its uses fold to its value)
+      else if (ForConstexprStmt* every = everyAlternativeLoop(v, s))
+      {
+        // `return u[]...;` (design.md 8.5): its switch, one case per alternative, each from its copy of the statement typed
+        // for that alternative (kovarex, 2026-11-23: `std::String debugValue() const { return this[].debugValue(); }`).
+        auto* decl = static_cast<VariableDecl*>(static_cast<DeclStmt*>(static_cast<BlockStmt*>(s)->stmts[0])->decls[0]);
+        std::string subject = isThisObject(decl->init) ? std::string("(*this)") : std::string();
+        if (subject.empty() && !natvisExpression(v, decl->init, subject))
+          return false;
+        const Ty* ut = decl->init->ty ? v.global.types().unqualified(v.global.types().stripRef(decl->init->ty)) : nullptr;
+        auto* u = ut && ut->decl && ut->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(ut->decl) : nullptr;
+        if (!u || !u->isTypedUnion || !u->tagField || every->elementBodies.size() != u->alternatives.size())
+          return fail(v, s, "a u[] whose alternatives the debugger cannot tell apart");
+        std::string tag = (subject == "(*this)" ? v.prefix : wrap(subject) + ".") + nameOf(static_cast<const VariableDecl*>(u->tagField)->name, v.symbols);
+        for (size_t i = 0; i < every->elementBodies.size(); ++i)
+        {
+          Stmt* body = every->elementBodies[i];
+          Expr* value = body && body->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(body)->stmts.size() == 2 ? returned(static_cast<BlockStmt*>(body)->stmts[1]) : nullptr;
+          if (!value)
+            return fail(v, s, "a u[] other than `return EXPRESSION;`");
+          if (i + 1 < every->elementBodies.size())
+            cases.push_back({nullptr, value, tag + " == " + std::to_string(i)});
+          else
+            cases.push_back({nullptr, value}); // (the last alternative's: every other one ruled out)
+        }
+      }
       else if (s->kind == NodeKind::IfStmt)
       {
         auto* i = static_cast<IfStmt*>(s);
@@ -1774,6 +1824,16 @@ namespace
     {
       auto* n = static_cast<NameExpr*>(e);
       Decl* d = n->resolved;
+      if (d && d->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(d)->init && !static_cast<VariableDecl*>(d)->name.parts.empty() &&
+          v.symbols.name(static_cast<VariableDecl*>(d)->name.last().symbol).starts_with("__kpp_union"))
+      {
+        if (isThisObject(static_cast<VariableDecl*>(d)->init))
+        {
+          out = objectPath(v);
+          return true;
+        }
+        return natvisExpression(v, static_cast<VariableDecl*>(d)->init, out); // (the u a `u[]` binds, design.md 8.5)
+      }
       if (d && d->kind == NodeKind::ParamDecl)
       {
         const Bound* b = boundOf(v, d);
@@ -1842,13 +1902,24 @@ namespace
           for (size_t i = 0; i < static_cast<EnumDecl*>(u->tagEnum)->enumerators.size(); ++i)
             if (static_cast<EnumDecl*>(u->tagEnum)->enumerators[i] == named)
               which = i;
+        // `u[a]` of a `u[]`'s switch, in its copy for one alternative (design.md 8.5): a's descriptor names it
+        if (which == SIZE_MAX && index && index->ty && index->ty->kind == TyKind::Member)
+          for (size_t i = 0; i < u->alternatives.size(); ++i)
+            if (u->alternatives[i] == index->ty->decl)
+              which = i;
         if (which == SIZE_MAX || which >= u->alternatives.size())
           return fail(v, e, "an alternative of a union enum other than one it names");
         auto* field = static_cast<const VariableDecl*>(u->alternatives[which]);
         if (u->inlineLimit || field->voidAlternative)
           return fail(v, e, "an alternative of a union enum kept on the heap (inline(N)) or of type void");
         std::string name = nameOf(field->name, v.symbols);
-        if (isThisObject(x->base))
+        Expr* object0 = x->base; // (the u a `u[]` binds: its value)
+        if (object0 && object0->kind == NodeKind::NameExpr && static_cast<NameExpr*>(object0)->resolved &&
+            static_cast<NameExpr*>(object0)->resolved->kind == NodeKind::VariableDecl && static_cast<VariableDecl*>(static_cast<NameExpr*>(object0)->resolved)->init &&
+            !static_cast<VariableDecl*>(static_cast<NameExpr*>(object0)->resolved)->name.parts.empty() &&
+            v.symbols.name(static_cast<VariableDecl*>(static_cast<NameExpr*>(object0)->resolved)->name.last().symbol).starts_with("__kpp_union"))
+          object0 = static_cast<VariableDecl*>(static_cast<NameExpr*>(object0)->resolved)->init;
+        if (isThisObject(object0))
         {
           if (v.object)
             return memberOf(v, e, name, out);
@@ -1856,7 +1927,7 @@ namespace
           return true;
         }
         std::string object;
-        if (!natvisExpression(v, x->base, object))
+        if (!natvisExpression(v, object0, object))
           return false;
         out = object == "(*this)" ? v.prefix + name : wrap(object) + "." + name;
         return true;

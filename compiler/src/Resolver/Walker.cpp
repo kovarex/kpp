@@ -57,6 +57,12 @@ auto GlobalScope::Impl::copyElementBodies(ForConstexprStmt* f, const std::vector
     own = own || (n->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(n)->lambda) || n->kind == NodeKind::EnumDecl ||
           (n->kind == NodeKind::VariableDecl && (static_cast<Decl*>(n)->flags & (DF_Static | DF_ThreadLocal)) && !(static_cast<Decl*>(n)->flags & DF_Typedef));
   });
+  // The switch of a `u[]` in a debugValue (design.md 8.5): each alternative's own copy, typed for it, which the debugger's
+  // rule reads as one case per alternative (natvis.cpp; kovarex 2026-11-23: `return this[].debugValue();`).
+  if (!own && f->var && f->var->kind == NodeKind::TemplateParamDecl && static_cast<TemplateParamDecl*>(f->var)->name != UINT32_MAX &&
+      symbols.name(static_cast<TemplateParamDecl*>(f->var)->name).starts_with("__kpp_alternative") && function && !function->name.parts.empty() &&
+      function->name.last().symbol != UINT32_MAX && symbols.name(function->name.last().symbol) == "debugValue")
+    own = true;
   if (!own)
     return;
   Arena& arena = instanceArena();
@@ -857,6 +863,20 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
         if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved && static_cast<NameExpr*>(v)->resolved->kind == NodeKind::EnumeratorDecl)
           named.insert(static_cast<NameExpr*>(v)->resolved);
       };
+      // `switch (u.tag()) { for constexpr (auto a : alternatives(U)) case a.tag: S }`, each element's own copy of `case
+      // a.tag: S` (a `u[]`'s switch in a debugValue, design.md 8.5): a case per alternative, ending where every S ends.
+      if (static_cast<BlockStmt*>(w->body)->stmts.size() == 1 && static_cast<BlockStmt*>(w->body)->stmts[0]->kind == NodeKind::ForConstexprStmt)
+        if (auto* fc = static_cast<ForConstexprStmt*>(static_cast<BlockStmt*>(w->body)->stmts[0]); !fc->elementBodies.empty() && reflectionSubject(fc->list) &&
+            symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(fc->list)->callee)->name.last().symbol) == "alternatives")
+        {
+          for (Stmt* b : fc->elementBodies)
+          {
+            if (!b || b->kind != NodeKind::BlockStmt || static_cast<BlockStmt*>(b)->stmts.size() != 2 || static_cast<BlockStmt*>(b)->stmts[0]->kind != NodeKind::CaseStmt ||
+                statementBreaks(static_cast<BlockStmt*>(b)->stmts[1]) || !statementEnds(static_cast<BlockStmt*>(b)->stmts[1], flow))
+              return false;
+          }
+          return true;
+        }
       for (Stmt* c : static_cast<BlockStmt*>(w->body)->stmts)
       {
         if (c->kind == NodeKind::CaseStmt || c->kind == NodeKind::DefaultStmt)
