@@ -14,6 +14,10 @@ auto GlobalScope::Impl::accessContext(Decl* d, std::vector<Scope*>& out) -> void
       for (Scope* s = d->ownScope; s && s->kind == ScopeKind::Class; s = s->parent)
         out.push_back(s);
     }
+    // A kpp enum's methods are in the enum (`friend RobotChargeState;` in a class gives them its private members,
+    // grantingFriend; until 2026-11-23 they were in no context of the enum's).
+    if (d->kind == NodeKind::EnumDecl && d->ownScope)
+      out.push_back(d->ownScope);
     Decl* owner = nullptr;
     if (d->kind == NodeKind::FunctionDecl)
       owner = owningClassOf(d);
@@ -73,9 +77,14 @@ auto GlobalScope::Impl::grantingFriend(Decl* owner, FunctionDecl* fn, const std:
                                                                      types.unqualified(aliased)->decl->kind == NodeKind::ClassDecl &&
                                                                      !static_cast<ClassDecl*>(types.unqualified(aliased)->decl)->name.empty())
             named = static_cast<ClassDecl*>(types.unqualified(aliased)->decl)->name.last().symbol;
+        // (`friend RobotChargeState;` naming a kpp enum: its methods are the friend's, as a class's are; until 2026-11-23
+        // only a class was matched, "LogisticCellCharger::... is private, named in ...")
         for (Scope* s : context)
           if (s->owner && s->owner->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(s->owner)->name.empty() &&
               static_cast<ClassDecl*>(s->owner)->name.last().symbol == named)
+            return m;
+          else if (s->owner && s->owner->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(s->owner)->name.empty() &&
+                   static_cast<EnumDecl*>(s->owner)->name.last().symbol == named)
             return m;
       }
     }

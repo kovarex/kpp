@@ -1,0 +1,26 @@
+// spec: a kpp enum named as a friend (`friend RobotChargeState;`) gives its methods, constructors and operators the
+// class's private members, as a friend class's are (until 2026-11-23 the friend was ignored: "Charger::limit is private,
+// named in busy", which kept the game's LogisticCellCharger's RobotChargeState from becoming an enum class)
+// design.md 8; found by the union-enum conversion thread, 2026-11-23
+enum class RobotChargeState : u8
+{
+  { Idle, Charging }
+  RobotChargeState(int level, int) { this = level >= Charger::limit ? Charging : Idle; }
+  bool busy() const { return this == Charging && Charger::limit > 0; }
+  static int limitOf(const Charger& c) { return c.own; }
+};
+
+class Charger
+{
+  friend RobotChargeState;
+  static constexpr int limit = 3;
+  int own = 7;
+};
+
+int main()
+{
+  RobotChargeState s(4, 0);
+  Charger c;
+  std::println(s.busy(), " ", RobotChargeState(1, 0).busy(), " ", RobotChargeState::limitOf(c));
+  return 0;
+}
