@@ -53,6 +53,7 @@ $historyFile = Join-Path $root 'history.tsv'
 $pageFile = Join-Path $root 'status.html'
 
 function Html([string]$text) { return [System.Net.WebUtility]::HtmlEncode($text) }
+function MdText([string]$text) { return ($text -replace '`', "'" -replace '\|', '/') }
 
 function Who([string]$cwd)
 {
@@ -81,6 +82,8 @@ function Write-Page
 {
   try
   {
+    $md = New-Object System.Text.StringBuilder
+    $now = Get-Date
     $rows = New-Object System.Text.StringBuilder
     $holder = $null
     if (Test-Path $holderFile) { $holder = Parse-Record ((Get-Content -Raw $holderFile -ErrorAction SilentlyContinue) + '').Trim() }
@@ -88,8 +91,10 @@ function Write-Page
     {
       $iso = $holder.Since.ToString('s')
       [void]$rows.Append("<tr><td class='kind $($holder.Kind)'>$($holder.Kind)</td><td>$(Html (Who $holder.Cwd))</td><td class='cmd'>$(Html $holder.Label)</td><td>$($holder.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$iso'></td><td>$($holder.Pid)</td></tr>")
+      [void]$md.Append("| $($holder.Kind) | $(Who $holder.Cwd) | ``$(MdText $holder.Label)`` | $($holder.Since.ToString('HH:mm')) | $(Duration ($now - $holder.Since)) |`n")
     }
-    else { [void]$rows.Append("<tr><td colspan='6' class='none'>free</td></tr>") }
+    else { [void]$rows.Append("<tr><td colspan='6' class='none'>free</td></tr>"); [void]$md.Append("| free | | | | |`n") }
+    $mdQueue = New-Object System.Text.StringBuilder
     $queue = New-Object System.Text.StringBuilder
     $n = 0
     foreach ($w in @(Get-ChildItem $queueDir -File -ErrorAction SilentlyContinue | Sort-Object Name))
@@ -98,8 +103,10 @@ function Write-Page
       if (-not $r -or -not (Alive $r.Pid)) { continue }
       $n++
       [void]$queue.Append("<tr><td>$n</td><td class='kind $($r.Kind)'>$($r.Kind)</td><td>$(Html (Who $r.Cwd))</td><td class='cmd'>$(Html $r.Label)</td><td>$($r.Since.ToString('HH:mm:ss'))</td><td class='run' data-since='$($r.Since.ToString('s'))'></td></tr>")
+      [void]$mdQueue.Append("| $n | $($r.Kind) | $(Who $r.Cwd) | ``$(MdText $r.Label)`` | $($r.Since.ToString('HH:mm')) | $(Duration ($now - $r.Since)) |`n")
     }
     if ($n -eq 0) { [void]$queue.Append("<tr><td colspan='6' class='none'>nobody waiting</td></tr>") }
+    $mdHistory = New-Object System.Text.StringBuilder
     $history = New-Object System.Text.StringBuilder
     $lines = @(Get-Content $historyFile -Tail 200 -ErrorAction SilentlyContinue)
     [array]::Reverse($lines)
@@ -111,6 +118,7 @@ function Write-Page
       $queued = [DateTime]$f[0]; $started = [DateTime]$f[1]; $ended = [DateTime]$f[2]
       $ok = if ($f[3] -eq '0') { 'ok' } else { 'bad' }
       [void]$history.Append("<tr><td class='kind $($f[4])'>$($f[4])</td><td>$(Html (Who $f[5]))</td><td class='cmd'>$(Html $f[6])</td><td>$($started.ToString('MM-dd HH:mm'))</td><td>$(Duration ($started - $queued))</td><td>$(Duration ($ended - $started))</td><td class='$ok'>$($f[3])</td></tr>")
+      if ($mdHistory.Length -lt 20000) { [void]$mdHistory.Append("| $($f[4]) | $(Who $f[5]) | ``$(MdText $f[6])`` | $($started.ToString('MM-dd HH:mm')) | $(Duration ($started - $queued)) | $(Duration ($ended - $started)) | $(if ($f[3] -eq '0') { '0' } else { '**' + $f[3] + '**' }) |`n") }
     }
     if ($lines.Count -eq 0) { [void]$history.Append("<tr><td colspan='7' class='none'>none yet</td></tr>") }
     $page = @"
@@ -145,8 +153,21 @@ tick(); setInterval(tick, 1000);
     $temp = "$pageFile.$PID.tmp"
     [IO.File]::WriteAllText($temp, $page, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -Force $temp $pageFile
+    # The same as markdown, for publish.ps1 (the status from other places than PRACOVNA).
+    $noneQueue = if ($mdQueue.Length) { '' } else { "| | nobody waiting | | | | |`n" }
+    $text = "# PRACOVNA heavy slot`n`nWritten $($now.ToString('yyyy-MM-dd HH:mm:ss')) (times are PRACOVNA's; durations as of then).`n`n" +
+      "## Running`n`n| kind | folder | command | started | running |`n|---|---|---|---|---|`n" + $md.ToString() +
+      "`n## Waiting`n`n| # | kind | folder | command | queued | waiting |`n|---|---|---|---|---|---|`n" + $mdQueue.ToString() + $noneQueue +
+      "`n## Finished`n`n| kind | folder | command | started | waited | took | exit |`n|---|---|---|---|---|---|---|`n" + $mdHistory.ToString()
+    $mdFile = Join-Path $root 'status.md'
+    [IO.File]::WriteAllText("$mdFile.$PID.tmp", $text, (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -Force "$mdFile.$PID.tmp" $mdFile
+    if (Test-Path (Join-Path $root 'publish\.git'))
+    {
+      Start-Process powershell -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSScriptRoot\publish.ps1`"")
+    }
   }
-  catch { } # (the page is a view: a failed write never stops a job)
+  catch { try { Set-Content -Path (Join-Path $root 'page-error.txt') -Value "$(Get-Date -Format s) $_ $($_.InvocationInfo.PositionMessage)" } catch { } } # (the page is a view: a failed write never stops a job)
 }
 
 if ($status) { Show-Status; Write-Page; exit 0 }

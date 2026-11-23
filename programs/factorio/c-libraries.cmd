@@ -1,6 +1,9 @@
 @echo off
 rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
-if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
+if defined KPP_HEAVY_HELD goto :heavy_held
+call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %*
+exit /b %errorlevel%
+:heavy_held
 rem The C libraries converted to kpp by C's rules (kpp --c-sources; docs/path-to-factorio.md,
 rem "Converting the C libraries"), each once its differential harness (harness.cmd NAME) was
 rem byte-identical: the game compiles their kpp instead of linking the C library. Each has its

@@ -1,6 +1,9 @@
 @echo off
 rem One heavy job at a time on PRACOVNA: this script runs under tools\heavy\heavy.cmd (it says how).
-if not defined KPP_HEAVY_HELD call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %* & goto :eof
+if defined KPP_HEAVY_HELD goto :heavy_held
+call "%~dp0..\..\tools\heavy\heavy.cmd" "%~f0" %*
+exit /b %errorlevel%
+:heavy_held
 rem Links the converted game (kpp\ from convert.cmd) into kpp\factorio.exe and counts what does not
 rem link. kpp builds with --keep-going (what codegen emitted links although it reported errors),
 rem against the game's own Release builds of its libraries (C:\Factorio\vs2022\Releasex64) and the
