@@ -697,11 +697,62 @@ auto GlobalScope::Impl::constReflectionSize(MemberExpr* m, const TypeContext& ct
   if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "size")
     return std::nullopt;
   const Ty* cls = nullptr;
-  bool alternatives = false;
+  ReflectionList which = ReflectionList::Members;
   std::vector<const Ty*> elements;
-  if (!reflectionListType(m->base, ctx, cls, alternatives, depth + 1) || !reflectedElementsOf(cls, alternatives, elements, depth + 1))
+  if (!reflectionListType(m->base, ctx, cls, which, depth + 1) || !reflectedElementsOf(cls, which, elements, depth + 1))
     return std::nullopt;
   return ConstValue::integer(int64_t(elements.size()), types.sizeType());
+}
+
+auto GlobalScope::Impl::constDescriptorName(MemberExpr* m, const TypeContext& ctx) -> std::optional<ConstValue>
+{
+  // `m.name`: the member's, alternative's or function's name, the char array a string literal is (constString).
+  if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "name")
+    return std::nullopt;
+  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  t = t ? types.stripRef(t) : nullptr;
+  if (!t || t->kind != TyKind::Member || !t->decl)
+    return std::nullopt;
+  std::string_view name;
+  size_t index = 0;
+  if (ClassDecl* u = Walker::alternativeOf(t, index))
+  {
+    // an alternative's: its tag's enumerator's, as the code generator names it
+    if (!u->tagEnum || index >= static_cast<EnumDecl*>(u->tagEnum)->enumerators.size() ||
+        static_cast<EnumDecl*>(u->tagEnum)->enumerators[index]->kind != NodeKind::EnumeratorDecl)
+      return std::nullopt;
+    name = symbols.name(static_cast<EnumeratorDecl*>(static_cast<EnumDecl*>(u->tagEnum)->enumerators[index])->name);
+  }
+  else if (t->decl->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(t->decl)->name.empty())
+    name = symbols.name(static_cast<FunctionDecl*>(t->decl)->name.last().symbol);
+  else if (t->decl->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(t->decl)->name.empty())
+    name = symbols.name(static_cast<VariableDecl*>(t->decl)->name.last().symbol);
+  else if (t->decl->kind == NodeKind::EnumeratorDecl)
+    name = symbols.name(static_cast<EnumeratorDecl*>(t->decl)->name);
+  else
+    return std::nullopt;
+  if (!constMayMake(name.size() + 1))
+    return std::nullopt;
+  const Ty* ch = types.charType(8, false);
+  std::vector<ConstValue> chars;
+  chars.reserve(name.size() + 1);
+  for (char c : name)
+    chars.push_back(ConstValue::integer(int64_t(static_cast<signed char>(c)), ch));
+  chars.push_back(ConstValue::integer(0, ch));
+  const Ty* type = types.array(types.qualified(ch, true, false), uint32_t(chars.size())); // (the type first: constString)
+  return ConstValue::object(type, std::move(chars));
+}
+
+auto GlobalScope::Impl::constDescriptorIsNoDiscard(MemberExpr* m, const TypeContext& ctx) -> std::optional<ConstValue>
+{
+  // `f.isNoDiscard`: whether a methods(T) descriptor's function is declared [[nodiscard]] (design.md 8.3), a bool.
+  if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "isNoDiscard")
+    return std::nullopt;
+  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  t = t ? types.stripRef(t) : nullptr;
+  if (!t || t->kind != TyKind::Member || !t->decl || t->decl->kind != NodeKind::FunctionDecl)
+    return std::nullopt;
+  return ConstValue::integer((t->decl->attributes & ATTR_NoDiscard) ? 1 : 0, types.boolType());
 }
 
 auto GlobalScope::Impl::constSteps() -> uint64_t&
@@ -822,6 +873,10 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return tag;
       if (std::optional<ConstValue> size = constReflectionSize(m, ctx, depth))
         return size;
+      if (std::optional<ConstValue> noDiscard = constDescriptorIsNoDiscard(m, ctx))
+        return noDiscard;
+      if (std::optional<ConstValue> named = constDescriptorName(m, ctx))
+        return named;
       if (std::optional<ConstValue> has = constDescriptorHasInitializer(m, ctx))
         return has;
       if (m->member.parts.size() != 1)
@@ -9799,23 +9854,34 @@ auto GlobalScope::Impl::constForConstexprElements(ForConstexprStmt* f, const Typ
     return true;
   }
   const Ty* cls = nullptr;
-  bool alternatives = false;
-  return reflectionListType(list, ctx, cls, alternatives, depth + 1) && reflectedElementsOf(cls, alternatives, out, depth + 1);
+  ReflectionList which = ReflectionList::Members;
+  return reflectionListType(list, ctx, cls, which, depth + 1) && reflectedElementsOf(cls, which, out, depth + 1);
 }
 
-auto GlobalScope::Impl::reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, bool& alternatives, int depth) -> bool
+auto GlobalScope::Impl::reflectionListNamed(std::string_view name) -> std::optional<ReflectionList>
 {
-  // `members(T)` or `alternatives(U)`: the class it reflects on, when known here.
+  if (name == "members")
+    return ReflectionList::Members;
+  if (name == "alternatives")
+    return ReflectionList::Alternatives;
+  if (name == "methods")
+    return ReflectionList::Methods;
+  return std::nullopt;
+}
+
+auto GlobalScope::Impl::reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, ReflectionList& which, int depth) -> bool
+{
+  // `members(T)`, `alternatives(U)` or `methods(T)`: the class it reflects on, when known here.
   if (!list || list->kind != NodeKind::CallExpr)
     return false;
   auto* c = static_cast<CallExpr*>(list);
   if (!c->callee || c->callee->kind != NodeKind::NameExpr || c->args.size() != 1 || !c->args[0] || c->args[0]->kind != NodeKind::NameExpr)
     return false;
   const QualifiedName& callee = static_cast<NameExpr*>(c->callee)->name;
-  std::string_view which = callee.parts.size() == 1 && !callee.parts[0].hasTemplateArgs ? symbols.name(callee.parts[0].symbol) : std::string_view();
-  if (which != "members" && which != "alternatives")
+  std::optional<ReflectionList> listed = callee.parts.size() == 1 && !callee.parts[0].hasTemplateArgs ? reflectionListNamed(symbols.name(callee.parts[0].symbol)) : std::nullopt;
+  if (!listed)
     return false;
-  alternatives = which == "alternatives";
+  which = *listed;
   NamedType named{};
   named.kind = NodeKind::NamedType;
   named.token = c->args[0]->token;
@@ -9825,13 +9891,47 @@ auto GlobalScope::Impl::reflectionListType(Node* list, const TypeContext& ctx, c
   return cls && cls->kind == TyKind::Class && !types.isDependent(cls) && !mentionsUnknown(cls);
 }
 
-auto GlobalScope::Impl::reflectedElementsOf(const Ty* cls, bool alternatives, std::vector<const Ty*>& out, int depth) -> bool
+auto GlobalScope::Impl::methodDescriptor(FunctionDecl* f, const Ty* cls, const Subst* s) -> const Ty*
 {
-  // The descriptors members(T) or alternatives(U) lists: a typed union's alternatives in order; a class's bases'
-  // members first, then its own non-static named data members (design.md 8.3, 8.5).
+  const Ty* t = declaredTypeOf(f, s, 0);
+  if (!t || t->kind != TyKind::Function)
+    return nullptr;
+  return types.member(types.memberPointer(namedFunctionType(f, t, s), cls), f, cls);
+}
+
+auto GlobalScope::Impl::reflectedElementsOf(const Ty* cls, ReflectionList list, std::vector<const Ty*>& out, int depth) -> bool
+{
+  // The descriptors members(T), alternatives(U) or methods(T) lists: a typed union's alternatives in order; a class's
+  // bases' members first, then its own non-static named data members; the member functions declared in the class itself
+  // that have an address, in declaration order (design.md 8.3, 8.5).
   if (depth > maxNestedLevels)
     return false;
-  if (alternatives)
+  if (list == ReflectionList::Methods)
+  {
+    ClassDecl* def = classDefinition(cls);
+    if (!def)
+      return false;
+    Subst s = cls->args.empty() ? Subst{} : substFor(cls);
+    for (Decl* d : membersRead(def))
+    {
+      if (d->kind != NodeKind::FunctionDecl || !d->templateParams.empty() ||
+          (d->flags & (DF_Static | DF_Constructor | DF_Destructor | DF_Operator | DF_Conversion | DF_Default | DF_Delete | DF_Friend | DF_Typedef)))
+        continue;
+      auto* f = static_cast<FunctionDecl*>(d);
+      if (f->name.empty() || f->name.last().special != 0)
+        continue;
+      // (public ones alone: a generic loop cannot skip a private one by its name before naming its pointer, kovarex's
+      // LuaBinder over classes with private helpers)
+      if (!(f->access == Access::Public || (f->access == Access::Default && def->keyword != Kw::class_)))
+        continue;
+      const Ty* descriptor = methodDescriptor(f, cls, s.pairs.empty() ? nullptr : &s);
+      if (!descriptor || types.isDependent(descriptor) || mentionsUnknown(descriptor))
+        return false;
+      out.push_back(descriptor);
+    }
+    return true;
+  }
+  if (list == ReflectionList::Alternatives)
   {
     ClassDecl* u = Walker::typedUnionOf(cls);
     if (!u)
@@ -9853,7 +9953,7 @@ auto GlobalScope::Impl::reflectedElementsOf(const Ty* cls, bool alternatives, st
     for (const Ty* b : classBasesOf(cls, own, depth))
     {
       const Ty* bt = b ? types.unqualified(types.stripRef(b)) : nullptr;
-      if (!own || !bt || bt->kind != TyKind::Class || types.isDependent(bt) || !reflectedElementsOf(bt, false, out, depth + 1))
+      if (!own || !bt || bt->kind != TyKind::Class || types.isDependent(bt) || !reflectedElementsOf(bt, ReflectionList::Members, out, depth + 1))
         return false;
     }
   }

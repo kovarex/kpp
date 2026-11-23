@@ -108,9 +108,19 @@
   // value, a constant expression (a case label, an if constexpr, a constexpr variable); none for another member.
   std::optional<ConstValue> constDescriptorTag(MemberExpr* m, const TypeContext& ctx, int depth);
   std::optional<ConstValue> constDescriptorHasInitializer(MemberExpr* m, const TypeContext& ctx);
+  // `m.name` of a descriptor of members(T), alternatives(U) or methods(T) (design.md 8.3): its name as a string literal is,
+  // a constant (`if constexpr (std::StringView(f.name).startsWith("luaRead"))`).
+  std::optional<ConstValue> constDescriptorName(MemberExpr* m, const TypeContext& ctx);
+  // `f.isNoDiscard` of a descriptor of methods(T) (design.md 8.3): whether the function is [[nodiscard]], a bool.
+  std::optional<ConstValue> constDescriptorIsNoDiscard(MemberExpr* m, const TypeContext& ctx);
   std::optional<ConstValue> constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth);
-  bool reflectedElementsOf(const Ty* cls, bool alternatives, std::vector<const Ty*>& out, int depth);
-  bool reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, bool& alternatives, int depth);
+  // Which list a reflection names: members(T), alternatives(U) or methods(T) (design.md 8.3, 8.5).
+  enum class ReflectionList : uint8_t { Members, Alternatives, Methods };
+  static std::optional<ReflectionList> reflectionListNamed(std::string_view name);
+  bool reflectedElementsOf(const Ty* cls, ReflectionList list, std::vector<const Ty*>& out, int depth);
+  bool reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, ReflectionList& which, int depth);
+  // methods(T)'s descriptor of f, a member function of cls: a Member type of f whose inner type is the pointer to it.
+  const Ty* methodDescriptor(FunctionDecl* f, const Ty* cls, const Subst* s);
 
   // Bounds of one evaluation: the steps it takes and the calls nested in it.
   static uint64_t& constSteps();

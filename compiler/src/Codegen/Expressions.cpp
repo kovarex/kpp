@@ -708,8 +708,32 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       {
         // A reflection descriptor: m.name is the member's name, m.offset its offset in the class;
         // an alternative's (alternatives(U)) a.name is the alternative's, a.tag its tag value.
-        auto* field = static_cast<VariableDecl*>(bt->decl);
         std::string which = m->member.empty() ? std::string() : sym(m->member.last().symbol);
+        if (bt->decl && bt->decl->kind == NodeKind::FunctionDecl)
+        {
+          // A method's (methods(T), design.md 8.3): f.name, f.isNoDiscard, and f.pointer, what `&T::f` is here.
+          auto* function = static_cast<FunctionDecl*>(bt->decl);
+          if (which == "name")
+            return {cStringConstant(function->name.empty() ? std::string() : sym(function->name.last().symbol)), e->ty};
+          if (which == "isNoDiscard")
+            return {(function->attributes & ATTR_NoDiscard) ? "true" : "false", types.boolType()};
+          if (which == "pointer" && bt->inner && types.unqualified(bt->inner)->kind == TyKind::MemberPointer)
+          {
+            NameExpr name{};
+            name.kind = NodeKind::NameExpr;
+            name.token = e->token;
+            name.resolved = function;
+            UnaryExpr address{};
+            address.kind = NodeKind::UnaryExpr;
+            address.token = e->token;
+            address.op = uint32_t(P::Amp);
+            address.operand = &name;
+            address.ty = types.unqualified(bt->inner);
+            return unary(&address);
+          }
+          unsupported(e, "a descriptor of methods(T) has name, pointer and isNoDiscard only");
+        }
+        auto* field = static_cast<VariableDecl*>(bt->decl);
         if (ClassDecl* u = bt->args.empty() ? nullptr : typedUnionOf(bt->args[0], e))
           if (int64_t index = descriptorAlternative(u, bt); index >= 0)
           {

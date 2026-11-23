@@ -1,0 +1,32 @@
+// spec: methods(T) lists public member functions alone (a struct's are all public): a generic loop over a class with private helpers names each listed function's pointer, and compiles
+// design.md 8.3
+class Secret
+{
+public:
+  i32 shown() { return this.hidden() + 1; }
+  i32 twice() { return this.hidden() * 2; }
+private:
+  i32 hidden() { return 41; }
+protected:
+  i32 guarded() { return 3; }
+};
+struct Open
+{
+  i32 one() { return 1; }
+  i32 two() { return 2; }
+};
+template<typename T, auto m> i32 call(T& s) { return (s.*m)(); }
+template<typename T> i32 useAll(T& s)
+{
+  i32 total = 0;
+  for constexpr (auto f : methods(T))
+    total += call<T, f.pointer>(s);
+  return total;
+}
+int main()
+{
+  Secret s;
+  Open o;
+  std::println(useAll(s), " ", methods(Secret).size, " ", useAll(o), " ", methods(Open).size);
+  return 0;
+}
