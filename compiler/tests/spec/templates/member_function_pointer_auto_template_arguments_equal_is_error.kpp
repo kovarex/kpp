@@ -1,0 +1,21 @@
+// spec: a static_assert comparing two member function pointers given as `auto` template arguments fails when they are the
+// same method (until 2026-11-23 its condition was "the compiler cannot evaluate yet" either way)
+// found by thread luatyped, 2026-11-23
+// error: member_function_pointer_auto_template_arguments_equal_is_error.kpp:14: error: static assertion failed: "the same method registered twice"
+class Obj
+{
+public:
+  virtual ~Obj() {}
+  i32 a(i32 x) { return x; }
+};
+
+template<auto first, auto second> i32 pair()
+{
+  static_assert(first != second, "the same method registered twice");
+  return 0;
+}
+
+int main()
+{
+  return pair<&Obj::a, &Obj::a>();
+}

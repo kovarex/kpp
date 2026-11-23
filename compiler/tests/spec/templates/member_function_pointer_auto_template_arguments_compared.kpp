@@ -1,0 +1,41 @@
+// spec: two member function pointers given as `auto` template arguments are constants the constant evaluation compares:
+// `first != second` of &Obj::a and &Obj::b is true, of &Obj::a twice false, a const method's and one compared with
+// `&Obj::a` written out too (until 2026-11-23 "static assertion whose condition the compiler cannot evaluate yet")
+// found by thread luatyped, 2026-11-23 (LuaBinder::registerReadWrite's check that one method is not registered twice)
+class Obj
+{
+public:
+  virtual ~Obj() {}
+  i32 a(i32 x) { return x; }
+  i32 b(i32 x) { return x + 1; }
+  i32 c() const { return 3; }
+};
+
+template<auto first, auto second> constexpr bool differ()
+{
+  if constexpr (std::isSame<decltype(first), decltype(second)>)
+    return first != second;
+  else
+    return true;
+}
+
+template<auto m> constexpr bool isA() { return m == &Obj::a; }
+
+static_assert(differ<&Obj::a, &Obj::b>());
+static_assert(!differ<&Obj::a, &Obj::a>());
+static_assert(!differ<&Obj::c, &Obj::c>());
+static_assert(differ<&Obj::a, &Obj::c>());
+static_assert(isA<&Obj::a>() && !isA<&Obj::b>());
+
+template<auto first, auto second> i32 pair()
+{
+  static_assert(first != second, "the same method registered twice");
+  Obj o;
+  return (o.*first)(1) + (o.*second)(1);
+}
+
+int main()
+{
+  std::println(differ<&Obj::a, &Obj::b>(), " ", differ<&Obj::b, &Obj::b>(), " ", pair<&Obj::a, &Obj::b>());
+  return 0;
+}

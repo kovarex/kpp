@@ -682,9 +682,11 @@ auto GlobalScope::Impl::constValueOfDecl(Decl* d, const TypeContext& ctx, int de
         ConstTarget target;
         target.decl = t->decl;
         const Ty* pt = t->inner ? types.unqualified(t->inner) : nullptr;
-        if (pt && pt->kind == TyKind::MemberPointer && t->decl->kind == NodeKind::VariableDecl && !pt->args.empty())
+        if (pt && pt->kind == TyKind::MemberPointer && (t->decl->kind == NodeKind::VariableDecl || t->decl->kind == NodeKind::FunctionDecl) && !pt->args.empty())
         {
-          // `template<int Pos::*Field>` given &Pos::x: the member pointer, as `&Pos::x` makes it.
+          // `template<int Pos::*Field>` given &Pos::x: the member pointer, as `&Pos::x` makes it; `template<auto m>` given
+          // &Obj::a, a member function's (until 2026-11-23 no constant: `static_assert(first != second)` of two of them
+          // was "a condition the compiler cannot evaluate yet").
           target.owner = pt->args[0];
           return ConstValue::address(pt, std::move(target), ConstValue::Kind::MemberPointer);
         }
