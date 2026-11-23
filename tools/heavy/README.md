@@ -19,6 +19,10 @@ Outside a worktree, `C:\kpp-sandbox\heavy.cmd` does the same thing. It calls C:\
 - **Benchmarks and timing runs:** use `heavy.cmd --exclusive COMMAND...`. The job takes the same slot,
   then waits until total CPU stays under 15% for 20 seconds, and holds quiet-window.flag while it
   runs. Never time anything outside --exclusive.
+- **Status page:** C:\kpp-sandbox\heavy\status.html shows the job running now, the queue and the last
+  200 finished jobs, with wait time, run time and exit code (from history.tsv). heavy.cmd rewrites it
+  whenever a job queues, starts or finishes. The open page reloads every 5 seconds and counts running
+  times live. `heavy.cmd --status` also rewrites it.
 - **Waiting:** waiters queue in arrival order. A waiter prints one line to stderr naming the holder,
   then a new line only when the reason changes. Nothing needs polling, because the command starts
   once the slot is free.
