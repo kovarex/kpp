@@ -776,6 +776,10 @@ void runCodegen(Build& build)
                                               : "-ffp-contract=off -fverify-intermediate-code";
   if (options.target.mac())
     compileFlags += " -femit-compact-unwind-non-canonical";
+  // An unoptimized module's jumps in their long form at once (-mrelax-all), as the back end in kpp
+  // assembles them (backend.cpp): no relaxation in the assembler's layout.
+  if (!options.optimize)
+    compileFlags += " -mrelax-all";
   // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
   // linked; the functions errors left out are listed next to the executable for the link's report.
   bool stop = codegenExit && !options.keepGoing;

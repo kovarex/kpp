@@ -1456,6 +1456,133 @@ round's wall time in brackets):
 The build is 0.76 s shorter, in every pair. (This session's builds were slower than the 13.3 s of the
 timeline's: the machine was busier.)
 
+## 9. What the game's IR is made of, and what in it was for nothing (2026-11-23)
+
+kovarex: "search the code we generate ... to find hidden things bloating the IR and generated code. As
+the less code we have to process, the less all the other steps have to do." A census of the game's debug
+IR, then what each kind of text costs LLVM, then what was removed.
+
+**The census** (kpp 171c3bef2, the game at kpp-factorio 0c18a3229e, `kpp factorio debug`: 256 modules,
+1,609.6 MB of text, 271,707 functions, 10,724,975 instructions in 1,511,050 blocks):
+
+| what | text | share | count |
+|---|---:|---:|---:|
+| function bodies | 832.7 MB | 51.7% | 271,707 functions |
+| debug information's nodes | 556.6 MB | 34.6% | 5,197,413 |
+| function declarations | 73.8 MB | 4.6% | 767,965 lines for 222,908 functions |
+| global definitions | 70.5 MB | 4.4% | 167,782 |
+| type definitions | 67.0 MB | 4.2% | 779,956 |
+
+Inside the bodies: the `, !dbg !N` suffixes are 189 MB (23% of the bodies), getelementptr 1,847,622
+instructions (757,488 of them with every index zero), calls 1,618,591 (655,003 of them the asm `nop`
+around an invoke), invokes 327,504, loads 2,171,689, stores 1,451,644, allocas 1,088,124. 9.4% of the
+whole text is padding: the zeros and spaces that keep a metadata reference's width fixed so that module
+assembly can renumber it in place. Template instances are half of the bodies (lambdas in them included),
+std::Function's five functions per lambda 4.3%. The largest 556 functions (0.2%) hold 10% of the bodies,
+the largest 4,369 a quarter. 2.8% of the bodies are the same text as another body but for their name.
+Only 2.2% of the bodies are code nothing can reach from the program's roots (9,965 functions). A
+module's compile time goes with its size (42 to 84 ms per MB): no function is slow out of proportion.
+
+**What was found in the bodies:**
+
+- **Two asm `nop`s around every call that may throw**, 6.1% of the instructions (Emitter::emitCall:
+  `__C_specific_handler`'s scope entries must not share a byte). The one before the next such call
+  already keeps two entries apart; the one after was left from before that one existed, and was written
+  on every target.
+- **A third of the invokes call a function that cannot throw** (about 106,000 of 327,504, by the least set
+  over the whole program's call graph: a function may throw if it throws, calls through a pointer, or
+  calls one that may). Nearly half of those are the standard library's (String's constructors and
+  assignment from a String&&, StringView from a String, empty, c_str, UniquePtr::release, Optional's
+  constructors), the rest the game's (MapVersion's comparison, LogSite, agui::hold). 9,736 call a
+  function declared `noexcept`; 15,488 of the 60,220 functions with an invoke would have none left.
+- **4.3% of the instructions computed a value nobody used or wrote a slot nobody read**: 157,075
+  conversions of a constant (`sext i32 1 to i64` for `size + 1`), 96,503 allocas that were only stored
+  to with 139,770 stores into them (three quarters of them the `this` slot each default member
+  initializer got, named or not), 19,191 allocas never named, 19,138 loads and 17,867 address steps
+  never used.
+- **One copy of an InputAction is 370 KB of IR** wherever one is copied (std::insertionSort of them
+  1.8 MB, Vector<InputAction>::assignCopies 1.07 MB, about thirty functions of 368 to 390 KB): the
+  typed unions' copies and moves spelled out at each place, as their destruction was until 0e30e21db.
+  Thread "Write generated functions once per build" has it.
+
+**What each kind costs the back end.** A quarter of the modules (64, every fourth) rewritten without one
+kind of text, each module compiled with every variant back to back on a core of its own, three to five
+rounds, each (module, variant)'s least time kept and summed. First by Visual Studio's clang.exe (the
+game's compile line, CPU time; a difference under 1.5% says nothing):
+
+| variant of the IR | clang.exe's time | text | objects |
+|---|---:|---:|---:|
+| no asm `nop` at all (not correct code: the floor) | -9.0% | -2.3% | 0 |
+| no `nop` after an invoke, the one before kept | -5.2% | -1.4% | -0.1% |
+| that, and the `nop` before as a volatile load of a stack byte | -10.6% | -1.2% | +0.1% |
+| the classes' member function lists left out of the debug information | -3.7% | -3.5% | -3.8% |
+| jumps assembled in their long form at once (`-mrelax-all`) | -3.4% | 0 | +0.5% |
+| invokes of the functions that cannot throw as calls | -9.4% | -1.5% | -2.5% |
+| no getelementptr with every index zero | -0.1% | -4.6% | 0 |
+| metadata numbers without padding | -0.1% | -11.2% | 0 |
+| the metadata nodes before the functions (no forward references) | -0.6% | 0 | 0 |
+| a block of its own for each invoke (FastISel for what comes before it) | -0.4% | +1.3% | 0 |
+
+Then by kpp's own back end (a temporary entry point, never committed; wall time of a pinned process,
+whose noise is about 2%): `-mrelax-all` -2.5%, no `nop` after an invoke -1.7%, the `nop` before as a load
+too -1.9%, both with `-mrelax-all` -3.6%, and with the invokes of the functions that cannot throw as
+calls -5.9%; the member function lists, the address steps of offset zero and the padding: nothing.
+
+**The two disagree where the work is allocation.** An asm statement is assembled by a parser LLVM
+makes for that one statement, a class's member functions are many small type records. clang.exe
+allocates with the C runtime, kpp's LLVM with rpmalloc: what was 9% of clang's time is under 2% of
+kpp's. kpp's own back end decides here, and whole builds on one thread (below) are its measure; by
+clang.exe alone the `nop`s would have been the largest find by far.
+
+**What was changed** (each with the program's behaviour unchanged; the game's tests, 9558 of them, pass):
+
+- **One `nop` before a call that may throw, none after.**
+- **A direct call of a function whose definition is `noexcept` is a plain call**: no unwind edge, no
+  `nop`, no cleanup pad (Emitter::callMayThrow). Its own body ends the program where an exception
+  would leave it. Only `noexcept` with no condition: a condition is evaluated for the instance's own
+  copy of the function when that is emitted.
+- **An integer literal converted to another integer type is written converted.**
+- **The `this` slot of a default member initializer is made and filled where the initializer names
+  this.**
+- **An unoptimized module's jumps are assembled in their long form at once** (`-mrelax-all`, clang's
+  own default at -O0 until LLVM 19, in the back end in kpp and on clang's compile line): the
+  assembler's layout relaxes nothing. It gains more the larger a module's code section is.
+
+Not changed: the `nop` before an invoke as a volatile load (inside the noise in kpp's back end, for
+larger code), the address steps of offset zero and the padding (they cost the back end nothing).
+
+**Measured** on the game (kpp-factorio 0c18a3229e):
+
+| | master 2a12f755a | the four emitter changes | with `-mrelax-all` too |
+|---|---:|---:|---:|
+| IR text | 1,609.6 MB | 1,572.2 MB | 1,572.2 MB |
+| instructions | 10,724,975 | 10,044,015 | 10,044,015 |
+| asm `nop`s | 655,003 | 317,766 | 317,766 |
+| invokes | 327,504 | 317,768 | 317,768 |
+| cleanup pads | 160,630 | 155,713 | 155,713 |
+| allocas | 1,088,124 | 1,012,351 | 1,012,351 |
+| stores | 1,451,644 | 1,341,859 | 1,341,859 |
+| a build on one thread (`-j 1`, three each): LLVM | 75.65 s | 74.27 s | 71.90 s |
+| a build on one thread: all of it | 130.5 s | 127.6 s | 127.1 s |
+
+At 32 threads LLVM is 5.2 s of the build's 13.5 s and part of it runs beside codegen, so 5% of its work
+is about 0.2 s of the build. Six rounds of whole builds did not resolve that: their medians (14.08 s
+for master, 13.14 s with the emitter changes) are closer than one compiler's own rounds (13.4 to
+15.2 s for master, on a machine other threads were using). The one-thread builds are the measure.
+
+**Left, by what it would give:**
+
+- **The functions that cannot throw found by the compiler**: a third of the invokes, their `nop`s and
+  12% of the cleanup pads, objects 2.5% smaller; about 2% of the back end's time. The emitter knows
+  what a function calls only once it has emitted it, and its callers are emitted before it: the
+  invokes would be rewritten in the functions' text at module assembly, from each function's list of
+  calls. A part comes for less: `noexcept` on the standard library's functions the C++ standard
+  declares so (nearly half of those invokes are the library's).
+- **The member function lists in the debug information** (301,359 declarations no definition in their
+  module names, with a type node and an argument list each): no time in kpp's back end, 3.8% of the
+  objects' size and the linker's work on them. Visual Studio uses them to call a member function from
+  the watch window.
+
 ## Reproduce
 
 All in `C:\kpp-sandbox\scratch\templates\cg` (thread D's scratch, not committed):

@@ -285,6 +285,12 @@ bool compileModule(std::string_view ir, const BackendOptions& options, std::stri
   targetOptions.DataSections = options.functionSections;
   targetOptions.EmitAddrsig = true;
   targetOptions.AllowFPOpFusion = llvm::FPOpFusion::Strict;
+  // -mrelax-all, clang's own default at -O0 until LLVM 19: every jump is assembled in its long form at
+  // once, so the assembler's layout relaxes nothing. 2.5% of this back end's time over the game's 256
+  // modules, more over larger ones (a section is laid out again while any jump in it grows), for
+  // objects 0.5% larger (2026-11-23). The clang compile line of an unoptimized module has the flag too
+  // (ModuleCompile.cpp), so the two still make the same object.
+  targetOptions.MCOptions.MCRelaxAll = true;
   if (parsed.isWindowsGNUEnvironment())
   {
     // llvm-mingw's: -fno-use-init-array (MinGW-w64's runtime runs the .ctors section, which LLVM
