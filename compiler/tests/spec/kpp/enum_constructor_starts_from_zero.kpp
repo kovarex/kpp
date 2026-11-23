@@ -9,6 +9,12 @@ enum class Activation : u8
   Activation(int a, int b) { if (a > b) this = Second; }
 };
 
+// An explicit type with members (design.md 33) is an enum: its constructor starts from the zero too.
+class SurfaceIndex : explicit u32
+{
+  SurfaceIndex(const char*, int n) { if (n > 0) this = SurfaceIndex(u32(n)); }
+};
+
 class User
 {
 public:
@@ -32,7 +38,8 @@ Activation global = Activation(0, 5);
 {
   Activation local(a, 5);
   User user(a);
-  std::println(int(local), " ", int(user.type), " ", int(Activation(a, 5)));
+  SurfaceIndex index("k", a);
+  std::println(int(local), " ", int(user.type), " ", int(Activation(a, 5)), " ", u32(index));
 }
 
 int main()
