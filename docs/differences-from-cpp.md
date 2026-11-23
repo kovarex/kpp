@@ -216,7 +216,8 @@ when (config::timeMeasuring) TimeMeasurer timer("buildPhase");
 - **kpp:** `assert(e);` and `release_assert(e);` are statements, and take a message as Text pieces after
   the condition, made only when it fails (`assert(n > 0, "n = ", n);`, 2026-11-17). A `conditional(constant)` function's
   calls compile to nothing when it is false, arguments unevaluated. `CallerLocation here = caller` as a
-  parameter is filled at the call site.
+  parameter is filled at the call site, and `caller.line()` (`file_name()`, `column()`, `function_name()`) in a default
+  argument is the call site's, what clang's `__builtin_LINE()` defaults convert to (2026-11-23).
 - **Why:** these were the macros no function could replace.
 - **See:** [design 7][d7]; specs `kpp/asserts_and_config`, `kpp/assert_message_pieces`.
 

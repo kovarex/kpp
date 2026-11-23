@@ -419,7 +419,11 @@ replacements, in the order of how much code they remove:
    values and records the failure instead of aborting.
 2. `assert`/`release_assert` as statements of the language (text, location, operand values;
    `assert` compiles to nothing when `config::debug` is false); an implicit caller location
-   parameter (`CallerLocation here = caller`, filled at the call site); `conditional(config::x)`
+   parameter (`CallerLocation here = caller`, filled at the call site; since 2026-11-23 also `caller.line()`,
+   `caller.file_name()` ... inside a default argument, kovarex's answer for Unreal's `__builtin_LINE()` defaults, which
+   convert to them: the call site's, the outermost call's through the defaults of calls in a default argument as in
+   C++, also at compile time; a consteval call in a default argument is checked where the default is used);
+   `conditional(config::x)`
    functions whose calls compile to nothing, arguments unevaluated, when the condition is false.
    Done 2026-10-24: `assert(expr);` and `release_assert(expr);` are statements; a failure prints
    `file:line:column: assertion failed: <expression text>` through `kpp_assert_failed`, which a

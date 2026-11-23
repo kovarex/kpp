@@ -1,0 +1,48 @@
+// spec: `caller.line()`, `caller.column()`, `caller.file_name()` and `caller.function_name()` in a parameter's default argument are the call site's, also at compile time (a consteval function's, a static assertion's), and through the defaults of calls in a default argument the outermost call's, as C++'s __builtin_LINE() defaults are; clang prints the same (`first 42 main`, `direct 43 main`, `second 46 main`)
+// found by thread UE (2026-11-22, kovarex: Unreal's `__builtin_LINE()` defaults as kpp's caller): Unreal's FSourceLocation::Current(Impl = FSourceLocationImpl::current()), whose parameters default to __builtin_LINE(), __builtin_FILE() ...; `caller` was a whole default only
+struct Where
+{
+  u32 line = 0;
+  u32 column = 0;
+  const char* file = nullptr;
+  const char* function = nullptr;
+};
+
+struct Here
+{
+  static consteval Where current(u32 line = caller.line(), u32 column = caller.column(), const char* file = caller.file_name(),
+                                 const char* function = caller.function_name())
+  {
+    Where w;
+    w.line = line;
+    w.column = column;
+    w.file = file;
+    w.function = function;
+    return w;
+  }
+};
+
+consteval Where outer(Where w = Here::current())
+{
+  return w;
+}
+
+void log(const char* text, Where w = outer())
+{
+  std::println(text, " ", w.line, " ", w.function);
+}
+
+constexpr u32 lineOf(u32 line = caller.line())
+{
+  return line;
+}
+
+int main()
+{
+  log("first");
+  Where direct = Here::current();
+  std::println("direct ", direct.line, " ", direct.function);
+  static_assert(lineOf() == 45, "the call's line");
+  log("second");
+  return 0;
+}

@@ -875,6 +875,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return std::nullopt;
       return ConstValue::address(types.pointer(self->type), constStorageTarget(*self));
     }
+    case NodeKind::CallerExpr:
+      return constCallerLocation(static_cast<CallerExpr*>(e));
     case NodeKind::LiteralExpr:
     {
       auto* l = static_cast<LiteralExpr*>(e);
@@ -2067,8 +2069,61 @@ auto GlobalScope::Impl::constBindTemplate(FunctionDecl* f, const std::vector<con
   return true;
 }
 
+auto GlobalScope::Impl::constCallerLocation(CallerExpr* e) -> std::optional<ConstValue>
+{
+  const ConstDefaultRun* run = constDefaultRun;
+  if (!e || !run || !run->call || !run->call->callee || !run->ctx || !run->ctx->tokens)
+    return std::nullopt;
+  Expr* callee = run->call->callee;
+  while (callee->kind == NodeKind::ParenExpr && static_cast<ParenExpr*>(callee)->inner)
+    callee = static_cast<ParenExpr*>(callee)->inner;
+  Decl* called = callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(callee)->resolved
+               : callee->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(callee)->resolved : nullptr;
+  // (the function itself or its instance: the same declaration, the same name token in the same file)
+  if (!called || !run->function || (called != run->function && (called->token != run->function->token || called->file != run->function->file)))
+    return std::nullopt;
+  const FunctionDecl* in = run->in;
+  Decl* location = libraryDecl("CallerLocation", NodeKind::ClassDecl);
+  uint32_t token = callee->token;
+  if (!in || !in->file || !location || token >= run->ctx->tokens->size())
+    return std::nullopt;
+  static thread_local std::unordered_map<const char*, LineStarts> lineStarts; // (the file's line starts, once)
+  const LineStarts& starts = lineStarts.try_emplace(run->ctx->text.data(), run->ctx->text).first->second;
+  uint32_t offset = (*run->ctx->tokens)[token].offset;
+  auto text = [&](const std::string& s)
+  {
+    const Ty* ch = types.charType(8, false);
+    std::vector<ConstValue> chars;
+    for (char c : s)
+      chars.push_back(ConstValue::integer(int64_t(static_cast<signed char>(c)), ch));
+    chars.push_back(ConstValue::integer(0, ch));
+    const Ty* array = types.array(types.qualified(ch, true, false), uint32_t(chars.size()));
+    ConstValue whole = ConstValue::object(array, std::move(chars));
+    return ConstValue::pointer(types.pointer(types.qualified(ch, true, false)), whole.parts, 0);
+  };
+  std::vector<ConstValue> fields;
+  fields.push_back(text(programPath(in->file->path)));
+  fields.push_back(ConstValue::integer(int64_t(starts.line(offset)), types.intType(32, true)));
+  fields.push_back(ConstValue::integer(int64_t(starts.column(offset)), types.intType(32, true)));
+  fields.push_back(text(outer->qualifiedName(const_cast<FunctionDecl*>(in))));
+  return ConstValue::object(types.classType(location, {}), std::move(fields));
+}
+
 auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth, std::optional<ConstPlace>* returnPlace) -> std::optional<ConstValue>
 {
+  // (the call a `caller` default of it names: constCallerLocation)
+  struct Site
+  {
+    CallExpr* call = constSiteCall;
+    const TypeContext* ctx = constSiteCtx;
+    ~Site()
+    {
+      constSiteCall = call;
+      constSiteCtx = ctx;
+    }
+  } site;
+  constSiteCall = c;
+  constSiteCtx = &ctx;
   if (returnPlace)
   {
     auto* named = c->callee && c->callee->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(c->callee) : nullptr;
@@ -2504,6 +2559,19 @@ auto GlobalScope::Impl::constCall(CallExpr* c, const TypeContext& ctx, int depth
 
 auto GlobalScope::Impl::constMemberCall(CallExpr* c, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
+  // (the call a `caller` default of it names: constCallerLocation)
+  struct Site
+  {
+    CallExpr* call = constSiteCall;
+    const TypeContext* ctx = constSiteCtx;
+    ~Site()
+    {
+      constSiteCall = call;
+      constSiteCtx = ctx;
+    }
+  } site;
+  constSiteCall = c;
+  constSiteCtx = &ctx;
   auto* m = static_cast<MemberExpr*>(c->callee);
   // `object.A::f()` (named with its class): the function the walk chose, run on the object's part of
   // its class, no virtual call ([class.virtual] 16).
@@ -6118,6 +6186,7 @@ auto GlobalScope::Impl::constCallClosure(LambdaExpr* l, const ConstValue& closur
   fctx.returnType = returns;
   fctx.namedReturn = constNamedReturn(run->body, returns, fctx, 1);
   std::optional<ConstValue> result;
+  struct BodyOf { const FunctionDecl* outer = constBodyOf; ~BodyOf() { constBodyOf = outer; } } bodyOf; constBodyOf = nullptr; // (`caller` defaults of the calls in it: constCallerLocation)
   ConstFlow flow = constStatement(run->body, fctx, env, result, 1);
   if (returns && types.unqualified(returns)->kind == TyKind::Void && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
     return ConstValue::integer(0, types.voidType());
@@ -6177,6 +6246,7 @@ auto GlobalScope::Impl::constCallLambda(LambdaExpr* l, CallExpr* c, const TypeCo
   fctx.returnType = returns;
   fctx.namedReturn = constNamedReturn(l->body, returns, fctx, 1);
   std::optional<ConstValue> result;
+  struct BodyOf { const FunctionDecl* outer = constBodyOf; ~BodyOf() { constBodyOf = outer; } } bodyOf; constBodyOf = nullptr; // (`caller` defaults of the calls in it: constCallerLocation)
   ConstFlow flow = constStatement(l->body, fctx, env, result, 1);
   if (returns && types.unqualified(returns)->kind == TyKind::Void && (flow == ConstFlow::Next || flow == ConstFlow::Returned))
     return ConstValue::integer(0, types.voidType());
@@ -6284,6 +6354,7 @@ auto GlobalScope::Impl::constEnumConstruct(const Ty* t, const std::vector<ConstV
   env.push_back(constBinding(constThisSymbol, zero ? *zero : ConstValue::unset(t), t));
   env.back().writable = true;
   std::optional<ConstValue> result;
+  struct BodyOf { const FunctionDecl* outer = constBodyOf; ~BodyOf() { constBodyOf = outer; } } bodyOf; constBodyOf = def; // (`caller` defaults of the calls in it: constCallerLocation)
   ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
   if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
     return std::nullopt;
@@ -6353,6 +6424,7 @@ auto GlobalScope::Impl::constEnumMethod(FunctionDecl* f, ConstValue& self, const
   env.push_back(constBinding(constThisSymbol, *given, t));
   env.back().writable = !(f->flags & DF_Const);
   std::optional<ConstValue> result;
+  struct BodyOf { const FunctionDecl* outer = constBodyOf; ~BodyOf() { constBodyOf = outer; } } bodyOf; constBodyOf = def; // (`caller` defaults of the calls in it: constCallerLocation)
   ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
   if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
     return std::nullopt;
@@ -6741,6 +6813,7 @@ auto GlobalScope::Impl::constRunBody(FunctionDecl* ctor, const Ty* t, const Cons
   size_t self = env.size() - 1;
   std::optional<ConstValue> result;
   ranBody(ctor);
+  struct BodyOf { const FunctionDecl* outer = constBodyOf; ~BodyOf() { constBodyOf = outer; } } bodyOf; constBodyOf = ctor; // (`caller` defaults of the calls in it: constCallerLocation)
   ConstFlow flow = constStatement(ctor->body, fctx, env, result, depth + 1);
   if (flow != ConstFlow::Next && flow != ConstFlow::Returned)
     return std::nullopt;
@@ -9136,6 +9209,7 @@ auto GlobalScope::Impl::constRun(FunctionDecl* f, const std::vector<ConstValue>&
   fctx.namedReturn = returnPlace ? nullptr : constNamedReturn(def->body, returns, fctx, depth);
   bool isVoid = (returns && types.unqualified(returns)->kind == TyKind::Void) || (f->flags & DF_Destructor);
   std::optional<ConstValue> result;
+  struct BodyOf { const FunctionDecl* outer = constBodyOf; ~BodyOf() { constBodyOf = outer; } } bodyOf; constBodyOf = def; // (`caller` defaults of the calls in it: constCallerLocation)
   ConstFlow flow = constStatement(def->body, fctx, env, result, depth + 1);
   if (self && *self && selfAt < env.size() && env[selfAt].symbol == constThisSymbol)
     *self = selfPlace ? constRead(*selfPlace) : std::optional<ConstValue>(env[selfAt].value);
@@ -9258,8 +9332,15 @@ auto GlobalScope::Impl::constBindParameter(ParamDecl* p, const Ty* type, size_t 
     else if (held && type && !type->isReference() && categories && i < categories->size() && (*categories)[i] == 0 &&
              types.unqualified(types.stripRef(args[i].type)) == types.unqualified(types.stripRef(type)))
       (*places)[i]->binding().owns = false; // the prvalue's temporary is the parameter now: destroyed by the call
+    // (a default argument: `caller` in it, and in the defaults of the calls in it, is the location of the call being
+    // bound, constSiteCall, of this parameter's function)
+    ConstDefaultRun run{p->parent, constSiteCall, constSiteCtx, constBodyOf};
+    const ConstDefaultRun* outerRun = constDefaultRun;
+    if (!given && !constDefaultRun)
+      constDefaultRun = &run;
     v = given ? constConvertTo(args[i], type, depth + 1)
                         : defaultValue ? constInitialize(type, defaultValue, fctx, depth + 1) : std::nullopt;
+    constDefaultRun = outerRun;
   }
   if (!v)
     return false;
@@ -10194,6 +10275,13 @@ auto GlobalScope::Impl::constStatement(Stmt* s, const TypeContext& ctx, std::vec
 {
   if (!s)
     return ConstFlow::Next;
+  // A body's statement is no default argument: a call in it is the site of its own callee's `caller` defaults.
+  struct NoDefaultRun
+  {
+    const ConstDefaultRun* outer = constDefaultRun;
+    ~NoDefaultRun() { constDefaultRun = outer; }
+  } noDefaultRun;
+  constDefaultRun = nullptr;
   // A statement of its own scope ends its locals; one of expressions (and a range-for, whose
   // range lives through the loop) ends its full expression's temporaries.
   bool scope = s->kind == NodeKind::BlockStmt || s->kind == NodeKind::IfStmt || s->kind == NodeKind::ForStmt || s->kind == NodeKind::WhileStmt ||

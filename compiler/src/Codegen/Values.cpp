@@ -1213,6 +1213,10 @@ auto codegen::Emitter::lvalue(Expr* e) -> std::string
       }
       break;
     }
+    case NodeKind::CallerExpr:
+      if (!callerSiteAt)
+        unsupported(e, "`caller` outside a parameter's default argument");
+      return callerSiteLocation(e->ty); // (`caller.line()`: the call site's CallerLocation, an object in a slot)
     case NodeKind::ThisExpr:
     {
       // In an enum's method `this` is the value at the place the method was called on (Operators.cpp's call: the

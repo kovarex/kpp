@@ -3197,6 +3197,29 @@
             continue;
           }
         }
+        if (t.getKind() == TokenKind::Identifier && i + 2 < toks.size() && toks[i + 1].is(P::LParen) && toks[i + 2].is(P::RParen) &&
+            (spelling(i) == "__builtin_LINE" || spelling(i) == "__builtin_FILE" || spelling(i) == "__builtin_COLUMN" || spelling(i) == "__builtin_FUNCTION"))
+        {
+          // Clang's and MSVC's source location built-ins. A parameter's default (`const uint32 InLine = __builtin_LINE()`,
+          // Unreal's FSourceLocation): the call site's, kpp's `caller` (kovarex, 2026-11-22); anywhere else: this place's,
+          // as __LINE__ (Unreal's UE_LOG records, `LOG_Static(L"...", __builtin_FILE(), __builtin_LINE(), nullptr)`).
+          std::string name(spelling(i));
+          bool parameterDefault = i > 0 && toks[i - 1].is(P::Assign) && i + 3 < toks.size() && (toks[i + 3].is(P::Comma) || toks[i + 3].is(P::RParen));
+          std::string to;
+          if (parameterDefault)
+            to = name == "__builtin_LINE" ? "caller.line()" : name == "__builtin_FILE" ? "caller.file_name()" : name == "__builtin_COLUMN" ? "caller.column()" : "caller.function_name()";
+          else if (name == "__builtin_LINE" || name == "__builtin_FILE")
+            to = withFileAndLine(name == "__builtin_LINE" ? "__LINE__" : "__FILE__", t.offset);
+          else if (name == "__builtin_FUNCTION" && functionNameAt(t.offset))
+            to = withFileAndLine("__FUNCTION__", t.offset);
+          if (!to.empty())
+          {
+            replace(t.offset, endOffset(i + 2) - t.offset, to);
+            counts.add(parameterDefault ? "source location built-ins as a default: the caller's" : "source location built-ins: this place's");
+            i += 2;
+            continue;
+          }
+        }
         if (t.getKind() == TokenKind::Identifier &&
             (spelling(i) == "__FILE__" || spelling(i) == "__LINE__" || ((spelling(i) == "__FUNCTION__" || spelling(i) == "__func__") && functionNameAt(t.offset))))
         {

@@ -87,6 +87,9 @@
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
+    // Walking a parameter's default argument: an immediate (consteval) call in it is evaluated at each call that
+    // uses it, where `caller` has a site (C++'s [expr.const] 16: not where it is written).
+    bool inDefaultArgument = false;
     // A probe's errors that C++ makes ill-formed (reportCheck, reportHere: a member function that is not const called on a
     // const object, a const object assigned or bound to a non-const reference, ...), counted, not reported: a requirement
     // whose walk adds one is not met, as C++'s overload resolution finds no candidate for it (until 2026-11-18 the

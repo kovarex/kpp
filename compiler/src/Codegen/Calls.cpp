@@ -1119,7 +1119,15 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
     if (!value)
       unsupported(at, "the default argument of " + qualifiedName(f) + " missing from its instantiation");
     if (value->kind == NodeKind::CallerExpr)
-      return "ptr " + callerLocation(pt, at);
+      return "ptr " + (callerSiteAt ? callerSiteLocation(pt) : callerLocation(pt, at)); // (in another call's default: that call's)
+    // `caller` in it (`u32 line = caller.line()`), and in the defaults of calls in it, is this call's location.
+    Restore<Node*> siteRestore(callerSiteAt);
+    Restore<ParsedFile*> siteFileRestore(callerSiteFile);
+    if (!callerSiteAt)
+    {
+      callerSiteAt = at;
+      callerSiteFile = callerFile;
+    }
     // Emitted from the callee's declaration: its own node (and file) for what it reports,
     // not the caller's token read in the callee's file.
     Restore<ParsedFile*> fileRestore(currentFile, callerFile);

@@ -545,7 +545,11 @@ auto GlobalScope::Impl::checkStaticAssert(StaticAssertDecl* s, const TypeContext
   exactLayoutOnly = true;
   layoutNeeded = false;
   constWhy().clear();
+  const FunctionDecl* outerBody = constBodyOf;
+  if (inFunction)
+    constBodyOf = inFunction; // (the function a `caller` default's call is written in; else the walk's)
   std::optional<bool> v = knownInstance ? constCondition(s->cond, ctx, 0) : std::nullopt;
+  constBodyOf = outerBody;
   std::string why = v ? std::string() : constWhy();
   bool needed = layoutNeeded;
   exactLayoutOnly = outerExact;

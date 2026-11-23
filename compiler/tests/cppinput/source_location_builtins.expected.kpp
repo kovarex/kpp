@@ -1,0 +1,23 @@
+// cppinput: clang's and MSVC's source location built-ins: as a parameter's default (`unsigned line = __builtin_LINE()`,
+// Unreal's FSourceLocationImpl::current) the call site's, kpp's `caller.line()`, and elsewhere this place's, as
+// __LINE__ and __FILE__ are (Unreal's UE_LOG records); the converter left them, "'__builtin_LINE' is not declared"
+struct Where
+{
+  u32 line = 0;
+  const char* function = nullptr;
+};
+
+Where here(u32 line = caller.line(), const char* function = caller.function_name())
+{
+  Where w;
+  w.line = line;
+  w.function = function;
+  return w;
+}
+
+i32 main()
+{
+  Where w = here();
+  u32 own = 21;
+  return w.line == 20 && own == 21 && w.function[0] == 'm' ? 0 : 1;
+}

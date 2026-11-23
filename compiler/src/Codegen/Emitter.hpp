@@ -214,6 +214,10 @@ namespace codegen
     const FunctionDecl* checkerChecked = nullptr;
     Decl* constContext = nullptr; // The declaration whose initializer evalConst is folding (a variable template's): the context of the traits in it.
     ParsedFile* currentFile = nullptr;
+    // The call whose default arguments are being emitted, the outermost one through nested defaults (Unreal's
+    // `FSourceLocation::Current(Impl = FSourceLocationImpl::current())`, as C++ has it): `caller` in them is its location.
+    Node* callerSiteAt = nullptr;
+    ParsedFile* callerSiteFile = nullptr;
     int recursionDepth = 0; // guards rvalue/lvalue/statement against stack overflow
     int instancesBuilding = 0; // buildStruct's nesting of class template instances
 

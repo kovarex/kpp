@@ -39,7 +39,13 @@ struct ConditionalExpr : Expr { Expr* cond; Expr* then; Expr* else_; }; // then 
 struct CastExpr : Expr { Type* type; Expr* operand; };
 struct NamedCastExpr : Expr { Kw castKind; Type* type; Expr* operand; };
 struct SizeofExpr : Expr { Kw sizeofKind; Type* type = nullptr; Expr* operand = nullptr; bool isPack = false; };
-struct CallerExpr : Expr {}; // `caller` as a default argument: the compiler fills in the call site.
+// `caller` as a default argument: the compiler fills in the call site. `part`: written inside a default argument's
+// expression (`u32 line = caller.line()`, what Unreal's `__builtin_LINE()` default converts to), a CallerLocation of
+// the call site there too.
+struct CallerExpr : Expr
+{
+  bool part = false;
+};
 // A parameter's default argument where a call matched by type (design.md 32) gives none but gives one after it: the
 // walk's rewrite of `f(a, c)` for `f(A a, B b = B(), C c = C())` as `f(a, <b's default>, c)`, evaluated at the call as
 // a default argument left out at the end is. param: the parameter's index; ty: its type.

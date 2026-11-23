@@ -887,6 +887,13 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         unsupported(e, "a noexcept operator the checker did not decide");
       return {value > 0 ? "true" : "false", types.boolType()};
     }
+    case NodeKind::CallerExpr:
+    {
+      // `caller` in a default argument's expression (`caller.line()`): the location of the call it is emitted for.
+      if (!callerSiteAt)
+        unsupported(e, "`caller` outside a parameter's default argument");
+      return {callerSiteLocation(e->ty), e->ty};
+    }
     case NodeKind::NameofExpr:
     {
       Expr* o = static_cast<NameofExpr*>(e)->operand;

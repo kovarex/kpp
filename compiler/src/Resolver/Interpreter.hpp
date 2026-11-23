@@ -317,6 +317,28 @@
   // not run again for its value).
   static thread_local bool constCallPlaceRan;
 
+  // `caller` at compile time (a `CallerLocation here = caller` default, or `caller.line()` in one, which Unreal's
+  // `__builtin_LINE()` defaults convert to): the location of the call whose default argument it is, the outermost one
+  // through the defaults of calls in it, as codegen has it. constCall and constMemberCall note their call
+  // (constSiteCall); a default argument's evaluation, when none runs yet, notes that call and the function whose
+  // default it is (constDefaultRun); a statement (a body's) runs none.
+  struct ConstDefaultRun
+  {
+    const Decl* function;
+    CallExpr* call;
+    const TypeContext* ctx;
+    const FunctionDecl* in; // the function the call is written in (constBodyOf)
+  };
+  // The function whose body the evaluation is in: a run's (constRun, a constructor's), or the one the walk checks
+  // (Walker::immediateFails, a static assertion's); none in a lambda's body run (where it is written is no run's).
+  static thread_local const FunctionDecl* constBodyOf;
+  static thread_local CallExpr* constSiteCall;
+  static thread_local const TypeContext* constSiteCtx;
+  static thread_local const ConstDefaultRun* constDefaultRun;
+  // The CallerLocation of the default run's call; none where that call is of another function (a construction's
+  // default, whose call is no CallExpr noted) or outside any function, never another call's location.
+  std::optional<ConstValue> constCallerLocation(CallerExpr* e);
+
   // Set right before constRun runs a member function named with its class (`A::f()`,
   // `super::update()`, `object.A::f()`): that function, no virtual call ([class.virtual] 16), which
   // constRun reads and clears first.

@@ -7909,7 +7909,10 @@ auto GlobalScope::Impl::Walker::immediateFails(const std::function<std::optional
   impl.exactLayoutOnly = true;
   impl.layoutNeeded = false;
   impl.constWhy().clear();
+  const FunctionDecl* outerBody = impl.constBodyOf;
+  impl.constBodyOf = bodyOf; // (the function a `caller` default's call is written in)
   std::optional<ConstValue> v = evaluate();
+  impl.constBodyOf = outerBody;
   why = v ? std::string() : impl.constWhy();
   bool needed = impl.layoutNeeded;
   impl.exactLayoutOnly = outerExact;
@@ -7919,7 +7922,7 @@ auto GlobalScope::Impl::Walker::immediateFails(const std::function<std::optional
 
 auto GlobalScope::Impl::Walker::checkImmediate(FunctionDecl* f, uint32_t token, const std::function<std::optional<ConstValue>()>& evaluate) -> void
 {
-  if (!f || !(f->flags & DF_Consteval) || probing || inGenericTemplate() || insideConsteval() || f->name.empty() || !file)
+  if (!f || !(f->flags & DF_Consteval) || probing || inGenericTemplate() || insideConsteval() || inDefaultArgument || f->name.empty() || !file)
     return;
   std::string why;
   if (!immediateFails(evaluate, why))
@@ -11914,7 +11917,12 @@ auto GlobalScope::Impl::Walker::walkParam(ParamDecl* p) -> void
   walkType(p->type);
   --declaredTypes;
   if (!p->inheritedDefault)
+  {
+    bool outer = inDefaultArgument;
+    inDefaultArgument = true;
     walkExpr(p->defaultValue);
+    inDefaultArgument = outer;
+  }
   locals.push(p->name, p);
 }
 
@@ -12393,6 +12401,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
                                                         thisType->inner->isVolatile || (f->flags & DF_Volatile)));          // (2026-11-11: it was assignable)
       FunctionDecl* savedBodyOf = bodyOf;
       bodyOf = f;
+      const FunctionDecl* savedConstBodyOf = impl.constBodyOf;
+      impl.constBodyOf = f; // (a `caller` default of a call evaluated in it: written in f)
       size_t savedDeclaredReturnFrames = declaredReturnFrames;
       if (!autoReturn)
         declaredReturnFrames = returnFrames.size();
@@ -12403,6 +12413,7 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
       recordFieldNames(f, f);
       checkFlow(f);
       bodyOf = savedBodyOf;
+      impl.constBodyOf = savedConstBodyOf;
       if ((impl.accessWarnings || impl.accessErrors) && !probing && !retypingElements)
       {
         // In an instance of a class template, the instance: its bases are as its arguments make them.
@@ -13589,7 +13600,13 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
   switch (e->kind)
   {
     case NodeKind::NameExpr: return record(e, resolveName(static_cast<NameExpr*>(e)));
-    case NodeKind::CallerExpr: return record(e, types.unknown()); // typed by the parameter it defaults
+    case NodeKind::CallerExpr:
+    {
+      // Alone, typed by the parameter it defaults; in a default argument's expression (`caller.line()`), the library's
+      // CallerLocation.
+      Decl* location = static_cast<CallerExpr*>(e)->part ? impl.libraryDecl("CallerLocation", NodeKind::ClassDecl) : nullptr;
+      return record(e, location ? types.classType(location, {}) : types.unknown());
+    }
     case NodeKind::DefaultArgumentExpr: return record(e, e->ty ? e->ty : types.unknown()); // (typed by the rewrite that made it)
     case NodeKind::PackElementExpr:
     {

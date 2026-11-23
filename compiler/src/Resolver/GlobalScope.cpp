@@ -1302,6 +1302,10 @@ thread_local GlobalScope::Impl::SubstTypeMemo* GlobalScope::Impl::substTypeMemo 
 thread_local std::vector<GlobalScope::Impl::TypeInProgress> GlobalScope::Impl::typesInProgress;
 thread_local int GlobalScope::Impl::cycleCutAt = INT_MAX;
 thread_local bool GlobalScope::Impl::constCallPlaceRan = false;
+thread_local CallExpr* GlobalScope::Impl::constSiteCall = nullptr;
+thread_local const FunctionDecl* GlobalScope::Impl::constBodyOf = nullptr;
+thread_local const GlobalScope::Impl::TypeContext* GlobalScope::Impl::constSiteCtx = nullptr;
+thread_local const GlobalScope::Impl::ConstDefaultRun* GlobalScope::Impl::constDefaultRun = nullptr;
 thread_local const GlobalScope::Impl::EnumeratorValues* GlobalScope::Impl::enumeratorValues = nullptr;
 thread_local std::string_view GlobalScope::Impl::fallbackText;
 

@@ -3516,7 +3516,12 @@ namespace
           advance();
         }
         else
+        {
+          bool outer = inDefaultArgument;
+          inDefaultArgument = true; // (`caller.line()` in it: the call site's line)
           p->defaultValue = parseAssignment();
+          inDefaultArgument = outer;
+        }
       }
       else if (at(P::LBrace))
         p->defaultValue = parseBraceInit();
@@ -8172,6 +8177,15 @@ namespace
     Expr* parsePrimary()
     {
       uint32_t start = pos;
+      // `caller.line()` in a parameter's default argument: the call site's location (CallerExpr::part).
+      if (inDefaultArgument && atIdent(kwCaller) && at(P::Dot, 1))
+      {
+        noteWord(pos);
+        CallerExpr* c = node<CallerExpr>(start);
+        c->part = true;
+        advance();
+        return c;
+      }
       if (atDescriptorType() && (at(P::LParen, 3) || at(P::LBrace, 3)))
         return parseTypeAsExpr(start); // `a.type()`: a value of the descriptor's type
       // `__func__` (and MSVC's `__FUNCTION__`) in a function body: its name as a string, nameof of
@@ -8887,6 +8901,7 @@ namespace
   public:
     uint32_t kwTest, kwCheck, kwRequire, kwMain, kwCBool, kwTestSuite, kwDepends, kwTags, kwKppText, kwTextSlot, kwGenerate, kwFail, kwRequireThrows, kwCheckThrows;
     bool inTest = false;      // In a test's body: check(...) and require(...) are statements.
+    bool inDefaultArgument = false; // In a parameter's default argument: `caller.line()` is the call site's.
     std::unordered_set<uint32_t> testBodies; // The '{' of the bodies spliceAround wrote around (a test's).
     ParsedFile::TestSuite* currentSuite = nullptr; // The suite being parsed (design.md 8.7).
     // The test-related declarations parsed so far in this file, by name (testSuffix): a count of their own, so that a test added,

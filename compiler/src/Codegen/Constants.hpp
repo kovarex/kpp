@@ -161,6 +161,8 @@
 
     // Builds a CallerLocation {file, line, column, function} for the call at `at`, in a fresh slot.
     std::string callerLocation(const Ty* pt, Node* at);
+    // The same for the call whose default arguments are being emitted (callerSiteAt), from its own file.
+    std::string callerSiteLocation(const Ty* pt);
     void noteTestCall(FunctionDecl* f, const TemplateArgs& args, Node* at);
     std::string holdTestCall(const FunctionDecl* f);
     void releaseTestCall(const std::string& held);

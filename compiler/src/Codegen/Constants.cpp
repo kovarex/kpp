@@ -854,6 +854,13 @@ auto codegen::Emitter::callerLocation(const Ty* pt, Node* at) -> std::string
   return addr;
 }
 
+auto codegen::Emitter::callerSiteLocation(const Ty* pt) -> std::string
+{
+  Restore<ParsedFile*> fileRestore(currentFile);
+  currentFile = callerSiteFile;
+  return callerLocation(pt, callerSiteAt);
+}
+
 auto codegen::Emitter::conditionHolds(FunctionDecl* f) -> bool
 {
   if (!f->condition)
