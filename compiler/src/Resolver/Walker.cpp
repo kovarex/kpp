@@ -863,16 +863,44 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
         if (v && v->kind == NodeKind::NameExpr && static_cast<NameExpr*>(v)->resolved && static_cast<NameExpr*>(v)->resolved->kind == NodeKind::EnumeratorDecl)
           named.insert(static_cast<NameExpr*>(v)->resolved);
       };
-      // `switch (u.tag()) { for constexpr (auto a : alternatives(U)) case a.tag: S }`, each element's own copy of `case
-      // a.tag: S` (a `u[]`'s switch in a debugValue, design.md 8.5): a case per alternative, ending where every S ends.
+      // `switch (u.tag()) { for constexpr (auto a : alternatives(U)) case a.tag: S }`, the switch the parser writes for a
+      // `u[]` (design.md 8.5): a case per alternative, ending where every alternative's S ends. In a debugValue each
+      // element has its own copy of `case a.tag: S`; elsewhere the one body, walked per alternative, says it: a return or
+      // a throw ends it in every alternative, an S that ends in none (`this[].f();`, coordinator 2026-11-23: no error
+      // was given) ends it in none. One that ends by a call ([[noreturn]] in the alternative walked last) is not judged:
+      // each alternative's callee may differ.
       if (static_cast<BlockStmt*>(w->body)->stmts.size() == 1 && static_cast<BlockStmt*>(w->body)->stmts[0]->kind == NodeKind::ForConstexprStmt)
-        if (auto* fc = static_cast<ForConstexprStmt*>(static_cast<BlockStmt*>(w->body)->stmts[0]); !fc->elementBodies.empty() && reflectionSubject(fc->list) &&
+        if (auto* fc = static_cast<ForConstexprStmt*>(static_cast<BlockStmt*>(w->body)->stmts[0]); reflectionSubject(fc->list) &&
             symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(fc->list)->callee)->name.last().symbol) == "alternatives")
         {
+          auto caseStatement = [](Stmt* b) -> Stmt* {
+            return b && b->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(b)->stmts.size() == 2 && static_cast<BlockStmt*>(b)->stmts[0]->kind == NodeKind::CaseStmt
+                     ? static_cast<BlockStmt*>(b)->stmts[1]
+                     : nullptr;
+          };
+          if (fc->elementBodies.empty())
+          {
+            Stmt* each = caseStatement(fc->body);
+            if (!each || statementBreaks(each))
+              return false;
+            EndFlow own;
+            if (!statementEnds(each, own))
+            {
+              flow.undecided = flow.undecided || own.undecided;
+              return false;
+            }
+            Expr* e = each->kind == NodeKind::ExprStmt ? strip(static_cast<ExprStmt*>(each)->expr) : nullptr;
+            if (e && e->kind == NodeKind::CallExpr)
+            {
+              flow.undecided = true;
+              return false;
+            }
+            return true;
+          }
           for (Stmt* b : fc->elementBodies)
           {
-            if (!b || b->kind != NodeKind::BlockStmt || static_cast<BlockStmt*>(b)->stmts.size() != 2 || static_cast<BlockStmt*>(b)->stmts[0]->kind != NodeKind::CaseStmt ||
-                statementBreaks(static_cast<BlockStmt*>(b)->stmts[1]) || !statementEnds(static_cast<BlockStmt*>(b)->stmts[1], flow))
+            Stmt* each = caseStatement(b);
+            if (!each || statementBreaks(each) || !statementEnds(each, flow))
               return false;
           }
           return true;

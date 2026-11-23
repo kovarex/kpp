@@ -1004,6 +1004,9 @@ std::String describe() const { return ::describe(this[]); }                // th
 - u is evaluated once, before the switch (`get()[].bump()` calls get once), bound as `auto&&`; const follows it, so a
   const u's alternatives are const and overloads are chosen per alternative and constness.
 - A void alternative is the void value (`out << u[]` takes an `operator<<(Out&, void)`); a member of it is an error.
+- *Ends a path* (section 7, item 8: control reaching the end) where its statement does in every alternative:
+  `return u[].f();` and a throw end it, `u[].f();` does not, so `int value() const { this[].get(); }` is "control can
+  reach the end of value" (2026-11-23; it was accepted). A call that is `[[noreturn]]` per alternative is not judged.
 - *One error* when the statement is not valid for some alternatives, never the switch's: "not all of UpgradeID's
   alternatives have the member save: Fluid (FluidID) and Nothing (void) have none; Entity (EntityID) and Item (ItemID)
   have it" when a member is missing, otherwise "u[] is not valid for every alternative of U: Second (B): <its error>

@@ -1,0 +1,19 @@
+// spec: a `u[]` statement that does not return is no return: a function returning a value whose body ends with
+// `this[].f();` reaches its end, an error as any other path to it, while `return this[].f();` returns in every alternative
+// design.md 8.5 ("Every alternative: u[]"); found by the coordinator, 2026-11-23
+// error: typed_union_every_alternative_missing_return_is_error.kpp:11: error: control can reach the end of value, which returns int32: return a value there, or end that path with a throw or a call of a [[noreturn]] function
+struct A { int get() const { return 1; } };
+struct B { int get() const { return 2; } };
+
+union enum class U : u8
+{
+  { {X, A}, {Y, B} }
+  int value() const { this[].get(); }
+  int good() const { return this[].get(); }
+};
+
+int main()
+{
+  U u = A();
+  return u.good() + u.value();
+}

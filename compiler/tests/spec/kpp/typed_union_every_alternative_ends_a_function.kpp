@@ -1,0 +1,60 @@
+// spec: a `u[]` statement ends a function returning a value where it does in every alternative: `return u[]...;`, a
+// throw, a call that is [[noreturn]] in every alternative; also in a class template's member and after other statements
+// design.md 8.5 ("Every alternative: u[]"); coordinator 2026-11-23
+struct A
+{
+  int get() const { return 1; }
+  [[noreturn]] void fail() const { throw 3; }
+};
+struct B
+{
+  int get() const { return 2; }
+  [[noreturn]] void fail() const { throw 4; }
+};
+
+union enum class U : u8
+{
+  { {X, A}, {Y, B} }
+  int value() const { return this[].get(); }
+  int twice() const
+  {
+    int n = 1;
+    n += 1;
+    return this[].get() * n;
+  }
+  int thrown() const { throw this[].get(); }
+  int failed() const { this[].fail(); }
+};
+
+template<class T> union enum Box : u8
+{
+  { {Value, T}, {Other, B} }
+  int value() const { return this[].get(); }
+};
+
+int main()
+{
+  U x = A();
+  U y = B();
+  Box<A> box = A();
+  int caught = 0;
+  try
+  {
+    y.thrown();
+  }
+  catch (int v)
+  {
+    caught = v;
+  }
+  int failed = 0;
+  try
+  {
+    x.failed();
+  }
+  catch (int v)
+  {
+    failed = v;
+  }
+  std::println(x.value(), " ", y.value(), " ", x.twice(), " ", y.twice(), " ", box.value(), " ", caught, " ", failed);
+  return 0;
+}
