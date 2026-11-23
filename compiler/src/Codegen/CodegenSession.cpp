@@ -111,8 +111,8 @@ std::string codegen::stubText(const std::string& name, const std::string& ret, c
 // call may name a function of another type, so the module compiles and the link reports the name.
 // With stubs (--stub-missing), each is defined as a stub instead (stubText), its message the one
 // stubs gives it or its name.
-static std::string declareUndefined(const std::string& text, const std::unordered_map<std::string, std::string>* stubs = nullptr,
-                                    std::unordered_set<std::string>* stubbed = nullptr)
+static std::string declareUndefined(const std::string& text, const NameKeyMap<std::string>* stubs = nullptr,
+                                    NameKeySet* stubbed = nullptr)
 {
   auto nameAt = [&](size_t i) -> std::string
   {
@@ -130,7 +130,7 @@ static std::string declareUndefined(const std::string& text, const std::unordere
     }
     return text.substr(i, end - i);
   };
-  std::unordered_set<std::string> known, used;
+  NameKeySet known, used;
   for (size_t line = 0; line < text.size();)
   {
     size_t next = text.find('\n', line);
@@ -205,7 +205,7 @@ static void dropSharedLiterals(Shared& sh, std::vector<std::string>& entries)
 static void dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>& emitters, unsigned k, std::vector<std::string>& entries)
 {
   auto literal = [](const std::string& e) { return e.starts_with("$.str.") || e.starts_with("$.wstr.") || e.starts_with("$.data."); };
-  std::unordered_set<std::string_view> named;
+  NameViewKeySet named;
   auto scan = [&](std::string_view text) { irNamesIn(text, [&](size_t at, size_t length) { named.insert(text.substr(at, length)); }); };
   for (const Shared::Definition& d : sh.definitions[k])
     scan(d.text); // (its whole text: Definition::names leaves out what the module defines, its literals)
@@ -384,7 +384,7 @@ static void collectNextLevel(std::vector<std::unique_ptr<Emitter>>& emitters, st
   }
   if (collectInParallel(emitters, level))
     return;
-  std::unordered_map<std::string, Request*> first;
+  NameKeyMap<Request*> first;
   for (const Instantiation& item : level)
     first.emplace(item.name, nullptr);
   for (auto& em : emitters)
@@ -417,7 +417,7 @@ static bool collectInParallel(std::vector<std::unique_ptr<Emitter>>& emitters, s
   const unsigned threads = unsigned(emitters.size());
   if (threads < 2 || n < 4096 || n >= UINT32_MAX)
     return false;
-  std::unordered_map<std::string_view, uint32_t> index; // the names, each item's (views into level: it stays put until the merge)
+  NameViewKeyMap<uint32_t> index; // the names, each item's (views into level: it stays put until the merge)
   index.reserve(n);
   for (uint32_t i = 0; i < n; ++i)
     if (level[i].name.empty() || !index.emplace(level[i].name, i).second)
@@ -489,9 +489,9 @@ static bool collectInParallel(std::vector<std::unique_ptr<Emitter>>& emitters, s
 // (a function's): the functions defined (definedIn), and the globals the shared declarations, the
 // shared definitions and each module's own declarations define (not `external` ones). For the
 // barrier check (Shared::checkBarrier), at the barrier and at the end.
-static std::unordered_map<std::string, std::string> definedNames(const Shared& sh)
+static NameKeyMap<std::string> definedNames(const Shared& sh)
 {
-  std::unordered_map<std::string, std::string> names;
+  NameKeyMap<std::string> names;
   for (const auto& [name, module] : sh.definedIn)
     names.emplace(name, std::string());
   auto globalsIn = [&](std::string_view text)
@@ -547,11 +547,45 @@ static std::string sharedFunctionIn(const std::string& entry, std::string& heade
 // The program functions the emitters emitted since they were last gathered (Shared::programFunctions).
 static void gatherProgramFunctions(Shared& sh, std::vector<std::unique_ptr<Emitter>>& emitters)
 {
+  size_t count = 0;
+  for (auto& em : emitters)
+    count += em->programFunctionsNow.size();
+  // The set of names and the map of their files are two tables: at level 0's barrier, where every emitter and the
+  // back end wait for this (the game's 80,000 names, 0.1 s on one thread), the set is filled on a thread of its own.
+  std::atomic<bool> outOfMemory{false};
+  auto names = [&]
+  {
+    try
+    {
+      for (auto& em : emitters)
+        sh.programFunctions.insert(em->programFunctionsNow.begin(), em->programFunctionsNow.end());
+    }
+    catch (const std::bad_alloc&)
+    {
+      outOfMemory = true;
+    }
+  };
+  std::thread beside;
+  if (count >= 4096)
+    beside = std::thread(names);
+  else
+    names();
+  try
+  {
+    for (auto& em : emitters)
+      for (size_t i = 0; i < em->programFunctionsNow.size() && i < em->programFunctionFilesNow.size(); ++i)
+        sh.programFunctionFiles[em->programFunctionsNow[i]] = em->programFunctionFilesNow[i];
+  }
+  catch (const std::bad_alloc&)
+  {
+    outOfMemory = true;
+  }
+  if (beside.joinable())
+    beside.join();
+  if (outOfMemory)
+    throw std::bad_alloc();
   for (auto& em : emitters)
   {
-    sh.programFunctions.insert(em->programFunctionsNow.begin(), em->programFunctionsNow.end());
-    for (size_t i = 0; i < em->programFunctionsNow.size() && i < em->programFunctionFilesNow.size(); ++i)
-      sh.programFunctionFiles[em->programFunctionsNow[i]] = em->programFunctionFilesNow[i];
     em->programFunctionsNow.clear();
     em->programFunctionFilesNow.clear();
   }
@@ -562,7 +596,7 @@ static void gatherProgramFunctions(Shared& sh, std::vector<std::unique_ptr<Emitt
 // (Emitter::addSharedStatic).
 static void appendOwnedEntries(const Shared& sh, unsigned k, std::vector<std::string>& entries)
 {
-  std::unordered_set<std::string_view> seen;
+  NameViewKeySet seen;
   for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
     if (!sh.programOwned(o.owner) && seen.insert(o.text).second)
       entries.push_back(o.text);
@@ -576,8 +610,8 @@ static void appendOwnedEntries(const Shared& sh, unsigned k, std::vector<std::st
 // one text in both.
 struct PieceSources
 {
-  std::unordered_map<std::string_view, std::vector<std::string_view>> decls, shared;
-  std::unordered_map<std::string_view, std::string_view> types;
+  NameViewKeyMap<std::vector<std::string_view>> decls, shared;
+  NameViewKeyMap<std::string_view> types;
   bool atBarrier = false;
 };
 
@@ -585,7 +619,7 @@ static PieceSources pieceSources(const Shared& sh, bool atBarrier)
 {
   PieceSources sources;
   sources.atBarrier = atBarrier;
-  auto add = [&](std::unordered_map<std::string_view, std::vector<std::string_view>>& index, std::string_view text)
+  auto add = [&](NameViewKeyMap<std::vector<std::string_view>>& index, std::string_view text)
   {
     Emitter::forEachLine(text, [&](std::string_view unit)
     {
@@ -658,7 +692,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   std::sort(owned.begin(), owned.end());
   owned.erase(std::unique(owned.begin(), owned.end()), owned.end()); // (a shared static local's, one per function naming it)
   // What the piece defines (by name, without the sigil), and the module's own declarations by name.
-  std::unordered_set<std::string_view> defined;
+  NameViewKeySet defined;
   for (const Shared::Definition* d : definitions)
     if (!d->name.empty())
       defined.insert(std::string_view(d->name).substr(1));
@@ -668,7 +702,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
       if (std::string_view name = Emitter::definedBy(unit); !name.empty())
         defined.insert(name);
     });
-  std::unordered_map<std::string_view, std::vector<std::string_view>> own;
+  NameViewKeyMap<std::vector<std::string_view>> own;
   auto addOwn = [&](std::string_view text)
   {
     Emitter::forEachLine(text, [&](std::string_view unit)
@@ -698,7 +732,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
   }
   for (std::string_view entry : owned)
     uses(entry);
-  std::unordered_set<std::string_view> seen;
+  NameViewKeySet seen;
   while (!work.empty())
   {
     std::string_view name = work.back(); // `@name` or `@"name"`
@@ -765,7 +799,7 @@ static std::string programPieceText(const Shared& sh, unsigned k, const std::str
     }
   }
   std::vector<std::string_view> types;
-  std::unordered_set<std::string_view> typeSeen;
+  NameViewKeySet typeSeen;
   while (!typeWork.empty())
   {
     std::string_view name = typeWork.back();
@@ -1219,7 +1253,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // A lambda's call operator is emitted with the function the lambda is written in; one called
   // that never was is reported, unless that function failed (its own error says why).
   {
-    std::unordered_set<std::string> failed;
+    NameKeySet failed;
     for (auto& em : emitters)
       failed.insert(em->failedFunctions.begin(), em->failedFunctions.end());
     for (auto& [name, lambda] : sh.closureCalls)
@@ -1256,27 +1290,100 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // code changes. (Streaming's program pieces declare them, never define them: docs/codegen-speed.md.)
   if (sh.moduleCount > 1)
   {
-    std::vector<std::string> everywhere;
-    for (std::string& entry : sh.shared.entries)
+    // Each entry's own part on the emitters' threads: the function it holds, its declaration, its home, and its
+    // definition, whose text is scanned for the names and types it uses. An entry reads its own text alone. The
+    // entries then go where they belong in their order, as one thread put them: on one thread this was 0.3 s of
+    // the game's codegen, with every other core and LLVM's threads idle (docs/codegen-speed.md, section 8).
+    struct Homed
     {
-      std::string header;
-      std::string name = sharedFunctionIn(entry, header);
-      // (A release build's ThinLTO has every other shared function in every module, as before.)
-      if (name.empty() || (sh.importableModules != 0 && !name.starts_with("@kpp.dtor.")))
+      std::string name, declaration; // (no name: an entry every module keeps)
+      unsigned home = 0;
+      Shared::Definition definition;
+    };
+    std::vector<std::string>& entries = sh.shared.entries;
+    std::vector<Homed> homed(entries.size());
+    std::atomic<size_t> nextEntry{0};
+    std::atomic<bool> homeOutOfMemory{false};
+    auto homeEntries = [&](unsigned)
+    {
+      try
       {
-        everywhere.push_back(std::move(entry));
-        continue;
+        for (size_t from; (from = nextEntry.fetch_add(64)) < entries.size();)
+          for (size_t i = from; i < std::min(from + 64, entries.size()); ++i)
+          {
+            std::string& entry = entries[i];
+            std::string header;
+            std::string name = sharedFunctionIn(entry, header);
+            // (A release build's ThinLTO has every other shared function in every module, as before.)
+            if (name.empty() || (sh.importableModules != 0 && !name.starts_with("@kpp.dtor.")))
+              continue;
+            Homed& h = homed[i];
+            h.home = sh.emissionModule(std::hash<std::string>()(name));
+            h.declaration = Emitter::sharedDeclarationOf(header);
+            // weak_odr, not linkonce_odr: the home module's copy is the only one, and a release build's
+            // optimizer drops a linkonce_odr definition its own module does not call (the link then
+            // missed the helpers the other modules declare).
+            if (size_t at = entry.find("define linkonce_odr "); at != std::string::npos)
+              entry.replace(at, std::string_view("define linkonce_odr").size(), "define weak_odr");
+            h.definition = Shared::definitionOf(std::move(entry));
+            h.name = std::move(name);
+          }
       }
-      unsigned home = sh.emissionModule(std::hash<std::string>()(name));
-      sh.definedIn[name] = home;
-      sh.declareLines[name] = Emitter::sharedDeclarationOf(header);
-      // weak_odr, not linkonce_odr: the home module's copy is the only one, and a release build's
-      // optimizer drops a linkonce_odr definition its own module does not call (the link then
-      // missed the helpers the other modules declare).
-      if (size_t at = entry.find("define linkonce_odr "); at != std::string::npos)
-        entry.replace(at, std::string_view("define linkonce_odr").size(), "define weak_odr");
-      sh.definitions[home].push_back(Shared::definitionOf(std::move(entry)));
+      catch (const std::bad_alloc&)
+      {
+        homeOutOfMemory = true; // (thrown again below, on this thread, as the loop on one thread threw it)
+      }
+    };
+    onThreads(entries.size() < 256 ? 1 : threads, homeEntries);
+    if (homeOutOfMemory)
+      throw std::bad_alloc();
+    // Where each goes, in the entries' order: the two maps of names and the modules' definitions are three tables
+    // that share nothing, so each map is filled on a thread of its own while this one places the definitions (the
+    // maps' insertions of the long names were most of what the loop took).
+    std::atomic<bool> tableOutOfMemory{false};
+    auto filling = [&](auto&& fill)
+    {
+      return std::thread([&tableOutOfMemory, fill]
+      {
+        try
+        {
+          fill();
+        }
+        catch (const std::bad_alloc&)
+        {
+          tableOutOfMemory = true;
+        }
+      });
+    };
+    std::thread defined = filling([&]
+    {
+      for (const Homed& h : homed)
+        if (!h.name.empty())
+          sh.definedIn[h.name] = h.home;
+    });
+    std::thread declared = filling([&]
+    {
+      for (Homed& h : homed)
+        if (!h.name.empty())
+          sh.declareLines[h.name] = std::move(h.declaration);
+    });
+    std::vector<std::string> everywhere;
+    try
+    {
+      for (size_t i = 0; i < entries.size(); ++i)
+        if (Homed& h = homed[i]; h.name.empty())
+          everywhere.push_back(std::move(entries[i]));
+        else
+          sh.definitions[h.home].push_back(std::move(h.definition));
     }
+    catch (const std::bad_alloc&)
+    {
+      tableOutOfMemory = true;
+    }
+    defined.join();
+    declared.join();
+    if (tableOutOfMemory)
+      throw std::bad_alloc();
     sh.shared.entries = std::move(everywhere);
   }
   // Streaming's barrier check (Shared::checkBarrier), every text written (the shared functions homed
@@ -1286,7 +1393,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   // global's external declaration). A difference is kpp's error, never a program piece assembled from it.
   if (sh.barrierTaken && sh.checkBarrier && result.errors.empty())
   {
-    std::unordered_map<std::string, std::string> defined = definedNames(sh);
+    NameKeyMap<std::string> defined = definedNames(sh);
     std::map<std::string, std::string> unknown; // a name -> the first level-0 definition naming it
     for (unsigned k = 0; k < sh.moduleCount; ++k)
       for (size_t i = 0; i < sh.barrierCounts[k] && i < sh.definitions[k].size(); ++i)
@@ -1436,7 +1543,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
       result.ir += debugModuleTailFor(sh.target, sh.fullDebugInfo, lists);
     if (failed)
     {
-      std::unordered_set<std::string> stubbed;
+      NameKeySet stubbed;
       result.ir += declareUndefined(result.ir, sh.stubMissing ? &sh.stubMessages : nullptr, &stubbed);
       result.stubs = stubbed.size() + countUndefinedStubs(sh);
     }
@@ -1449,7 +1556,7 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   e.prepareModuleTexts();
   const unsigned outputs = sh.outputModules();
   result.modules.resize(outputs);
-  std::vector<std::unordered_set<std::string>> stubbedIn(outputs);
+  std::vector<NameKeySet> stubbedIn(outputs);
   std::vector<std::string> pieceErrors(e.moduleCount);
   std::optional<PieceSources> sources;
   if (sh.splitPieces)
@@ -1538,8 +1645,8 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   if (placed && !keepTexts)
     for (unsigned k = 0; k < e.moduleCount; ++k)
       std::vector<Shared::Definition>().swap(sh.definitions[k]);
-  std::unordered_set<std::string> stubbed;
-  for (const std::unordered_set<std::string>& names : stubbedIn)
+  NameKeySet stubbed;
+  for (const NameKeySet& names : stubbedIn)
     stubbed.insert(names.begin(), names.end());
   if (sh.stubMissing)
     result.stubs = stubbed.size() + countUndefinedStubs(sh);
@@ -1795,7 +1902,7 @@ namespace
   // (kovarex, 2026-11-18: 0.12 s of a language server's check of the game).
   struct HashedNames
   {
-    std::pair<std::unordered_set<std::string>::iterator, bool> insert(const std::string& name)
+    std::pair<NameKeySet::iterator, bool> insert(const std::string& name)
     {
       auto inserted = names.insert(name);
       if (inserted.second)
@@ -1818,7 +1925,7 @@ namespace
     bool holdsOwnerOf(const Shared::Definition& d) const { return holds(d.owner, d.asked.ownerHash, d.asked.ownerHashed); }
     bool holdsOwnerOf(const Shared::OwnedEntry& o) const { return holds(o.owner, o.ownerHash, o.ownerHashed); }
 
-    std::unordered_set<std::string> names;
+    NameKeySet names;
     std::unordered_set<size_t> hashes;
   };
 }
@@ -1909,7 +2016,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // constructors below: their lambdas' closures are the types they were, so what was made for those stays (until 2026-11-10 it
   // went as an old closure's, and a polymorphic local class of a template's instance made for one lost its virtual functions,
   // its vtable kept: thread F's game did not link after an edit of Entity::getDump, which EntityWithOwner's constructor reads).
-  std::unordered_set<std::string> sameClosures;
+  NameKeySet sameClosures;
   {
     std::unordered_set<const FunctionDecl*> replacedSet(replaced.begin(), replaced.end());
     for (const std::vector<FunctionDecl*>* list : {&changedBodies, &movedLines})
@@ -2251,7 +2358,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // Its name released: the new closure's instance has it, and is asked for by its first use (every
   // emitter's answers forget it too, all at once below: one pass over each emitter's answers, not one
   // per name, which an edit of the game's fmain made 7 s).
-  std::unordered_set<std::string> releasedNames;
+  NameKeySet releasedNames;
   auto releaseName = [&](const std::string& name)
   {
     sh.requested.release(name);
@@ -2540,7 +2647,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     }
     if (!madeTrivial.empty())
     {
-      std::unordered_map<std::string_view, size_t> byName;
+      NameViewKeyMap<size_t> byName;
       for (size_t i = 0; i < madeTrivial.size(); ++i)
         byName.emplace(madeTrivial[i].name, i);
       for (unsigned k = 0; k < sh.moduleCount; ++k)
@@ -2605,7 +2712,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   size_t droppedFunctions = 0;
   // The call operators emitted on demand whose writer is emitted again: emitted again on their own
   // (the writer may never make their closure itself).
-  std::unordered_set<std::string> removedNames;
+  NameKeySet removedNames;
   for (FunctionDecl* f : removed)
     removedNames.insert(e.functionName(f, {}, nullptr));
   struct Operator
@@ -2888,8 +2995,8 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // Errors keep the session when they came from program functions' own emissions (as generate keeps
   // it), each of those emitted again only for its last error failing again.
   bool errors = false;
-  std::unordered_map<std::string, FunctionDecl*> erroring;
-  std::unordered_map<std::string, Instantiation> erroringInstances;
+  NameKeyMap<FunctionDecl*> erroring;
+  NameKeyMap<Instantiation> erroringInstances;
   for (auto& em : emitters)
     if (!em->errors.empty() || em->unattributedErrors || em->hiddenErrors)
     {
@@ -3127,9 +3234,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // both modules, and a module whose definitions changed changes those its definitions are placed in.
   if (sh.importableModules)
   {
-    std::unordered_map<std::string, unsigned> before = sh.placedIn;
+    NameKeyMap<unsigned> before = sh.placedIn;
     e.placeShortDefinitions(session.threads);
-    auto at = [&](const std::unordered_map<std::string, unsigned>& placed, const std::string& name)
+    auto at = [&](const NameKeyMap<unsigned>& placed, const std::string& name)
     {
       if (auto it = placed.find(name); it != placed.end())
         return it->second;

@@ -87,7 +87,7 @@
     // (the shared declarations, which every module carries, or the current module, unless the
     // shared ones define it: a module's own definition of one the shared declarations define later
     // is dropped when its declarations are finished, dropSharedLiterals).
-    std::unordered_map<std::string, std::string> constantCache; // where + prefix + contents -> the name this emitter got
+    NameKeyMap<std::string> constantCache; // where + prefix + contents -> the name this emitter got
     std::pair<std::string, bool> constantName(const char* prefix, const std::string& contents);
 
     // A string literal's definition: one object in the program (the linker keeps one of the
@@ -271,14 +271,14 @@
     // The shared declarations as module k carries them; without the type definitions when types is
     // false (moduleText writes those the module uses). An instance piece's (programNames: what its
     // program piece defines) keep the declarations of those.
-    std::string declsFor(unsigned k, bool types = true, const std::unordered_set<std::string_view>* programNames = nullptr);
+    std::string declsFor(unsigned k, bool types = true, const NameViewKeySet* programNames = nullptr);
     // A line of the shared declarations that declsFor leaves out of module k: a `declare` of what k defines
     // (not its program piece's, programNames), or of a function used without a definition, whose stub
     // (--stub-missing) it appends to out instead.
-    bool declarationLeftOut(unsigned k, std::string_view line, const std::unordered_set<std::string_view>* programNames, std::string& out);
+    bool declarationLeftOut(unsigned k, std::string_view line, const NameViewKeySet* programNames, std::string& out);
 
     // The functions a text has `declare` lines for.
-    static void declaredIn(std::string_view text, std::unordered_set<std::string>& out);
+    static void declaredIn(std::string_view text, NameKeySet& out);
 
     // The length of the LLVM type at the start of text: a bracketed aggregate (`[4 x i32]`, `{ i32,
     // ptr }`, `<{ ... }>`) to its matching close, else one word (`i32`, `ptr`, `%struct.<hash>`).
@@ -340,7 +340,7 @@
     // globals as module k has them: defined where k is their home, declared where k names them (its
     // texts, as moduleText found them in seen; its homed globals' initializers; the lines every module
     // keeps), else left out. In one pass over the shared declarations.
-    std::string homedDeclsFor(unsigned k, const std::unordered_set<std::string_view>* programNames, const std::unordered_set<std::string>& seen);
+    std::string homedDeclsFor(unsigned k, const NameViewKeySet* programNames, const NameKeySet& seen);
 
     // A release build's placement (Shared::importableModules). ThinLTO imports short functions into
     // their callers' modules, and its cache keeps a module's back end only while every module it

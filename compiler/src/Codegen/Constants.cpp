@@ -1052,7 +1052,7 @@ auto codegen::Emitter::finishStubRuntime() -> void
             "  %f2 = call i32 @fflush(ptr %err)\n  call void @abort()\n  unreachable\n}\n";
 }
 
-auto codegen::Emitter::declarationLeftOut(unsigned k, std::string_view line, const std::unordered_set<std::string_view>* programNames, std::string& out) -> bool
+auto codegen::Emitter::declarationLeftOut(unsigned k, std::string_view line, const NameViewKeySet* programNames, std::string& out) -> bool
 {
   if (line.rfind("declare ", 0) != 0)
     return false;
@@ -1076,7 +1076,7 @@ auto codegen::Emitter::declarationLeftOut(unsigned k, std::string_view line, con
   return false;
 }
 
-auto codegen::Emitter::declsFor(unsigned k, bool types, const std::unordered_set<std::string_view>* programNames) -> std::string
+auto codegen::Emitter::declsFor(unsigned k, bool types, const NameViewKeySet* programNames) -> std::string
 {
   std::string out;
   const std::string& decls = this->decls.text;
@@ -1098,7 +1098,7 @@ auto codegen::Emitter::declsFor(unsigned k, bool types, const std::unordered_set
   return out;
 }
 
-auto codegen::Emitter::declaredIn(std::string_view text, std::unordered_set<std::string>& out) -> void
+auto codegen::Emitter::declaredIn(std::string_view text, NameKeySet& out) -> void
 {
   for (size_t pos = 0; pos < text.size();)
   {
@@ -1259,10 +1259,10 @@ auto codegen::Emitter::prepareModuleTexts() -> void
   }
 }
 
-auto codegen::Emitter::homedDeclsFor(unsigned k, const std::unordered_set<std::string_view>* programNames, const std::unordered_set<std::string>& seen)
+auto codegen::Emitter::homedDeclsFor(unsigned k, const NameViewKeySet* programNames, const NameKeySet& seen)
   -> std::string
 {
-  std::unordered_set<std::string_view> needed;
+  NameViewKeySet needed;
   auto need = [&](std::string_view name)
   {
     if (auto it = sh.homedGlobals.find(name); it != sh.homedGlobals.end() && it->second.home != k)
@@ -1358,7 +1358,7 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
       t.join();
   };
   // Every module's declarations by the name each line is for (a global and its comdat).
-  std::vector<std::unordered_map<std::string_view, std::vector<std::string_view>>> linesFor(moduleCount);
+  std::vector<NameViewKeyMap<std::vector<std::string_view>>> linesFor(moduleCount);
   forModules([&](unsigned k)
   {
     forEachLine(moduleDecls[k].text, [&](std::string_view line)
@@ -1390,7 +1390,7 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
     // names with it: the definitions and local names joined that way move together or stay
     // together. A group stays when one of its definitions is long, or a line that stays (one
     // not local) names one of its local names.
-    std::unordered_map<std::string_view, uint32_t> localNode;
+    NameViewKeyMap<uint32_t> localNode;
     for (auto& [name, lines] : linesFor[k])
       for (std::string_view line : lines)
         if (localLine(line))
@@ -1467,7 +1467,7 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
       if (stays[group])
         continue;
       std::vector<std::string_view> work;
-      std::unordered_set<std::string_view> seen;
+      NameViewKeySet seen;
       for (auto [at, length] : defs[i].names)
         work.push_back(std::string_view(defs[i].text).substr(at + 1, length - 1));
       while (!work.empty())
@@ -1506,7 +1506,7 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
     }
   });
   std::vector<Unit> units;
-  std::unordered_map<std::string_view, uint32_t> unitOf; // a unit's definition's name -> the unit
+  NameViewKeyMap<uint32_t> unitOf; // a unit's definition's name -> the unit
   for (unsigned k = 0; k < moduleCount; ++k)
   {
     uint32_t first = uint32_t(units.size());
@@ -1611,7 +1611,7 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
     }
   propagate();
   // Where each unit goes, then what it takes with it.
-  std::vector<std::unordered_set<std::string_view>> own(moduleCount); // what each module's declarations define or declare
+  std::vector<NameViewKeySet> own(moduleCount); // what each module's declarations define or declare
   forModules([&](unsigned k)
   {
     for (auto& [name, lines] : linesFor[k])
@@ -1680,7 +1680,7 @@ auto codegen::Emitter::placeShortDefinitions(unsigned threads) -> void
 
 auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool instancePiece, std::string* errors) -> std::string
 {
-  std::unordered_set<std::string_view> programNames, programPrivate; // (an instance piece's: what its program piece defines)
+  NameViewKeySet programNames, programPrivate; // (an instance piece's: what its program piece defines)
   if (instancePiece)
   {
     for (const Shared::Definition& d : sh.definitions[k])
@@ -1719,7 +1719,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
   std::string reached;
   if (instancePiece)
   {
-    std::unordered_map<std::string_view, std::vector<std::string_view>> units;
+    NameViewKeyMap<std::vector<std::string_view>> units;
     forEachLine(ownDecls, [&](std::string_view unit)
     {
       if (std::string_view name = definedBy(unit); !name.empty())
@@ -1738,7 +1738,7 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
         work.push_back(name.substr(1));
     for (std::string_view name : sh.namedByShared)
       work.push_back(name.substr(1));
-    std::unordered_set<std::string_view> seen;
+    NameViewKeySet seen;
     std::unordered_set<const char*> keep; // the units reached, by where they start
     while (!work.empty())
     {
@@ -1762,11 +1762,11 @@ auto codegen::Emitter::moduleText(unsigned k, const std::string& prefix, bool in
     });
     ownDecls = reached;
   }
-  std::unordered_set<std::string> already; // declarations the module carries (shared, or its own)
+  NameKeySet already; // declarations the module carries (shared, or its own)
   declaredIn(ownDecls, already);
   declaredIn(sh.placedDecls[k], already);
   std::string declares;
-  std::unordered_set<std::string> seen;
+  NameKeySet seen;
   auto declare = [&](const std::string& name)
   {
     auto line = declareLines.find(name);

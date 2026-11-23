@@ -7,12 +7,12 @@ struct NameSet
   struct Shard
   {
     SpinMutex mutex;
-    std::unordered_set<std::string> names;
+    NameKeySet names;
   };
   // By the hash's top bits: a shard's set buckets by its low bits (a power-of-two bucket count),
   // and picked by those too, its names all fell into one bucket in 64 (11.7% of codegen's time
   // at -j 1 was spent walking those chains).
-  Shard& shardOf(const std::string& name) { return shards[(std::hash<std::string>()(name) >> 58) % std::size(shards)]; }
+  Shard& shardOf(const std::string& name) { return shards[(NameHash()(name) >> 58) % std::size(shards)]; }
   // Marks name; true for whoever marked it first.
   bool claim(const std::string& name)
   {

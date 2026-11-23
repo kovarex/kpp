@@ -784,9 +784,12 @@ void runCodegen(Build& build)
   // --debug-info for Visual Studio: the .natvis that shows the library's values (a String's text, a
   // Vector's elements), linked into the PDB by linkFlags' /NATVIS (docs/debugging.md, "Values in
   // Visual Studio"), for the MSVC target and windows-gnu alike (both write a PDB). A rule a library
-  // change broke is left out with a warning.
-  if (options.debugInfo && options.target.windows() && !options.exe.empty())
+  // change broke is left out with a warning. It is made once the modules are with the back end (below), not
+  // before: that was 0.08 to 0.12 s of the game's build on one thread while LLVM's threads waited for the modules.
+  auto writeNatvis = [&]
   {
+    if (!options.debugInfo || !options.target.windows() || options.exe.empty())
+      return;
     std::vector<ParsedFile*> files;
     for (const std::unique_ptr<ParsedFile>& p : parsed)
       files.push_back(p.get());
@@ -798,16 +801,15 @@ void runCodegen(Build& build)
       fprintf(stderr, "error: cannot write %s\n", natvisPath(options).c_str());
     // The program's own .natvis files, one path a line, for what cannot read them out of the PDB: Visual
     // Studio's kpp evaluator (docs/debugging.md, "this in the watch window").
-    {
-      std::string list;
-      for (const std::string& file : options.natvisFiles)
-        list += std::filesystem::absolute(file).string() + "\n";
-      if (!writeFile(natvisPath(options) + "-files", list))
-        fprintf(stderr, "error: cannot write %s-files\n", natvisPath(options).c_str());
-    }
-  }
+    std::string list;
+    for (const std::string& file : options.natvisFiles)
+      list += std::filesystem::absolute(file).string() + "\n";
+    if (!writeFile(natvisPath(options) + "-files", list))
+      fprintf(stderr, "error: cannot write %s-files\n", natvisPath(options).c_str());
+  };
   if (cg.modules.empty())
   {
+    writeNatvis();
     std::string llPath = options.emitLLVM.empty() ? options.exe + ".ll" : options.emitLLVM;
     cg.ir = forTarget(cg.ir, options);
     if (!writeFile(llPath, cg.ir) || options.exe.empty() || stop)
@@ -834,6 +836,7 @@ void runCodegen(Build& build)
   }
   if (stop)
   {
+    writeNatvis();
     // What this build assembled is assembled again by the next, its objects compiled then (codegen's own
     // errors assembled nothing: the session has them; a build in full's modules are all new).
     if (build.codegen && (!rebuilt || std::count(cg.changedModules.begin(), cg.changedModules.end(), true)))
@@ -952,6 +955,7 @@ void runCodegen(Build& build)
         again.push_back(k);
       else
         backEnd->push([&, k] { compileEnd(k); }, false, cg.modules[k].size());
+    writeNatvis(); // (while they compile)
     if (!again.empty())
     {
       backEnd->waitStreamed();
@@ -974,7 +978,10 @@ void runCodegen(Build& build)
     backEnd->wait();
   }
   else
+  {
+    writeNatvis();
     parallelFor(cg.modules.size(), options.threads, compileEnd);
+  }
   double compileTime = seconds(Clock::now() - start);
   if (int patched = patchedObjects.load())
     logBuildNote(std::to_string(patched) + " object(s) of modules whose lines alone changed patched, not compiled");

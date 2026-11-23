@@ -298,9 +298,9 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
   // A C declaration of one of the runtime's functions (the library's `extern "C" void kpp_throw(...)`):
   // the runtime's headers declare it to every module that calls it and the shared text defines it,
   // so a declare line of its own would be a second definition where both land in one module.
-  static const std::unordered_set<std::string> runtimeNames = []
+  static const NameKeySet runtimeNames = []
   {
-    std::unordered_set<std::string> names;
+    NameKeySet names;
     for (const std::string& header : runtimeHeaders())
     {
       std::string runtimeName;

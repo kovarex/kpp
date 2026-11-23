@@ -10,7 +10,7 @@
     // its first requester by name: the driver takes the first over all emitters as the
     // instantiation's requester (which the diagnostics name, and whose depth it inherits), the same
     // in every run, where the first to ask depends on timing. Every request counts, cached or not.
-    std::unordered_map<std::string, Request> levelRequests;
+    NameKeyMap<Request> levelRequests;
     void noteRequest(const std::string& name);
     bool lastUseInstantiates = false; // the last useFunctionOnce asked for an instantiation
 
@@ -38,7 +38,7 @@
       std::string name;
       bool instantiation; // asked for as an instantiation: each use is a request (noteRequest)
     };
-    std::unordered_map<std::string, UsedFunction> usedFunctions; // what useFunction answered this emitter (its shared part done)
+    NameKeyMap<UsedFunction> usedFunctions; // what useFunction answered this emitter (its shared part done)
     // Why f under args (and classTy) is no instantiation a symbol can name: one of its own template
     // parameters, or of the class template it is a member of, is unbound or bound to a type not known
     // or still dependent (`@Bindable::debugChildren<?>(int32)`, undefined at the link). Empty when it is one.

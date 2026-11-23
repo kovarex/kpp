@@ -153,24 +153,24 @@ namespace codegen
     std::vector<SharedText>& bodies = sh.bodies;
     std::vector<SharedText>& moduleDecls = sh.moduleDecls;
     std::vector<Shared::Startup>& startups = sh.startups;
-    std::unordered_map<std::string, std::string>& threadLocalInits = sh.threadLocalInits;
-    std::vector<std::unordered_set<std::string>>& vtablesIn = sh.vtablesIn;
+    NameKeyMap<std::string>& threadLocalInits = sh.threadLocalInits;
+    std::vector<NameKeySet>& vtablesIn = sh.vtablesIn;
     std::unordered_map<ParsedFile*, unsigned>& fileModule = sh.fileModule;
-    std::unordered_map<std::string, unsigned>& definedIn = sh.definedIn;
-    std::unordered_map<std::string, std::string>& declareLines = sh.declareLines;
+    NameKeyMap<unsigned>& definedIn = sh.definedIn;
+    NameKeyMap<std::string>& declareLines = sh.declareLines;
     bool& debug = sh.debug;
     std::atomic<bool>& usesAssert = sh.usesAssert;
     std::atomic<bool>& usesThreadExit = sh.usesThreadExit;
     std::atomic<bool>& usesProgramExit = sh.usesProgramExit;
-    std::unordered_map<std::string, const Ty*>& irTypeNames = sh.irTypeNames;
+    NameKeyMap<const Ty*>& irTypeNames = sh.irTypeNames;
     std::unordered_map<const Ty*, StructInfo>& structs = sh.structs;
     std::unordered_map<const Ty*, StructInfo*>& structsByType = sh.structsByType;
     std::unordered_map<Decl*, std::string>& globals = sh.globals;
     bool& dyncastEmitted = sh.dyncastEmitted;
-    std::unordered_map<std::string, std::string>& instanceGlobals = sh.instanceGlobals;
+    NameKeyMap<std::string>& instanceGlobals = sh.instanceGlobals;
     NameSet& declaredNames = sh.declaredNames;
     std::unordered_map<const Ty*, ClosureInfo>& closures = sh.closures;
-    std::unordered_set<std::string>& lambdaInstances = sh.lambdaInstances;
+    NameKeySet& lambdaInstances = sh.lambdaInstances;
     NameSet& requested = sh.requested;
     // What this emitter asked for: the next level's functions (the driver gathers them).
     std::vector<Instantiation> worklist;
@@ -180,14 +180,14 @@ namespace codegen
     std::vector<const ParsedFile*> programFunctionFilesNow; // (each one's file: Shared::programFunctionFiles)
     // Its errors and the functions they left out, gathered once all are emitted.
     std::vector<std::string> errors, failedFunctions;
-    std::unordered_map<std::string, std::string> failedAt; // failed function's IR name -> "qualified name at file:line"
+    NameKeyMap<std::string> failedAt; // failed function's IR name -> "qualified name at file:line"
     // Where its errors came from, for a compile server's session kept across builds with errors
     // (rebuildLLVM): the program functions (level 0) whose own emission raised them, by IR name, the
     // template instances whose own emission did, with how each was emitted (erroringInstances), and
     // whether any came from elsewhere (a lambda's operator on demand, a global's constructor, a shared
     // text, a check after the emission), which a later build cannot emit again on its own.
-    std::unordered_map<std::string, FunctionDecl*> erroring;
-    std::unordered_map<std::string, Instantiation> erroringInstances;
+    NameKeyMap<FunctionDecl*> erroring;
+    NameKeyMap<Instantiation> erroringInstances;
     bool unattributedErrors = false;
     // The failures not shown (error's shown false: each follows from an error the checker reported):
     // failures all the same, for every decision that asks whether codegen failed (errors holds the
@@ -196,11 +196,11 @@ namespace codegen
     bool& mallocDeclared = sh.mallocDeclared;
     std::atomic<bool>& usesExceptions = sh.usesExceptions;
     std::atomic<bool>& usesNoexceptFilter = sh.usesNoexceptFilter;
-    std::unordered_map<std::string, bool>& emittedShared = sh.emittedShared;
+    NameKeyMap<bool>& emittedShared = sh.emittedShared;
     std::string& exceptionTypeinfo = sh.exceptionTypeinfo;
     uint64_t& exceptionMessageMark = sh.exceptionMessageMark;
     std::string& exceptionMessageOffset = sh.exceptionMessageOffset;
-    std::unordered_set<std::string>& sharedDeclared = sh.sharedDeclared;
+    NameKeySet& sharedDeclared = sh.sharedDeclared;
     // The shared lock, and how many times this emitter holds it. An answer computed under it is
     // published for the other emitters (FinalAnswers) only while it holds the lock once: then it is
     // in no other computation of its own half done. (Layouts are no such answer: structFor builds

@@ -3,6 +3,7 @@
 // moved without a change).
 #pragma once
 #include "codegen.hpp"
+#include "NameHash.hpp"
 #include "Ast/AstWalk.hpp"
 #include "consteval.hpp"
 #include "source.hpp"
@@ -367,7 +368,7 @@ namespace codegen
     std::vector<SharedText> bodies;                         // per module
     std::vector<SharedText> moduleDecls;                    // per module: its string constants and vtables
     std::vector<Startup> startups;
-    std::unordered_set<std::string> startupFunctions; // the functions startups names (a server's build emits one again)
+    NameKeySet startupFunctions; // the functions startups names (a server's build emits one again)
     // --coverage (design.md 28): each function with probes, by its array's name, with how many it has
     // and its region map's constant (Emitter::coverFinish); module 0's kpp_coverage_table lists them
     // (Emitter::coverageTableText).
@@ -377,7 +378,7 @@ namespace codegen
       std::string map;
     };
     std::map<std::string, CoverageEntry> coverageEntries;
-    std::unordered_map<std::string, GlobalInit> globalInits;
+    NameKeyMap<GlobalInit> globalInits;
     std::unordered_map<const Decl*, std::vector<std::string>> globalInitsOf;
     // A global defined with no constructor (constant data, globalForOnce), by its IR name: the declaration
     // its use named, its class (a template's instance, else null) and the bodies its evaluation ran (as
@@ -389,13 +390,13 @@ namespace codegen
       const Ty* classTy = nullptr;
       std::vector<const FunctionDecl*> ran;
     };
-    std::unordered_map<std::string, ConstantGlobal> constantGlobals;
-    std::unordered_map<std::string, std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
-    std::vector<std::unordered_set<std::string>> vtablesIn; // per module: the vtables it already has
+    NameKeyMap<ConstantGlobal> constantGlobals;
+    NameKeyMap<std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
+    std::vector<NameKeySet> vtablesIn; // per module: the vtables it already has
     std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module
-    std::unordered_map<std::string, unsigned> definedIn;    // function name -> module
-    std::unordered_map<std::string, std::string> declareLines; // function name -> its declare line
-    std::unordered_map<std::string, const Ty*> irTypeNames; // irTypeName(): a struct type's IR name -> its type
+    NameKeyMap<unsigned> definedIn;    // function name -> module
+    NameKeyMap<std::string> declareLines; // function name -> its declare line
+    NameKeyMap<const Ty*> irTypeNames; // irTypeName(): a struct type's IR name -> its type
     SpinMutex irTypeNamesMutex;                              // (irTypeNames' own: taken without the shared lock)
     // String literals (constantName): each name's contents, one name per contents for the whole
     // program; the names the shared declarations define, and those each module defines itself. In
@@ -403,13 +404,13 @@ namespace codegen
     struct LiteralShard
     {
       SpinMutex mutex;
-      std::unordered_map<std::string, std::string> contents;
-      std::unordered_set<std::string> shared;
-      std::vector<std::unordered_set<std::string>> modules;
+      NameKeyMap<std::string> contents;
+      NameKeySet shared;
+      std::vector<NameKeySet> modules;
     };
     LiteralShard literals[64];
-    LiteralShard& literalShard(const std::string& name) { return literals[(std::hash<std::string>()(name) >> 58) % std::size(literals)]; }
-    const LiteralShard& literalShard(const std::string& name) const { return literals[(std::hash<std::string>()(name) >> 58) % std::size(literals)]; }
+    LiteralShard& literalShard(const std::string& name) { return literals[(NameHash()(name) >> 58) % std::size(literals)]; }
+    const LiteralShard& literalShard(const std::string& name) const { return literals[(NameHash()(name) >> 58) % std::size(literals)]; }
     // The layouts, published whole (vtables included) by the emitter that built one first: each
     // builds a layout without the shared lock, as its own copy (Emitter::structFor), and the first
     // copy published is the class's. Under structsMutex, held only to look up and publish.
@@ -421,8 +422,8 @@ namespace codegen
     // A static local that code its function's emission does not write names too (Emitter::staticLocal):
     // its definition by name, which every module naming it has a copy of; a build of one module
     // defines it once.
-    std::unordered_map<std::string, std::string> sharedStatics;
-    std::unordered_set<std::string> sharedStaticsDefined;
+    NameKeyMap<std::string> sharedStatics;
+    NameKeySet sharedStaticsDefined;
     std::map<std::pair<Decl*, const Ty*>, std::string> failedGlobals; // globals whose definition failed -> what their uses report
     // Globals whose initializer an emitter evaluates before taking the lock (Emitter::globalFor):
     // another emitter that needs one waits for it to be defined instead of evaluating it again.
@@ -431,13 +432,13 @@ namespace codegen
     std::set<std::pair<Decl*, const Ty*>> evaluating;
     std::atomic<size_t> failuresRemembered{0}; // failed layouts, closures and globals, whose uses fail with them (no session kept)
     bool dyncastEmitted = false;                        // the @kpp.dyncast helper is in `decls`
-    std::unordered_map<std::string, std::string> instanceGlobals; // static members of class template instantiations, by name
+    NameKeyMap<std::string> instanceGlobals; // static members of class template instantiations, by name
     NameSet declaredNames;                               // IR names with a declare/define line
     std::atomic<size_t> functions{0};                    // functions defined (result.functions once done)
     std::unordered_map<const Ty*, ClosureInfo> closures; // keyed by the lambda type (one per enclosing instantiation)
     std::unordered_map<const Ty*, ClosureWriter> closureWriters; // by the (unqualified) lambda type
     std::unordered_set<const Ty*> closuresEmitted;       // lambdas whose call operator is emitted (or being emitted)
-    std::unordered_set<std::string> lambdaInstances;     // call operators of generic lambdas emitted so far, by IR name
+    NameKeySet lambdaInstances;     // call operators of generic lambdas emitted so far, by IR name
     NameSet requested;                                   // instantiated names queued or emitted
     FinalAnswers<const Ty*, StructInfo*> finalLayouts;   // complete (or failed) layouts, by any spelling of the class type
     FinalAnswers<const Ty*, std::pair<uint64_t, uint64_t>> finalSizes; // classSizeAndAlign
@@ -451,7 +452,7 @@ namespace codegen
     std::atomic<bool> usesThreadExit{false};             // a thread_local is destroyed at its thread's exit: kpp_thread_atexit
     std::atomic<bool> usesExceptions{false};             // the program needs the exception runtime
     std::atomic<bool> usesNoexceptFilter{false};         // Windows: a noexcept function's catchpad names kpp.eh.filter.noexcept
-    std::unordered_map<std::string, bool> emittedShared; // typeinfo and destructor thunks emitted
+    NameKeyMap<bool> emittedShared; // typeinfo and destructor thunks emitted
     std::string exceptionTypeinfo;                       // typeinfo of the library's Exception, once seen
     std::string exceptionMessageOffset = "0"; // where the message is in an Exception, after its vtable pointer
     uint64_t exceptionMessageMark = 0;                   // the byte of Exception's message (a String) that says heap or small
@@ -464,8 +465,8 @@ namespace codegen
     // asked for, never as a call site spells it (taking a function's address names no type).
     // barrierDefined and barrierCounts are level 0's barrier, for the check at the end that every
     // such name has a declaration and that it is its definition's (checkRequestDeclarations).
-    std::unordered_map<std::string, std::string> requestDeclarations; // under definitionsMutex
-    std::unordered_set<std::string> barrierDefined; // every name a text defines at the barrier (only with checkBarrier)
+    NameKeyMap<std::string> requestDeclarations; // under definitionsMutex
+    NameKeySet barrierDefined; // every name a text defines at the barrier (only with checkBarrier)
     std::vector<size_t> barrierCounts; // per module: its definitions at level 0's barrier
     bool barrierTaken = false;
     // KPP_CHECK_BARRIER (set by run_tests and spec until program pieces are assembled): the check at
@@ -481,14 +482,14 @@ namespace codegen
     // level 0's barrier, at the end and in a server's build. The instance piece holds the rest
     // (moduleText's instancePiece) and declares what the program piece defines.
     bool splitPieces = false;
-    std::unordered_set<std::string> programFunctions; // (rebuildLLVM: less the removed, with the added)
+    NameKeySet programFunctions; // (rebuildLLVM: less the removed, with the added)
     // Edit pieces (CodegenOptions::editPieces): output module 2M + e is the program piece of editFiles[e]'s program
     // functions, which their module's program piece leaves out (programPieceText's edit); their definitions stay in their
     // module's texts. programFunctionFiles: each program function's file (gathered with programFunctions). editModulesNow:
     // the modules a file of which got a piece since the last rebuildLLVM (addEditPieces), which it assembles again.
     std::vector<const ParsedFile*> editFiles;
     std::unordered_map<const ParsedFile*, unsigned> editPieceOfFile;
-    std::unordered_map<std::string, const ParsedFile*> programFunctionFiles;
+    NameKeyMap<const ParsedFile*> programFunctionFiles;
     std::vector<unsigned> editModulesNow;
     // The edit piece a program function's definitions go in (its owner's file's), or -1: its module's program piece.
     int editPieceOf(const std::string& owner) const
@@ -520,13 +521,13 @@ namespace codegen
     // others (Emitter::placeShortDefinitions); 0 in a debug build, whose modules are as emitted.
     unsigned importableModules = 0;
     bool homeGlobals = false;
-    std::unordered_map<std::string_view, HomedGlobal> homedGlobals; // by `@name`, a view into decls
-    std::unordered_map<std::string_view, unsigned> homedComdats;     // `$name` -> its global's home
+    NameViewKeyMap<HomedGlobal> homedGlobals; // by `@name`, a view into decls
+    NameViewKeyMap<unsigned> homedComdats;     // `$name` -> its global's home
     std::vector<std::vector<std::string_view>> homeNames;            // per module: the names its homed globals' initializers use
     std::vector<std::string_view> namedByShared;                     // the names the shared lines every module keeps use
     std::vector<std::vector<const Definition*>> placedHere; // per module: the definitions placed in it
     std::vector<std::string> placedDecls;                    // per module: what they name from where they were emitted
-    std::unordered_map<std::string, unsigned> placedIn;      // a placed definition's name -> its module
+    NameKeyMap<unsigned> placedIn;      // a placed definition's name -> its module
     std::unordered_set<const Definition*> placedAway;        // the definitions placed in another module than their own
     std::vector<std::vector<std::string_view>> movedOut;     // per module: its declarations' lines placed in another (static locals)
     // Held to add a definition (definitions, definedIn, declareLines: only added to while functions
@@ -534,10 +535,10 @@ namespace codegen
     SpinMutex definitionsMutex;
     std::vector<std::vector<OwnedEntry>> ownedEntries;   // per module
     std::vector<std::vector<std::string>> keptModuleEntries; // KPP_CHECK_REBUILD: the module declarations, before they were finished
-    std::unordered_set<std::string> sharedDeclared;      // functions with a declare line in `decls`, found once
+    NameKeySet sharedDeclared;      // functions with a declare line in `decls`, found once
     std::set<std::string> sharedReferences;              // program functions `decls` names (sorted: the same declares in every run)
     std::vector<TypeLine> typeLines;                     // the type definitions, in `decls` order (prepareModuleTexts)
-    std::unordered_map<std::string_view, uint32_t> typeIndex; // a type's name -> its line
+    NameViewKeyMap<uint32_t> typeIndex; // a type's name -> its line
     std::map<std::string, FunctionDecl*> undefinedUses;  // kpp functions used whose definition was not found (only declared)
     std::map<std::string, const Ty*> closureCalls;       // call operators of (non-generic) lambdas called, by name -> the lambda's type
     bool stubMissing = false;                            // --stub-missing: what is left out becomes stubs that abort (generateLLVM)
@@ -546,8 +547,8 @@ namespace codegen
     // A session kept across errors (generate): the program functions whose emission raised them, by
     // IR name (emitted again by every later build), the instances too (with how each was emitted: an
     // error typed into a template's body, kovarex 2026-11-20), and the modules not assembled since they changed.
-    std::unordered_map<std::string, FunctionDecl*> erroring;
-    std::unordered_map<std::string, Instantiation> erroringInstances;
+    NameKeyMap<FunctionDecl*> erroring;
+    NameKeyMap<Instantiation> erroringInstances;
     std::vector<bool> unassembled;
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck
@@ -598,8 +599,8 @@ namespace codegen
     std::function<void(const std::function<void(Emitter&)>& work)> onEmitters;
     // --debug-info: the program's main and wmain (their IR names), each with its DIFile and line, where
     // the entry that calls it is in the debug information (Emitter::emitEntry).
-    std::unordered_map<std::string, std::pair<std::string, size_t>> entryDebug;
-    std::unordered_map<std::string, std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
+    NameKeyMap<std::pair<std::string, size_t>> entryDebug;
+    NameKeyMap<std::string> stubMessages; // a stubbed function -> "qualified name at file:line"
   };
 
   // A metadata id as the IR text writes it: ten digits, zeros before (`%010u`), at to[0..9].
@@ -911,13 +912,13 @@ namespace codegen
     Definition d;
     d.text = std::move(text);
     std::string_view t = d.text;
-    std::unordered_set<std::string_view> seen;
+    NameViewKeySet seen;
     irNamesIn(t, [&](size_t at, size_t length)
     {
       if (seen.insert(t.substr(at, length)).second)
         d.names.push_back({uint32_t(at), uint32_t(length)});
     });
-    std::unordered_set<std::string_view> types;
+    NameViewKeySet types;
     for (size_t i = t.find('%'); i != std::string_view::npos; i = t.find('%', i + 1))
     {
       std::string_view rest = t.substr(i + 1);

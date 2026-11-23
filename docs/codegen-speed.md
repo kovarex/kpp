@@ -1331,6 +1331,86 @@ overhead in the leaf edit (3.6–3.8 s through kpp: thread E's breakdown).
 - **The back end:** `backend-profile.py DIR` (clang's -ftime-report over the modules) and
   `backend-profile.py DIR --remarks` (FastISel's fallbacks).
 
+## 8. Where a clean build waits (2026-11-23)
+
+kovarex asked how close a full rebuild of the game can come to 5 s. The study's answer in short: a clean
+build is limited by its work, not by its schedule. On one thread (`-j 1`) it is 155 s: the front end 17 s,
+codegen 37 s (26 s emitting, 10 s assembling the module texts), LLVM 98 s (26 s of it parsing the IR text,
+62 s making machine code). On this machine perfectly parallel work (LLVM's) runs 19 times faster than on
+one thread, not 32, and kpp's own phases 9 times. What a better schedule can still give is the time the
+machine waits, measured here.
+
+**Method.** `kpp factorio debug` as the readme builds it (the compile server stopped, build\debug removed
+until it is gone, a new server), the game at kpp-factorio 0c18a3229e, every run inside
+`heavy.cmd --exclusive`. Temporary timers, never committed, mark each phase's end on one clock for the
+client and the server, and a second process samples the machine's CPU use every 50 ms. Two compilers are
+compared in interleaved rounds; the machine was 5 to 10% busy with other threads' work before each build.
+
+**Where it waits** (of 32 hardware threads; one 13.3 s build, sampled with the changes below in: they
+shorten the rows of the barrier and of codegen's end, by 0.1 s and 0.3 s):
+
+| from | to | busy | what runs |
+|---:|---:|---:|---|
+| 0 s | 0.25 s | 5 to 7 | the client: build.kpp's description (kept), the server started |
+| 0.25 s | 1.05 s | 12 to 15 | read, lex, parse, the cached C import, index |
+| 1.05 s | 2.0 s | 27 to 32 | resolve, check, instantiate |
+| 2.0 s | 2.4 s | 9 to 12 | codegen's setup, level 0's start (the startup globals) |
+| 2.4 s | 3.2 s | 26 to 29 | level 0 |
+| 3.2 s | 3.6 s | 9 to 17 | level 0's last functions, its requests collected, the barrier |
+| 3.6 s | 5.8 s | 32 | levels 1 and 2, LLVM on the streamed program pieces |
+| 5.8 s | 6.8 s | 17 to 26 | levels 3 to 16, the instances' static asserts; LLVM's threads have nothing left |
+| 6.8 s | 7.6 s | 10 to 16 | codegen's end: shared functions homed, module texts prepared |
+| 7.6 s | 8.2 s | 32 | the modules assembled |
+| 8.2 s | 11.0 s | 32 | LLVM on the instance pieces |
+| 11.0 s | 13.3 s | 3 to 8 | the link |
+
+- **LLVM's threads wait 2 s for the instance pieces.** They finish the streamed program pieces 6.5 s into
+  the build and get the instance pieces at 8.5 s. Part of codegen's end ran on one thread meanwhile: the
+  shared functions homed (0.29 s), the .natvis made (0.1 s), and of the module texts' preparation (0.34 s)
+  all but the debug classes' definitions.
+- **At level 0's barrier** every emitter and the back end waited 0.1 s for the program functions' names to
+  be gathered on one thread.
+- **Before the resolve** the cached C import asks clang for its version and search list in a process of
+  its own (0.07 s), then lexes (0.11 s) and parses (0.12 s, one thread) the imported text, and the
+  index's out-of-line definitions take 0.09 s on one thread.
+- **After the back end** kpp asks clang for link.exe's command line (0.07 s: the answer is kept beside
+  the executable, which a clean build deletes) and frees the module texts (0.05 s).
+- **The link** is 1.7 to 2.2 s on a few threads. No linker is faster while a PDB is written: link.exe not
+  incremental 1.64 s, lld-link 2.04 s (1.70 s with type hashes in the objects), against 1.90 s; without a
+  PDB link.exe takes 1.11 s and lld-link 0.71 s (the same 256 objects, the median of three each).
+
+**What was changed.** Each change is exact: the game's 256 objects, its .natvis and its link response are
+the same bytes with it and without (the COFF time stamp aside).
+
+- **The shared functions homed on the threads.** Each entry's own part (the function it holds, its
+  declaration, its home, its definition's text scanned for what it names) runs on the emitters' threads.
+  The three tables they go into (definedIn, declareLines, the modules' definitions) share nothing, so
+  each of the two maps is filled on a thread of its own while a third places the definitions, all in
+  the entries' order.
+- **The program functions gathered beside each other.** The set of their names and the map of their
+  files are two tables, filled on two threads.
+- **The .natvis made while the back end compiles,** once the modules are handed to it, not before.
+- **NameHash for codegen's tables keyed by names** (src/NameHash.hpp). The standard library hashes a
+  string a byte at a time (MSVC's FNV-1a), and codegen's keys are IR names hundreds of bytes long: 6.6% of
+  the front end's and codegen's samples on one thread were that hash, 15% of module assembly's. NameHash
+  takes sixteen bytes a step. Where a hash decides what is written (a function's module, a global's
+  home), std::hash and FNV stay.
+
+**Measured** (five interleaved pairs, master d197097d0 against the four changes on it; medians, each
+round's wall time in brackets):
+
+| | master | with the changes |
+|---|---:|---:|
+| wall | 14.31 s (14.34, 14.31, 13.67, 14.02, 14.67) | 13.55 s (13.58, 13.55, 13.46, 13.54, 13.64) |
+| kpp | 11.69 s | 10.96 s |
+| of it codegen | 6.58 s | 5.97 s |
+| the shared functions homed | 0.285 s | 0.079 s |
+| the program functions gathered | 0.097 s | 0.019 s |
+| the link | 1.98 s | 1.78 s |
+
+The build is 0.76 s shorter, in every pair. (This session's builds were slower than the 13.3 s of the
+timeline's: the machine was busier.)
+
 ## Reproduce
 
 All in `C:\kpp-sandbox\scratch\templates\cg` (thread D's scratch, not committed):

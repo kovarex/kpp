@@ -237,11 +237,11 @@
     std::vector<Loop> loops;
     std::vector<EHFrame> ehFrames;
     std::string ehBlocks;                                     // cleanup pads of the current function
-    std::unordered_map<std::string, std::string> cleanupPads; // destruction state -> cleanup block
+    NameKeyMap<std::string> cleanupPads; // destruction state -> cleanup block
     bool itaniumCleanup = false;                              // off Windows: a cleanup block is being emitted, for its calls
     bool usesEH = false;                                      // the current function has invokes or pads
     std::string returnLabel; // a destructor's: where a `return` goes, the members and bases destroyed after the body
-    std::unordered_map<std::string, std::string> inlineSlots;              // (inlining depth, parameter, type) -> its slot in this function
+    NameKeyMap<std::string> inlineSlots;              // (inlining depth, parameter, type) -> its slot in this function
     // --coverage (design.md 28, Emitter::coverBegin): whether this function's code gets probes, how many
     // it has, the region the next statement may share (-1: none, a new probe), and its region map's
     // lines (Coverage.cpp's format).

@@ -128,7 +128,7 @@
     // A thread_local global built per thread: its function, called before the use being emitted
     // (it returns at once once this thread has built it). Known for good once the global is defined
     // (globalFor asks after that): remembered by this emitter, as published answers are.
-    std::unordered_map<std::string, std::string> threadLocalCache;
+    NameKeyMap<std::string> threadLocalCache;
     void buildThreadLocal(const std::string& name);
 
     std::string globalForOnce(VariableDecl* v, Node* at, const Ty* classTy);
