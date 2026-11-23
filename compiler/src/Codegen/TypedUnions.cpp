@@ -245,6 +245,19 @@ auto codegen::Emitter::alternativeIndex(ClassDecl* c, IndexExpr* i, Node* at) ->
   if (i->args.size() != 1)
     unsupported(at, "a typed union indexed with more than one alternative");
   const Ty* indexTy = i->args[0]->ty ? types.stripRef(i->args[0]->ty) : nullptr;
+  // `u[UpgradeID::Item]`: the checker read the name as the alternative's tag (its creator is `UpgradeID::Item(value)`),
+  // which the constant folding would look up again by its qualified name (coordinator 2026-11-23).
+  Expr* index = i->args[0];
+  while (index && index->kind == NodeKind::ParenExpr)
+    index = static_cast<ParenExpr*>(index)->inner;
+  if (index && index->kind == NodeKind::NameExpr && c->tagEnum)
+    if (Decl* d = static_cast<NameExpr*>(index)->resolved; d && d->kind == NodeKind::EnumeratorDecl && d->parent == c->tagEnum)
+    {
+      const auto& tags = static_cast<EnumDecl*>(c->tagEnum)->enumerators;
+      for (size_t k = 0; k < tags.size() && k < c->alternatives.size(); ++k)
+        if (tags[k] == d)
+          return k;
+    }
   std::optional<int64_t> v = indexTy && indexTy->kind == TyKind::Member ? descriptorAlternative(c, indexTy) : evalConst(i->args[0]);
   if (!v || *v < 0 || size_t(*v) >= c->alternatives.size())
     unsupported(at, "a typed union indexed with something other than one of its alternatives");

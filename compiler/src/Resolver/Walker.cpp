@@ -13733,6 +13733,23 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           // with a descriptor of alternatives(U): the one it describes.
           std::optional<int64_t> v;
           size_t index = 0;
+          // `u[UpgradeID::Item]`: an alternative's name qualified by the union's names that alternative, as `u[Item]`
+          // does, not its creator `UpgradeID::Item(value)` (coordinator 2026-11-23: the subscript was typed unknown, no
+          // error, and codegen said "a typed union indexed with something other than one of its alternatives").
+          if (!tagFirst && u->tagEnum && i->args[0]->kind == NodeKind::NameExpr)
+            if (auto* n = static_cast<NameExpr*>(i->args[0]);
+                n->name.parts.size() >= 2 && n->resolved && n->resolved->kind == NodeKind::FunctionDecl && n->resolved->parent == u)
+            {
+              const auto& tags = static_cast<EnumDecl*>(u->tagEnum)->enumerators;
+              for (size_t k = 0; k < tags.size() && k < u->alternatives.size(); ++k)
+                if (tags[k]->kind == NodeKind::EnumeratorDecl && static_cast<EnumeratorDecl*>(tags[k])->name == n->name.last().symbol)
+                {
+                  tagFirst = static_cast<EnumeratorDecl*>(tags[k]);
+                  n->resolved = tagFirst;
+                  firstIndex = record(n, impl.tagTypeOf(u, b));
+                  break;
+                }
+            }
           if (const Ty* it = firstIndex ? types.stripRef(firstIndex) : nullptr; it && it->kind == TyKind::Member)
           {
             if (alternativeOf(it, index) != u)

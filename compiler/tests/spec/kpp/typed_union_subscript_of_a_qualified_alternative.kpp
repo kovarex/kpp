@@ -1,0 +1,25 @@
+// spec: `u[U::Name]`, an alternative's name qualified by its typed union's, names that alternative as `u[Name]` and
+// `u[U::Tag::Name]` do, read and assigned, inside the union and outside it, of a class template's union too; `U::Name(value)`
+// stays its creator (until 2026-11-23 the subscript was typed unknown and codegen said "a typed union indexed with
+// something other than one of its alternatives")
+// design.md 8.5; found by the union-enum conversion thread, 2026-11-23
+struct EntityID { int id = 1; };
+struct ItemID { int id = 2; };
+union enum class UpgradeID : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  int inside() const { return this[UpgradeID::Item].id; }
+};
+template<class X> union enum Counted : u8 { { {Value, X}, {Count, int} } };
+int main()
+{
+  UpgradeID u = ItemID();
+  std::println(u[UpgradeID::Item].id, " ", u.inside());
+  u[UpgradeID::Item].id = 5;
+  std::println(u[Item].id, " ", u[UpgradeID::Tag::Item].id);
+  UpgradeID made = UpgradeID::Item(ItemID());
+  std::println(made[UpgradeID::Item].id);
+  Counted<i16> c(Counted<i16>::Count, 7);
+  std::println(c[Counted<i16>::Count]);
+  return 0;
+}
