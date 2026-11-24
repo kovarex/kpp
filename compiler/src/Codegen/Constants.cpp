@@ -545,6 +545,21 @@ auto codegen::Emitter::cStringConstant(std::string bytes) -> std::string
   return name;
 }
 
+auto codegen::Emitter::parameterNamesConstant(FunctionDecl* function) -> std::string
+{
+  std::string contents = "[" + std::to_string(function->params.size() + 1) + " x ptr] [";
+  for (Decl* d : function->params)
+  {
+    auto* p = static_cast<ParamDecl*>(d);
+    contents += "ptr " + cStringConstant(p->name == UINT32_MAX ? std::string() : sym(p->name)) + ", ";
+  }
+  contents += "ptr null]";
+  auto [name, isNew] = constantName("@.params.", contents);
+  if (isNew)
+    (emittingShared ? decls : moduleDecls[currentModule]) += literalDefinition(name, contents);
+  return name;
+}
+
 auto codegen::Emitter::useVtable(const StructInfo& info) -> void
 {
   auto lock = sharedLock();

@@ -102,6 +102,10 @@
     // A NUL-terminated string constant; returns its global name.
     std::string cStringConstant(std::string bytes);
 
+    // f.parameterNames of a methods(T) descriptor (design.md 8.3): a constant array of the function's parameter names, "" for
+    // an unnamed one, then a null pointer; returns its global name.
+    std::string parameterNamesConstant(FunctionDecl* function);
+
     // The vtables of a class are defined in every module that stores them (linkonce_odr), with the
     // descriptors they point at.
     void useVtable(const StructInfo& info);
