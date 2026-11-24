@@ -174,10 +174,55 @@ The final build of the game (`kpp factorio final`, full LTO), kpp-factorio 34987
 | the build | 4 min 36 s | 9 min 5 s (the link 8 min 30 s) |
 | the five benchmark saves' checksums | | the same on each |
 
-Speed is open. The first timing (2026-11-24, 6 runs of 1,200 ticks a save) gave the C++ build 1.05 to 1.36 times
-the plain build's time per tick, with spreads up to 36%; a second one of four builds (3 runs of 600 ticks) could
-not tell them apart on circuits and gave 1.25 on belts, the same executable swinging between 5.7 and 9.5 ms a
-tick from run to run (PRACOVNA's light saves jump between two speed levels: another thread is on that). Read
-by each run's fastest tenth of ticks, the C++ build is 5 to 10% slower on belts and equal on circuits; a build
-without the noexcept filters' scopes of the search is equal to plain on both; a build without any `try` is no
-faster. Next: executed instructions of a Linux build, which has no noise and the Switch's exception model.
+The Windows program is larger because each call that may throw is a `try` block of its own, and the MSVC
+exception model compiles each `catch` into a function of its own (a funclet) with its tables; one `try` a
+function would take most of that back, and is not written. The Itanium model, which Linux and the Switch use,
+has no such cost:
+
+The release build of the game for Linux (`kpp factorio release --target linux`, `-O2`, thin LTO, built on
+Windows), kpp-factorio 349878f, 2026-11-24:
+
+| | plain kpp | through C++ |
+|---|---:|---:|
+| factorio | 87.4 MB | 90.7 MB |
+| What the back end gets (280,655 functions, 64 modules) | 1,216 MB of IR | 559 MB of C++ |
+| Writing the C++ | | 55.4 s of thread time on 32 threads, about 2 s of the build |
+| The modules compiled (the first half of thin LTO) | 10.8 s | 29.8 s |
+| The link (the second half) | 61.2 s | 109.7 s |
+
+Speed, measured by what does not depend on the machine's load: that Linux build run under WSL in valgrind's
+callgrind (scratch script `lin\run.sh VARIANT TICKS callgrind`), on the belts save
+(flame_sla-10k-belt-module-1.0), at two tick counts, whose difference is the ticks alone, without the map's
+loading. Two runs of the same build and tick count differ by 0.01%.
+
+| executed instructions | plain kpp | through C++ | |
+|---|---:|---:|---:|
+| loading and 20 ticks | 43,805 M | 44,590 M | +1.8% |
+| loading and 120 ticks | 45,732 M | 46,382 M | |
+| 100 ticks | 1,927 M | 1,792 M | -7.0% |
+
+The same with valgrind's cache and branch simulation (`--cache-sim=yes --branch-sim=yes`), 500 ticks (the
+difference of 520 and 20):
+
+| 500 ticks of belts | plain kpp | through C++ | |
+|---|---:|---:|---:|
+| instructions | 8,684 M | 8,061 M | -7.2% |
+| first-level instruction cache misses | 4.2 M | 6.1 M | +43% |
+| data reads and writes | 3,971 M | 3,929 M | -1.1% |
+| first-level data cache misses | 368.3 M | 365.8 M | -0.7% |
+| last-level data cache misses | 90.4 M | 95.1 M | +5.2% |
+| branches | 1,130 M | 1,004 M | -11.1% |
+| mispredicted | 32.8 M | 31.1 M | -5.3% |
+| cycles by valgrind's usual estimate (1 an instruction, 10 a first-level miss, 100 a last-level one, 15 a mispredict) | 21.11 G | 20.89 G | -1.0% |
+
+So the program through C++ is as fast as the plain one where the exceptions are Itanium's: it executes fewer
+instructions, and its larger code costs 2 million more instruction cache misses in 8 billion instructions. The
+tick's time is its data's cache misses in both. (Why the C++ compiler's IR optimizes to fewer instructions than
+kpp's own was not looked into: what it tells is that kpp's IR leaves something to the optimizer unsaid.)
+
+Wall-clock time on PRACOVNA could not tell the builds apart: the first timing of the Windows final builds
+(2026-11-24, 6 runs of 1,200 ticks a save) gave the C++ build 1.05 to 1.36 times the plain build's time per
+tick, with spreads up to 36%; a second one of four builds (3 runs of 600 ticks) was equal on circuits and 1.25 on
+belts, the same executable swinging between 5.7 and 9.5 ms a tick from run to run (PRACOVNA's light saves jump
+between two speed levels). A build without the noexcept filters' scopes of the search and one without any `try`
+were not faster by a margin the noise would show, so both stay as they are.
