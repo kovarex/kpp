@@ -768,8 +768,14 @@ members(T), which lists private fields): a generic loop over a class with privat
 before naming its pointer, whose access would be checked there. Each `f` has
 `f.name`, the function's name as a string literal; `f.pointer`, the pointer to the member function as a constant, typed
 `R (T::*)(Args...)`, const and noexcept as the function is, usable as a template argument (`registerRead<f.pointer>`),
-in constant expressions and as a value; `f.isNoDiscard`, a `bool` constant, true for a function declared `[[nodiscard]]`.
-Nothing else: no parameter names, no attributes beyond nodiscard. A descriptor's name is a constant expression, the
+in constant expressions and as a value; `f.isNoDiscard`, a `bool` constant, true for a function declared `[[nodiscard]]`;
+`f.parameterNames` (kovarex, 2026-11-24, for the LuaBinder's typed method parameters, whose error messages name the
+parameter: `getParamRequired<T>(L, i, "name")`), a `const char* const*` constant: the function's parameter names as
+declared in the class, each a string literal ("" for an unnamed one), then a null pointer, so a function without
+parameters has the null pointer alone. It is a constant address (one array per function and program), usable wherever f
+is, also in a lambda written in the loop, which captures nothing; it is read at run time, not in constant expressions.
+Their count and types are the pointer's (`R (T::*)(Args...)`). Nothing else: no default arguments, no attributes beyond
+nodiscard. Spec kpp/reflection_methods_parameter_names. A descriptor's name is a constant expression, the
 string literal it is, for members(T), alternatives(U) and methods(T) alike (2026-11-23: until then only the code generator
 read it): `if constexpr (std::StringView(f.name).startsWith("luaRead"))` or a constexpr function over it picks a branch, and
 the branches not picked are not instantiated, so a loop over methods(T) skips a function before naming its pointer (kpp has no

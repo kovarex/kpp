@@ -1,0 +1,10 @@
+teleport: 'x' 'y' 'surfaceIndex'
+clear:
+unnamed: '' 'flag'
+count:
+put: 'newValue'
+teleport: 'x' 'y' 'surfaceIndex'
+clear:
+unnamed: '' 'flag'
+count:
+surfaceIndex true

@@ -1,0 +1,47 @@
+// spec: f.parameterNames of a methods(T) descriptor is a constant `const char* const*`: the function's parameter names in declaration order, each a string literal ("" for an unnamed one), then a null pointer; a function without parameters has the null pointer alone; it is usable where f is, in a lambda written in the loop too (a constant, nothing captured), and a class template's instance's are its declaration's
+// design.md 8.3 (kovarex, 2026-11-23: the game's LuaBinder reads typed method parameters by name for its error messages)
+class Player
+{
+public:
+  i32 teleport(f64 x, f64 y, i32 surfaceIndex) { return i32(x + y) + surfaceIndex; }
+  void clear() {}
+  void unnamed(i32, bool flag) {}
+  [[nodiscard]] i32 count() const { return 1; }
+};
+
+template<typename T>
+class Box
+{
+public:
+  void put(T newValue) {}
+};
+
+using Describe = void (*)();
+
+void printNames(const char* function, const char* const* names)
+{
+  std::print(function, ":");
+  for (usize i = 0; names[i] != nullptr; ++i)
+    std::print(" '", names[i], "'");
+  std::println();
+}
+
+template<typename T>
+void list()
+{
+  for constexpr (auto f : methods(T))
+    printNames(f.name, f.parameterNames);
+}
+
+int main()
+{
+  list<Player>();
+  list<Box<i32>>();
+  std::Vector<Describe> describers;
+  for constexpr (auto f : methods(Player))
+    describers.push_back([]() { printNames(f.name, f.parameterNames); });
+  for (Describe d : describers)
+    d();
+  std::println(methods(Player)[0].parameterNames[2], " ", methods(Player)[1].parameterNames[0] == nullptr);
+  return 0;
+}

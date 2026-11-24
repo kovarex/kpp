@@ -4529,7 +4529,8 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
       return types.pointer(types.qualified(types.charType(), true, false));
     if (descriptor->decl && descriptor->decl->kind == NodeKind::FunctionDecl)
     {
-      // A descriptor of methods(T) (design.md 8.3): f.pointer, the pointer to the member function, a constant; f.isNoDiscard.
+      // A descriptor of methods(T) (design.md 8.3): f.pointer, the pointer to the member function, a constant; f.isNoDiscard;
+      // f.parameterNames.
       if (which == "pointer")
       {
         m->resolved = descriptor->decl; // (named here: its access is checked, and it counts as used, as `&T::f` would)
@@ -4537,7 +4538,9 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
       }
       if (which == "isNoDiscard")
         return types.boolType();
-      reportHere(m->token, "a descriptor of methods(T) has name, pointer and isNoDiscard only");
+      if (which == "parameterNames") // (its parameters' names, then a null pointer: a `const char* const*` constant)
+        return types.pointer(types.qualified(types.pointer(types.qualified(types.charType(), true, false)), true, false));
+      reportHere(m->token, "a descriptor of methods(T) has name, pointer, isNoDiscard and parameterNames only");
       return unknown(Why::Member);
     }
     if (which == "type")

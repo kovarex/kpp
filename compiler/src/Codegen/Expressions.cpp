@@ -711,12 +711,14 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         std::string which = m->member.empty() ? std::string() : sym(m->member.last().symbol);
         if (bt->decl && bt->decl->kind == NodeKind::FunctionDecl)
         {
-          // A method's (methods(T), design.md 8.3): f.name, f.isNoDiscard, and f.pointer, what `&T::f` is here.
+          // A method's (methods(T), design.md 8.3): f.name, f.isNoDiscard, f.parameterNames, and f.pointer, what `&T::f` is here.
           auto* function = static_cast<FunctionDecl*>(bt->decl);
           if (which == "name")
             return {cStringConstant(function->name.empty() ? std::string() : sym(function->name.last().symbol)), e->ty};
           if (which == "isNoDiscard")
             return {(function->attributes & ATTR_NoDiscard) ? "true" : "false", types.boolType()};
+          if (which == "parameterNames")
+            return {parameterNamesConstant(function), e->ty};
           if (which == "pointer" && bt->inner && types.unqualified(bt->inner)->kind == TyKind::MemberPointer)
           {
             NameExpr name{};
@@ -731,7 +733,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
             address.ty = types.unqualified(bt->inner);
             return unary(&address);
           }
-          unsupported(e, "a descriptor of methods(T) has name, pointer and isNoDiscard only");
+          unsupported(e, "a descriptor of methods(T) has name, pointer, isNoDiscard and parameterNames only");
         }
         auto* field = static_cast<VariableDecl*>(bt->decl);
         if (ClassDecl* u = bt->args.empty() ? nullptr : typedUnionOf(bt->args[0], e))
