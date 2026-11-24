@@ -4898,7 +4898,29 @@ namespace
         if (n->kind == NodeKind::IndexExpr && static_cast<IndexExpr*>(n)->args.empty())
           read.insert(n->token);
       });
-      found.erase(std::remove_if(found.begin(), found.end(), [&](const EveryAlternative& a) { return !read.count(a.open); }), found.end());
+      // (nor one closing a template's arguments, `std::makeUnique<u8[]>(n)`: an array type's, the parse having tried it as an
+      // expression too)
+      found.erase(std::remove_if(found.begin(), found.end(), [&](const EveryAlternative& a) {
+        return !read.count(a.open) || (a.open + 2 < toks.size() && (toks[a.open + 2].is(P::Greater) || toks[a.open + 2].is(P::Shr)));
+      }), found.end());
+      // (in a declaration, a `[]` before its `=` is the declared type's: `TUniquePtr<uint8[]> Buffer(new uint8[n]);`,
+      // Unreal's, `std::UniquePtr<u8[]> b;`, whose template argument the parse also tried as an expression; until
+      // 2026-11-24 "u[] in a declaration is written in the initializer of one variable")
+      if (s->kind == NodeKind::DeclStmt)
+      {
+        uint32_t eq = end;
+        for (uint32_t k = start; k < end; ++k)
+        {
+          if (toks[k].is(P::Assign))
+          {
+            eq = k;
+            break;
+          }
+          if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::LBrace))
+            k = closingToken(k);
+        }
+        found.erase(std::remove_if(found.begin(), found.end(), [&](const EveryAlternative& a) { return a.open < eq; }), found.end());
+      }
       if (found.empty())
         return false;
       const EveryAlternative& first = found[0];

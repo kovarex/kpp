@@ -1,0 +1,9 @@
+// spec: an array type of unknown bound as a template argument (`std::UniquePtr<u8[]> b;`, in a declaration's type and in an initializer's `isSame<..., std::UniquePtr<u8[]>>`) is that type, never typed union's `u[]` (design.md 8.5), which the parse also tried it as; prints `true 1`
+// found by thread UE (2026-11-24): after d0ba60676 Unreal's `TUniquePtr<uint8[]> Buffer;` was "u[] in a declaration is written in the initializer of one variable", and one in an initializer's template arguments was rewritten into a lambda nested until "nesting too deep"
+int main()
+{
+  std::UniquePtr<u8[]> b;
+  bool same = isSame<decltype(b), std::UniquePtr<u8[]>>;
+  std::println(same, " ", isSame<std::UniquePtr<u8[]>, std::UniquePtr<u8[]>> ? 1 : 0);
+  return 0;
+}
