@@ -33,7 +33,7 @@ function Kpp([string[]]$arguments)
 
 # The sections, each started as `project.ps1 -Section NAME`, its output kept and shown in this order,
 # its exit code its failures; one that stops on an error of its own (not a Fail) is a failure too.
-$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'sanitize', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch', 'buildinfo'
+$sections = 'basic', 'clibs', 'libraries', 'syslibs', 'matrix', 'sanitize', 'outside', 'runfile', 'measure', 'paths', 'readonly', 'linkinputs', 'pch', 'buildinfo', 'commands'
 function Run([string]$name) { return $Section -eq $name }
 if (-not $Section)
 {
@@ -1222,6 +1222,86 @@ if (Run 'buildinfo')
     RunGit @('commit', '-q', '--allow-empty', '-m', 'five') | Out-Null
     $output = (Kpp @('--no-server')) -join "`n"
     if ($code -eq 0 -or $output -notmatch 'is a shallow clone') { Fail "a shallow clone: exit $code`n$output" }
+  }
+  finally { Pop-Location }
+}
+# Command steps (docs/build.md, "Command steps"; design.md, "What build.kpp can run", 2026-11-24): commands of the
+# project's own, each run when it is out of date. A step that names no {exe} runs before the compile (it writes a
+# source file here), one that does after the link, one declared in configure(cell) after the step it names. Nothing
+# changed: none runs. An input edited, an output deleted, a command changed, --rebuild: the steps concerned run
+# again, and no other (built through the compile server: without it every build links again, and the steps after
+# the link run with it). --check runs none. Errors: a step after one that is not there, a circle, an output outside
+# the project or of two steps, no program, a program not on PATH, a command that fails or does not write its output,
+# an input that is not there, and a kpp library that declares one.
+if (Run 'commands')
+{
+  $project = Join-Path $work 'commands'
+  if (Test-Path $project) { cmd /c rd /s /q $project }
+  New-Item -ItemType Directory -Force "$project\src", "$project\gen" | Out-Null
+  Push-Location $project
+  try
+  {
+    $describe = { param([string]$steps, [string]$counted = 'ran', [string]$before = '')
+      "void build(Project& project)`n{`n$before  Executable& app = project.executable(`"app`", {`"src`"});`n$steps}`n`n" +
+      "void configure(Cell& cell)`n{`n  if (cell.platform != Platform::Windows || cell.target.name != `"app`")`n    return;`n" +
+      $(if ($counted) { "  cell.target.step(`"count`").run(`"cmd`", {`"/c`", `"echo $counted>>out\\runs.txt`"}).after(`"copy`");`n" }) + "}" }
+    $steps = "  app.step(`"gen`").run(`"cmd`", {`"/c`", `"copy`", `"/y`", `"gen\\value.in`", `"src\\Value.kpp`"}).input(`"gen/value.in`").output(`"src/Value.kpp`");`n" +
+             "  Step& copy = app.step(`"copy`");`n" +
+             "  copy.run(`"cmd.exe`", {`"/c`", `"copy`", `"/y`", `"{exe}`", `"out\\{configuration}-app.exe`"});`n" +
+             "  copy.input(`"{exe}`").output(`"out/{configuration}-app.exe`");`n"
+    Set-Content 'build.kpp' (& $describe $steps)
+    Set-Content 'gen\value.in' 'int value() { return 7; }'
+    Set-Content 'src\main.kpp' "int main()`n{`n  std::println(value());`n  return 0;`n}"
+    $runs = { @(Get-Content 'out\runs.txt' -ErrorAction SilentlyContinue).Count }
+    $ran = { param($output) @($output | Where-Object { $_ -match '^kpp: step (\S+) ' } | ForEach-Object { $_ -replace '^kpp: step (\S+) .*$', '$1' }) -join ' ' }
+    $output = @(Kpp @('--run'))
+    if ($code -ne 0 -or $output[-1] -ne '7') { Fail "commands: the first build: exit $code, '$($output[-1])', not 7`n$($output -join "`n")" }
+    if ((& $ran $output) -ne 'gen copy count') { Fail "commands: the first build ran '$(& $ran $output)', not gen copy count`n$($output -join "`n")" }
+    if (-not ($output -match '^kpp: step gen \(its first run\): cmd\.exe /c copy /y ')) { Fail "commands: no line of the step gen and its command:`n$($output -join "`n")" }
+    if (-not (Test-Path 'out\debug-app.exe') -or (& $runs) -ne 1) { Fail "commands: out\debug-app.exe $(if (Test-Path 'out\debug-app.exe') { 'there' } else { 'missing' }), $(& $runs) lines in out\runs.txt, not 1" }
+    $output = @(Kpp @('--run'))
+    if ($code -ne 0 -or $output[-1] -ne '7' -or (& $ran $output) -ne '' -or (& $runs) -ne 1) { Fail "commands: nothing changed: exit $code, ran '$(& $ran $output)', $(& $runs) lines`n$($output -join "`n")" }
+    # an input edited: --check runs nothing; a build runs its step, and through the new executable the two after the link
+    Set-Content 'gen\value.in' 'int value() { return 8; }'
+    $output = @(Kpp @('app', '--check'))
+    if ($code -ne 0 -or (& $ran $output) -ne '' -or (Get-Content -Raw 'src\Value.kpp') -notmatch 'return 7') { Fail "commands: --check ran '$(& $ran $output)' (exit $code); it runs no command`n$($output -join "`n")" }
+    $output = @(Kpp @('--run'))
+    if ($code -ne 0 -or $output[-1] -ne '8' -or (& $ran $output) -ne 'gen copy count' -or (& $runs) -ne 2) { Fail "commands: gen\value.in edited: exit $code, '$($output[-1])', ran '$(& $ran $output)', $(& $runs) lines`n$($output -join "`n")" }
+    if (-not ($output -match '^kpp: step gen \(.*value\.in changed\)')) { Fail "commands: the step gen does not say that value.in changed:`n$($output -join "`n")" }
+    # an output deleted: its step and the one after it, not gen
+    Remove-Item 'out\debug-app.exe'
+    $output = @(Kpp @('debug'))
+    if ($code -ne 0 -or (& $ran $output) -ne 'copy count' -or -not ($output -match 'debug-app\.exe is missing') -or -not (Test-Path 'out\debug-app.exe')) { Fail "commands: out\debug-app.exe deleted: exit $code, ran '$(& $ran $output)'`n$($output -join "`n")" }
+    # a command changed: that step alone
+    Set-Content 'build.kpp' (& $describe $steps 'again')
+    $output = @(Kpp @('debug'))
+    if ($code -ne 0 -or (& $ran $output) -ne 'count' -or -not ($output -match 'step count \(its command changed\)') -or (Get-Content 'out\runs.txt')[-1].Trim() -ne 'again') { Fail "commands: count's command changed: exit $code, ran '$(& $ran $output)'`n$($output -join "`n")" }
+    # --rebuild: all of them again
+    $output = @(Kpp @('debug', '--rebuild'))
+    if ($code -ne 0 -or (& $ran $output) -ne 'gen copy count') { Fail "commands: --rebuild ran '$(& $ran $output)' (exit $code), not gen copy count`n$($output -join "`n")" }
+    Kpp @('--stop-server') | Out-Null
+    foreach ($case in @(@("  app.step(`"a`").run(`"cmd`").after(`"nothing`");`n", 'it comes after nothing, which is no step of app'),
+                        @("  app.step(`"a`").run(`"cmd`").after(`"b`");`n  app.step(`"b`").run(`"cmd`").after(`"a`");`n", 'app''s steps a, b wait for each other in a circle'),
+                        @("  app.step(`"a`").run(`"cmd`").output(`"../x.txt`");`n", 'its output ../x.txt must be in the project''s directory'),
+                        @("  app.step(`"a`").run(`"cmd`").output(`"out/x.txt`");`n  app.step(`"b`").run(`"cmd`").output(`"out/../out/x.txt`");`n", 'is also the output of the step a'),
+                        @("  app.step(`"a`").input(`"gen/value.in`");`n", 'app''s step a: no program to run'),
+                        @("  app.step(`"a b`").run(`"cmd`");`n", 'a step''s name is letters, digits'),
+                        @("  app.step(`"a`").run(`"no-such-program-of-kpp`");`n", 'no program no-such-program-of-kpp on PATH'),
+                        @("  app.step(`"a`").run(`"tools/none`");`n", 'tools\none does not exist'),
+                        @("  app.step(`"a`").run(`"cmd`", {`"/c`", `"exit`", `"3`"});`n", 'app''s step a failed (exit 3)'),
+                        @("  app.step(`"a`").run(`"cmd`", {`"/c`", `"rem`"}).output(`"out/never.txt`");`n", 'app''s step a ran and did not write its output'),
+                        @("  app.step(`"a`").run(`"cmd`", {`"/c`", `"rem`"}).input(`"gen/none.in`");`n", 'none.in does not exist'),
+                        @("  app.afterBuild(`"echo x`");`n", 'step(NAME).run(PROGRAM, {ARGUMENTS}) runs a program')))
+    {
+      Set-Content 'build.kpp' (& $describe $case[0] '')
+      $output = (Kpp @('--no-server')) -join "`n"
+      if ($code -eq 0 -or -not $output.Contains($case[1])) { Fail "commands: $($case[0].Trim()): exit $code, not '$($case[1])'`n$output" }
+    }
+    # a kpp library's build.kpp declares none, also for a program of its own
+    Set-Content 'build.kpp' (& $describe "  app.step(`"a`").run(`"cmd`", {`"/c`", `"rem`"});`n" '' "  project.library(`"things`");`n")
+    $output = (Kpp @('--no-server')) -join "`n"
+    if ($code -eq 0 -or -not $output.Contains('things: a kpp library''s build.kpp declares no command step (a, of app)')) { Fail "commands: a library with a step: exit $code`n$output" }
+    if (Test-Path 'out\never.txt') { Fail 'commands: out\never.txt is there' }
   }
   finally { Pop-Location }
 }

@@ -141,6 +141,81 @@ void kppStep(std::Vector<BuildStep>& steps, std::StringView kind, std::StringVie
   step.text = text;
 }
 
+// A command of the project's own that a build of its target runs when it is out of date (Executable::step;
+// docs/build.md, "Command steps"; design.md, "What build.kpp can run"): a program and its arguments, no shell
+// between. kpp runs it when a file it reads changed (inputs, by size and time), a file it writes is missing
+// (outputs), its command changed, or a step it comes after ran; with neither inputs nor outputs nor a step
+// before it, on every build. A step that names {exe} (or comes after one that does) runs after the link,
+// every other before the compile, so that what it writes can be a source file. Only the project being
+// built has them: a kpp library's build.kpp that declares one is an error.
+struct Step
+{
+  std::String name;
+  std::String program;                 // on PATH (a bare name), or a file of the project (a path with a /)
+  bool programGiven = false;
+  std::Vector<std::String> arguments;
+  std::Vector<std::String> inputs;     // files, and directories (every file under one)
+  std::Vector<std::String> outputs;    // files, in the project's directory
+  std::Vector<std::String> afterSteps; // steps of the same target, by name
+  std::String workingDirectory;        // "": the project's directory
+
+  // The program and its arguments, each argument as given ({exe} and {configuration} expanded): no shell
+  // reads them, so `&&`, `|` and `>` mean nothing here; a script is a file of the project, named as the program.
+  Step& run(std::StringView program, std::InitializerList<std::StringView> arguments)
+  {
+    this.program = program;
+    this.programGiven = true;
+    for (std::StringView argument : arguments)
+      this.arguments.push_back(argument);
+    return this;
+  }
+
+  Step& run(std::StringView program)
+  {
+    this.program = program;
+    this.programGiven = true;
+    return this;
+  }
+
+  Step& argument(std::StringView text)
+  {
+    this.arguments.push_back(text);
+    return this;
+  }
+
+  Step& input(std::StringView path)
+  {
+    this.inputs.push_back(path);
+    return this;
+  }
+
+  Step& output(std::StringView path)
+  {
+    this.outputs.push_back(path);
+    return this;
+  }
+
+  // After the step NAME of the same target, and again whenever it ran.
+  Step& after(std::StringView name)
+  {
+    this.afterSteps.push_back(name);
+    return this;
+  }
+
+  Step& after(const Step& other)
+  {
+    this.afterSteps.push_back(other.name);
+    return this;
+  }
+
+  // The directory the program starts in, relative to the project's and inside it.
+  Step& directory(std::StringView path)
+  {
+    this.workingDirectory = path;
+    return this;
+  }
+};
+
 // One program the project builds: a target, the matrix's first axis.
 struct Executable
 {
@@ -159,6 +234,7 @@ struct Executable
   std::String afterBuildCommand;
   BuildInfo info;                 // buildInfo()'s
   std::Vector<BuildStep> afterBuildSteps;
+  std::Deque<Step> commandSteps;  // step()'s; a Deque: the reference step() returns stays valid
   std::String debugCommand;
   std::String debugArguments;
   std::String debugDirectory;
@@ -206,10 +282,23 @@ struct Executable
   void config(std::StringView name, i32 value) { kppConfig(this.configs, name, std::toString(value)); }
   void config(std::StringView name, const char* value) { kppConfig(this.configs, name, value); }
   void config(std::StringView name, std::StringView value) { kppConfig(this.configs, name, value); }
-  // Gone (kovarex, 2026-11-16: design.md, "What build.kpp can run"): build.kpp runs no command. Kept so that
-  // a build.kpp that still gives one is an error saying what replaces it (describe's `error` line).
+  // Gone (kovarex, 2026-11-16: design.md, "What build.kpp can run"): a shell command line run around every
+  // build. Kept so that a build.kpp that still gives one is an error saying what replaces it (describe's
+  // `error` line): step(), below, since 2026-11-24.
   void beforeBuild(std::StringView command) { this.beforeBuildCommand = command; }
   void afterBuild(std::StringView command) { this.afterBuildCommand = command; }
+
+  // A command step of this target (struct Step), made when new:
+  // `game.step("dsym").run("dsymutil", {"{exe}", "-o", "{exe}.dSYM"}).input("{exe}").output("{exe}.dSYM/Contents/Info.plist")`.
+  Step& step(std::StringView name)
+  {
+    for (Step& s : this.commandSteps)
+      if (s.name == name)
+        return s;
+    Step& s = this.commandSteps.emplace_back();
+    s.name = name;
+    return s;
+  }
 
   // buildInfo:: constants for this program (struct BuildInfo): `game.buildInfo().countSince(commit, 82606)`.
   BuildInfo& buildInfo()
@@ -582,6 +671,12 @@ void kppLine(std::String& out, std::StringView key, std::StringView value)
   out << '\n';
 }
 
+// Whether text fits a line of the description: no line end in it.
+bool kppOneLine(std::StringView text)
+{
+  return text.find('\n') == std::StringView::npos && text.find('\r') == std::StringView::npos;
+}
+
 void kppLines(std::String& out, std::StringView key, const std::Vector<std::String>& values)
 {
   for (const std::String& value : values)
@@ -781,8 +876,9 @@ void kppCell(std::String& out, const Project& project, const Executable& target,
   kppLines(out, "cinclude", e.cIncludes);
   if (e.beforeBuildCommand.size() != 0 || e.afterBuildCommand.size() != 0)
     kppLine(out, "error", std::String(e.name) + ": build.kpp runs no command (beforeBuild, afterBuild): buildInfo() gives "
-                            "the build number, linkAfterBuild, linkAfterBuildIfThere and writeAfterBuildIfMissing copy and write files "
-                            "(docs/build.md, \"Build information\" and \"Steps after the build\")");
+                            "the build number, linkAfterBuild, linkAfterBuildIfThere and writeAfterBuildIfMissing copy and write files, "
+                            "and step(NAME).run(PROGRAM, {ARGUMENTS}) runs a program of the project's choosing "
+                            "(docs/build.md, \"Build information\", \"Steps after the build\" and \"Command steps\")");
   if (e.info.wanted)
   {
     out << "build-info 1\n";
@@ -810,6 +906,46 @@ void kppCell(std::String& out, const Project& project, const Executable& target,
         rest = end == std::StringView::npos ? std::StringView() : rest.substr(end + 1);
       }
     }
+  }
+  // Per command step `command NAME`, its program and its directory, then a line per argument (an empty one
+  // too), input, output and step it comes after. A text with a line end in it has no line here: an error.
+  for (const Step& s : e.commandSteps)
+  {
+    for (const Library& l : project.kppLibraries)
+      kppLine(out, "error", std::String(l.name) + ": a kpp library's build.kpp declares no command step (" + s.name + ", of " + e.name +
+                              "): only the project being built runs commands (design.md, \"What build.kpp can run\")");
+    bool oneLine = kppOneLine(s.name) && kppOneLine(s.program) && kppOneLine(s.workingDirectory);
+    for (const std::String& text : s.arguments)
+      oneLine = oneLine && kppOneLine(text);
+    for (const std::String& text : s.inputs)
+      oneLine = oneLine && kppOneLine(text);
+    for (const std::String& text : s.outputs)
+      oneLine = oneLine && kppOneLine(text);
+    for (const std::String& text : s.afterSteps)
+      oneLine = oneLine && kppOneLine(text);
+    if (!oneLine)
+    {
+      kppLine(out, "error", std::String(e.name) + "'s step " + s.name + ": a line end in its name, program, directory, an argument or a path");
+      continue;
+    }
+    if (s.name.size() == 0 || !s.programGiven || s.program.size() == 0)
+    {
+      kppLine(out, "error", std::String(e.name) + "'s step " + s.name + ": " +
+                              (s.name.size() == 0 ? "a step needs a name" : "no program to run: step(NAME).run(PROGRAM, {ARGUMENTS})"));
+      continue;
+    }
+    kppLine(out, "command", s.name);
+    kppLine(out, "command-program", s.program);
+    kppLine(out, "command-directory", s.workingDirectory);
+    for (const std::String& text : s.arguments)
+    {
+      out << "command-argument ";
+      out << text;
+      out << '\n';
+    }
+    kppLines(out, "command-input", s.inputs);
+    kppLines(out, "command-output", s.outputs);
+    kppLines(out, "command-after", s.afterSteps);
   }
   kppLine(out, "debug-command", e.debugCommand);
   kppLine(out, "debug-arguments", e.debugArguments);

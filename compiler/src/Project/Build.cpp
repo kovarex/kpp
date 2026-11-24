@@ -263,6 +263,14 @@ namespace projects
       fprintf(stderr, "warning: %s (%s): --toolchain %s takes %s: %s\n", p.name.c_str(), p.configuration.c_str(), toolchain.c_str(),
               toolchainName().c_str(), skipped.c_str());
     fs::create_directories(exe.parent_path(), ec);
+    // The cell's command steps (Executable::step), put in order: one that is wrong is said here, under
+    // --check too, before anything runs.
+    CommandPlan commands;
+    if (std::string error; !p.commands.empty() && !planCommands(root, p, exe, commands, error))
+    {
+      fprintf(stderr, "error: %s\n", error.c_str());
+      return 1;
+    }
     if (std::string error; p.buildInfo.wanted && !writeBuildInfo(root, p, error))
     {
       fprintf(stderr, "error: %s\n", error.c_str());
@@ -286,6 +294,10 @@ namespace projects
         fprintf(stderr, "kpp: %s (%s) failed its check after %.1f s\n", p.name.c_str(), p.configuration.c_str(), since(start));
       return code;
     }
+    // The command steps that do not need the executable, before anything compiles: what they write may be
+    // a source file of the program or of a C library. (Never under --check, above: a check runs no command.)
+    if (!p.commands.empty() && !runCommands(root, p, exe, commands, false))
+      return 1;
     double beforeSeconds = std::chrono::duration<double>(start - kppStarted).count();
     std::vector<LibraryJob> jobs(p.links.size());
     // (Linux and FreeBSD libraries are compiled by clang's GNU driver, as the bundled toolchain's are)
@@ -478,6 +490,10 @@ namespace projects
     else
       fprintf(stderr, "kpp: %s (%s) failed after %.1f s (%s)\n", p.name.c_str(), p.configuration.c_str(), seconds, split);
     auto afterStart = Clock::now();
+    // The command steps that name the executable, after a build that wrote it, then kpp's own steps (the
+    // links into bin\ take what a command made of it).
+    if (code == 0 && !p.commands.empty() && !runCommands(root, p, exe, commands, true))
+      return 1;
     if (!p.steps.empty() && (code == 0 || (keepGoing && fs::exists(exe, ec))) && !runSteps(root, p, exe))
       return 1;
     // KPP_STEP_TIMES=1: where an edit build's time goes besides kpp's and the link's (an environment
@@ -597,6 +613,10 @@ namespace projects
       if (ours && it->is_regular_file(ec))
         doomed.push_back(it->path());
     }
+    // (and what kpp remembers of its command steps' last runs: they run again)
+    for (fs::directory_iterator it(root / "build" / "kpp" / "steps" / p.name / p.configuration, ec), end; !ec && it != end; it.increment(ec))
+      if (it->is_regular_file(ec))
+        doomed.push_back(it->path());
     for (const fs::path& f : doomed)
       if (fs::remove(f, ec))
         ++cleaned.files;

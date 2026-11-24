@@ -1821,7 +1821,7 @@ source declarations replace it is open. Details: [build.md](build.md), "config::
 source"; specs tests/spec/kpp/config_default_*.
 
 **What build.kpp can run (decided by kovarex, 2026-11-16, option A+ of the analysis "build.kpp and running
-scripts").** kovarex: "The fact, that we can build the version from build itself, unlike in C++ version,
+scripts"; amended on 2026-11-24, "Command steps" below: the project being built may run commands).** kovarex: "The fact, that we can build the version from build itself, unlike in C++ version,
 where it had to be done in various git hooks is nice. But I'm worried, the build.kpp can now run any script,
 which looks like a huge security hole." build.kpp itself never could (the interpreter has no I/O), but the
 root project's description named shell commands kpp ran: before-build (under `--check` too), after-build,
@@ -1844,6 +1844,35 @@ commands for, kpp does itself, typed:
 - before-build and after-build commands are removed (2026-11-16, after the game's build.kpp moved off them,
   wube/Factorio #8763): one still given is an error naming what replaces it. kpp's own `--before-build`
   and `--after-build` of `--generate-visual-studio-files` without a build.kpp stay: a person types them.
+
+**Command steps: the project's own commands come back (decided by kovarex, 2026-11-24).** The rule above was
+too strict for a build that replaces FASTBuild everywhere (kovarex: "We already know we want to eventually
+drop fastbuild, it should be all in kpp"): the game's Mac build runs `dsymutil`, `lipo`, `actool` and
+scripts of its own after the link, and its Linux build generates Wayland protocol headers and builds
+OpenSSL, all as FASTBuild `Exec()` nodes that run only when their inputs changed (a Factorio Mac developer's
+list, 2026-11-23). What every other build tool does was looked at (make, CMake, MSBuild, Xcode's script phases,
+FASTBuild, Cargo's build.rs: all run what the project names, without asking; Go alone runs nothing), and
+kovarex decided: "if that is the norm, lets not complicate our life, and allow to make these commands as
+well in build.kpp (the project, not libraries)". So:
+- **The project being built may declare commands**, as steps of a target: `game.step("dsym").run("dsymutil",
+  {"{exe}", "-o", "{exe}.dSYM"}).input("{exe}").output(...)` (docs/build.md, "Command steps"). A step is a
+  program and a list of arguments, with no shell between; the files it reads and writes; and the steps it
+  comes after.
+- **A library may not** (kovarex: "libraries are libraries"): a build.kpp that declares a kpp library and a
+  step is an error, for a library inside the project's repository too, so using a library still runs none of
+  its code on your machine. The root project declares the steps its libraries need.
+- **Only a build runs them.** `--check`, the language server and the generation of IDE files run no command;
+  a step that is wrong (a circle, an output outside the project) is still an error under `--check`.
+- **Only when out of date**, by size and time of the files it reads, a missing file it writes, a changed
+  command, or a step before it that ran: a build with nothing changed starts no process.
+- **No prompt** before the first build of a clone (considered, and left out: no build tool has one, editors
+  do, and kpp's editor support runs nothing). kpp prints each command as it runs it.
+- What stays from 2026-11-16: `beforeBuild` and `afterBuild` (a shell command line around every build) are
+  errors; buildInfo() and the typed after-build steps stay the way to do what they do; the allowlist of kpp
+  options and clang flags stays (a flag that loads a plugin would run code under `--check` and in the
+  editor too).
+- Not built yet: a step over several cells (a universal binary's `lipo` of the arm64 and the x86-64
+  builds), steps run in parallel, and a typed step that copies a directory.
 What stays: `debug(...)`'s command, which names the program F5 and `--run` start (the person starts it), and
 `kpp measure`'s compare commands, which run only when a person types `kpp measure --compare`.
 

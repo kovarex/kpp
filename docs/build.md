@@ -422,10 +422,11 @@ run_tests.cmd.
   `cell.configuration.name`. tests/project.ps1 checks both.
 - **Measured** on a `kpp new` project (2026-10-31, PC-PRACOVNA): the first `kpp --debug` took
   1.9 s (compiling build.kpp and the program); with nothing changed it took 0.2 s.
-- **No commands** (kovarex, 2026-11-16: design.md, "What build.kpp can run"): build.kpp's
-  `beforeBuild` and `afterBuild` commands, run by cmd in the project's directory, are gone, and one
-  that is still given is an error naming what replaces it: build information and the steps after the
-  build, below, which kpp does itself.
+- **No command lines around the build** (kovarex, 2026-11-16: design.md, "What build.kpp can run"):
+  build.kpp's `beforeBuild` and `afterBuild` commands, run by cmd in the project's directory, are gone, and
+  one that is still given is an error naming what replaces it: build information and the steps after the
+  build, below, which kpp does itself, and command steps (2026-11-24, below) for a program of the
+  project's own choosing.
 - **What version 0 lacks:**
   - `use()` finds libraries in directories only (below); the registry, build.lock and `kpp add`
     do not exist yet.
@@ -478,6 +479,71 @@ The game's copy into `bin\Debugx64\` and its `config-path.cfg` and `config\confi
 these each (factorio-in-kpp's build.kpp). Two builds at once (Visual Studio builds factorio and
 factorio-test together) write each file through a name of their own, moved into place. Tested by
 tests/project.ps1, section buildinfo.
+
+### Command steps (2026-11-24)
+
+A project runs programs of its own choosing as steps of a target (design.md, "What build.kpp can run": the
+project being built may, a kpp library may not). A step is a program with its arguments, the files it reads
+and the files it writes; kpp runs it only when it is out of date.
+
+```
+void build(Project& project)
+{
+  Executable& game = project.executable("game", {"src"});
+  // before the compile: it writes a source file
+  game.step("protocol").run("tools/generate", {"protocol/xdg-shell.xml", "src/XdgShell.kpp"})
+      .input("protocol/xdg-shell.xml").output("src/XdgShell.kpp");
+}
+
+void configure(Cell& cell)
+{
+  if (cell.platform != Platform::Mac)
+    return;
+  // after the link: it names the executable
+  Step& dsym = cell.target.step("dsym");
+  dsym.run("dsymutil", {"{exe}", "-o", "{exe}.dSYM"});
+  dsym.input("{exe}").output("{exe}.dSYM/Contents/Info.plist");
+  cell.target.step("dsym-plist").run("scripts/update-dsym-info-plist.sh", {"{exe}.dSYM/Contents/Info.plist"})
+      .input("src/Info/BuildVersion.kpp").after(dsym);
+}
+```
+
+| Call | What it says |
+|---|---|
+| `target.step(NAME)` | the step NAME of the target, made when new; NAME is letters, digits, `_`, `-` and `.` |
+| `.run(PROGRAM, {ARGUMENTS})` | the program and its arguments, each argument passed as it is: no shell reads them, so `&&`, a pipe and `>` mean nothing (a script is a file of the project, run as the program). A bare name is found on PATH; a name with a `/` is a file of the project |
+| `.argument(TEXT)` | one more argument |
+| `.input(PATH)` | a file it reads, or a directory (every file under it) |
+| `.output(PATH)` | a file it writes, inside the project's directory; its directory is made |
+| `.after(STEP)` | it runs after that step of the same target, and again whenever that one ran |
+| `.directory(PATH)` | where the program starts: the project's directory without it |
+
+Paths are relative to the project's directory; `{exe}` and `{configuration}` are expanded everywhere, as in
+the steps after the build.
+
+- **When a step runs.** On its first build; when a file it reads has another size or time than at its last
+  run (a file added to or removed from an input directory too); when a file it writes is missing; when its
+  program, arguments or directory changed; and when a step it comes after ran. A step that names no input,
+  no output and no step before it runs on every build. kpp keeps what each step last ran with in
+  `build\kpp\steps\TARGET\CONFIGURATION\NAME.txt`; `--clean` and `--rebuild` remove it, so every step runs
+  again. A build with nothing changed starts no process.
+- **Before or after.** A step that names `{exe}` anywhere, or comes after one that does, runs after the link
+  of a build that succeeded, before the steps after the build (a `linkAfterBuild` takes what a command made
+  of the executable). Every other step runs before anything compiles, so what it writes can be a source
+  file of the program or of a C library.
+- **Order.** The order build.kpp gives them, each after the steps it names with `after` and after the step
+  that writes a file it reads. One after another for now.
+- **What kpp shows.** A line per step run, with why and the command: `kpp: step dsym (C:\...\game.exe
+  changed): dsymutil.exe ...`, then the program's own output. A program that cannot be started, exits with
+  another code than 0, or does not write a file it said it writes, fails the build, and the step runs again
+  next time.
+- **What is an error before anything runs** (under `--check` too): a step without a program, after a step
+  that is not there, steps that wait for each other in a circle, an output outside the project's
+  directory, one file the output of two steps, and a step in the build.kpp of a kpp library.
+- **What never runs one:** `--check`, the language server, `--generate-visual-studio-files` and the other
+  generators. A step whose output is a source file must have run once (a build) before a check finds it.
+- Not built yet: a step over several cells (`lipo` of two architectures' builds), steps in parallel, a
+  typed step that copies a directory. Tested by tests/project.ps1, section commands.
 
 ### kpp libraries (working now, 2026-10-31)
 

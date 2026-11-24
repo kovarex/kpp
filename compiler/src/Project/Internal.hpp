@@ -87,6 +87,14 @@ namespace projects
     std::vector<std::string> lines; // write-if-missing's text, a line each
   };
 
+  // A command of the project's own (projectlib's Step; Steps.cpp, "Command steps"): a program and its
+  // arguments, the files it reads and writes, and the steps of its target it comes after.
+  struct CommandStep
+  {
+    std::string name, program, directory;
+    std::vector<std::string> arguments, inputs, outputs, after;
+  };
+
   // One cell, an executable in a configuration, as build.kpp described it (projectlib\Project.kpp's
   // describe, configure(cell) applied). After resolveUses, kppLibraries holds the libraries it uses,
   // each with its roots, absolute, and its scope.
@@ -99,6 +107,7 @@ namespace projects
     std::string debugCommand, debugArguments, debugDirectory;
     BuildInfoWanted buildInfo;
     std::vector<BuildStep> steps; // after the build
+    std::vector<CommandStep> commands; // Executable::step's
     std::string platform; // the platform configure(cell) saw (Cell::platform): windows, linux, freebsd
     std::string unavailable; // Cell::unavailable's reason: the cell is not built (Description::unavailable)
     std::vector<Use> uses;
@@ -300,6 +309,17 @@ namespace projects
   fs::path buildInfoFile(const fs::path& root, const Program& p);
   bool writeBuildInfo(const fs::path& root, const Program& p, std::string& error);
   bool runSteps(const fs::path& root, const Program& p, const fs::path& exe);
+  // A cell's command steps in the order they run, each with whether it runs after the link (it names {exe},
+  // or comes after one that does); false, with error set, for a step that is wrong (planCommands).
+  struct CommandPlan
+  {
+    std::vector<size_t> order;   // indexes into Program::commands
+    std::vector<char> afterLink; // by index
+    std::vector<char> ran;       // by index: it ran in this build (runCommands)
+  };
+  bool planCommands(const fs::path& root, const Program& p, const fs::path& exe, CommandPlan& plan, std::string& error);
+  // Runs the plan's steps before the compile (afterLink false) or after the link, those that are out of date.
+  bool runCommands(const fs::path& root, const Program& p, const fs::path& exe, CommandPlan& plan, bool afterLink);
   // IdeProjects.cpp
   std::string visualStudioName(std::string name);
   int generate(const fs::path& root, const Description& d, const Request& request);
