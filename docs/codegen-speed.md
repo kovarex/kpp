@@ -1558,9 +1558,13 @@ were not destroyed before the handler ran: the differential suite's life/5 and l
 release builds (an array's elements left alive by a constructor that threw in a new-expression beside
 them), on master for one CI run, 2026-11-24. The gate does not run that suite; a change to what a
 call or a scope compiles to needs `compiler\tests\differential\run.py` in debug and release before
-its push, as a parser change does. The numbers below are from before the `nop` came back: with it the
-game has 317,768 more instructions (10,361,783), and the time it costs kpp's back end (1.7% by the
-variant timing, inside its noise) is back.
+its push, as a parser change does. The numbers below are from before the `nop` came back. With it
+back, at master bef9cafe9 (which also has another thread's 8a6a69bc0, a typed union copied through a
+helper): 1,575.6 MB of text, 10,180,876 instructions, 629,457 `nop`s, 314,731 invokes, 154,643 cleanup
+pads, 1,012,348 allocas, 1,328,466 stores, and three builds on one thread with LLVM's part 71.6 s
+(71.62, 69.88, 71.66) and all of it 124.3 s. Those builds are a later session's, not paired with the
+table's: the 1.7% that the `nop` costs kpp's back end by the variant timing is less than two sessions
+differ by.
 
 Not changed: the `nop` before an invoke as a volatile load (inside the noise in kpp's back end, for
 larger code), the address steps of offset zero and the padding (they cost the back end nothing).
@@ -1596,6 +1600,147 @@ for master, 13.14 s with the emitter changes) are closer than one compiler's own
   module names, with a type node and an argument list each): no time in kpp's back end, 3.8% of the
   objects' size and the linker's work on them. Visual Studio uses them to call a member function from
   the watch window.
+
+## 10. What LLVM does with the IR, by phase, by pass and by function (2026-11-24)
+
+Section 9 counted the text. This one measures the back end itself on it: where its time goes, what in
+that is work for nothing, and what the build as a whole waits for.
+
+**Method.** A quarter of the game's modules (64, every fourth of the 256 of kpp bef9cafe9's debug
+build of kpp-factorio 0c18a3229e, 385.6 MB of IR), compiled by kpp's own back end through a temporary
+entry point (never committed) that marks each phase of a module's compile and hashes its object. Six
+processes, each on a core of its own, compile a module from every variant in turn, three rounds, and
+each (module, variant)'s least time is summed; the machine does nothing else (`heavy.cmd --exclusive`).
+A difference under 2% says nothing. Beside it, Visual Studio's clang over four of the modules with
+`-ftime-report` (time by pass) and `-Rpass-missed=sdagisel -mllvm -fast-isel-report-on-fallback` (what
+the fast instruction selector does not select), and a sampling profile of that entry point over sixteen
+modules (kpp linked with a PDB: the linker's public symbols name LLVM's functions).
+
+**The phases** of the 15.50 s the 64 modules take:
+
+| phase | time | share |
+|---|---:|---:|
+| the text parsed | 4.70 s | 30.3% |
+| verified | 0.71 s | 4.6% |
+| the target made, clang's -O0 pipeline (the always-inliner) | 0.09 s | 0.6% |
+| machine code and the object | 9.39 s | 60.6% |
+| the module freed | 0.61 s | 3.9% |
+
+**The passes of the machine code** (clang's own timers, four modules; a pass that does nothing shows
+about 0.2%, its timer's own cost): instruction selection 41.5%, the assembly printer (with the object's
+debug information) 20.9%, live debug values 7.8%, the fast register allocator 4.0%, Windows exception
+handling preparation 3.4%, prologue and epilogue insertion 2.5%, "expand large div/rem" 2.1%, the
+two-address pass 1.9%; some eighty others under 1% each.
+
+**By function** (2,636 samples): no function of the machine code's holds 1.5%. The one that stands
+out is the parser's lexer: `LLLexer::LexIdentifier` 5.2% alone, about 10% with the rest of the lexer
+and the `memcmp` under it. It finds a keyword by comparing the token against LLVM's 400 keywords one
+after another, and `ptr` and the instructions' names are near the end of that list. Then `malloc` 3.8%,
+the parser's map of metadata numbers (`parseMDNodeID` and the `std::map` under it, one look per
+`!dbg`) 3.0%, and the names of local values (`Value::setValueName`, `getName`, the symbol table's
+`StringMap`) 4.4%.
+
+**The fast instruction selector's fallbacks** (four modules, 4,437 functions). It selects a block from
+its end, and where it cannot select the terminator the whole block goes to SelectionDAG: 2,913 blocks
+ending in an `invoke` (it has none), 1,550 in a `cleanupret`, 491 in a `ret i1` (it returns an `i1`
+only where the function says how the rest of the byte is filled, `zeroext`). Every function's
+arguments are lowered by SelectionDAG on Win64, 321 calls go there alone (207 of them kpp functions:
+an `i1` argument, a struct by value), 254 instructions take the rest of their block with them
+(`catchpad`, a struct loaded or stored as one value, atomics). It costs less than it sounds: with every
+`invoke` in a block of its own, so that the code before it is selected fast, clang's time fell 0.4%
+(section 9), and `zeroext` on every returned `i1` gains 0.7% here.
+
+**The variants**, against the modules as kpp writes them:
+
+| variant | time | parsed | machine code | freed | objects |
+|---|---:|---:|---:|---:|---|
+| live debug values only where a function has a debug instruction | -5.9% | | -9.3% | | the same bytes |
+| instruction results as numbers (`%12`), not names (`%t12`) | -2.4% | -4.6% | -1.2% | -14.7% | the same bytes |
+| that, and the labels | -3.7% | -7.4% | -0.6% | -22.5% | the same bytes |
+| both of the two above | -9.4% | -8.3% | -9.8% | -27.0% | the same bytes |
+| a `ptr` parameter read as the parameter, not from its slot | -1.7% | -3.4% | -0.7% | | 0.25% smaller |
+| every parameter so | -3.0% | -3.3% | -2.7% | | 0.23% smaller |
+| `zeroext` on a returned `i1` | -0.7% | | -2.3% | | 0.07% larger |
+| line tables only (LLVM's own stripping, after the parse) | -11.3% | | -16.3% | | 27.6% smaller |
+| no debug information (stripped after the parse) | -25.0% | | -36.8% | | 46.1% smaller |
+
+- **Live debug values.** LLVM's "Live DEBUG_VALUE analysis" extends the ranges of DBG_VALUE
+  instructions over a function's blocks, and it walks every instruction of every function to do it,
+  with its tables made anew per function. An unoptimized kpp function has no such instruction: a
+  variable declared on a slot made at the function's start is a row of the frame table. Of the 68,911
+  functions of the 64 modules, 2,664 have one (a lambda's capture, declared on an address the body
+  computes). The pass is 5.9% of the back end's time, for 96% of the functions to no effect.
+- **Names.** A named local value is an entry of its function's symbol table and of the context's map
+  of names, made at the parse and taken out when the module is freed; an unnamed one (`%12`) is a
+  slot of a vector. LLVM 19 takes numbers with gaps, but they must rise in the text's order.
+- **Parameters.** Reads of a `ptr` parameter from its slot (`this`, references, pointers that are
+  never assigned) are 9.1% of these modules' instructions and 41% of their loads. They are nearly
+  free: the instruction selector folds such a load into its use.
+- **Debug information** is a quarter of the back end's time after the parse, and 46% of the objects.
+  What it costs the parse is not in these numbers (the text is parsed, then stripped): it is 46% of
+  the text (section 9).
+
+**What was changed.**
+
+- **Live debug values run only for a function that has a debug instruction** (backend.cpp,
+  LiveDebugValuesWhereAny: LLVM's own pass, held by a pass of kpp's that looks first). The objects
+  are the same, byte for byte: the 64 modules here, and the game's 256 built by the compiler before
+  the change and after it.
+- **Half of the back end's threads while codegen runs** (BackEndPool, below).
+
+**The back end's threads while codegen runs.** Section 8's timeline has LLVM's threads compile the
+program pieces beside codegen's levels 1 and 2, every hardware thread busy, then wait 2 s for the
+instances' modules. Codegen's threads are the build's critical path there, and as many back end
+threads as the machine has hardware threads took half the machine from them, to finish work early that
+nobody waited for. With the back end's width limited until codegen ends (a temporary environment
+variable; four builds each in interleaved rounds, medians, kpp's own time without the link):
+
+| back end threads while codegen runs | kpp | of it codegen | LLVM after codegen | program pieces done before codegen's end |
+|---:|---:|---:|---:|---:|
+| 32 (all) | 11.25 s | 5.64 s | 2.75 s | 119 of 119 |
+| 24 | 11.20 s | 5.40 s | 2.72 s | 119 |
+| 16 | 10.45 s | 5.02 s | 2.67 s | 119 |
+| 12 | 10.95 s | 4.89 s | 2.72 s | 68 to 83 |
+| 8 | 11.05 s | 4.71 s | 3.06 s | 37 to 40 |
+
+Codegen is faster the fewer threads the back end has, and at 16 the program pieces are still done
+when it ends; below that they are not, and what is left of them is compiled beside the instances'
+modules. Every build at 16 (10.20 to 10.70 s) was shorter than every build at 32 (11.20 to 11.50 s).
+The pool takes half of the build's threads while codegen runs, all of them after.
+
+A second session with the changes built (six rounds each, in turn, the machine busier): the compiler
+before both changes 11.40 s (12.2, 11.2, 11.4, 11.4, 11.1, 11.4), with both 10.60 s (10.8, 11.2, 10.3,
+11.1, 10.4, 10.4), in no round the longer of the two; codegen 5.64 s against 5.10 s, LLVM after codegen
+2.83 s against 2.72 s. The width alone, live debug values as before: 11.05 s at 20, 11.10 s at 18,
+11.05 s at 16, 11.00 s at 14 (where 9 to 35 of the program pieces were left when codegen ended).
+Between 14 and 20 these rounds show no difference; half of the threads is in the middle of that.
+
+The other way round does not help: with fewer threads for codegen itself (`--codegen-threads`; the
+back end with all 32) the build is longer, kpp's time 11.15 s with 32 or 24, 11.70 s with 16, 12.20 s
+with 12, 12.95 s with 8.
+
+**Measured and left.**
+
+- **Numbers for local values.** The emitter makes a value's name before it writes the value's
+  instruction, and cleanup pads are written aside and placed after the body, so its numbers do not
+  rise in the text's order. Renumbering a function's text when it is finished is a pass over all of
+  it on codegen's threads, which the build waits for, to save a fortieth of the time of LLVM's, which
+  wait themselves: a loss. Numbers written right at once (a name only where the order is not the
+  text's) would be free, for about 2% of LLVM's time: 0.06 s of a build. Not done.
+- **Parameters read without a load.** 1.7% for 9% of the instructions; and a scalar parameter's read
+  must stay a load, or a value changed in the debugger would not be the one the code uses.
+- **`zeroext` on a returned `i1`**: 0.7%, inside the noise.
+- **Freeing a module later** (while the linker runs): the freeing is 3.9% of the back end's time, and
+  the instances' modules, which the build waits for, would have to be kept all at once.
+
+**Left, by what it would give.**
+
+- **The lexer's keyword search**, about 7% of the back end's time. It is LLVM's code: a faster one
+  means kpp carrying its own copy of one file of LLVM's (LLLexer.cpp, built against LLVM's public
+  headers and linked in place of the library's). A decision, not a change.
+- **The verifier**, 4.6% (section 8's question: off by default, on for kpp's own tests).
+- **No text at all** between codegen and LLVM (the IR built in memory): the parse is 30% of the back
+  end's time, and writing the text is part of codegen's.
 
 ## Reproduce
 

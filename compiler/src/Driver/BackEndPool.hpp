@@ -11,10 +11,17 @@
   // The largest task queued first (its weight: a module's text size), those of one
   // weight in the order they came: a large piece taken last ends the build alone (the game's 17 MB
   // program piece of ValueToWidget, taken 93rd of 128 at the barrier, compiled 5.4 s past codegen's end).
+  // While codegen runs, only widthWhileCodegenRuns of the tasks run at once: codegen's threads are the
+  // build's critical path then (the instances' modules are compiled only once it ends, and until then
+  // these threads have the program pieces alone, which they finished 2 s before codegen did), and as
+  // many of these as there are hardware threads took half the machine from them. With half the
+  // threads the game's clean build is 0.8 s shorter and the program pieces still end while codegen
+  // runs (docs/codegen-speed.md, "The back end's threads while codegen runs").
   class BackEndPool
   {
   public:
-    explicit BackEndPool(unsigned threads)
+    BackEndPool(unsigned threads, unsigned widthWhileCodegenRuns)
+      : width(std::clamp(widthWhileCodegenRuns, 1u, std::max(1u, threads)))
     {
       for (unsigned t = 0; t < std::max(1u, threads); ++t)
         workers.emplace_back([this] { work(); });
@@ -43,8 +50,16 @@
       }
       ready.notify_one();
     }
-    // Codegen ended (for duringCodegen's count).
-    void codegenEnded() { duringCodegenRuns = false; }
+    // Codegen ended (for duringCodegen's count): every thread takes tasks from here on.
+    void codegenEnded()
+    {
+      duringCodegenRuns = false;
+      {
+        std::lock_guard lock(mutex);
+        width = unsigned(workers.size());
+      }
+      ready.notify_all();
+    }
     void waitStreamed()
     {
       std::unique_lock lock(mutex);
@@ -75,12 +90,13 @@
         Task task;
         {
           std::unique_lock lock(mutex);
-          ready.wait(lock, [&] { return closing || !queue.empty(); });
+          ready.wait(lock, [&] { return closing || (!queue.empty() && running < width); });
           if (queue.empty())
             return;
           std::pop_heap(queue.begin(), queue.end(), lighter);
           task = std::move(queue.back());
           queue.pop_back();
+          ++running;
         }
         task.run();
         bool ended = duringCodegenRuns;
@@ -88,9 +104,11 @@
         {
           std::lock_guard lock(mutex);
           --pending;
+          --running;
           streamedPending -= task.streamed;
           endedDuringCodegen += ended;
         }
+        ready.notify_one(); // (a thread the width kept waiting)
         done.notify_all();
       }
     }
@@ -99,6 +117,8 @@
     std::condition_variable ready, done;
     std::vector<Task> queue; // (a heap: lighter)
     size_t pending = 0, streamedPending = 0, endedDuringCodegen = 0, nextOrder = 0;
+    unsigned running = 0; // tasks running now
+    unsigned width;       // how many may: widthWhileCodegenRuns, then every thread (codegenEnded)
     bool closing = false;
     std::atomic<bool> duringCodegenRuns{true};
   };

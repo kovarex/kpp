@@ -635,7 +635,7 @@ void runCodegen(Build& build)
     if (inProcess && outputModules != modules && !options.exe.empty() && options.emitLLVM.empty() && !options.check &&
         (options.keepGoing || !global.hasCheckerErrors()))
     {
-      backEnd = std::make_unique<BackEndPool>(options.threads);
+      backEnd = std::make_unique<BackEndPool>(options.threads, std::max(1u, options.threads / 2)); // (half of them while codegen runs: BackEndPool)
       stream.piece = [&](unsigned k, std::string&& text)
       {
         handedOver[k] = 1;

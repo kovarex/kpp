@@ -6,7 +6,7 @@ construct's count in the game's sources (`src`, `CommonUtil`, `Agui`; 7,371 file
 ordered by what the conversion needs. A pending row is a known gap and shows the compiler's first
 complaint; it turns into a failure of the suite the day it starts passing, so the row gets removed.
 
-**2500 pass, 4 pending, 0 failing, 0 fixed** (2504 snippets, 197.0 s).
+**2501 pass, 4 pending, 0 failing, 0 fixed** (2505 snippets, 184.0 s).
 
 ## Language: statements, expressions, declarations
 
@@ -2126,9 +2126,10 @@ complaint; it turns into a failure of the suite the day it starts passing, so th
 | `kpp/reflection_member_initializer_of_a_reference_is_error.kpp` | a reference member has no value of its own, so its m.initializer is an error (design.md 8.3) | pass |  |  |
 | `kpp/reflection_members.kpp` | members(T) with m.name, m.type and object.[m] | pass |  |  |
 | `kpp/reflection_methods.kpp` | methods(T) lists the member functions declared in T itself that have an address, in declaration order, each overload an entry of its own: no static function, constructor, destructor, operator, conversion, template, `= default`, nor one under a false `when`, nor a base's; f.name is its name, f.isNoDiscard whether it is [[nodiscard]], f.pointer the pointer to it as a constant, of its member pointer type (const as the function is), a template argument as `&T::f` is (one instance for both), a value calling the override of a virtual one; methods(T)[i] and methods(T).size; a class template's instance's; a class without such functions lists none | pass |  |  |
-| `kpp/reflection_methods_descriptor_has_no_type_is_error.kpp` | a descriptor of methods(T) has name, pointer and isNoDiscard only: f.type or f.offset is an error | pass |  |  |
+| `kpp/reflection_methods_descriptor_has_no_type_is_error.kpp` | a descriptor of methods(T) has name, pointer, isNoDiscard and parameterNames only: f.type or f.offset is an error | pass |  |  |
 | `kpp/reflection_methods_lists_public_functions.kpp` | methods(T) lists public member functions alone (a struct's are all public): a generic loop over a class with private helpers names each listed function's pointer, and compiles | pass |  |  |
 | `kpp/reflection_methods_of_a_type_that_is_no_class_is_error.kpp` | methods(T)[i] and methods(T).size of a type that is no class are errors, as members(T)'s are; so is methods(T)[i] past the last method, naming the count | pass |  |  |
+| `kpp/reflection_methods_parameter_names.kpp` | f.parameterNames of a methods(T) descriptor is a constant `const char* const*`: the function's parameter names in declaration order, each a string literal ("" for an unnamed one), then a null pointer; a function without parameters has the null pointer alone; it is usable where f is, in a lambda written in the loop too (a constant, nothing captured), and a class template's instance's are its declaration's | pass |  |  |
 | `kpp/reflection_name_is_a_constant.kpp` | a reflection descriptor's name is a constant expression, the string literal it is (m.name of members(T), a.name of alternatives(U), f.name of methods(T)): an `if constexpr` reads it (`std::StringView(f.name).startsWith("luaRead")`, a constexpr function over it), and only the branch it picks is instantiated, so a loop over methods(T) skips a function before naming its pointer | pass |  |  |
 | `kpp/required_this_at_compile_time.kpp` | required `this.` holds at compile time as at run time (design.md 23c, Q10): a bare name that is a member and a global is the global for the evaluator too, in a function run at compile time, a static member's initializer and a default member initializer. Until 2026-11-09 the evaluator took the member: 2 at compile time, 1 at run time | pass |  |  |
 | `kpp/required_this_bare_constant_read_as_a_type_is_error.kpp` | required `this.` (design.md 23c, under --this-reference): a bare constant the parser reads as a type (`Box<made>`, `sizeof(made)`) that finds only a member is the error naming the fix | pass |  |  |
