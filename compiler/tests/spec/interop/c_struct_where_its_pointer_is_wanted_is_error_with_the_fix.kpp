@@ -1,0 +1,9 @@
+// spec: an imported C struct's object where a C function takes a pointer to it (C++'s reference parameter that the C header declares as a pointer: the Windows SDK's REFGUID, `SHGetKnownFolderPath(FOLDERID_Documents, ...)`) is an error that names the fix, its address, which the fix pass writes
+// found by thread UE (2026-11-22, kovarex: the checker offers the `&`): "a class (_GUID) does not convert to const _GUID*: it has no implicit conversion operator to a scalar", no fix, for Unreal's SHGetKnownFolderPath calls
+// error: c_struct_where_its_pointer_is_wanted_is_error_with_the_fix.kpp:8: error: a ZGuid where its C function takes a const ZGuid* (C++'s reference, the C header's pointer): write `&ZFOLDER_Documents`, not `ZFOLDER_Documents`
+extern "C" import "c_struct_where_its_pointer_is_wanted_is_error_with_the_fix.h";
+
+int main()
+{
+  return zKnownFolder(ZFOLDER_Documents);
+}

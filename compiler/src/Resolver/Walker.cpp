@@ -5632,6 +5632,24 @@ auto GlobalScope::Impl::Walker::checkClassToScalar(const Ty* from, const Ty* to,
   }
   if (objectThisWherePointer(source, to)) // `take(this)` for a C*: C++'s pointer
     return;
+  // An object of a C struct where a pointer to it is wanted: C++'s reference parameter that a C header declares as a
+  // pointer (the Windows SDK's REFGUID, `SHGetKnownFolderPath(FOLDERID_Documents, ...)`, the C import's `const GUID*`).
+  // Its address, which the fix writes (kovarex, 2026-11-22: the checker offers the `&`).
+  const Expr* named = source;
+  while (named && named->kind == NodeKind::ParenExpr)
+    named = static_cast<const ParenExpr*>(named)->inner;
+  const Ty* pointee = t->kind == TyKind::Pointer && t->inner ? types.unqualified(t->inner) : nullptr;
+  if (pointee && pointee == types.unqualified(f) && f->kind == TyKind::Class && f->decl && f->decl->file && f->decl->file->isImported && named &&
+      named->kind == NodeKind::NameExpr && !static_cast<const NameExpr*>(named)->name.empty())
+  {
+    std::string spelled;
+    const QualifiedName& name = static_cast<const NameExpr*>(named)->name;
+    for (uint32_t k = 0; k < name.parts.size(); ++k)
+      spelled += (k ? "::" : "") + std::string(name.parts[k].symbol != UINT32_MAX ? symbols.name(name.parts[k].symbol) : "");
+    impl.reportCheckerError(file, named->token, "a " + types.toString(f, &symbols) + " where its C function takes a " + types.toString(t, &symbols) +
+                                                  " (C++'s reference, the C header's pointer): write `&" + spelled + "`, not `" + spelled + "`");
+    return;
+  }
   impl.reportCheckerError(file, token, "a class (" + types.toString(f, &symbols) + ") does not convert to " + types.toString(t, &symbols) +
                                          ": it has no implicit conversion operator to a scalar");
 }
