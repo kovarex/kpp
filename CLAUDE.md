@@ -104,6 +104,14 @@ Decided by kovarex; every thread follows them.
 - C:\Factorio's sources are read-only; only its FASTBuild build may write there (its build outputs),
   one FASTBuild run at a time, coordinated through the coordinator. The game runs from C:\factorio-in-kpp or a thread's scratch game dir with
   an isolated write dir; never write to %APPDATA%\Factorio.
+- Long waits survive the session (kovarex, 2026-11-24): the Claude desktop app stops a session 60 minutes
+  after its last turn and kills every process it started, a background `heavy.cmd` wait included. A heavy
+  job whose wait and run together may pass about 30 minutes runs as `C:\kpp-sandbox\heavy.cmd --detach
+  --log FILE COMMAND...` (heavy-queue's lock\README.md, "Detached jobs"): it returns at once, the job lives
+  on outside the session, its output goes to FILE and its exit code to FILE.exit. Before ending the turn,
+  a session waiting on anything longer (a detached job, CI, another thread) schedules a check-in (CronCreate)
+  every 30 minutes or less, which reads FILE.exit and ends once the job is done; a background watcher alone
+  dies with the session.
 - Tests run in parallel by default (kovarex, 2026-11-17): kpp's runner, and so the game's factorio-test,
   starts one worker per hardware thread without --jobs, and the game's workers get their own write
   folders without --write-data. Pass neither: `factorio-test --config CONFIG` takes about 93 s, one process
