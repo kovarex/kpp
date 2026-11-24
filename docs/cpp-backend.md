@@ -65,6 +65,18 @@ folded in before the writer runs.
 - **The C calling convention.** A C function is declared with the types the code generator lowered it to for the
   target; `sret` becomes a struct returned by value and `byval` a struct passed by value, so that the C++ compiler
   places them as the target's C does. A parameter the caller sign-extends (`signext`) is a signed type.
+  - On SysV x86-64 a struct of 16 bytes or less goes on the stack when the registers it would take ran out (two
+    doubles after seven). The C++ compiler decides that again, by what the struct's eightbytes hold, so under
+    `--via-cpp` the code generator writes that copy's type by its eightbytes (`byval(<{ double, double }>)`,
+    bytes for an INTEGER one) and the writer passes a struct of those members. Bytes alone would be passed in
+    the integer registers still free (spec interop/c_structs_by_value gave 28 for 8928).
+  - A small struct the target's C passes in memory for another reason (an unaligned member, an x87 long
+    double) is a storage type with an unaligned member of its own, which the C++ compiler passes in memory too.
+- **Integers of other widths.** An i24 (the C calling convention's struct of three bytes) or an i40 (a bit
+  field's storage) is held in a `u32` or a `u64` with its upper bits zero: each operation cuts its result to the
+  width, a signed one sign-extends its operands first, a load and a store move the integer's own bytes, and what
+  a C caller or callee leaves above the width is masked away. An operation not written for them (an intrinsic,
+  an atomic one, a conversion to floating point) refuses them.
 
 ## Exceptions
 
@@ -103,9 +115,10 @@ The flags, besides the level and the target: `-x c++ -std=c++17 -fexceptions -fc
 ## What it does not write
 
 A construct the writer does not translate fails the module by name ("kpp's C++ back end does not write ..."),
-never a guess: an integer of a width that is no power of two, module-level and inline assembly other than the
-code generator's own `nop`, `pause` and `yield`, an alias, a volatile access, a calling convention that is not
-C's, `indirectbr`, an intrinsic it has no builtin for.
+never a guess: an integer wider than 64 bits that is no i128, module-level and inline assembly other than the
+code generator's own `nop`, `pause`, `yield` and `cpuid`, an alias that is no global of its module at an
+offset, a volatile atomic access, a calling convention that is not C's, `indirectbr`, an intrinsic it has no
+builtin for.
 
 ## Debug information
 
@@ -124,6 +137,10 @@ translation unit's `a3` and `t17`, not kpp's variables, and no kpp types.
   compares what the two print.
 - The game: `kpp factorio-test debug --via-cpp` in a kpp-factorio checkout, its tests run with
   `--crc-mode write --crc-file FILE`, and the file compared with the plain build's.
+- Other targets: `spec.cmd --target linux --via-cpp` and `--target linux-arm64 --via-cpp` (built on Windows,
+  run under WSL, arm64 under `qemu-aarch64-static`; the sysroot has to have libstdc++, as
+  tools\sysroot\linux.ps1's has). The link takes `-lstdc++` for the C++ exceptions' runtime. A kpp hosted on
+  Linux has no LLVM in it, so `--via-cpp` is run from Windows.
 
 ## Measured
 
@@ -140,4 +157,27 @@ translation unit's `a3` and `t17`, not kpp's variables, and no kpp types.
 | The tests' run | 2 min 29 s | 4 min 38 s |
 
 The debug program is slower through C++ because every value is a local the C++ compiler keeps in memory at `-O0`.
-A release build's speed is not measured yet.
+
+Other targets, 2026-11-24, the specification suite through C++ (kpp at this commit):
+
+| target | pass | not passing |
+|---|---:|---|
+| Linux x86-64 (run under WSL) | 2,353 | 6, each for the sanitizer's Linux runtime, which a build of kpp does not have |
+| Linux arm64 (run under qemu) | 2,335 | 1, the same |
+
+The final build of the game (`kpp factorio final`, full LTO), kpp-factorio 349878f, Windows:
+
+| | plain kpp | through C++ |
+|---|---:|---:|
+| factorio.exe | 72.6 MB | 93.2 MB |
+| its code (.text) | 40.7 MB | 54.5 MB |
+| the build | 4 min 36 s | 9 min 5 s (the link 8 min 30 s) |
+| the five benchmark saves' checksums | | the same on each |
+
+Speed is open. The first timing (2026-11-24, 6 runs of 1,200 ticks a save) gave the C++ build 1.05 to 1.36 times
+the plain build's time per tick, with spreads up to 36%; a second one of four builds (3 runs of 600 ticks) could
+not tell them apart on circuits and gave 1.25 on belts, the same executable swinging between 5.7 and 9.5 ms a
+tick from run to run (PRACOVNA's light saves jump between two speed levels: another thread is on that). Read
+by each run's fastest tenth of ticks, the C++ build is 5 to 10% slower on belts and equal on circuits; a build
+without the noexcept filters' scopes of the search is equal to plain on both; a build without any `try` is no
+faster. Next: executed instructions of a Linux build, which has no noise and the Switch's exception model.

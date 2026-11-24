@@ -120,6 +120,7 @@ struct kpp_cpp_exception { ptr h; };
 struct kpp_cpp_scope { kpp_cpp_scope* outer; const ptr* clauses; u64 count; };
 extern "C" { extern __thread kpp_cpp_scope* kpp_cpp_scopes; [[noreturn]] void kpp_cpp_raise(ptr h, ptr terminate, ptr offset); [[noreturn]] void kpp_cpp_resume(ptr h); [[noreturn]] void kpp_cpp_uncaught(ptr h); [[noreturn]] void kpp_cpp_through_noexcept(ptr h); }
 template<class To, class From> static inline To kpp_bits(From v) { To r; __builtin_memcpy(&r, &v, sizeof r); return r; }
+template<class T> static inline T kpp_load_bytes(const void* p, unsigned n) { T r = 0; __builtin_memcpy(&r, p, n); return r; }
 )";
 
   std::string number(uint64_t n) { return std::to_string(n); }
@@ -171,8 +172,36 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       case 64: return isSigned ? "i64" : "u64";
       case 128: return isSigned ? "i128" : "u128";
       }
+      // Another width under 64 (the C calling convention's i24 of a struct of three bytes, a bit field's i40) is
+      // held in the next of u32 and u64, its bits above the width zero (isOdd, oddMask): each operation that
+      // knows such integers keeps them so, and the others refuse them.
+      if (bits < 64)
+        return bits < 32 ? (isSigned ? "i32" : "u32") : (isSigned ? "i64" : "u64");
       fail("an integer of " + number(bits) + " bits");
       return "u64";
+    }
+
+    static bool isOdd(Type* t)
+    {
+      if (!t->isIntegerTy())
+        return false;
+      unsigned bits = t->getIntegerBitWidth();
+      return bits < 64 && bits != 1 && bits != 8 && bits != 16 && bits != 32;
+    }
+
+    static unsigned holderBits(Type* t) { return t->getIntegerBitWidth() < 32 ? 32 : 64; }
+
+    // The bits an integer of an odd width has, as a constant of its holder.
+    static std::string oddMask(Type* t)
+    {
+      return number((uint64_t(1) << t->getIntegerBitWidth()) - 1) + (holderBits(t) == 64 ? "ull" : "u");
+    }
+
+    // x, an integer of an odd width, as the signed number it is, in its holder's signed type.
+    std::string oddSigned(Type* t, const std::string& x)
+    {
+      std::string shift = number(holderBits(t) - t->getIntegerBitWidth());
+      return "((" + intType(holderBits(t), true) + ")(" + x + " << " + shift + ") >> " + shift + ")";
     }
 
     // The C++ type of a value of type t.
@@ -313,6 +342,20 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       return name;
     }
 
+    // What a C function takes or returns by value in memory (byval, sret). The C++ compiler has to pass it in
+    // memory too: one of more than 16 bytes always is; a smaller one (SysV: a struct with an unaligned member, or
+    // an x87 long double) is, as bytes alone, taken for integers and passed in registers, so its storage type has
+    // an unaligned member of its own.
+    std::string memoryBlob(uint64_t size, uint64_t align)
+    {
+      if (size > 16 || size < 4 || dl.getGlobalPrefix() == 0 && StringRef(m.getTargetTriple()).contains("windows"))
+        return blob(size, align);
+      std::string name = "M" + number(size);
+      if (blobs.insert(name).second)
+        types += "struct KPP_A __attribute__((packed)) " + name + " { u8 b0; u16 unaligned; u8 b[" + number(size - 3) + "]; };\n";
+      return name;
+    }
+
     // The type memory is read or written through for a scalar of type t at alignment align.
     std::string memoryType(Type* t, Align align)
     {
@@ -350,6 +393,8 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
         return "0";
       }
       uint64_t n = value.getZExtValue();
+      if (bits != 8 && bits != 16 && bits != 32 && bits != 64) // (an odd width: in its holder)
+        return number(n) + (bits < 32 ? "u" : "ull");
       if (bits == 64)
         return number(n) + "ull";
       if (bits == 32)
@@ -510,6 +555,30 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
         return x;
       }
       unsigned bits = t->getIntegerBitWidth();
+      if (isOdd(t))
+      {
+        // In the holder, the result cut to the width again; a signed operation on the operands sign-extended.
+        auto cut = [&](const std::string& text) { return "((" + text + ") & " + oddMask(t) + ")"; };
+        std::string holder = ty(t);
+        switch (opcode)
+        {
+        case Instruction::Add: return cut(x + " + " + y);
+        case Instruction::Sub: return cut(x + " - " + y);
+        case Instruction::Mul: return cut(x + " * " + y);
+        case Instruction::And: return cut(x + " & " + y);
+        case Instruction::Or: return cut(x + " | " + y);
+        case Instruction::Xor: return cut(x + " ^ " + y);
+        case Instruction::Shl: return cut(x + " << " + y);
+        case Instruction::LShr: return cut(x + " >> " + y);
+        case Instruction::UDiv: return cut(x + " / " + y);
+        case Instruction::URem: return cut(x + " % " + y);
+        case Instruction::AShr: return cut("(" + holder + ")(" + oddSigned(t, x) + " >> " + y + ")");
+        case Instruction::SDiv: return cut("(" + holder + ")(" + oddSigned(t, x) + " / " + oddSigned(t, y) + ")");
+        case Instruction::SRem: return cut("(" + holder + ")(" + oddSigned(t, x) + " % " + oddSigned(t, y) + ")");
+        }
+        fail("an integer operation");
+        return x;
+      }
       std::string type = ty(t), sign = intType(bits == 1 ? 8 : bits, true);
       if (bits == 1)
       {
@@ -646,6 +715,8 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
         return is(op);
       if (t->isIntegerTy(1)) // (an i1 as a signed number is 0 or -1)
         return "(-(i32)" + x + " " + op + " -(i32)" + y + ")";
+      if (isOdd(t))
+        return "(" + oddSigned(t, x) + " " + op + " " + oddSigned(t, y) + ")";
       std::string sign = signedTy(t);
       return "((" + sign + ")" + x + " " + op + " (" + sign + ")" + y + ")";
     }
@@ -695,6 +766,22 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       }
       std::string type = ty(to);
       bool fromBool = from->isIntegerTy(1), toBool = to->isIntegerTy(1);
+      if (isOdd(from) || isOdd(to))
+      {
+        // To an odd width: cut to it. From one: its bits above are zero, so only a sign extension reads its sign.
+        auto cut = [&](const std::string& text) { return isOdd(to) ? "(" + text + " & " + oddMask(to) + ")" : text; };
+        switch (opcode)
+        {
+        case Instruction::Trunc: return toBool ? "(bool)(" + x + " & 1)" : cut("(" + type + ")" + x);
+        case Instruction::ZExt: return "(" + type + ")" + x;
+        case Instruction::SExt:
+          if (fromBool)
+            return cut("(" + type + ")-(" + signedTy(to) + ")" + x);
+          return cut("(" + type + ")(" + signedTy(to) + ")" + (isOdd(from) ? oddSigned(from, x) : "(" + signedTy(from) + ")" + x));
+        }
+        fail("a conversion of an integer of " + number((isOdd(from) ? from : to)->getIntegerBitWidth()) + " bits");
+        return x;
+      }
       switch (opcode)
       {
       case Instruction::Trunc: return toBool ? "(bool)(" + x + " & 1)" : "(" + type + ")" + x;
@@ -745,7 +832,7 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
           continue;
         }
         unsigned bits = index->getType()->getIntegerBitWidth();
-        std::string i = bits == 64 ? "(i64)" + value(index) : "(i64)(" + intType(bits, true) + ")" + value(index);
+        std::string i = bits == 64 ? "(i64)" + value(index) : isOdd(index->getType()) ? "(i64)" + oddSigned(index->getType(), value(index)) : "(i64)(" + intType(bits, true) + ")" + value(index);
         text += size == 1 ? " + " + i : " + " + i + " * " + number(uint64_t(size)) + "ll";
       }
       if (constant)
@@ -850,6 +937,13 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       std::string qualifier = isVolatile ? "volatile " : "";
       if (t->isStructTy() || t->isArrayTy())
         return "(*(" + qualifier + ty(t) + "*)" + address + ")";
+      if (isOdd(t))
+      {
+        // Its bytes alone (three of an i24), the lowest first.
+        if (isVolatile || !dl.isLittleEndian())
+          fail("a load of an integer of " + number(t->getIntegerBitWidth()) + " bits that is volatile, or on a big-endian target");
+        return "(kpp_load_bytes<" + ty(t) + ">(" + address + ", " + number(dl.getTypeStoreSize(t)) + ") & " + oddMask(t) + ")";
+      }
       std::string read = "(*(" + qualifier + memoryType(t, align) + "*)" + address + ")";
       return t->isIntegerTy(1) ? "(bool)(" + read + " & 1)" : read;
     }
@@ -859,6 +953,12 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       std::string qualifier = isVolatile ? "volatile " : "";
       if (t->isStructTy() || t->isArrayTy())
         return "*(" + qualifier + ty(t) + "*)" + address + " = " + stored + ";";
+      if (isOdd(t))
+      {
+        if (isVolatile || !dl.isLittleEndian())
+          fail("a store of an integer of " + number(t->getIntegerBitWidth()) + " bits that is volatile, or on a big-endian target");
+        return "{ " + ty(t) + " kpp_stored = " + stored + "; __builtin_memcpy(" + address + ", &kpp_stored, " + number(dl.getTypeStoreSize(t)) + "); }";
+      }
       return "*(" + qualifier + memoryType(t, align) + "*)" + address + " = " + (t->isIntegerTy(1) ? "(u8)" + stored : stored) + ";";
     }
 
@@ -880,11 +980,36 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
     // it), the storage itself where it is passed by value in memory (byval).
     std::string parameterType(Type* t, bool signExtended, Type* byValue, MaybeAlign align)
     {
+      // By value in memory (byval). A small struct is passed so only when the registers it would take ran out (SysV:
+      // two doubles after seven), which the C++ compiler decides again by the members' kinds: it gets the struct
+      // itself. A larger one goes in memory whatever it holds.
+      if (byValue && dl.getTypeAllocSize(byValue) <= 16 && plainMembers(byValue))
+        return ty(byValue);
       if (byValue)
-        return blob(dl.getTypeAllocSize(byValue), std::max<uint64_t>(align ? align->value() : 1, dl.getABITypeAlign(byValue).value()));
+        return memoryBlob(dl.getTypeAllocSize(byValue), std::max<uint64_t>(align ? align->value() : 1, dl.getABITypeAlign(byValue).value()));
       if (signExtended && t->isIntegerTy() && !t->isIntegerTy(1))
         return signedTy(t);
       return ty(t);
+    }
+
+    // Whether t is a struct (or an array in one) of numbers and pointers alone: what the C++ struct of the same
+    // members is passed as.
+    static bool plainMembers(Type* t, bool top = true)
+    {
+      if (auto* s = dyn_cast<StructType>(t))
+      {
+        if (s->isOpaque() || s->getNumElements() == 0)
+          return false;
+        for (Type* member : s->elements())
+          if (!plainMembers(member, false))
+            return false;
+        return true;
+      }
+      if (top)
+        return false;
+      if (auto* a = dyn_cast<ArrayType>(t))
+        return a->getNumElements() > 0 && plainMembers(a->getElementType(), false);
+      return t->isFloatTy() || t->isDoubleTy() || t->isPointerTy() || t->isIntegerTy(8) || t->isIntegerTy(16) || t->isIntegerTy(32) || t->isIntegerTy(64);
     }
 
     // A function's result: the storage of its sret parameter where it has one (a C function returning a struct in
@@ -892,7 +1017,7 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
     std::string resultType(Type* t, bool signExtended, Type* structResult)
     {
       if (structResult)
-        return blob(dl.getTypeAllocSize(structResult), dl.getABITypeAlign(structResult).value());
+        return memoryBlob(dl.getTypeAllocSize(structResult), dl.getABITypeAlign(structResult).value());
       if (signExtended && t->isIntegerTy() && !t->isIntegerTy(1))
         return signedTy(t);
       return ty(t);
@@ -1021,6 +1146,12 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
         text = result + "(" + t + argument(0) + " " + op + " " + t + argument(1) + " ? " + argument(0) + " : " + argument(1) + ");";
         return true;
       };
+      // (none of them is written for an integer of an odd width)
+      bool odd = isOdd(type);
+      for (const Use& operand : c.args())
+        odd = odd || isOdd(operand->getType());
+      if (odd)
+        return false;
       StringRef intrinsicName = c.getCalledFunction()->getName();
       if (intrinsicName.starts_with("llvm.x86."))
       {
@@ -1296,7 +1427,7 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       if (structResult)
         return "*(" + result + "*)" + destination + " = " + text;
       if (!type->getReturnType()->isVoidTy() && !c.use_empty())
-        return names[&c] + " = " + text;
+        return names[&c] + " = " + (isOdd(type->getReturnType()) ? text.substr(0, text.size() - 1) + " & " + oddMask(type->getReturnType()) + ";" : text);
       return text;
     }
 
@@ -1371,8 +1502,8 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       case Instruction::Load:
       {
         auto& l = cast<LoadInst>(i);
-        if (l.isVolatile() && l.isAtomic())
-          fail("a volatile atomic load");
+        if ((l.isVolatile() || isOdd(l.getType())) && l.isAtomic())
+          fail("an atomic load that is volatile or of an odd width");
         if (l.isAtomic())
           assign("__atomic_load_n((" + ty(l.getType()) + "*)" + value(l.getPointerOperand()) + ", " + ordering(l.getOrdering()) + ")");
         else
@@ -1383,8 +1514,8 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       {
         auto& s = cast<StoreInst>(i);
         Type* t = s.getValueOperand()->getType();
-        if (s.isVolatile() && s.isAtomic())
-          fail("a volatile atomic store");
+        if ((s.isVolatile() || isOdd(t)) && s.isAtomic())
+          fail("an atomic store that is volatile or of an odd width");
         if (s.isAtomic())
           statement("__atomic_store_n((" + ty(t) + "*)" + value(s.getPointerOperand()) + ", " + value(s.getValueOperand()) + ", " + ordering(s.getOrdering()) + ");");
         else
@@ -1395,6 +1526,8 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       {
         auto& a = cast<AtomicRMWInst>(i);
         const char* function = nullptr;
+        if (isOdd(a.getType()))
+          fail("an atomic operation on an integer of an odd width");
         switch (a.getOperation())
         {
         case AtomicRMWInst::Xchg: function = "__atomic_exchange_n"; break;
@@ -1417,6 +1550,8 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
       case Instruction::AtomicCmpXchg:
       {
         auto& x = cast<AtomicCmpXchgInst>(i);
+        if (isOdd(x.getCompareOperand()->getType()))
+          fail("an atomic operation on an integer of an odd width");
         std::string t = ty(x.getCompareOperand()->getType());
         statement("{ " + t + " expected = " + value(x.getCompareOperand()) + "; " + local + ".f1 = __atomic_compare_exchange_n((" + t + "*)" + value(x.getPointerOperand()) +
                   ", &expected, " + value(x.getNewValOperand()) + ", " + (x.isWeak() ? "1" : "0") + ", " + ordering(x.getSuccessOrdering()) + ", " +
@@ -1550,11 +1685,13 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
         if (Type* result = f.getParamStructRetType(i))
         {
           sretName = "kpp_sret";
-          locals += "  " + blob(dl.getTypeAllocSize(result), dl.getABITypeAlign(result).value()) + " kpp_sret;\n";
+          locals += "  alignas(" + number(dl.getABITypeAlign(result).value()) + ") " + memoryBlob(dl.getTypeAllocSize(result), dl.getABITypeAlign(result).value()) + " kpp_sret;\n";
           names[&a] = "((ptr)&kpp_sret)";
         }
         else if (f.getParamByValType(i))
           names[&a] = "((ptr)&" + parameter + ")";
+        else if (isOdd(a.getType())) // (what a C caller leaves above the width is not the value's)
+          names[&a] = "(" + parameter + " & " + oddMask(a.getType()) + ")";
         else if (f.hasParamAttribute(i, Attribute::SExt) && a.getType()->isIntegerTy() && !a.getType()->isIntegerTy(1))
           names[&a] = "((" + ty(a.getType()) + ")" + parameter + ")";
         else
@@ -1648,6 +1785,14 @@ template<class To, class From> static inline To kpp_bits(From v) { To r; __built
         {
           fields.push_back({offset, 8, "u64", number(i->getValue().getLoBits(64).getZExtValue()) + "ull"});
           fields.push_back({offset + 8, 8, "u64", number(i->getValue().getHiBits(64).getZExtValue()) + "ull"});
+          return;
+        }
+        if (size < 8 && dl.isLittleEndian() && size != 1 && size != 2 && size != 4)
+        {
+          std::string list = "{";
+          for (uint64_t at = 0; at < size; ++at)
+            list += (at ? "," : "") + number((i->getZExtValue() >> (8 * at)) & 0xff);
+          fields.push_back({offset, size, "u8", list + "}", size});
           return;
         }
         if (size != 1 && size != 2 && size != 4 && size != 8)

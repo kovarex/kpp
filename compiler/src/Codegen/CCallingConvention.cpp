@@ -151,8 +151,9 @@ auto codegen::Emitter::cPassing(const Ty* t, Node* at) -> CPassing
 auto codegen::Emitter::cArgumentTypes(const Ty* t, CRegisters& left, CPassing& p, Node* at) -> std::vector<std::string>
 {
   p = cPassing(t, at);
+  bool ranOut = false;
   if (!sh.target.windows() && !sh.target.arm64() && !p.inMemory && (p.ints > left.ints || p.sses > left.sses))
-    p.inMemory = true; // not enough registers left: all of it on the stack, as C does
+    p.inMemory = ranOut = true; // not enough registers left: all of it on the stack, as C does
   if (!p.inMemory)
   {
     left.ints -= std::min(left.ints, p.ints), left.sses -= std::min(left.sses, p.sses);
@@ -164,6 +165,25 @@ auto codegen::Emitter::cArgumentTypes(const Ty* t, CRegisters& left, CPassing& p
   if (sh.target.windows() || sh.target.arm64())
     return {"ptr"};
   uint64_t align = std::max<uint64_t>(8, alignOf(t, at));
+  // Through kpp's C++ back end (--via-cpp) the C++ compiler decides again whether the struct's registers ran
+  // out, by what its eightbytes hold: the copy's type says so (floats for an SSE eightbyte, bytes for an
+  // INTEGER one), where bytes alone would be passed in the integer registers still free (two doubles after
+  // seven, spec interop/c_structs_by_value).
+  if (ranOut && sh.target.cpp)
+  {
+    uint64_t size = sizeOf(t, at);
+    std::string members;
+    for (size_t i = 0; i < p.parts.size(); ++i)
+    {
+      uint64_t bytes = (i + 1 < p.offsets.size() ? p.offsets[i + 1] : size) - p.offsets[i];
+      const std::string& part = p.parts[i];
+      members += (members.empty() ? "" : ", ") +
+                 (part == "double" ? std::string("double")
+                  : part == "<2 x float>" || (part == "float" && bytes == 8) ? std::string("float, float")
+                  : part == "float" ? std::string("float") : "[" + std::to_string(bytes) + " x i8]");
+    }
+    return {"ptr byval(<{ " + members + " }>) align " + std::to_string(align)};
+  }
   return {"ptr byval([" + std::to_string(sizeOf(t, at)) + " x i8]) align " + std::to_string(align)};
 }
 

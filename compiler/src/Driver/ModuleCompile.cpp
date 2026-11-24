@@ -485,6 +485,7 @@ void runCodegen(Build& build)
   for (unsigned k = 0; k < outputModules; ++k)
     objects.push_back(options.exe + "." + std::to_string(k) + ".o");
   std::atomic<int> failures{0}, cached{0}, patchedObjects{0}; // (patched: counted unchanged too, their code is)
+  std::atomic<uint64_t> cppMicroseconds{0}, cppBytes{0};      // --via-cpp: the modules' writing as C++, summed over the threads
   struct ModuleFailure
   {
     unsigned module;
@@ -960,7 +961,11 @@ void runCodegen(Build& build)
     {
       source = options.exe + "." + std::to_string(k) + ".cpp";
       std::string cpp, error;
-      if (!writeCppModule(cg.modules[k], CppWriterOptions{llPath, unsigned(k)}, cpp, error) || !writeFile(source, cpp))
+      auto writing = Clock::now();
+      bool written = writeCppModule(cg.modules[k], CppWriterOptions{llPath, unsigned(k)}, cpp, error);
+      cppMicroseconds += uint64_t(seconds(Clock::now() - writing) * 1e6);
+      cppBytes += cpp.size();
+      if (!written || !writeFile(source, cpp))
       {
         moduleFailed(k, -1, llPath, error.empty() ? "cannot write " + source : error);
         return;
@@ -1018,6 +1023,9 @@ void runCodegen(Build& build)
     parallelFor(cg.modules.size(), options.threads, compileEnd);
   }
   double compileTime = seconds(Clock::now() - start);
+  // --via-cpp: what the writing itself took, apart from the C++ compiler (both are in the clang line's time).
+  if (options.viaCpp)
+    report("cpp:     %.3f s of thread time writing %.1f MB of C++ (%u threads)\n", double(cppMicroseconds.load()) / 1e6, double(cppBytes.load()) / 1048576.0, options.threads);
   if (int patched = patchedObjects.load())
     logBuildNote(std::to_string(patched) + " object(s) of modules whose lines alone changed patched, not compiled");
   std::string during = backEnd ? ", " + std::to_string(backEnd->duringCodegen()) + " during codegen" : ""; // (step 4's P2)
