@@ -38,27 +38,35 @@ auto codegen::Emitter::emitCall(const std::string& prefix, const std::string& ca
     return;
   }
   markEH();
-  // A nop before it (Windows): __C_specific_handler's scope entry of a call that may throw begins at
-  // the call and ends at its return address + 1. A call right before this one returns to where this
-  // one's entry begins, so its throw ran this one's cleanups too. With nothing to clean up (a plain
-  // call): a member whose constructor threw was destroyed when the constructor's body then called a
-  // function that may throw (E's battery, 2026-11-06, classes/member_whose_constructor_throws_is_
-  // not_destroyed). With cleanups of its own (an invoke -O2 laid straight before this one, the
-  // Control Flow Optimizer folding the jump between them): the two entries shared a byte, a double
-  // free in LuaHelper::parseLocalisedString's loop. However the blocks are laid out, the call before
-  // an invoke returns to this nop: the last byte of its own entry, outside this one's. The nop
-  // touches only memory nothing else reaches (#0, memory(inaccessiblemem: readwrite), in every
-  // module's prefix): still a side effect, never removed or merged, but no barrier to the program's
-  // loads and stores, which may move across it once the call is inlined.
-  // (Until 2026-11-23 a second nop followed every invoke, on every target. The one before the next
-  // invoke already keeps the two entries apart; the game had 655,003 nops, 6.1% of its
-  // instructions, each an asm statement LLVM assembles with a parser it makes for that one. Spec
-  // language/throwing_call_runs_its_own_scopes_cleanups_only, and its release twin.)
+  // A nop before it (Windows' own exceptions): a call that may throw and has nothing to clean up is a
+  // plain call, and when it comes right before this invoke, its return address is where this one's
+  // scope entry begins, so a throw from it ran this invoke's cleanups: a member whose constructor
+  // threw was destroyed when the constructor's body then called a function that may throw (E's
+  // battery, 2026-11-06, classes/member_whose_constructor_throws_is_not_destroyed). However the
+  // blocks are laid out, a call before an invoke now returns to this nop, outside the entry.
   if (sh.target.seh())
-    fn += "  call void asm sideeffect \"nop\", \"\"() #0" + bundle() + "\n"; // (in a funclet, as its own)
+    fn += "  call void asm sideeffect \"nop\", \"\"() #0" + bundle() + "\n";
   std::string cont = newLabel("invoke.cont");
   fn += "  " + prefix + "invoke " + callee + bundle() + " to label %" + cont + " unwind label %" + dest + "\n";
   startBlock(cont);
+  // And a nop at the return address, as MSVC puts one after a call in a __try: __C_specific_handler's
+  // scope entry for this call ends at its return address + 1, and that byte must be no other block's.
+  // Where -O2 lays the next invoke right after this one (the Control Flow Optimizer folding the jump
+  // between them), their entries would share a byte and a throw from this call run the next one's
+  // cleanups too (a double free in LuaHelper::parseLocalisedString's loop). And where this call does
+  // not return (a throw, an allocation's failure) nothing of its own block follows it: the block laid
+  // out next may be a handler's, and __C_specific_handler runs no cleanup of a scope whose entry the
+  // unwind's target lies in, so with the handler's first byte inside this call's entry the objects
+  // of the try block were not destroyed before the handler ran. That happened when this nop was
+  // dropped as covered by the one before the next invoke (d55ff8e62, 2026-11-24: the differential
+  // suite's life/5 and life/6 in a release build, an array's elements left alive by a constructor
+  // that threw in a new-expression beside them). The nop touches only memory nothing else reaches
+  // (#0, memory(inaccessiblemem: readwrite), in every module's prefix): still a side effect, never
+  // removed or merged, but no barrier to the program's loads and stores, which may move across it
+  // once the call is inlined. Not written where exceptions are Itanium's (until 2026-11-24 it was,
+  // on every target): their call-site tables have no such byte.
+  if (sh.target.seh())
+    fn += "  call void asm sideeffect \"nop\", \"\"() #0" + bundle() + "\n"; // (in a funclet, as its own)
 }
 
 auto codegen::Emitter::unwindDestination() -> std::string

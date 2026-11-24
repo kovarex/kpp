@@ -1486,9 +1486,9 @@ module's compile time goes with its size (42 to 84 ms per MB): no function is sl
 **What was found in the bodies:**
 
 - **Two asm `nop`s around every call that may throw**, 6.1% of the instructions (Emitter::emitCall:
-  `__C_specific_handler`'s scope entries must not share a byte). The one before the next such call
-  already keeps two entries apart; the one after was left from before that one existed, and was written
-  on every target.
+  the byte after such a call belongs to its `__C_specific_handler` scope entry and must be no other
+  block's). Both are needed on Windows, see below; the one after was also written where exceptions are
+  Itanium's, which have no such byte.
 - **A third of the invokes call a function that cannot throw** (about 106,000 of 327,504, by the least set
   over the whole program's call graph: a function may throw if it throws, calls through a pointer, or
   calls one that may). Nearly half of those are the standard library's (String's constructors and
@@ -1536,7 +1536,8 @@ clang.exe alone the `nop`s would have been the largest find by far.
 
 **What was changed** (each with the program's behaviour unchanged; the game's tests, 9558 of them, pass):
 
-- **One `nop` before a call that may throw, none after.**
+- **The `nop` after a call that may throw is written only for Windows' own exceptions**, not on
+  every target.
 - **A direct call of a function whose definition is `noexcept` is a plain call**: no unwind edge, no
   `nop`, no cleanup pad (Emitter::callMayThrow). Its own body ends the program where an exception
   would leave it. Only `noexcept` with no condition: a condition is evaluated for the instance's own
@@ -1547,6 +1548,19 @@ clang.exe alone the `nop`s would have been the largest find by far.
 - **An unoptimized module's jumps are assembled in their long form at once** (`-mrelax-all`, clang's
   own default at -O0 until LLVM 19, in the back end in kpp and on clang's compile line): the
   assembler's layout relaxes nothing. It gains more the larger a module's code section is.
+
+**A change taken back.** d55ff8e62 also dropped the `nop` after an invoke on Windows, as covered by
+the one before the next invoke. It is not: where the call does not return (a throw, an allocation's
+failure) nothing of its block follows it, the block laid out next may be a handler's, and
+`__C_specific_handler` runs no cleanup of a scope whose entry the unwind's target lies in. With the
+handler's first byte inside the call's entry (its return address + 1) the objects of the try block
+were not destroyed before the handler ran: the differential suite's life/5 and life/6 failed in
+release builds (an array's elements left alive by a constructor that threw in a new-expression beside
+them), on master for one CI run, 2026-11-24. The gate does not run that suite; a change to what a
+call or a scope compiles to needs `compiler\tests\differential\run.py` in debug and release before
+its push, as a parser change does. The numbers below are from before the `nop` came back: with it the
+game has 317,768 more instructions (10,361,783), and the time it costs kpp's back end (1.7% by the
+variant timing, inside its noise) is back.
 
 Not changed: the `nop` before an invoke as a volatile load (inside the noise in kpp's back end, for
 larger code), the address steps of offset zero and the padding (they cost the back end nothing).

@@ -1,6 +1,6 @@
 // spec: a call that throws runs the cleanups of its own scope only, wherever the next call's scope begins: straight after it in a loop, in the arguments of one call, and after a call that has nothing to clean up (release: where the optimizer lays one call straight after another)
 // kpp: --release
-// factorio: each call that may throw had a nop before it and one after it, 655,003 of the game's 10.7 million instructions (2026-11-23); the one before a call is enough to keep its scope entry apart from the call before, and this checks the scopes stay apart
+// factorio: each call that may throw has a nop before it and one after it on Windows, 655,003 of the game's 10.7 million instructions (2026-11-23): they keep the byte after the call, which belongs to its scope entry, from being another scope's or a handler's first; this checks the scopes stay apart
 int live = 0;
 struct Item
 {
