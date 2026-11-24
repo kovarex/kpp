@@ -1,37 +1,16 @@
-# heavy: one heavy job at a time on PRACOVNA
+# heavy: kpp's way to the heavy-job lock
 
-kovarex, 2026-11-23: every thread benchmarks, builds and tests one at a time.
-Gates, run_tests, spec, convert, the game's builds, links and test runs, the differential suite, and
-every benchmark or timing run hold the machine's one heavy slot.
+kpp's scripts that load the whole machine run through `tools\heavy\heavy.cmd`: compiler\tests\gate.cmd,
+run_tests.cmd and spec.cmd, compiler\tests\differential\run.py, and convert.cmd, tests.cmd, run.cmd,
+link.cmd, harness.cmd, format-check.cmd, c-libraries.cmd and lua-trial.cmd under programs\factorio.
 
-    tools\heavy\heavy.cmd [--exclusive] [--name TEXT] COMMAND LINE...
-    tools\heavy\heavy.cmd --status
+    tools\heavy\heavy.cmd [--exclusive] [--name TEXT] [--estimate T] [--local or --travel] COMMAND LINE...
 
-Outside a worktree, `C:\kpp-sandbox\heavy.cmd` does the same thing. It calls C:\kpp's copy.
+The lock itself is not part of kpp (kovarex, 2026-11-24): it is heavy-queue
+(github.com/kovarex/heavy-queue), which a machine that has it calls at `C:\kpp-sandbox\heavy.cmd`, and
+heavy.cmd hands it the command line as it came. One heavy job at a time per machine, time estimates, jobs
+that run on another machine, and the board: heavy-queue's README and lock\README.md.
 
-- **Scripts that take the slot themselves:** compiler\tests\gate.cmd, run_tests.cmd, spec.cmd, and
-  compiler\tests\differential\run.py. Under programs\factorio: convert.cmd, tests.cmd, run.cmd,
-  link.cmd, harness.cmd, format-check.cmd, c-libraries.cmd and lua-trial.cmd. The shared benchmark
-  script, C:\kpp-sandbox\scratch\bench\run.py, takes it with --exclusive.
-- **Running anything else heavy:** prefix it with `heavy.cmd`. That includes direct game builds and
-  test runs, such as `heavy.cmd kpp factorio release` and
-  `heavy.cmd kpp factorio-test debug --config ...`.
-- **Benchmarks and timing runs:** use `heavy.cmd --exclusive COMMAND...`. The job takes the same slot,
-  then waits until total CPU stays under 15% for 20 seconds, and holds quiet-window.flag while it
-  runs. Never time anything outside --exclusive.
-- **Status page:** C:\kpp-sandbox\heavy\status.html shows the job running now, the queue and the last
-  200 finished jobs, with wait time, run time and exit code (from history.tsv). heavy.cmd rewrites it
-  whenever a job queues, starts or finishes. The open page reloads every 5 seconds and counts running
-  times live. `heavy.cmd --status` also rewrites it.
-- **Waiting:** waiters queue in arrival order. A waiter prints one line to stderr naming the holder,
-  then a new line only when the reason changes. Nothing needs polling, because the command starts
-  once the slot is free.
-- **Holder dies:** the slot is a named mutex (Global\kpp-heavy), so Windows frees it when the
-  holding process dies. A killed job never leaves the machine locked. A dead waiter's queue file is
-  dropped.
-- **Nested scripts:** the command runs with KPP_HEAVY_HELD set. Scripts it calls, such as gate.cmd
-  calling run_tests.cmd and spec.cmd, run at once instead of waiting for their own parent.
-- **schedule.md:** the coordinator's `HOLD: yes` in C:\kpp-sandbox\scratch\schedule.md line 1 also
-  makes every job wait.
-- **CI and other machines:** CI (GITHUB_ACTIONS) and machines without C:\kpp-sandbox run the command
-  straight away.
+Without it (CI, another machine), heavy.cmd drops the lock's options and runs the command at once, with
+KPP_HEAVY_HELD set, as the lock sets it for its jobs: a script the command calls that would come through
+heavy.cmd again runs at once.
