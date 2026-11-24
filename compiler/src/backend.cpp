@@ -206,14 +206,79 @@ namespace
   };
   char NopsAsInstructions::ID = 0;
 
+  // LLVM's "Live DEBUG_VALUE analysis" run only for a function that has a debug instruction. The pass extends
+  // the ranges of DBG_VALUEs over a function's blocks, and it walks every instruction of every function to do
+  // it (its tables made anew per function), whether there is one or not. An unoptimized kpp function mostly
+  // has none: a variable declared on a slot made at the function's start is a row of the function's frame
+  // table, never a DBG_VALUE (one declared on an address the body computes, a lambda's capture, is one). With
+  // no debug instruction the pass changes nothing, so the object is the same, byte for byte (checked over 64 of
+  // the game's modules, where 4% of the functions have one): 5.9% of this back end's time (2026-11-24). LLVM's own pass is kept as it is and run through its
+  // FunctionPass interface, with the resolver the pass manager would have given it.
+  struct LiveDebugValuesWhereAny : llvm::MachineFunctionPass
+  {
+    static char ID;
+
+    explicit LiveDebugValuesWhereAny(llvm::Pass* pass) : llvm::MachineFunctionPass(ID), inner(pass) {}
+
+    llvm::StringRef getPassName() const override { return "Live DEBUG_VALUE analysis where a function has a debug instruction"; }
+
+    void getAnalysisUsage(llvm::AnalysisUsage& usage) const override { inner->getAnalysisUsage(usage); }
+
+    bool doInitialization(llvm::Module& module) override
+    {
+      llvm::MachineFunctionPass::doInitialization(module);
+      return inner->doInitialization(module);
+    }
+
+    bool doFinalization(llvm::Module& module) override { return inner->doFinalization(module); }
+
+    bool runOnMachineFunction(llvm::MachineFunction& function) override
+    {
+      bool any = false;
+      for (const llvm::MachineBasicBlock& block : function)
+      {
+        for (const llvm::MachineInstr& instruction : block)
+          if (instruction.isDebugInstr())
+          {
+            any = true;
+            break;
+          }
+        if (any)
+          break;
+      }
+      if (!any)
+        return false;
+      if (!inner->getResolver())
+      {
+        // (as the pass manager does for a pass it adds: a resolver of its own, with the analyses it requires)
+        auto* resolver = new llvm::AnalysisResolver(getResolver()->getPMDataManager());
+        inner->setResolver(resolver); // (the pass frees it)
+        llvm::AnalysisUsage usage;
+        inner->getAnalysisUsage(usage);
+        for (llvm::AnalysisID id : usage.getRequiredSet())
+          if (llvm::Pass* found = getResolver()->findImplPass(id))
+            resolver->addAnalysisImplsPair(id, found);
+      }
+      return static_cast<llvm::FunctionPass*>(inner.get())->runOnFunction(function.getFunction());
+    }
+
+    std::unique_ptr<llvm::Pass> inner;
+  };
+  char LiveDebugValuesWhereAny::ID = 0;
+
   // The passes LLVM's target machine adds to write an object, with kpp's before its asm printer (x86-64's;
-  // the nops of other targets go through the asm parser).
+  // the nops of other targets go through the asm parser) and around its live debug values.
   struct ObjectPasses : llvm::legacy::PassManagerBase
   {
     explicit ObjectPasses(llvm::legacy::PassManager& passes) : passes(passes) {}
 
     void add(llvm::Pass* pass) override
     {
+      if (pass->getPassName() == "Live DEBUG_VALUE analysis")
+      {
+        passes.add(new LiveDebugValuesWhereAny(pass));
+        return;
+      }
       if (pass->getPassName() == "X86 Assembly Printer")
         passes.add(new NopsAsInstructions);
       passes.add(pass);
