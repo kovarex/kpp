@@ -1,0 +1,109 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile
+// server"): a function that is no template returning a lambda's call whose body is a `u[]` (design.md 8.5) keeps its type when an
+// edit in another file makes codegen run again in full on the kept front end (a `getIndex` edited, which the walk of another enum
+// naming a `getIndex` reads); until 2026-11-25 codegen's retype after the loop left that lambda returning void in place: "no
+// constructor of Zoom takes (void)" (the game's ZoomSpecification::getZoom)
+//--- step: the program
+struct Zoom
+{
+  Zoom(f64 v) : v(v) {}
+  f64 v;
+};
+
+class Spec
+{
+public:
+  struct Scale { Zoom zoom; };
+  struct Distance { f64 tiles; };
+
+  Zoom get(int pixels) const
+  {
+    return [&]() { auto visitor = [&](auto& value) -> Zoom
+    {
+      using T = std::Decay<decltype(value)>;
+      if constexpr (std::isSame<T, Scale>)
+        return value.zoom;
+      else
+        return Zoom(f64(pixels) / value.tiles);
+    }; return visitor(this.data[]); }();
+  }
+
+  union enum Data { { {Scale, ::Spec::Scale}, {Distance, ::Spec::Distance} } };
+  Data data;
+};
+
+int main()
+{
+  Spec s;
+  s.data = Spec::Data(Spec::Distance{4.0});
+  std::println(s.get(64).v, " ", Kind::Second.getIndex(), " ", Other::B.getIndex());
+  s.data = Spec::Data(Spec::Scale{Zoom(2.5)});
+  std::println(s.get(64).v);
+  return 0;
+}
+// expect: 16 1 1
+// expect: 2.5
+//--- file: kinds.kpp
+enum class Kind : u8
+{
+  { First = 0, Second = 1 }
+  u8 getIndex() const { return u8(this); }
+};
+
+enum class Other : u8
+{
+  { A = 0, B = 1 }
+  constexpr u8 getIndex() const { return u8(this); }
+};
+//--- step: a getIndex body edited in the other file
+struct Zoom
+{
+  Zoom(f64 v) : v(v) {}
+  f64 v;
+};
+
+class Spec
+{
+public:
+  struct Scale { Zoom zoom; };
+  struct Distance { f64 tiles; };
+
+  Zoom get(int pixels) const
+  {
+    return [&]() { auto visitor = [&](auto& value) -> Zoom
+    {
+      using T = std::Decay<decltype(value)>;
+      if constexpr (std::isSame<T, Scale>)
+        return value.zoom;
+      else
+        return Zoom(f64(pixels) / value.tiles);
+    }; return visitor(this.data[]); }();
+  }
+
+  union enum Data { { {Scale, ::Spec::Scale}, {Distance, ::Spec::Distance} } };
+  Data data;
+};
+
+int main()
+{
+  Spec s;
+  s.data = Spec::Data(Spec::Distance{4.0});
+  std::println(s.get(64).v, " ", Kind::Second.getIndex(), " ", Other::B.getIndex());
+  s.data = Spec::Data(Spec::Scale{Zoom(2.5)});
+  std::println(s.get(64).v);
+  return 0;
+}
+// expect: 16 1 1
+// expect: 2.5
+//--- file: kinds.kpp
+enum class Kind : u8
+{
+  { First = 0, Second = 1 }
+  u8 getIndex() const { u8 i = u8(this); return i; }
+};
+
+enum class Other : u8
+{
+  { A = 0, B = 1 }
+  constexpr u8 getIndex() const { return u8(this); }
+};

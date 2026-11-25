@@ -13413,7 +13413,11 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       // (Not in a function whose return type is declared: walking each element there, on each of codegen's retypes of one
       // element, walked n bodies n times, `payload<T>()` over InputAction's 358 alternatives, and kept every condition's
       // copies: 28 GB for a build of the game's tests, 10 GB before, until 2026-11-17.)
-      bool open = activeSubst && !returnFrames.empty() && !returnFrames.back() && returnFrames.size() != declaredReturnFrames;
+      // (Codegen's retype of a function that is no template after its loop, with no arguments, is such a walk too: walking
+      // only the unbound body there gave a lambda around the loop no return type, void, in place, and the next codegen of
+      // the kept front end called `[&]() { ...; return visitor(this.data[]); }()` a void (2026-11-25, the game's
+      // ZoomSpecification::getZoom after an edit through the compile server).)
+      bool open = (activeSubst || retypingElements) && !returnFrames.empty() && !returnFrames.back() && returnFrames.size() != declaredReturnFrames;
       bool checked = !generic && !retypingElements && !probing;
       bool listed = !generic && (open || checked || f->elementBodies.empty()) && forConstexprElements(f, elements);
       if (!listed && checked && symbols.name(v->name).starts_with("__kpp_alternative") && file && !file->isImported)
