@@ -122,8 +122,6 @@
                                   std::vector<std::string>& names);
 
 
-  void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
-                      SymbolTable& symbols, const Options& options);
-  // (with the toolchain asked for early, or null)
+  // (early: the toolchain asked for beside the lexing and the parsing, or null)
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                       SymbolTable& symbols, const Options& options, ImportToolchain* early);

@@ -1129,12 +1129,6 @@ bool ImportToolchain::take()
 }
 
 void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
-                    SymbolTable& symbols, const Options& options)
-{
-  importCHeaders(files, lexed, parsed, symbols, options, nullptr);
-}
-
-void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                     SymbolTable& symbols, const Options& options, ImportToolchain* early)
 {
   std::vector<std::string> headers;
