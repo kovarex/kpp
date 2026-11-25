@@ -512,8 +512,8 @@ jobs:
   # want to make sure freeBSD binaries are correct, it should be part of kpp workflow testing"): each
   # project's tests built for FreeBSD 14.3 here (libraries\target-tests.ps1: kpp --target freebsd
   # --no-run --test; a project that does not build fails unless target-known-failures.txt lists it),
-  # then run in a FreeBSD 14.3 VM from the checkout (libraries_freebsd_run), httpclient's HTTPS test
-  # included (EGD over TLS, an expired certificate refused). On every run, like the spec's FreeBSD
+  # then run in a FreeBSD 14.3 VM from the checkout (libraries_freebsd_run), httpclient's TLS test
+  # included (against HTTPS servers of its own in the VM). On every run, like the spec's FreeBSD
   # jobs; publish does not wait for them.
   libraries_freebsd_build:
     needs: build
@@ -573,7 +573,10 @@ jobs:
         run: if ($env:KPP_LIBRARIES_BUILD -ne '0') { throw 'a library fails to build for FreeBSD that target-known-failures.txt does not list, or a listed one builds (libraries built for FreeBSD, above)' }
 
   # The bundle in a FreeBSD 14.3 VM, as freebsd_run, with the checkout beside it: the tests read files
-  # of their projects (kppsite's fixture, json's suite).
+  # of their projects (kppsite's fixture, json's suite). httpclient's TLS test gets two HTTPS servers
+  # of its own in the VM (with-tls-servers.sh), and a run in which it was skipped fails: no site
+  # outside decides this job (until 2026-11-25 it read a page of EGD's, which answered once with
+  # something else).
   libraries_freebsd_run:
     needs: libraries_freebsd_build
     # (also after a new build failure there: the projects that did build still run)
@@ -598,7 +601,8 @@ jobs:
           copyback: true
           run: |
             freebsd-version
-            HTTPCLIENT_TEST_HTTPS=1 sh libraries-freebsd/run.sh "$PWD" > libraries-freebsd/run.log 2>&1 || true
+            sh libraries/httpclient/tests/with-tls-servers.sh sh libraries-freebsd/run.sh "$PWD" > libraries-freebsd/run.log 2>&1 || true
+            if grep -q '^skipped: HTTPCLIENT_TEST_TLS' libraries-freebsd/httpclient.log 2> /dev/null; then echo 'libraries freebsd: FAILED: httpclient skipped its TLS test (HTTPCLIENT_TEST_TLS did not reach it)' >> libraries-freebsd/run.log; fi
             cat libraries-freebsd/run.log
 
       # The step fails unless run.sh reached its last line and that says ALL PASSED.

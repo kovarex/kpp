@@ -24,7 +24,7 @@ httpclient is a compile error there.
 | net | yes | 3 pass |
 | mariadb | yes | 7 pass (the live server test skipped: MARIADB_TEST_PORT not set) |
 | http | yes | 5 pass |
-| httpclient | FreeBSD: yes; Linux: no, a compile error on purpose | FreeBSD: 3 pass, HTTPS included (`HTTPCLIENT_TEST_HTTPS` set: EGD over TLS, an expired certificate refused; run 41825880355) |
+| httpclient | FreeBSD: yes; Linux: no, a compile error on purpose | FreeBSD: 3 pass, HTTPS included (`HTTPCLIENT_TEST_HTTPS` set: EGD over TLS, an expired certificate refused; run 41825880355). Since 2026-11-25 CI sets `HTTPCLIENT_TEST_TLS` instead, through `tests/with-tls-servers.sh`: a fourth test, against two HTTPS servers of its own in the VM (httpclient's README.md), and the one against the outside sites is for runs by hand |
 | kppsite | yes | 3 pass |
 
 **httpclient on Linux (the library; G).** FreeBSD's client (HTTP/1.1 over net, TLS through the base

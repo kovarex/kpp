@@ -1567,10 +1567,14 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   FreeBSD 14.3 (`kpp --target freebsd --no-run --test` in each project; a project that does not
   build fails the job unless `libraries\target-known-failures.txt` lists it, and a listed one that
   builds fails it too); the bundle (each test program, `run.sh`) then runs in a FreeBSD 14.3 VM
-  (vmactions/freebsd-vm, as the spec's FreeBSD run) from the checkout, httpclient's HTTPS test
-  included (`HTTPCLIENT_TEST_HTTPS`: the VM reaches the internet). Its last line, `libraries freebsd:
-  ALL PASSED (12 programs, 70 tests)`, goes to the run's summary. The same scripts run the Linux
-  build in WSL by hand (`-Target linux`, then `sh run.sh CHECKOUT` there).
+  (vmactions/freebsd-vm, as the spec's FreeBSD run) from the checkout, httpclient's TLS test
+  included: `libraries/httpclient/tests/with-tls-servers.sh` runs `run.sh` with two HTTPS servers
+  of its own in the VM (OpenSSL's `s_server`, certificates made on the spot; `HTTPCLIENT_TEST_TLS`),
+  and a run in which that test was skipped fails. No site outside the VM decides the job: until
+  2026-11-25 the test read a page of the European Go Database's, which answered once with something
+  else and made a pull request's run red. Its last line, `libraries freebsd: ALL PASSED (12
+  programs, 72 tests)`, goes to the run's summary. The same scripts run the Linux build in WSL by
+  hand (`-Target linux`, then `sh run.sh CHECKOUT` there).
 
 **The release check** (`.github/workflows/release-check.yml`, kovarex, 2026-11-03) tests what was
 published, not the checkout: daily at 04:17 UTC (an hour after the nightly run below publishes), or

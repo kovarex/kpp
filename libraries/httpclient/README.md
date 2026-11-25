@@ -43,6 +43,19 @@ to http. The URL's path and query are sent as written: encode them first (url's 
 `kpp --test` here: a thread on the loopback answers with canned responses and keeps what it was
 sent: a GET with an encoded path and query, response headers, a POST form, a redirect, a 404; the
 errors: a refused connection, another scheme, a user name in the address, a bad port, a header
-with a line break, a server that never answers (the timeout). With `HTTPCLIENT_TEST_HTTPS` set, a
-GET of EGD's tournament list over HTTPS and the refusal of expired.badssl.com's expired
-certificate (passed on Windows 10, 2026-11-02, and on FreeBSD 14.3 in CI's FreeBSD VM, 2026-11-04).
+with a line break, a server that never answers (the timeout).
+
+TLS, where the client is kpp's own (FreeBSD): `sh tests/with-tls-servers.sh COMMAND` runs a
+command with two HTTPS servers of its own on the loopback (OpenSSL's `s_server`, each with a
+certificate made on the spot for the name localhost) and `HTTPCLIENT_TEST_TLS` set to their ports.
+The test then reads a page of 48,000 bytes over TLS from the server whose certificate the process
+trusts (`SSL_CERT_FILE` names it, which OpenSSL's default verify paths read), and is refused by
+the same server under a name its certificate does not carry (127.0.0.1) and by the one whose
+certificate nothing vouches for. CI's FreeBSD job runs the libraries' tests under it and fails if
+this one was skipped, so no site outside the VM decides the job.
+
+By hand, with `HTTPCLIENT_TEST_HTTPS` set: a GET of EGD's tournament list over HTTPS and the
+refusal of expired.badssl.com's expired certificate (passed on Windows 10, 2026-11-02, and on
+FreeBSD 14.3 in CI's FreeBSD VM, 2026-11-04). CI ran this one until 2026-11-25, when EGD's page
+answered once with something else and a pull request's run was red for it: two outside sites are
+no test for CI.

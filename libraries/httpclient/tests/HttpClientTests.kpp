@@ -1,5 +1,7 @@
 // httpclient against a server on the loopback (a thread answers with canned responses and keeps
-// what it was sent), and against a real HTTPS site when HTTPCLIENT_TEST_HTTPS is set.
+// what it was sent); over TLS against two servers of its own when HTTPCLIENT_TEST_TLS is set
+// (tests/with-tls-servers.sh runs a command so: CI's way); and against real HTTPS sites when
+// HTTPCLIENT_TEST_HTTPS is set (by hand only: sites outside the machine decide that one).
 
 struct HttpClientTestServer
 {
@@ -137,4 +139,34 @@ test httpsWhenAskedFor
   check(egd.status == 200 && egd.body.size() > 1000);
   bool rejected = httpClientThrows("https://expired.badssl.com/", "expired.badssl.com");
   check(rejected);
+}
+
+// HTTPCLIENT_TEST_TLS="PORT PORT" (tests/with-tls-servers.sh runs a command with it): two HTTPS
+// servers on the loopback, each with a certificate for the name localhost. The process trusts the
+// first one's (SSL_CERT_FILE names it); nothing vouches for the second one's. Both answer
+// GET /page with a thousand lines.
+test tlsWhenAskedFor
+{
+  const char* asked = std::getenv("HTTPCLIENT_TEST_TLS");
+  if (asked == nullptr)
+  {
+    std::println("skipped: HTTPCLIENT_TEST_TLS is not set (tests/with-tls-servers.sh sets it)");
+    return;
+  }
+  std::StringView ports(asked);
+  std::ContainerSize space = ports.find(' ');
+  check(space != std::StringView::npos);
+  if (space == std::StringView::npos)
+    return;
+  std::StringView trusted = ports.substr(0, space);
+  std::StringView other = ports.substr(space + 1);
+  std::String page;
+  for (i32 line = 0; line < 1000; ++line)
+    page << "kpp httpclient over TLS, one line of a thousand\n";
+  HttpClientResponse got = fetch(std::toString("https://localhost:", trusted, "/page"));
+  check(got.status == 200 && got.body == page);
+  // The same server under a name its certificate does not carry.
+  check(httpClientThrows(std::toString("https://127.0.0.1:", trusted, "/page"), "mismatch"));
+  // A certificate that nothing vouches for.
+  check(httpClientThrows(std::toString("https://localhost:", other, "/page"), "the certificate is not valid"));
 }

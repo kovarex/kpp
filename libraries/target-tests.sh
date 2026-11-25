@@ -3,7 +3,10 @@
 # FreeBSD or Linux: each from its project's directory in the checkout ROOT (its tests read files
 # there), at most 120 s and 4 GB of address space, its output in NAME.log. The last line says ALL
 # PASSED or which failed.
-#   sh run.sh ROOT        (HTTPCLIENT_TEST_HTTPS=1 adds httpclient's HTTPS test: EGD over TLS)
+#   sh run.sh ROOT
+# httpclient's TLS test runs when this does under ROOT/libraries/httpclient/tests/with-tls-servers.sh
+# (two HTTPS servers of its own, HTTPCLIENT_TEST_TLS: CI's way); HTTPCLIENT_TEST_HTTPS=1 adds its
+# test against outside sites (EGD over TLS), for a run by hand.
 root=$1
 dir=$(cd "$(dirname "$0")" && pwd)
 target=$(uname -s | tr 'A-Z' 'a-z')
