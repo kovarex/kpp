@@ -183,6 +183,11 @@
     // the alternative held, in declaration order, then by the values of it.
     Value typedUnionOrder(ClassDecl* c, const std::string& a, const std::string& b, const Ty* t, Node* at);
 
+    // The bits of one integer t's == (order: and <=>) compares, 0 for a type compared otherwise (typedUnionKey).
+    unsigned plainKeyBits(const Ty* t, bool order, Node* at, int depth);
+    // A typed union at obj as one i64 whose built-in == and <=> are those of the union, when its alternatives allow it.
+    std::optional<Value> typedUnionKey(ClassDecl* c, const std::string& obj, const Ty* t, bool order, Node* at);
+
     // `p == Property::Integer`: the tag against the enumerator.
     Value compareTag(BinaryExpr* b, bool negate);
 

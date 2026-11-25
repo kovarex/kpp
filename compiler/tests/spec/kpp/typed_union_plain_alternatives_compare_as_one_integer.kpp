@@ -1,0 +1,62 @@
+// spec: a typed union whose alternatives are each one integer compared by value (an ID class with one u16 and a defaulted == and <=>, an enum over u8 widened to the same width as a u16 class is not: one width only) or void compares as std::variant does, the alternative held, then its value, and kpp makes that one integer comparison: ==, !=, <, <=, >, >= and <=> agree with the rule for every pair, a void alternative equal to itself, a class defaulted == over such a union too
+// design.md 8.5 (kovarex, 2026-11-25: the game's SignalIDBase as a union enum without a slower comparison than its packed u32)
+template<class P>
+struct ID
+{
+  u16 index = 0;
+  constexpr std::strong_ordering operator<=>(const ID&) const = default;
+  constexpr bool operator==(const ID&) const = default;
+};
+struct ItemTag {};
+struct FluidTag {};
+using ItemID = ID<ItemTag>;
+using FluidID = ID<FluidTag>;
+
+union enum class Signal : u8
+{
+  { {Item, ItemID}, {Fluid, FluidID}, {Nothing, void}, {Code, u16} }
+};
+
+struct Pair
+{
+  Signal first;
+  i32 count = 0;
+  bool operator==(const Pair&) const = default;
+};
+
+int order(std::strong_ordering o) { return o < 0 ? -1 : o > 0 ? 1 : 0; }
+
+int main()
+{
+  std::Vector<Signal> all;
+  for (u16 i : {u16(0), u16(1), u16(300)})
+  {
+    all.push_back(Signal::Item(ItemID{i}));
+    all.push_back(Signal::Fluid(FluidID{i}));
+    all.push_back(Signal::Code(i));
+  }
+  all.push_back(Signal::Nothing());
+  i32 checked = 0, wrong = 0;
+  for (const Signal& a : all)
+    for (const Signal& b : all)
+    {
+      // the rule: the alternative held (its tag), then the value
+      int byTag = a.tag() < b.tag() ? -1 : a.tag() > b.tag() ? 1 : 0;
+      int expected = byTag;
+      if (byTag == 0 && a.tag() != Signal::Tag::Nothing)
+      {
+        u16 va = a.tag() == Signal::Tag::Item ? a[Item].index : a.tag() == Signal::Tag::Fluid ? a[Fluid].index : a[Code];
+        u16 vb = b.tag() == Signal::Tag::Item ? b[Item].index : b.tag() == Signal::Tag::Fluid ? b[Fluid].index : b[Code];
+        expected = va < vb ? -1 : va > vb ? 1 : 0;
+      }
+      ++checked;
+      if (order(a <=> b) != expected || (a == b) != (expected == 0) || (a != b) != (expected != 0) || (a < b) != (expected < 0) ||
+          (a <= b) != (expected <= 0) || (a > b) != (expected > 0) || (a >= b) != (expected >= 0))
+        ++wrong;
+    }
+  Pair p{Signal::Fluid(FluidID{7}), 2};
+  Pair q{Signal::Fluid(FluidID{7}), 2};
+  Pair r{Signal::Item(ItemID{7}), 2};
+  std::println(checked, " pairs, ", wrong, " wrong; ", p == q, " ", p == r);
+  return 0;
+}
