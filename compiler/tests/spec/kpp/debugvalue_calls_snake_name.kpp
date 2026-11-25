@@ -1,0 +1,34 @@
+// spec: a debugValue may call std::snakeName / std::kebabName (or a function of its own calling them): the debugger's rule has a case per enumerator, its text the name made for that enumerator at compile time (kovarex, 2026-11-25: SignalIDBase::typeToStr, which a debugValue calls, could not use std::kebabName: "a switch's statement other than `return EXPRESSION;`"); built with --debug-info, which writes the rule and fails the build on one it cannot write
+// kpp: --debug-info
+enum class SignalType : u8 { { Item, Fluid, VirtualSignal, SpaceLocation } };
+
+struct SignalID
+{
+  SignalType type = SignalType::Item;
+  i32 index = 0;
+  static const char* typeToStr(SignalType type) { return std::kebabName(type); }
+  std::String debugValue() const { return std::toString(SignalID::typeToStr(this.type), " ", this.index); }
+};
+
+struct Pair
+{
+  SignalType first = SignalType::Fluid;
+  std::String debugValue() const { return std::snakeName(this.first); }
+};
+
+struct Plain
+{
+  SignalType type = SignalType::VirtualSignal;
+  const char* debugValue() const { return std::kebabName(this.type); }
+};
+
+int main()
+{
+  SignalID id;
+  id.type = SignalType::SpaceLocation;
+  id.index = 3;
+  Pair pair;
+  Plain plain;
+  std::println(id.debugValue(), " ", pair.debugValue(), " ", plain.debugValue());
+  return 0;
+}

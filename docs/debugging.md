@@ -399,7 +399,10 @@ struct Buffer { std::Span<i32> debugValue() const { return std::Span<i32>(this.d
 - **The body**: `return EXPRESSION;`, after any number of `if (CONDITION) return EXPRESSION;` and
   `switch (VALUE) { case A: return EXPRESSION; ... default: ... }` (each a case of the rule, a DisplayString
   with that Condition); a body may end in a `[[noreturn]]` call instead (Comparison::str()'s
-  `logEnumAndAbortOrThrow` after its switch: no case for the values it has none for).
+  `logEnumAndAbortOrThrow` after its switch: no case for the values it has none for). A switch whose body is
+  `for constexpr (auto e : enumerators(E)) case e.value: STATEMENT` (design.md 8.3) is a case per enumerator, its value
+  the constant text the statement returns for that enumerator, so std::snakeName and std::kebabName, and a function
+  calling them, show their names (kovarex, 2026-11-25: SignalIDBase::typeToStr; spec kpp/debugvalue_calls_snake_name).
 - **Written with the type's own names and conversions** (kovarex, 2026-11-12, reviewing the game's first
   debugValues: "in the kpp code we should write nicely"): `this == Force::player.id` compares a class whose
   `==` is defaulted member by member against the folded constant (`index == 1`); `return this.str();` uses

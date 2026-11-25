@@ -613,6 +613,67 @@ namespace
     return body && body->kind == NodeKind::ForConstexprStmt ? static_cast<ForConstexprStmt*>(body) : nullptr;
   }
 
+  // `switch (X) { for constexpr (auto e : enumerators(E)) case e.value: S }` (design.md 8.3): its loop; null for another
+  // statement.
+  ForConstexprStmt* everyEnumeratorSwitch(DebugValue& v, Stmt* s)
+  {
+    if (!s || s->kind != NodeKind::SwitchStmt || static_cast<SwitchStmt*>(s)->init || !static_cast<SwitchStmt*>(s)->cond ||
+        static_cast<SwitchStmt*>(s)->cond->kind == NodeKind::DeclStmt)
+      return nullptr;
+    Stmt* body = static_cast<SwitchStmt*>(s)->body;
+    if (!body || body->kind != NodeKind::BlockStmt || static_cast<BlockStmt*>(body)->stmts.size() != 1 ||
+        static_cast<BlockStmt*>(body)->stmts[0]->kind != NodeKind::ForConstexprStmt)
+      return nullptr;
+    auto* loop = static_cast<ForConstexprStmt*>(static_cast<BlockStmt*>(body)->stmts[0]);
+    auto* list = loop->list && loop->list->kind == NodeKind::CallExpr ? static_cast<CallExpr*>(loop->list) : nullptr;
+    if (!list || !list->callee || list->callee->kind != NodeKind::NameExpr || list->args.size() != 1 || !list->args[0] ||
+        list->args[0]->kind != NodeKind::NameExpr || !loop->var)
+      return nullptr;
+    const QualifiedName& callee = static_cast<NameExpr*>(list->callee)->name;
+    return callee.parts.size() == 1 && !callee.parts[0].hasTemplateArgs && callee.parts[0].symbol != UINT32_MAX &&
+               v.symbols.name(callee.parts[0].symbol) == "enumerators"
+             ? loop
+             : nullptr;
+  }
+
+  // The texts a case of such a switch returns, each a constant made for its enumerator (std::snakeName's `text.chars`):
+  // the expression's text, which natvisExpression and natvisText write as a literal. Per thread: the rule being written.
+  std::unordered_map<const Expr*, std::string>& constantTexts()
+  {
+    static thread_local std::unordered_map<const Expr*, std::string> texts;
+    return texts;
+  }
+
+  // The text a constant character array or pointer to one holds, up to its zero: e evaluated under args.
+  std::optional<std::string> constantText(DebugValue& v, Expr* e, const TemplateArgs& args)
+  {
+    ConstHooks hooks;
+    std::optional<ConstValue> value = v.global.evaluate(e, v.file, v.context, args, hooks);
+    GlobalScope::clearConstantReason();
+    if (!value)
+      return std::nullopt;
+    const ConstValue* chars = value->kind == ConstValue::Kind::Object && value->parts ? &*value : nullptr;
+    size_t first = 0;
+    if (value->kind == ConstValue::Kind::Pointer && value->parts && !value->parts->empty())
+    {
+      chars = &*value;
+      first = size_t(value->i); // (an array's address: its parts and the index pointed at)
+    }
+    if (!chars)
+      return std::nullopt;
+    std::string text;
+    for (size_t i = first; i < chars->parts->size(); ++i)
+    {
+      const ConstValue& c = (*chars->parts)[i];
+      if (c.kind != ConstValue::Kind::Int)
+        return std::nullopt;
+      if (c.i == 0)
+        return text;
+      text += char(c.i);
+    }
+    return std::nullopt;
+  }
+
   bool natvisObject(DebugValue& v, Expr* e, std::shared_ptr<ObjectValue>& out);
   bool lambdaCall(DebugValue& v, CallExpr* call, const LambdaValue& lambda, std::string& out);
   std::string objectPath(const DebugValue& v);
@@ -789,7 +850,7 @@ namespace
       };
       if (s->kind == NodeKind::ReturnStmt && static_cast<ReturnStmt*>(s)->value)
         cases.push_back({nullptr, static_cast<ReturnStmt*>(s)->value});
-      else if (s->kind == NodeKind::SwitchStmt)
+      else if (s->kind == NodeKind::SwitchStmt && !everyEnumeratorSwitch(v, s))
       {
         // switch (X) { case A: case B: return E; ... default: return D; }: a case `(X == A || X == B)` per
         // return, the default's last (a switch without one goes on to the statements after it).
@@ -910,6 +971,65 @@ namespace
                std::all_of(static_cast<DeclStmt*>(s)->decls.begin(), static_cast<DeclStmt*>(s)->decls.end(),
                            [](Decl* d) { return d->kind == NodeKind::VariableDecl && (d->flags & DF_Constexpr); }))
         continue; // (a constexpr local: its uses fold to its value)
+      else if (ForConstexprStmt* each = everyEnumeratorSwitch(v, s))
+      {
+        // `switch (X) { for constexpr (auto e : enumerators(E)) case e.value: { static constexpr T text = ...; return
+        // text.chars; } }` (std::snakeName, std::kebabName): a case per enumerator, its value the constant its copy of the
+        // statement returns, evaluated for that enumerator (kovarex, 2026-11-25: SignalIDBase::typeToStr, which a
+        // debugValue calls, could not use std::kebabName).
+        auto* sw = static_cast<SwitchStmt*>(s);
+        std::string subject;
+        if (!natvisExpression(v, static_cast<Expr*>(sw->cond), subject))
+          return false;
+        auto* list = static_cast<CallExpr*>(each->list);
+        NamedType named{};
+        named.kind = NodeKind::NamedType;
+        named.token = list->args[0]->token;
+        named.name = static_cast<NameExpr*>(list->args[0])->name;
+        const Ty* enumType = v.global.typeOfAstIn(&named, v.context, v.args);
+        enumType = enumType ? v.global.types().unqualified(v.global.types().stripRef(enumType)) : nullptr;
+        std::vector<const Ty*> elements;
+        if (!enumType || !v.global.enumeratorDescriptorsOf(enumType, elements) || elements.empty())
+          return fail(v, s, "enumerators(E) of an enum the debugger cannot list");
+        if (!each->elementBodies.empty() && each->elementBodies.size() != elements.size())
+          return fail(v, s, "a for constexpr whose copies of its body were made for another number of elements");
+        for (size_t i = 0; i < elements.size(); ++i)
+        {
+          Stmt* element = each->elementBodies.empty() ? each->body : each->elementBodies[i];
+          auto* block = element && element->kind == NodeKind::BlockStmt ? static_cast<BlockStmt*>(element) : nullptr;
+          if (!block || block->stmts.size() != 2 || block->stmts[0]->kind != NodeKind::CaseStmt)
+            return fail(v, s, "a for constexpr over enumerators(E) in a switch other than `case e.value: STATEMENT`");
+          TemplateArgs elementArgs = v.args;
+          bool bound = false;
+          for (auto& [d, t] : elementArgs.pairs)
+            if (d == each->var)
+              t = elements[i], bound = true;
+          if (!bound)
+            elementArgs.pairs.push_back({each->var, elements[i]});
+          ConstHooks hooks;
+          std::optional<ConstValue> label = v.global.evaluate(static_cast<CaseStmt*>(block->stmts[0])->value, v.file, v.context, elementArgs, hooks);
+          GlobalScope::clearConstantReason();
+          // the statement: `return VALUE;`, after constexpr locals (whose uses fold to their values)
+          Stmt* statement = block->stmts[1];
+          while (statement && statement->kind == NodeKind::BlockStmt && !static_cast<BlockStmt*>(statement)->stmts.empty())
+          {
+            auto& inner = static_cast<BlockStmt*>(statement)->stmts;
+            for (size_t k = 0; k + 1 < inner.size(); ++k)
+              if (inner[k]->kind != NodeKind::DeclStmt)
+                return fail(v, inner[k], "a statement other than a constexpr local before the case's return");
+            statement = inner[inner.size() - 1];
+          }
+          Expr* value = statement && statement->kind == NodeKind::ReturnStmt ? static_cast<ReturnStmt*>(statement)->value : nullptr;
+          std::optional<std::string> text = value ? constantText(v, value, elementArgs) : std::nullopt;
+          if (!label || label->kind != ConstValue::Kind::Int || !text)
+            return fail(v, value ? static_cast<Node*>(value) : static_cast<Node*>(s), "a case of enumerators(E) whose label or value is no constant here");
+          constantTexts()[value] = *text;
+          if (i + 1 < elements.size())
+            cases.push_back({nullptr, value, subject + " == " + natvisConstant(*label)});
+          else
+            cases.push_back({nullptr, value}); // (the last enumerator's: a kpp enum's switch names every value)
+        }
+      }
       else if (ForConstexprStmt* every = everyAlternativeLoop(v, s))
       {
         // `return u[]...;` (design.md 8.5): its switch, one case per alternative, each from its copy of the statement typed
@@ -1782,11 +1902,14 @@ namespace
   {
     if (!e)
       return fail(v, e, "an expression the parser left out");
-    if (e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String)
+    auto constant = constantTexts().find(e); // (a case of a switch over enumerators(E): the text made for its enumerator)
+    if (constant != constantTexts().end() || (e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String))
     {
       // ("a" in `this.branch ? " (branch)" : ""`: a C++ literal again, which natvis's expressions read)
       std::string text;
-      if (!literalText(static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : v.file, static_cast<LiteralExpr*>(e), text))
+      if (constant != constantTexts().end())
+        text = constant->second;
+      else if (!literalText(static_cast<LiteralExpr*>(e)->file ? static_cast<LiteralExpr*>(e)->file : v.file, static_cast<LiteralExpr*>(e), text))
         return fail(v, e, "a string literal with a prefix or an unusual escape");
       out = "\"";
       for (char c : text)
@@ -2378,6 +2501,14 @@ namespace
         variant.second += text;
       return true;
     };
+    if (auto constant = constantTexts().find(e); constant != constantTexts().end())
+    {
+      // (a case of a switch over enumerators(E): the text made for its enumerator, as a literal's)
+      std::string doubled;
+      for (char c : constant->second)
+        doubled += c == '{' || c == '}' ? std::string(2, c) : std::string(1, c);
+      return append(doubled);
+    }
     if (e->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(e)->literalKind == TokenKind::String)
     {
       std::string text, doubled;
