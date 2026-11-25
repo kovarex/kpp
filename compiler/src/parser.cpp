@@ -4359,6 +4359,10 @@ namespace
       c->templateParams = templ.params;
       c->isTemplate = templ.present;
       c->isTypedUnion = true;
+      // `union enum class alignas(4) U`: its alignment, as a class's (2026-11-25: it was skipped with the attributes,
+      // silently, so the game's SignalIDBase came out 2-aligned)
+      c->alignment = pendingAlignment;
+      pendingAlignment = nullptr;
       if (!(atIdent() || at(P::ColonColon)) || !parseQualifiedName(c->name, true, false))
       {
         error("expected the name of the union enum");
