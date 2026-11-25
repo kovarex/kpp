@@ -54,7 +54,9 @@ Decided by kovarex; every thread follows them.
   miscompile outranks every other task, the headline included.
 - Spec first: every feature and fix starts with a snippet in `compiler/tests/spec/`; a gap found in
   converted code gets a pending snippet before it is fixed. A pending snippet that starts passing
-  fails the run.
+  fails the run. A change that adds a snippet, renames one or edits a header commits
+  docs/spec-status.md with it (`python compiler\tests\spec\run_spec.py --doc`: no build, a second);
+  CI fails when the file is not what the headers give.
 - One thread per worktree, under C:\kpp-sandbox (see its README.md). C:\kpp stays clean master.
   Never create top-level directories in C:\. Disk is shared: keep scratch\<thread> under ~15 GB
   (reuse fixed directory names, delete a measurement's build trees and IR dumps once its numbers
@@ -122,8 +124,8 @@ Front end (lexer, parser, resolver, type checker, template instantiation) is don
 and the bundled clang: `compiler\build\kpp.exe --exe out.exe program.kpp`. Run
 `compiler\tests\gate.cmd` after every compiler change: the end-to-end tests and checks
 (`compiler\tests\run_tests.cmd`, its quick run; `--full` for all of it) beside the specification
-suite `compiler\tests\spec.cmd` (one snippet per construct, pass/pending, writes
-docs/spec-status.md). `programs\factorio\convert.cmd` (for a risky codegen or converter change, and
+suite `compiler\tests\spec.cmd` (one snippet per construct, pass/pending; docs/spec-status.md is their
+headers as a table, written by `python compiler\tests\spec\run_spec.py --doc`, which builds nothing). `programs\factorio\convert.cmd` (for a risky codegen or converter change, and
 in thread H's batches on master) converts the whole game into a factorio-in-kpp checkout (FACTORIO_IN_KPP, a thread's own copy; src\, tests\, libraries\CommonUtil\ ..., at their paths in Factorio's repository),
 then CommonUtil, Agui and Util on their own into programs\factorio\kpp and runs their three smoke tests (the one check that runs converted game code) and the imgui, glm, Lua internals and GDI+ ones (imgui frames through the generated C interface, the glm port against glm, the Lua internals bridge against the C++ build's layout, the GDI+ classes against the SDK's gdiplus.h); the Factorio benchmark command in docs/prototype-results.md is the regression check for the
 front end. A new gap found in converted code gets a pending snippet in `compiler/tests/spec/`

@@ -1540,7 +1540,11 @@ or on the runner named by the repository variable `KPP_CI_RUNNER`, as parallel j
   `--debug-info` and windows-gnu (4 each): 14 jobs, after build. A shard is
   every Nth snippet of the sorted list (run_spec.py), so each gets a share of every area; each ends
   with its own `spec: ALL PASSED (...; shard I/N)` line and exit code, and the run is green only
-  when all of them are.
+  when all of them are. The first debug shard also checks docs/spec-status.md, which is the snippets'
+  headers as a table: a pull request that adds a snippet, renames one or edits a header and does not
+  commit the file as `python compiler\tests\spec\run_spec.py --doc` writes it (nothing is built)
+  fails there, with the rows that differ and that command (since 2026-11-25: the file was a whole
+  local run's before, and went stale once the suite ran here alone).
 - **linux_build, linux_spec, linux_host:** kpp on a Linux host (ubuntu-24.04, 4 CPUs). linux_build
   builds kpp with clang 19 and hands it on as the artifact `kpp-linux-compiler`; after it, at once,
   linux_spec runs the spec in debug (2 shards) and in `--release` (4 shards) and linux_host its smoke tests (hello
