@@ -115,7 +115,7 @@
   std::optional<ConstValue> constDescriptorIsNoDiscard(MemberExpr* m, const TypeContext& ctx);
   std::optional<ConstValue> constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth);
   // Which list a reflection names: members(T), alternatives(U) or methods(T) (design.md 8.3, 8.5).
-  enum class ReflectionList : uint8_t { Members, Alternatives, Methods };
+  enum class ReflectionList : uint8_t { Members, Alternatives, Methods, OwnMembers };
   static std::optional<ReflectionList> reflectionListNamed(std::string_view name);
   bool reflectedElementsOf(const Ty* cls, ReflectionList list, std::vector<const Ty*>& out, int depth);
   bool reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, ReflectionList& which, int depth);

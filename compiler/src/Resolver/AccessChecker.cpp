@@ -306,6 +306,11 @@ auto GlobalScope::Impl::usedAt(Node* n, Scope*& naming, const Ty* self) -> Decl*
   if (n->kind != NodeKind::MemberExpr)
     return nullptr;
   auto* m = static_cast<MemberExpr*>(n);
+  // `object.[m]` reads the member its descriptor names, whatever its access: members(T) and ownMembers(T) list private
+  // and protected fields, and the descriptor is the permission (design.md 8.3; kovarex, 2026-11-25, the prototype
+  // explorer reading every class's own members from Values)
+  if (m->dynamicMember)
+    return nullptr;
   if (const Ty* object = m->resolved && m->base && m->base->ty && m->base->ty->isKnown() ? types.stripRef(m->base->ty) : nullptr)
   {
     if (m->op == P::Arrow)

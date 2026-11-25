@@ -73,6 +73,7 @@ namespace
       kwTagMethod = symbols.intern("tag");
       kwTypeMember = symbols.intern("type");
       kwMembers = symbols.intern("members");
+      kwOwnMembers = symbols.intern("ownMembers");
       kwAlternatives = symbols.intern("alternatives");
       kwImplicit = symbols.intern("implicit");
       kwFallthrough = symbols.intern("fallthrough");
@@ -2234,10 +2235,11 @@ namespace
       Expr* requiresClause = nullptr;
     };
 
-    // `members(T)[i].type` (or alternatives(U)'s) where a type is written: the type of T's i-th member (design.md 8.3).
+    // `members(T)[i].type` (or ownMembers(T)'s, alternatives(U)'s) where a type is written: the type of T's i-th member
+    // (design.md 8.3).
     bool atIndexedDescriptorType()
     {
-      if (!(atIdent(kwMembers) || atIdent(kwAlternatives)) || !at(P::LParen, 1))
+      if (!(atIdent(kwMembers) || atIdent(kwOwnMembers) || atIdent(kwAlternatives)) || !at(P::LParen, 1))
         return false;
       int close = balancedClose(1);
       if (close < 0 || !at(P::LBracket, close + 1))
@@ -8933,7 +8935,7 @@ namespace
     uint32_t kwImplicit, kwFallthrough, kwBothConst, kwClassConst, kwSuper, kwAccumulate, kwImport, kwDefine, kwAssert, kwReleaseAssert, kwCaller,
              kwConditional, kwUnderscore, kwConfig, kwNameof, kwQualifiedNameof, kwCheckValid, kwCount, kwValues, kwStr, kwEnumeratorName, kwIsValid, kwTypes, kwFromStr, kwUnderlyingType, kwOptional, kwUniquePtr, kwStd, kwText, kwTag,
              kwTagField,
-             kwTagMethod, kwTypeMember, kwMembers, kwAlternatives, kwSuite, kwFlags;
+             kwTagMethod, kwTypeMember, kwMembers, kwOwnMembers, kwAlternatives, kwSuite, kwFlags;
     // The flags of the class spliceFlags wrote at token pendingFlagsAt, which parseClassOrElaborated gives it.
     std::vector<ClassDecl::Flag> pendingFlags;
     uint32_t pendingFlagsAt = UINT32_MAX;
