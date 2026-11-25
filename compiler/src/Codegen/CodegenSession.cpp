@@ -689,7 +689,14 @@ static NameKeyMap<std::string> definedNames(const Shared& sh)
 // from scratch's: kpp/server_instance_member_function_no_longer_called). moduleTexts: the modules' own declarations read as
 // finished (a build from scratch); a kept session's, read after it emitted, are its kept entries, the new ones and the owned
 // entries. Sorted by name.
-static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, bool moduleTexts)
+// asked (a kept session's): polymorphic classes laid out whose layout a dropped text used. Whether a text still uses each is
+// asked with the rest, and those no text does are given in unusedAsked. A class's vtables name their functions whatever uses
+// the class (below); an asked one's only when a text of no function made on demand, or a reached one's, uses its layout (a
+// definition's recorded layouts), names one of its tables (a constructor stores the vtable's address, a constant object
+// holds it), or is the layout of a class that holds it (a base, a member). Otherwise the class's member functions and its
+// tables would keep each other: the functions named by the tables, the layout used by the functions.
+static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, bool moduleTexts, const std::vector<const Ty*>& asked = {},
+                                                  std::vector<const Ty*>* unusedAsked = nullptr)
 {
   // Those that have a definition: each module's found on the threads (Shared::requested is asked of every definition's name,
   // the game's 265,000), each with its name's hash, then numbered in the modules' order.
@@ -747,21 +754,59 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
         return i;
     return none;
   };
+  // The layouts asked about: each a node after the functions', found by its layout and by its tables' names (the lines
+  // `@name = ...` of its vtables' text: a vtable, its alias).
+  std::vector<std::pair<const Ty*, const StructInfo*>> layouts;
+  std::unordered_map<const StructInfo*, uint32_t> layoutNumber;
+  NameViewKeyMap<uint32_t> tableNumber;
+  for (const Ty* key : asked)
+    if (auto it = sh.structs.find(key); it != sh.structs.end() && !it->second.vtableText.empty())
+      if (uint32_t number = uint32_t(names.size() + layouts.size()); layoutNumber.emplace(&it->second, number).second)
+      {
+        layouts.push_back({key, &it->second});
+        std::string_view text = it->second.vtableText;
+        for (size_t from = 0; from < text.size();)
+        {
+          size_t end = text.find('\n', from);
+          end = end == std::string_view::npos ? text.size() : end + 1;
+          std::string_view line = text.substr(from, end - from);
+          if (size_t is = line.find(" = "); line.starts_with("@") && is != std::string_view::npos)
+            tableNumber.emplace(line.substr(0, is), number);
+          from = end;
+        }
+      }
+  auto layoutOf = [&](const Ty* t)
+  {
+    const StructInfo* info = nullptr;
+    if (auto it = sh.structs.find(t); it != sh.structs.end())
+      info = &it->second;
+    else if (auto by = sh.structsByType.find(t); by != sh.structsByType.end())
+      info = by->second;
+    auto it = info ? layoutNumber.find(info) : layoutNumber.end();
+    return it == layoutNumber.end() ? none : it->second;
+  };
   struct Found
   {
     std::vector<uint32_t> named;                        // by such a text
     std::vector<std::pair<uint32_t, uint32_t>> namedBy; // the function made on demand whose text names it, and it
   };
   std::vector<Found> found(workers);
-  auto note = [&](Found& into, uint32_t owner, std::string_view name)
+  auto use = [&](Found& into, uint32_t owner, uint32_t named)
   {
-    uint32_t named = numberOf(name);
     if (named == none || named == owner)
       return; // (its own name, or its lambda's naming it: no other's use)
     if (owner == none)
       into.named.push_back(named);
     else
       into.namedBy.push_back({owner, named});
+  };
+  auto note = [&](Found& into, uint32_t owner, std::string_view name)
+  {
+    uint32_t named = numberOf(name);
+    if (named == none && !tableNumber.empty())
+      if (auto it = tableNumber.find(name); it != tableNumber.end())
+        named = it->second;
+    use(into, owner, named);
   };
   // (a text read line by line: a `declare` line names what it declares, no use of it, and the shared declarations are mostly
   // those)
@@ -804,8 +849,13 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
       addOther(entry);
   }
   for (const auto& [type, info] : sh.structs)
-    if (!info.vtableText.empty())
+    if (!info.vtableText.empty() && !layoutNumber.count(&info))
       addOther(info.vtableText);
+  // (an asked layout's tables in a module's own declarations are the layout's text, read for it below)
+  auto tablesOfAsked = [&](const std::string& entry)
+  {
+    return std::any_of(layouts.begin(), layouts.end(), [&](const auto& layout) { return layout.second->vtableText == entry; });
+  };
   std::atomic<unsigned> nextModule{0};
   std::atomic<size_t> nextOther{0};
   auto scanTexts = [&](unsigned t)
@@ -818,6 +868,9 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
         uint32_t owner = numberOf(d.owner);
         for (auto [at, length] : d.names)
           note(into, owner, std::string_view(d.text).substr(at, length));
+        if (!layouts.empty())
+          for (const Ty* used : d.layouts)
+            use(into, owner, layoutOf(used));
       }
       for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
         scan(into, numberOf(o.owner), o.text);
@@ -826,7 +879,8 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
       else
         for (const std::vector<std::string>* entries : {&sh.keptModuleEntries[k], &sh.moduleDecls[k].entries})
           for (const std::string& entry : *entries)
-            scan(into, none, entry);
+            if (!tablesOfAsked(entry))
+              scan(into, none, entry);
     }
     for (size_t i; (i = nextOther++) < others.size();)
       scan(into, none, others[i]);
@@ -834,12 +888,35 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
   onThreads(workers, scanTexts);
   for (const Shared::Startup& s : sh.startups)
     note(found[0], none, s.function);
+  if (!layouts.empty())
+  {
+    // An asked layout's own uses: the functions its vtables name; and what holds it, a class laid out (one asked about
+    // itself only when it is reached) or a closure.
+    for (const auto& [key, info] : layouts)
+      scan(found[0], layoutNumber[info], info->vtableText);
+    auto held = [&](uint32_t holder, const Ty* field)
+    {
+      while (field && field->kind == TyKind::Array)
+        field = field->inner;
+      if (field)
+        use(found[0], holder, layoutOf(field));
+    };
+    for (const auto& [key, info] : sh.structs)
+    {
+      auto self = layoutNumber.find(&info);
+      for (const Ty* field : info.fieldTypes)
+        held(self == layoutNumber.end() ? none : self->second, field);
+    }
+    for (const auto& [type, closure] : sh.closures)
+      for (const Ty* field : closure.fieldTypes)
+        held(none, field);
+  }
   // Reached: named by a text of no function made on demand, or by a reached one's.
-  std::vector<std::vector<uint32_t>> uses(names.size());
+  std::vector<std::vector<uint32_t>> uses(names.size() + layouts.size());
   for (const Found& f : found)
     for (auto [by, name] : f.namedBy)
       uses[by].push_back(name);
-  std::vector<char> reached(names.size(), 0);
+  std::vector<char> reached(names.size() + layouts.size(), 0);
   std::vector<uint32_t> work;
   auto reach = [&](uint32_t i)
   {
@@ -859,6 +936,10 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
     for (uint32_t used : uses[i])
       reach(used);
   }
+  if (unusedAsked)
+    for (size_t i = 0; i < layouts.size(); ++i)
+      if (!reached[names.size() + i])
+        unusedAsked->push_back(layouts[i].first);
   std::vector<std::string> unreached;
   for (size_t i = 0; i < names.size(); ++i)
     if (!reached[i])
@@ -3375,9 +3456,19 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // function did not lose a naming itself. A build with errors lacks the texts of the functions that failed, and a check
   // writes nothing: asked by the first build without errors that writes its modules (Shared::onDemandUnchecked). The
   // unreached ones go in a rebuild of their own (rebuildLLVM), and this one assembles no module.
-  if (!lost.empty() || sh.onDemandUnchecked)
+  // And the polymorphic class instances whose layout a dropped text used (and that are still laid out): such a class's member
+  // functions and its tables keep each other once nothing else uses it, the functions named by the vtables, the layout used
+  // by the functions (kpp/server_polymorphic_class_instance_no_longer_used: `Square<int64>` gone from main left its area()).
+  // A class that is no instance has the program's own functions for members, which are always emitted. One whose layout a
+  // definition emitted now uses lost nothing, as a name does not.
+  std::unordered_set<const Ty*> lostLayouts;
+  for (const Ty* t : droppedUses)
+    if (t && !t->args.empty())
+      if (auto it = sh.structs.find(t); it != sh.structs.end() && it->second.polymorphic && !it->second.vtableText.empty())
+        lostLayouts.insert(t);
+  if (!lost.empty() || sh.onDemandUnchecked || !lostLayouts.empty())
   {
-    for (unsigned k = 0; k < sh.moduleCount && !lost.empty(); ++k)
+    for (unsigned k = 0; k < sh.moduleCount && (!lost.empty() || !lostLayouts.empty()); ++k)
     {
       auto named = [&](std::string_view name)
       {
@@ -3386,8 +3477,12 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       };
       for (size_t i = dropped[k].keptDefinitions; i < sh.definitions[k].size(); ++i)
         if (const Shared::Definition& d = sh.definitions[k][i]; sh.programOwned(d.owner) || !lost.count(d.owner))
+        {
           for (auto [at, length] : d.names)
             named(std::string_view(d.text).substr(at, length));
+          for (const Ty* t : d.layouts)
+            lostLayouts.erase(t);
+        }
       for (size_t i = dropped[k].keptOwned; i < sh.ownedEntries[k].size(); ++i)
         if (const Shared::OwnedEntry& o = sh.ownedEntries[k][i]; sh.programOwned(o.owner) || !lost.count(o.owner))
           irNamesIn(o.text, [&](size_t at, size_t length) { named(std::string_view(o.text).substr(at, length)); });
@@ -3400,8 +3495,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       for (const std::string& name : lost)
         if (sh.definedIn.count(name) && sh.requested.contains(name))
           candidates.insert(name);
+    // (the layouts an earlier build left with the question)
+    lostLayouts.insert(sh.layoutsUnchecked.begin(), sh.layoutsUnchecked.end());
+    std::erase_if(lostLayouts, [&](const Ty* t) { return !sh.structs.count(t); });
     const bool open = sh.onDemandUnchecked; // (an earlier build left the question to this one: every text is asked)
-    const bool ask = open || !candidates.empty();
+    const bool ask = open || !candidates.empty() || !lostLayouts.empty();
     const bool failing = std::any_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em)
     {
       return !em->errors.empty() || em->unattributedErrors || em->hiddenErrors != 0;
@@ -3409,14 +3507,17 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     // (a check writes no module: the pass over the definitions is left to the first build that does, an editor's checks
     // between two builds being many)
     sh.onDemandUnchecked = ask && (failing || !assembleModules);
+    sh.layoutsUnchecked.assign(lostLayouts.begin(), lostLayouts.end());
+    if (!sh.onDemandUnchecked)
+      sh.layoutsUnchecked.clear();
     if (ask && !failing && assembleModules)
     {
       auto asked = std::chrono::steady_clock::now();
       // First the usual case of a call taken out, its function still called from elsewhere: a candidate that a program
-      // function's text names (its definition's, its lambdas') is reached, whatever else names it. One pass over those texts'
-      // names with the few candidates, on the threads: 0.005 s on the game (80,270 of its 265,404 definitions), against
-      // 0.039 s for what reaches what, which only a candidate that is left asks.
-      if (!open && !candidates.empty())
+      // function's text names (its definition's, its lambdas') is reached, whatever else names it; so is a class whose
+      // layout such a text uses. One pass over those texts' names with the few candidates, on the threads: 0.005 s on the
+      // game (80,270 of its 265,404 definitions), against 0.039 s for what reaches what, which only what is left asks.
+      if (!open && (!candidates.empty() || !lostLayouts.empty()))
       {
         std::vector<const std::string*> list;
         NameViewKeyMap<uint32_t> index;
@@ -3428,18 +3529,27 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
           shortest = std::min(shortest, name.size());
           longest = std::max(longest, name.size());
         }
+        std::unordered_map<const Ty*, uint32_t> layoutIndex;
+        for (const Ty* t : lostLayouts)
+          layoutIndex.emplace(t, uint32_t(layoutIndex.size()));
         const unsigned workers = std::max(1u, std::min(session.threads, sh.moduleCount));
-        std::vector<std::vector<char>> namedBy(workers, std::vector<char>(list.size(), 0));
+        std::vector<std::vector<char>> namedBy(workers, std::vector<char>(list.size(), 0)), usedBy(workers, std::vector<char>(layoutIndex.size(), 0));
         std::atomic<unsigned> nextModule{0};
         auto byProgram = [&](unsigned t)
         {
           for (unsigned k; (k = nextModule++) < sh.moduleCount;)
             for (const Shared::Definition& d : sh.definitions[k])
               if (sh.programOwned(d.owner))
+              {
                 for (auto [at, length] : d.names)
                   if (length >= shortest && length <= longest)
                     if (auto it = index.find(std::string_view(d.text).substr(at, length)); it != index.end())
                       namedBy[t][it->second] = 1;
+                if (!layoutIndex.empty())
+                  for (const Ty* used : d.layouts)
+                    if (auto it = layoutIndex.find(used); it != layoutIndex.end())
+                      usedBy[t][it->second] = 1;
+              }
         };
         onThreads(workers, byProgram);
         std::vector<std::string> reached;
@@ -3448,10 +3558,28 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
             reached.push_back(*list[i]);
         for (const std::string& name : reached)
           candidates.erase(name);
+        for (auto& [type, i] : layoutIndex)
+          if (std::any_of(usedBy.begin(), usedBy.end(), [&](const std::vector<char>& by) { return by[i] != 0; }))
+            lostLayouts.erase(type);
       }
-      if (open || !candidates.empty())
-        unreachedNow = unreachedOnDemand(sh, session.threads, false);
+      std::vector<const Ty*> unusedLayouts;
+      if (open || !candidates.empty() || !lostLayouts.empty())
+        unreachedNow = unreachedOnDemand(sh, session.threads, false, std::vector<const Ty*>(lostLayouts.begin(), lostLayouts.end()), &unusedLayouts);
       out.unreachedAsked = std::chrono::duration<double>(std::chrono::steady_clock::now() - asked).count();
+      // A polymorphic class instance that no text uses any more left more than its member functions: its tables in the modules
+      // that stored them, its destructor helper in the shared definitions, its descriptor's name in the shared declarations.
+      // A build from scratch has none of them, and taking each back here would be a rule of its own for a rare edit: codegen
+      // in full, as for a polymorphic class's changed layout (until 2026-11-25 they stayed, the program right and its code
+      // not a build from scratch's).
+      if (!unusedLayouts.empty())
+      {
+        std::vector<std::string> classes;
+        for (const Ty* t : unusedLayouts)
+          classes.push_back(e.types.toString(t, &e.symbols));
+        std::sort(classes.begin(), classes.end());
+        out.declined = "a polymorphic class instance that no text uses any more (" + classes.front() + "): its member functions, its tables and what was made for them go";
+        return out;
+      }
     }
   }
   // --debug-info: a class's definition lists the member functions a definition names (Shared::DebugTypeText::hasCode,
