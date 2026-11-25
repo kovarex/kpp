@@ -782,6 +782,16 @@ the branches not picked are not instantiated, so a loop over methods(T) skips a 
 attributes of its own the loop could read instead). Spec kpp/reflection_name_is_a_constant. A class without such functions lists none (`.size` is
 0). methods(T) of a type that is no class is an error, as members(T)'s is. Like members(T) it is read only where it is
 written: a program that does not use it pays nothing.
+*ownMembers(T)* (kovarex, 2026-11-25, for the game's prototype explorer: each class's rows from its own members, its
+base's rows from the base's own, `Values::addMembers<super>`): members(T) without the bases' members, the non-static data
+members T itself declares, in declaration order, in the same forms (for constexpr, `ownMembers(T)[i]`, `.size`,
+`ownMembers(T)[i].type` written as a type) and with the same descriptors (`m.name`, `m.offset`, `object.[m]`, ...): a walk
+of a class's own members instantiates nothing for an inherited one. A class that declares none lists none. Spec
+kpp/reflection_own_members. *Access through a descriptor* (same day): `object.[m]` reads the member its descriptor names
+whatever its access. members(T) and ownMembers(T) list private and protected fields, and the descriptor is the permission:
+a generic function in another class (the explorer's Values) reads a class's private fields without a friend line per class.
+Until then the access checker refused it ("X::f is private, named in ...") for a class the resolver walked, and let it
+through for one whose walk was left to the code generator (a class with bases). Spec kpp/reflection_reads_private_members.
 
 **8.4 Real enums**, the proposal's syntax with the inner brace block for the values:
 ```

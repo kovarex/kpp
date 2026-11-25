@@ -6,10 +6,10 @@
 
     // `members(T)` (design.md 8.3), `alternatives(U)` (8.5): the type reflected on, or null when
     // the node is no such list; alternatives set when it is the latter.
-    Expr* reflectionSubject(Node* list, bool* alternatives = nullptr, bool* methods = nullptr);
+    Expr* reflectionSubject(Node* list, bool* alternatives = nullptr, bool* methods = nullptr, bool* own = nullptr);
 
     // The descriptors of a class's non-static data members, bases first, in declaration order.
-    void collectMembers(const Ty* cls, std::vector<const Ty*>& out, Node* at, int depth);
+    void collectMembers(const Ty* cls, std::vector<const Ty*>& out, Node* at, int depth, bool withBases = true);
 
     // `for constexpr (typename T : types<A, B>) body` / `for constexpr (int i : {1, 2}) body`: the
     // body once per element, re-typed and emitted with the loop variable bound to the element (a

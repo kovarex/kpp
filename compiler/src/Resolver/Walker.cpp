@@ -236,7 +236,7 @@ auto GlobalScope::Impl::Walker::typeOfReflectionIndex(IndexExpr* i) -> const Ty*
   if (*at < 0 || uint64_t(*at) >= elements.size())
   {
     std::string named = types.toString(reflectedType(subject), &symbols);
-    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" ? "member" : list == "methods" ? "method" : "alternative") +
+    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" || list == "ownMembers" ? "member" : list == "methods" ? "method" : "alternative") +
                            ": " + named + " has " + std::to_string(elements.size()));
     return unknown(Why::Unsupported);
   }
