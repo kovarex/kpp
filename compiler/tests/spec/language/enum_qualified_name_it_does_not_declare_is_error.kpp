@@ -1,0 +1,30 @@
+// spec: a name through an enumeration that it does not declare (`Type::VirtualSignal` after the enumerator was renamed) is the checker's "not declared", as one through a namespace is, also in a case label and in a class's own enum; the enum's generated names (values, count, fromStr) stay names of it
+// design.md 8.4 (2026-11-25: the game's SignalIDBase::Type::VirtualSignal → Virtual left references that only codegen's "an unresolved name" and "a case label that is not a constant" reported)
+// error: enum_qualified_name_it_does_not_declare_is_error.kpp:13: error: 'Type::VirtualSignal' is not declared
+// error: enum_qualified_name_it_does_not_declare_is_error.kpp:18: error: 'Holder::Type::VirtualSignal' is not declared
+// error: enum_qualified_name_it_does_not_declare_is_error.kpp:26: error: 'Top::Missing' is not declared
+enum class Top : u8 { A, B };
+
+class Holder
+{
+public:
+  enum class Type : u8 { Item = 0, Virtual = 2 };
+  Type type = Type::Item;
+  bool isVirtual() const { return this.type == Type::VirtualSignal; }
+  int pick() const
+  {
+    switch (this.type)
+    {
+      case Holder::Type::VirtualSignal: return 1;
+      default: return 0;
+    }
+  }
+};
+
+int main()
+{
+  int missing = int(Top::Missing);
+  u64 fine = Top::count + Holder::Type::values.size();
+  Holder h;
+  return h.isVirtual() ? h.pick() + missing + int(fine) : int(Top::fromStr("A").hasValue());
+}

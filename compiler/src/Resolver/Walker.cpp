@@ -553,7 +553,12 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
         return;
       }
     }
-    if (q.found == Found::No || !q.decl || q.decl->kind != NodeKind::NamespaceDecl || q.ambiguousWith)
+    // A qualifier that is an enumeration declared here: its enumerators are all its names (no base, no specialization),
+    // so one it does not have is not declared (2026-11-25: `case SignalIDBase::Type::VirtualSignal:` after the
+    // enumerator's rename said nothing until codegen's "a case label that is not a constant").
+    bool enumeration = q.found != Found::No && q.decl && q.decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(q.decl)->isDefinition &&
+                       !q.ambiguousWith;
+    if (!enumeration && (q.found == Found::No || !q.decl || q.decl->kind != NodeKind::NamespaceDecl || q.ambiguousWith))
       return;
     std::string spelledName;
     for (size_t i = 0; i < name.parts.size(); ++i)
