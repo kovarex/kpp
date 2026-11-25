@@ -1,0 +1,52 @@
+// spec: isNothrowDefaultConstructible of a class whose implicit default constructor builds members by their default member initializers decides each initializer as C++ does ([except.spec]): `= std::nullopt` (Optional's noexcept constructor from NullOpt, which copies its argument), `= T { ... }` (the braces the parser keeps as one argument) with a constructor that is noexcept or not, `= nullptr` for a UniquePtr, beside members whose default constructors are noexcept; and Vector::resize's `if constexpr` on it compiles for each (until 2026-11-25 these were unknown: "the condition of an if constexpr is not a constant expression", or "expression nested too deeply" for a class of only `= std::nullopt`)
+// factorio: kpp 0.2.1778 and 0.2.1779 did not build the game: RotatedAnimation (`RealOrientation middleOrientation = RealOrientation { 0.5 }`), TrackLayer (`std::Optional<u32> previousVariationIndex = std::nullopt`) and CharacterArmorAnimation (two RotatedAnimations) in their loaders' resize calls
+struct Throwing
+{
+  f64 v;
+  Throwing(f64 v) : v(v) {}
+};
+struct Quiet
+{
+  f64 v;
+  Quiet(f64 v) noexcept : v(v) {}
+};
+struct WithNullopt
+{
+  std::Vector<int> xs;
+  std::Optional<u32> o = std::nullopt;
+};
+struct WithThrowingBrace
+{
+  std::Vector<int> xs;
+  Throwing t = Throwing { 0.5 };
+};
+struct WithQuietBrace
+{
+  std::String s;
+  Quiet q = Quiet { 0.5 };
+};
+struct WithNullptr
+{
+  std::UniquePtr<int> p = nullptr;
+  std::Vector<std::String> names;
+};
+struct OnlyNullopt
+{
+  std::Optional<u32> o = std::nullopt;
+};
+template<typename T>
+void report(const char* name)
+{
+  std::Vector<T> v;
+  v.resize(2);
+  std::println(name, " ", std::isNothrowDefaultConstructible<T>, " ", v.size());
+}
+int main()
+{
+  report<WithNullopt>("WithNullopt");
+  report<WithThrowingBrace>("WithThrowingBrace");
+  report<WithQuietBrace>("WithQuietBrace");
+  report<WithNullptr>("WithNullptr");
+  report<OnlyNullopt>("OnlyNullopt");
+  return 0;
+}

@@ -17,7 +17,7 @@ public:
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
   static const ContainerSize npos = ContainerSize(-1);
 
-  StringView() {}
+  StringView() noexcept {}
   implicit StringView(const char* text) : chars(text), byteCount(text ? checkedSize(strlen(text), "string too long") : 0) {}
   StringView(const char* text, ContainerSize count) : chars(text), byteCount(count) {}
   implicit StringView(const String& text) noexcept : chars(text.data()), byteCount(text.size()) {}

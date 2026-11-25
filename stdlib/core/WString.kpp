@@ -19,7 +19,7 @@ public:
   using pointer = wchar_t*;
   using const_pointer = const wchar_t*;
 
-  WString() {}
+  WString() noexcept {}
   implicit WString(const wchar_t* text) { this.append(text, WString::lengthOf(text)); }
   WString(const wchar_t* text, ContainerSize count) { this.append(text, count); }
   WString(const wchar_t* first, const wchar_t* last) { this.append(first, checkedSize(last - first, "string too long")); }

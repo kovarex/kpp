@@ -19,7 +19,7 @@ public:
   using pointer = T*;
   using const_pointer = const T*;
 
-  Vector() {}
+  Vector() noexcept {}
 
   // count default-constructed elements.
   Vector(ContainerSize count) : Vector()

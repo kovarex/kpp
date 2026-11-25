@@ -2426,7 +2426,21 @@ auto GlobalScope::Impl::classInitializerNothrow(Expr* e, const Ty* part) -> std:
     braced = true;
   }
   else if (e->kind == NodeKind::FunctionalCastExpr && given == part)
+  {
     list = static_cast<FunctionalCastExpr*>(e)->args;
+    // `T{a, b}`: the parser keeps the braces as the one argument, a BraceInitExpr (parser.cpp); its elements are the
+    // arguments, a braced list (until 2026-11-25 that one argument, of no type, made it unknown: `Throwing t =
+    // Throwing { 0.5 };` in a class left isNothrowDefaultConstructible of the class undecided, the game's
+    // RotatedAnimation, whose `if constexpr` in Vector::resize did not compile).
+    if (static_cast<FunctionalCastExpr*>(e)->braced && list.size() == 1 && list[0] && list[0]->kind == NodeKind::BraceInitExpr)
+    {
+      auto* brace = static_cast<BraceInitExpr*>(list[0]);
+      if (!brace->designators.empty())
+        return std::nullopt;
+      list = brace->args;
+      braced = true;
+    }
+  }
   else if (e->kind == NodeKind::CallExpr && given == part && static_cast<CallExpr*>(e)->callee &&
            static_cast<CallExpr*>(e)->callee->kind == NodeKind::NameExpr && static_cast<NameExpr*>(static_cast<CallExpr*>(e)->callee)->resolved &&
            static_cast<NameExpr*>(static_cast<CallExpr*>(e)->callee)->resolved->kind != NodeKind::FunctionDecl)
@@ -2517,9 +2531,20 @@ auto GlobalScope::Impl::classInitializerNothrow(Expr* e, const Ty* part) -> std:
       continue;
     }
     const Ty* bare = pt && pt->isKnown() && !types.isDependent(pt) ? types.unqualified(types.stripRef(pt)) : nullptr;
-    if (!bare || bare->kind == TyKind::Class || bare->kind == TyKind::Lambda || param->isPack)
+    if (!bare || bare->kind == TyKind::Lambda || param->isPack)
       return std::nullopt;
-    std::optional<bool> r = initializerNothrow(list[i], pt->isReference() ? bare : pt);
+    // A parameter of class type: a reference bound to a named object of its class builds nothing; otherwise the
+    // argument initializes the parameter (or a reference's temporary) as any initializer does: Optional's
+    // `Optional(NullOpt)` from `std::nullopt` copies a NullOpt. (Until 2026-11-25 such a parameter made it unknown:
+    // a member `= std::nullopt` left isNothrowDefaultConstructible of its class undecided, the game's TrackLayer.)
+    Expr* arg = list[i];
+    while (arg && arg->kind == NodeKind::ParenExpr)
+      arg = static_cast<ParenExpr*>(arg)->inner;
+    Decl* named = arg && arg->kind == NodeKind::NameExpr ? static_cast<NameExpr*>(arg)->resolved : nullptr;
+    bool bound = bare->kind == TyKind::Class && pt->isReference() && named &&
+                 (named->kind == NodeKind::VariableDecl || named->kind == NodeKind::ParamDecl) && arg->ty && arg->ty->isKnown() &&
+                 types.unqualified(types.stripRef(arg->ty)) == bare;
+    std::optional<bool> r = bound ? std::optional<bool>(true) : initializerNothrow(list[i], pt->isReference() ? bare : pt);
     if (!r || !*r)
       return r;
   }

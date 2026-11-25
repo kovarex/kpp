@@ -42,13 +42,7 @@ the ones that are; std's others (Map's, List's and Deque's begin, end, size and 
 compare of a String, starts_with ...) are not marked yet, so `noexcept(...)` of a call answers false where
 C++'s answers true, and a call of one has an unwind edge. Optional's operator* and operator-> stay unmarked
 on purpose: they assert that a value is there, a failed assert throws inside a test, and an exception
-leaving a noexcept function would end the test run. The empty states' constructors (String's, WString's,
-StringView's, Vector's, Optional's, UniquePtr's, Function's and filesystem::path's default ones, Optional's
-from nullopt, UniquePtr's and Function's from nullptr) are not noexcept either, though std's are: with them
-noexcept, isNothrowDefaultConstructible of a class whose other members have a default member initializer
-such as `= std::nullopt` or `= T{...}` was asked of the initializer, which the compiler cannot answer yet
-(an unknown, so `if constexpr (isNothrowDefaultConstructible<T>)` in Vector::resize did not compile for
-the game's RotatedAnimation, kpp 0.2.1778 and 0.2.1779); before, the empty member's false decided it.
+leaving a noexcept function would end the test run.
 
 **A path is wide text on every target** (core/Filesystem.kpp, 2026-11-04): off Windows std's
 `filesystem::path::value_type` is char and its native string the path's bytes; kpp's stays wchar_t
