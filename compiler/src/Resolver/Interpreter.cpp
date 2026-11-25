@@ -672,6 +672,15 @@ auto GlobalScope::Impl::descriptorTypeOf(Expr* base, const TypeContext& ctx) -> 
       for (size_t i = ctx.subst->pairs.size(); i-- > 0;)
         if (ctx.subst->pairs[i].param == d && ctx.subst->pairs[i].type)
           return ctx.subst->pairs[i].type;
+  // (a name nothing resolved yet, the parser's `a` in `a.type::baseID`'s decltype: the loop variable of that name bound in
+  // ctx, when it is a descriptor)
+  if (base && base->kind == NodeKind::NameExpr && ctx.subst && !static_cast<NameExpr*>(base)->resolved &&
+      static_cast<NameExpr*>(base)->name.parts.size() == 1)
+    for (size_t i = ctx.subst->pairs.size(); i-- > 0;)
+      if (const Subst::Pair& p = ctx.subst->pairs[i]; p.type && p.param && p.param->kind == NodeKind::TemplateParamDecl &&
+                                                      static_cast<TemplateParamDecl*>(p.param)->name == static_cast<NameExpr*>(base)->name.parts[0].symbol &&
+                                                      types.stripRef(p.type)->kind == TyKind::Member)
+        return p.type;
   if (!base)
     return nullptr;
   return base->ty && base->ty->isKnown() && !types.isDependent(base->ty) ? base->ty : typeOfSignatureExpression(base, ctx);

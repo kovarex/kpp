@@ -1243,6 +1243,10 @@ namespace
       // without it (until 2026-11-10 "expected trailing return type", D's battery).
       if (at(Kw::typename_) && at(Kw::decltype_, 1))
         advance();
+      // `typename a.type::IDType` of a for constexpr descriptor a: the keyword says what it says before decltype.
+      if (at(Kw::typename_) && atIdent(1) && at(P::Dot, 2) && atIdent(kwTypeMember, 3) &&
+          std::find(descriptorNames.begin(), descriptorNames.end(), tok(1).id) != descriptorNames.end())
+        advance();
       uint32_t typeToken = pos;
       if (at(TokenKind::Keyword) && isBuiltinTypeKeyword(Kw(tok().id)))
       {
@@ -1297,6 +1301,20 @@ namespace
         advance();
         d->expr = m;
         type = d;
+        // `a.type::IDType`: the rest of the name inside the class a.type is, as after `decltype(x)` (coordinator,
+        // 2026-11-25: `typename a.type::IDType` and `decltype(a.type::baseID)` were "a type the compiler could not
+        // resolve" in IDButton<ChatIconID>::createToolTip).
+        if (at(P::ColonColon) && atIdent(1))
+        {
+          NamedType* n = node<NamedType>(typeToken);
+          QualifiedName rest;
+          advance();
+          if (!parseQualifiedName(rest, true, false))
+            return nullptr;
+          n->name = rest;
+          n->name.typeQualifier = d;
+          type = n;
+        }
       }
       else if (atIndexedDescriptorType())
       {
@@ -8210,8 +8228,8 @@ namespace
         advance();
         return c;
       }
-      if (atDescriptorType() && (at(P::LParen, 3) || at(P::LBrace, 3)))
-        return parseTypeAsExpr(start); // `a.type()`: a value of the descriptor's type
+      if (atDescriptorType() && (at(P::LParen, 3) || at(P::LBrace, 3) || (at(P::ColonColon, 3) && atIdent(4))))
+        return parseTypeAsExpr(start); // `a.type()`: a value of the descriptor's type; `a.type::baseID`, a member of it
       // `__func__` (and MSVC's `__FUNCTION__`) in a function body: its name as a string, nameof of
       // the function (C++'s [dcl.fct.def.general] 8; a constructor's is its class's name).
       if (atIdent() && (spelling() == "__func__" || spelling() == "__FUNCTION__") && currentParent && currentParent->kind == NodeKind::FunctionDecl)

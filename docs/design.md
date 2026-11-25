@@ -712,6 +712,10 @@ of one that is no class. Specs kpp/reflection_enumerators, reflection_enumerator
 reflection_enumerators_of_a_type_that_is_no_enum_is_error.
 e.name and e.value in a constexpr function's for constexpr are each element's, as m.name is (descriptorTypeOf); spec
 kpp/reflection_descriptor_per_element_in_constexpr_function covers every descriptor kind.
+A name inside a descriptor's type is written after it (2026-11-25, the coordinator's report from the game's
+IDButton<ChatIconID>::createToolTip): `typename a.type::IDType` (or without `typename`) where a type is, `a.type::baseID`
+where a value is, `decltype(a.type::baseID)`, for members(T)'s m.type too; until then "a type the compiler could not
+resolve" and "not declared", the workaround `using Alternative = a.type;`. Spec kpp/reflection_descriptor_type_qualified_name.
 *m.initializer* (kovarex, 2026-11-21, for InputActionTestMaker's VariableToCode: "you read the defaults by constructing
 the whole class"): the member's default value alone, a prvalue of `m.type`, made in a temporary of its own without the
 object: its default member initializer as typed for the class (a class template's instance's, evaluated at each use: a
