@@ -1867,6 +1867,33 @@ the final form lists besides, the instances' member functions that have code, is
 - **The verifier**, 4.6% (section 8's question: off by default, on for kpp's own tests).
 - **No text at all** between codegen and LLVM (the IR built in memory): the parse is 30% of the back
   end's time, and writing the text is part of codegen's.
+- **Long symbol names** (measured 2026-11-25), about 0.2 s of a clean build. A function's name in the IR
+  is its whole readable name, `@"std::Vector<std::Pair<uint8, uint16>>::push_back(std::Pair<uint8,
+  uint16>&&)"`: 54 bytes on average, 1,579 at most (an `MplVector` of the prototype lists), 14% of the
+  text of sixteen modules. The whole game's IR (master 235ab7c14's, 256 modules) was compiled and
+  linked as it is and with every quoted global or comdat name of 40 bytes or more replaced by `@h.`
+  and 16 hex digits of its hash, the same in every module (MSVC's own names, `??_7...`, kept):
+
+  | | the names | their hashes | |
+  |---|---:|---:|---:|
+  | the IR's text | 1,512.2 MB | 1,377.8 MB | -8.9% |
+  | kpp's back end over every module, a thread each (two runs) | 52.86 s, 52.67 s | 51.67 s, 51.79 s | -2.3%, -1.7% |
+  | of the first run: the parse | 17.28 s | 16.92 s | -2.1% |
+  | of the first run: the machine code | 31.11 s | 30.45 s | -2.1% |
+  | the objects | 503.8 MB | 429.0 MB | -14.9% |
+  | the link, from nothing, five each in turn | 1.13 to 1.16 s | 1.03 s each time | -0.11 s |
+  | the PDB | 257.6 MB | 233.1 MB | -9.5% |
+  | the .ilk | 171.0 MB | 146.5 MB | -14.3% |
+
+  (A quarter of the modules three times over gave -1.6% for the back end, and -1.9% with the names
+  from 24 bytes on. The link is link.exe 14.51's, incremental, with the PDB, as the game's debug
+  build links; the executable is the same 120.4 MB.) So a seventh of each object is names, and the
+  linker reads, hashes and writes them: that is where the time is, 0.11 s; the back end's one second
+  of CPU time is a few hundredths of a build's on 32 threads, and what kpp's own assembly of a text 9%
+  shorter would give was not measured. The price: the linker's messages, a map file, dumpbin, the PDB's
+  public symbols and the stack of a build without debug information would show hashes (a debugger's
+  names come from the debug information and stay), so kpp would have to translate them back where it
+  shows the linker's words, and a release would need the table beside it. A decision, not a change.
 
 **The clean build, from the study's start to here.** The compiler this study began with (section 8's:
 5bdcfe34b of 2026-11-23, kpp 0.2.1738, with the standard library of that commit) against master's
