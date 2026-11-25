@@ -1,0 +1,35 @@
+// spec: the integer division slip (kpp/slip_checks_are_errors) is also found where the division initializes a floating member, by its name or in order, in a variable's list and a temporary; where it is a floating parameter's argument; and where a class takes it as a floating value, `std::Optional<f64> b = 5 / 6;` (a constructor of one floating parameter and none of an integer one); an exact division and a cast saying the truncation is meant are no slip (until 2026-11-25 only a floating variable, an assignment and a return were checked: the kpp mods study's `.multiplier = 5 / 6`, 0 where Lua's 5/6 is 0.8333)
+// kpp: --slip-checks
+// error: slip_integer_division_member_argument_optional.kpp:25: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:26: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:27: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:28: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:29: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:30: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:31: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// error: slip_integer_division_member_argument_optional.kpp:32: error: an integer division converted to double: it truncates first; divide in floating point (`double(a) / b`), or say the truncation is meant (`double(a / b)`)
+// no-warning: slip_integer_division_member_argument_optional.kpp:34
+struct Factors
+{
+  f64 multiplier;
+  std::Optional<f64> bonus;
+};
+struct Wrapped
+{
+  Wrapped(f64 v) : v(v) {}
+  f64 v;
+};
+f64 take(f64 v) { return v; }
+f64 slips(int a)
+{
+  std::Optional<f64> b = 5 / 6;
+  Factors p{.multiplier = a / 6};
+  Factors q{5 / 6};
+  Factors r = Factors{.bonus = a / 3};
+  Wrapped w(5 / a);
+  Wrapped x{5 / 7};
+  f64 t = take(5 / 6);
+  return t + take(a / 2) + b.value() + p.multiplier + q.multiplier + r.multiplier + w.v + x.v;
+}
+f64 meant(int a) { return take(f64(a / 6)) + take(f64{5 / 6}) + Factors{.multiplier = 6 / 3}.multiplier + take(f64(a) / 6); }
+int main() { return int(slips(3) + meant(2)); }

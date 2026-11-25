@@ -806,6 +806,9 @@
     // is known (impl.lastArgumentsByType.why: "its parameter mode is given twice by type ..."), design.md 32.
     void reportNotByType(const std::string& called, const std::vector<const Ty*>& argTypes, uint32_t token);
     void checkAggregateElements(const Ty* t, Span<Expr*> elements, int depth = 0);
+    // A braced list for a class: checkAggregateElements by position, checkDesignatedElements for one naming members.
+    void checkAggregateList(const Ty* t, BraceInitExpr* list, int depth = 0);
+    void checkDesignatedElements(const Ty* t, BraceInitExpr* list, int depth);
     // `new T`, `new T()`, `new (p) T()`, `new T[n]`: T's default constructor, one class t does not have an error, in
     // an instance too (as that instance's), where codegen said it "does not support" it, and inside the noexcept
     // operator, which answered 1 (K's spec language/noexcept_operator_of_a_construction_without_a_constructor_is_error).

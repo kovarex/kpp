@@ -15,7 +15,8 @@
 //   anyway?"): a function's name as a condition, an `else` indented as an outer `if`'s, `return std::move(x)` of a
 //   local; and (on by default since 2026-11-16, when the game was free of them) an assignment as a condition, an
 //   `if` whose body is `;`, a switch on an enum naming neither every enumerator nor a default, an integer division
-//   stored in a floating variable or returned as one.
+//   stored in a floating variable or returned as one (or given to a floating parameter or member, or to a class taking a
+//   floating value: floatContext).
 #include "GlobalScopeImpl.hpp"
 #include "../Ast/AstWalk.hpp"
 #include <algorithm>
@@ -271,9 +272,15 @@ private:
 
   // An integer division whose value is stored in a floating variable or returned as one (`double h = 1 / 2;`): it
   // truncated first. Not one of constants that divide exactly (`3600 / 2`).
+  // The target is a floating variable, parameter or member, or a class taking a floating value (floatingTaker:
+  // `std::Optional<f64> b = 5 / 6;`).
   void floatContext(Expr* value, const Ty* target, const Flow& flow)
   {
-    if (!slipChecksOn() || !flow.reachable || !floating(target))
+    if (!slipChecksOn() || !flow.reachable || !value)
+      return;
+    if (!floating(target))
+      target = this->floatingTaker(target);
+    if (!floating(target))
       return;
     BinaryExpr* d = this->integerDivision(value);
     std::optional<int64_t> dividend = d ? this->valueOf(d->lhs) : std::nullopt, divisor = d ? this->valueOf(d->rhs) : std::nullopt;
@@ -285,6 +292,125 @@ private:
       this->report(d, "an integer division converted to " + type + ": it truncates first; divide in floating point (`" + type + "(a) / b`), or say the " +
                         "truncation is meant (`" + type + "(a / b)`)");
     }
+  }
+
+  // The floating type a class takes one value as, where an integer would be converted to it: a class with a constructor
+  // of one floating parameter (`T`, `const T&`, `T&&`, no template) and none of one integer parameter
+  // (`std::Optional<f64>`'s `Optional(const T&)`; its `Optional(U&&)` forwards the integer to the f64). Null for any other.
+  const Ty* floatingTaker(const Ty* target)
+  {
+    TypeTable& types = this->w.types;
+    if (!target || !target->isKnown())
+      return nullptr;
+    const Ty* t = types.unqualified(types.stripRef(target));
+    if (t->kind != TyKind::Class || types.isDependent(t) || Impl::mentionsUnknown(t))
+      return nullptr;
+    ClassDecl* def = this->w.impl.classDefinition(t);
+    if (!def || def->isTypedUnion || def->isClosure)
+      return nullptr;
+    Subst s = this->w.impl.substFor(t);
+    const Ty* found = nullptr;
+    for (Decl* m : membersRead(def))
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || (m->flags & DF_Delete))
+        continue;
+      auto* f = static_cast<FunctionDecl*>(m);
+      if (!f->templateParams.empty() || f->params.size() != 1)
+        continue;
+      const Ty* p = this->w.impl.declaredTypeOf(f->params[0], s.pairs.empty() ? nullptr : &s, 0);
+      if (!p || !p->isKnown() || types.isDependent(p))
+        continue;
+      const Ty* u = types.unqualified(types.stripRef(p));
+      if (u->kind == TyKind::Float)
+        found = u;
+      else if (u->kind == TyKind::Int || u->kind == TyKind::Char || u->kind == TyKind::Bool || u->kind == TyKind::Enum)
+        return nullptr; // (it takes an integer as one)
+    }
+    return found;
+  }
+
+  // The type each element of a class's construction initializes, null where it is not known here: the chosen
+  // constructor's parameter, or for a class of none (and for a list naming members) the member it names or the next
+  // base or member in order, up to one that a brace elision may begin at (an array, an aggregate given no list).
+  std::vector<const Ty*> elementTargets(const Ty* target, Span<Expr*> args, Span<uint32_t> designators)
+  {
+    TypeTable& types = this->w.types;
+    std::vector<const Ty*> out(args.size(), nullptr);
+    if (!target || !target->isKnown() || args.empty())
+      return out;
+    const Ty* t = types.unqualified(types.stripRef(target));
+    if (t->kind != TyKind::Class || t->isBraceList() || types.isDependent(t) || Impl::mentionsUnknown(t) || this->w.impl.isInitializerList(t))
+      return out;
+    ClassDecl* def = this->w.impl.classDefinition(t);
+    if (!def || def->isTypedUnion || def->isClosure)
+      return out;
+    Subst s = this->w.impl.substFor(t);
+    const Subst* subst = s.pairs.empty() ? nullptr : &s;
+    if (!designators.empty())
+    {
+      for (size_t i = 0; i < args.size() && i < designators.size(); ++i)
+        for (Decl* m : membersRead(def))
+          if (designators[i] != UINT32_MAX && m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) &&
+              !static_cast<VariableDecl*>(m)->name.empty() && static_cast<VariableDecl*>(m)->name.last().symbol == designators[i])
+            out[i] = this->w.impl.declaredTypeOf(m, subst, 0);
+      return out;
+    }
+    bool constructors = false;
+    for (Decl* m : membersRead(def))
+      constructors = constructors || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+    if (constructors)
+    {
+      std::vector<const Ty*> argTypes;
+      for (Expr* a : args)
+      {
+        if (!a || a->kind == NodeKind::BraceInitExpr || !a->ty || !a->ty->isKnown() || a->ty->kind == TyKind::Pack || types.isDependent(a->ty))
+          return out;
+        argTypes.push_back(argumentType(a, a->ty, types));
+      }
+      bool ambiguous = false;
+      FunctionDecl* f = this->w.impl.chooseConstructor(t, argTypes, nullptr, nullptr, false, &ambiguous);
+      if (!f || ambiguous || !f->templateParams.empty())
+        return out;
+      for (size_t i = 0; i < args.size() && i < f->params.size(); ++i)
+        if (f->params[i]->kind == NodeKind::ParamDecl && !static_cast<ParamDecl*>(f->params[i])->isPack)
+          out[i] = this->w.impl.declaredTypeOf(f->params[i], subst, 0);
+      return out;
+    }
+    std::vector<const Ty*> parts;
+    if (!this->w.impl.directBases(t, def, parts) || !this->w.impl.fieldTypes(t, def, parts))
+      return out;
+    if (def->keyword == Kw::union_ && parts.size() > 1)
+      parts.resize(1);
+    for (size_t i = 0; i < args.size() && i < parts.size(); ++i)
+    {
+      const Ty* p = parts[i] ? types.unqualified(types.stripRef(parts[i])) : nullptr;
+      if (!p || p->kind == TyKind::Array || (p->kind == TyKind::Class && !this->constructs(p)))
+        break; // (a brace elision may begin here)
+      out[i] = parts[i];
+    }
+    return out;
+  }
+
+  // A braced list's elements for the class it initializes (`P p{5 / 6};`, `P{.plain = 5 / 6}`): the list has no type of
+  // its own there; noted, so that its own case does not check it again.
+  BraceInitExpr* targetedList = nullptr;
+  void listFloatContext(BraceInitExpr* list, const Ty* target, const Flow& flow)
+  {
+    if (!list || list->text)
+      return;
+    this->targetedList = list;
+    this->elementsFloatContext(target, list->args, list->designators, flow);
+  }
+
+  // An integer division as an element of a class's construction, for a floating member or parameter (floatContext).
+  void elementsFloatContext(const Ty* target, Span<Expr*> args, Span<uint32_t> designators, const Flow& flow)
+  {
+    if (!slipChecksOn() || !flow.reachable || args.empty())
+      return;
+    std::vector<const Ty*> targets = this->elementTargets(target, args, designators);
+    for (size_t i = 0; i < args.size(); ++i)
+      if (targets[i])
+        this->floatContext(args[i], targets[i], flow);
   }
 
   // A condition that is always true or a likely slip: a function's name (its address, never null), and an assignment
@@ -793,6 +919,8 @@ private:
     if (v->init)
     {
       this->floatContext(v->init, this->typeOf(v), flow);
+      if (v->init->kind == NodeKind::BraceInitExpr)
+        this->listFloatContext(static_cast<BraceInitExpr*>(v->init), this->typeOf(v), flow); // `P p{.plain = 5 / 6};`
       // A reference that is not const may assign what it is bound to, from here on; a value or a const reference reads it.
       uint32_t bound = this->followed(v->init);
       if (bound != UINT32_MAX && bindsWritable(this->typeOf(v)))
@@ -1426,6 +1554,11 @@ private:
         }
         else if (!called.function)
           this->expr(callee, flow); // (a pointer to a function, an object called: read)
+        // (`take(5 / 6)` to an f64 parameter; a pack's parameter is its pattern, not checked)
+        for (size_t i = 0; called.type && i < c->args.size() && i < called.type->args.size(); ++i)
+          if (!(called.function && i < called.function->params.size() && called.function->params[i]->kind == NodeKind::ParamDecl &&
+                static_cast<ParamDecl*>(called.function->params[i])->isPack))
+            this->floatContext(c->args[i], called.type->args[i], flow);
         Flow taken = flow;
         this->arguments(c->args, [&](size_t i) { return this->argumentTaken(called, i); }, taken);
         if (on != UINT32_MAX && object == Taken::Written)
@@ -1470,12 +1603,20 @@ private:
         break;
       case NodeKind::FunctionalCastExpr:
       {
+        auto* f = static_cast<FunctionalCastExpr*>(e);
+        if (f->braced && f->args.size() == 1 && f->args[0] && f->args[0]->kind == NodeKind::BraceInitExpr)
+          this->listFloatContext(static_cast<BraceInitExpr*>(f->args[0]), e->ty, flow); // `P{.plain = 5 / 6}`
+        else
+          this->elementsFloatContext(e->ty, f->args, {}, flow); // `Wrapper(5 / 6)`
         bool made = this->constructs(e->ty);
-        this->arguments(static_cast<FunctionalCastExpr*>(e)->args, [&](size_t) { return made ? Taken::Written : Taken::Read; }, flow);
+        this->arguments(f->args, [&](size_t) { return made ? Taken::Written : Taken::Read; }, flow);
         break;
       }
       case NodeKind::BraceInitExpr:
       {
+        auto* b = static_cast<BraceInitExpr*>(e);
+        if (b != this->targetedList)
+          this->listFloatContext(b, e->ty, flow); // (a list whose type is its own)
         bool made = this->constructs(e->ty);
         this->arguments(static_cast<BraceInitExpr*>(e)->args, [&](size_t) { return made ? Taken::Written : Taken::Read; }, flow);
         break;

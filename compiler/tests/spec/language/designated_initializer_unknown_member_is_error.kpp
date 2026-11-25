@@ -1,0 +1,14 @@
+// spec: a designator naming no member of the class (`.energy_requierd = 15`, a misspelt one) is the checker's error naming it, in a variable's list and a temporary (it was codegen's "does not support a designator naming no field" until 2026-11-25)
+// error: designated_initializer_unknown_member_is_error.kpp:11: error: a designator naming no member of Recipe (energy_requierd)
+// error: designated_initializer_unknown_member_is_error.kpp:12: error: a designator naming no member of Recipe (nmae)
+struct Recipe
+{
+  const char* name = "";
+  int energy_required = 0;
+};
+int main()
+{
+  Recipe a{.name = "gear", .energy_requierd = 15};
+  Recipe b = Recipe{.nmae = "plate"};
+  return a.energy_required + b.energy_required;
+}

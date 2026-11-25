@@ -1,0 +1,24 @@
+// spec: a temporary with designators, `show(P{.number = 2.5})`, `P a = P{.number = 2.5};`, `new P{...}`, takes its values by the members' names as a variable `P c{.number = 2.5};` does, also for a class whose first member is no number (its elements were checked by position, "a double does not convert to std::String", until 2026-11-25: the kpp mods study's data stage)
+struct P
+{
+  std::String name;
+  std::Optional<bool> flag;
+  std::Optional<f64> number;
+};
+struct Outer
+{
+  std::String label;
+  P inner;
+};
+f64 show(const P& p) { return p.number.value_or(-1); }
+int main()
+{
+  P c{.number = 2.5};
+  P a = P{.number = 3.5};
+  P* n = new P{.flag = true, .number = 4.5};
+  Outer o = Outer{.inner = {.name = "in", .number = 5.5}};
+  std::println(show(c), " ", show(P{.number = 1.5}), " ", show(a), " ", show(*n), " ", n->flag.value(), " ", o.inner.name, " ", show(o.inner),
+               " ", c.name.size(), " ", c.flag.has_value());
+  delete n;
+  return 0;
+}

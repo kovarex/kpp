@@ -5960,8 +5960,7 @@ auto GlobalScope::Impl::Walker::checkAggregateElements(const Ty* t, Span<Expr*> 
     if (lists && e->kind == NodeKind::BraceInitExpr)
     {
       auto* list = static_cast<BraceInitExpr*>(e);
-      if (list->designators.empty() && !list->text)
-        checkAggregateElements(part, list->args, depth + 1);
+      checkAggregateList(part, list, depth + 1);
       continue;
     }
     const Ty* a = lists ? typeOf(e) : expanded[i];
@@ -5979,6 +5978,92 @@ auto GlobalScope::Impl::Walker::checkAggregateElements(const Ty* t, Span<Expr*> 
           aggregate = aggregate && !(m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
       if (aggregate)
         return; // (an aggregate member given no list of its own: a brace elision may begin here)
+    }
+    checkExplicitCopy(a, part, e->token, e);
+  }
+}
+
+auto GlobalScope::Impl::Walker::checkAggregateList(const Ty* t, BraceInitExpr* list, int depth) -> void
+{
+  if (!list || list->text)
+    return;
+  if (list->designators.empty())
+    checkAggregateElements(t, list->args, depth);
+  else
+    checkDesignatedElements(t, list, depth);
+}
+
+// A list naming members (`P{.number = 2.5}`, `.x = 1`): a name that is no member of the class, and a member named twice, are
+// errors ([dcl.init.aggr] 3.1: each designator names a direct non-static data member, no two the same; until 2026-11-25 the
+// last of two was taken, and a misspelt one was codegen's "does not support"). An aggregate's member is copy-initialised from
+// the value its name is given, checked as checkAggregateElements checks one given in order.
+auto GlobalScope::Impl::Walker::checkDesignatedElements(const Ty* t, BraceInitExpr* list, int depth) -> void
+{
+  if (probing || !file || file->isImported || inGenericTemplate() || !t || !t->isKnown() || types.isDependent(t) || depth > 16)
+    return;
+  const Ty* c = types.unqualified(types.stripRef(t));
+  if (c->kind != TyKind::Class || c->isBraceList() || Impl::lambdaOf(c) || Impl::mentionsUnknown(c) || impl.isInitializerList(c))
+    return;
+  ClassDecl* def = impl.classDefinition(c);
+  if (!def || def->isTypedUnion || def->isClosure)
+    return;
+  bool anonymous = false, constructors = false;
+  for (Decl* m : membersRead(def))
+  {
+    anonymous = anonymous || (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && static_cast<VariableDecl*>(m)->name.empty());
+    constructors = constructors || (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+  }
+  Subst s = impl.substFor(c);
+  std::vector<uint32_t> named;
+  for (size_t i = 0; i < list->args.size() && i < list->designators.size(); ++i)
+  {
+    uint32_t designator = list->designators[i];
+    Expr* e = list->args[i];
+    if (designator == UINT32_MAX || !e)
+      continue;
+    VariableDecl* member = nullptr;
+    for (Decl* m : membersRead(def))
+      if (m->kind == NodeKind::VariableDecl && !(m->flags & (DF_Static | DF_Typedef)) && !static_cast<VariableDecl*>(m)->name.empty() &&
+          static_cast<VariableDecl*>(m)->name.last().symbol == designator)
+        member = static_cast<VariableDecl*>(m);
+    std::string name(symbols.name(designator));
+    if (!member)
+    {
+      if (!anonymous) // (an anonymous union's or struct's members: codegen's)
+        reportCheck(e->token, "a designator naming no member of " + types.toString(c, &symbols) + " (" + name + ")");
+      continue;
+    }
+    if (std::find(named.begin(), named.end(), designator) != named.end())
+    {
+      reportCheck(e->token, "the member " + name + " of " + types.toString(c, &symbols) + " is given a value twice in one list: name it once");
+      continue;
+    }
+    named.push_back(designator);
+    if (constructors)
+      continue; // (a struct's member-wise construction beside its constructors, design.md 30: the names checked, no more)
+    const Ty* part = impl.declaredTypeOf(member, s.pairs.empty() ? nullptr : &s, 0);
+    if (!part || !part->isKnown() || types.isDependent(part) || Impl::mentionsUnknown(part))
+      continue;
+    if (e->kind == NodeKind::BraceInitExpr)
+    {
+      checkAggregateList(part, static_cast<BraceInitExpr*>(e), depth + 1);
+      continue;
+    }
+    if (!e->ty || !e->ty->isKnown() || types.isDependent(e->ty) || Impl::mentionsUnknown(e->ty) || e->ty->kind == TyKind::Pack)
+      continue;
+    const Ty* a = argumentType(e, e->ty, types);
+    const Ty* p = types.unqualified(types.stripRef(part));
+    const Ty* u = types.unqualified(types.stripRef(a));
+    if (p->kind == TyKind::Array)
+      continue;
+    if (p->kind == TyKind::Class && p != u && !(u->kind == TyKind::Class && impl.isBaseClass(p, u)))
+    {
+      bool aggregate = true;
+      if (ClassDecl* pd = impl.classDefinition(p))
+        for (Decl* m : membersRead(pd))
+          aggregate = aggregate && !(m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor));
+      if (aggregate)
+        continue; // (an aggregate member given no list of its own: codegen's)
     }
     checkExplicitCopy(a, part, e->token, e);
   }
@@ -6212,8 +6297,7 @@ auto GlobalScope::Impl::Walker::checkSwitchOnClass(SwitchStmt* w) -> void
 
 auto GlobalScope::Impl::Walker::checkExplicitListCopy(BraceInitExpr* b, const Ty* to) -> void
 {
-  if (b && b->designators.empty() && !b->text)
-    checkAggregateElements(to, b->args); // (`Target t = {source};`: an aggregate's members copy-initialised)
+  checkAggregateList(to, b); // (`Target t = {source};`: an aggregate's members copy-initialised)
   // Explicit by default, a list of two or more values takes an unmarked constructor (`return {x, y};`,
   // `Color c = {1, 0, 0};`), and `{a}` an implicit one, as `= a` does (design.md "Explicit by default", rule 1);
   // `{}` any default one (rule 2); in template code too (reportExplicitError).
@@ -12581,9 +12665,8 @@ auto GlobalScope::Impl::Walker::walkDecl(Decl* d) -> void
         packListText(static_cast<BraceInitExpr*>(v->init)->args, declared, v->init->token);
       if (v->init && declared && !impl.containsAuto(declared) && !v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
         checkExplicitListCopy(static_cast<BraceInitExpr*>(v->init), declared); // `Strict s = {5};`
-      if (v->init && declared && !impl.containsAuto(declared) && v->bracedInit && v->init->kind == NodeKind::BraceInitExpr &&
-          static_cast<BraceInitExpr*>(v->init)->designators.empty() && !static_cast<BraceInitExpr*>(v->init)->text)
-        checkAggregateElements(declared, static_cast<BraceInitExpr*>(v->init)->args); // `Target t{source};`
+      if (v->init && declared && !impl.containsAuto(declared) && v->bracedInit && v->init->kind == NodeKind::BraceInitExpr)
+        checkAggregateList(declared, static_cast<BraceInitExpr*>(v->init)); // `Target t{source};`, `P p{.name = "a"};`
       if (v->init && declared && declared->kind == TyKind::Array && v->init->kind == NodeKind::FunctionalCastExpr && !static_cast<FunctionalCastExpr*>(v->init)->braced)
         checkParenthesizedArray(static_cast<FunctionalCastExpr*>(v->init)->args, declared, v->init->token); // `int a[3](1, 2)` (C++20)
       // `int x{1.5};`, `char c = {300};`, `int a[2] = {1, 2.5};`: a brace list narrowing an element.
@@ -14125,8 +14208,12 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       if (impl.holdsText(t) && !inGenericTemplate())
         reportTextError(n->token, impl.isTextClosure(t) ? "a lambda capturing a Text cannot be stored (design.md 14)" : textStored("allocated"));
       if (n->braced && !array)
-        checkAggregateElements(t, n->args.size() == 1 && n->args[0] && n->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(n->args[0])->args
-                                                                                                                  : n->args); // `new Target{source}`
+      {
+        if (n->args.size() == 1 && n->args[0] && n->args[0]->kind == NodeKind::BraceInitExpr)
+          checkAggregateList(t, static_cast<BraceInitExpr*>(n->args[0])); // `new Target{source}`, `new P{.name = "a"}`
+        else
+          checkAggregateElements(t, n->args);
+      }
       if (!n->braced && array && !n->args.empty())
         checkParenthesizedArray(n->args, wholeArray, n->token); // `new int[3](8, 9)` (C++20)
       else if (!n->braced)
@@ -14404,8 +14491,14 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
         bindOverloadSetsOfConstruction(t, args);
       }
       if (c->braced)
-        checkAggregateElements(t, c->args.size() == 1 && c->args[0] && c->args[0]->kind == NodeKind::BraceInitExpr ? static_cast<BraceInitExpr*>(c->args[0])->args
-                                                                                                                  : c->args); // `Target{source}`
+      {
+        // (`P{.number = 2.5}`: by the names, where until 2026-11-25 the elements were checked by position, "a double does
+        // not convert to std::String" for a temporary whose variable `P p{.number = 2.5};` was taken)
+        if (c->args.size() == 1 && c->args[0] && c->args[0]->kind == NodeKind::BraceInitExpr)
+          checkAggregateList(t, static_cast<BraceInitExpr*>(c->args[0])); // `Target{source}`
+        else
+          checkAggregateElements(t, c->args);
+      }
       if (!c->braced)
       {
         arrangeConstructionByType(t, c->args, c->token); // `Build build(position, BuildMode::Forced);` (design.md 32)

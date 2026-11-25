@@ -2003,8 +2003,11 @@ auto codegen::Emitter::constructInto(const std::string& addr, const Ty* t, Span<
           if (members[j]->kind == NodeKind::VariableDecl && !static_cast<VariableDecl*>(members[j])->name.empty() &&
               static_cast<VariableDecl*>(members[j])->name.last().symbol == designator)
             found = j;
+        // (the checker's errors, checkDesignatedElements; at the value, so that this one is not shown beside them)
         if (found == members.size())
-          unsupported(at, "a designator naming no field of " + qualifiedName(c) + " (" + sym(designator) + ")");
+          fail(args[k] ? static_cast<Node*>(args[k]) : at, "a designator naming no member of " + qualifiedName(c) + " (" + sym(designator) + ")");
+        if (valueOf[found])
+          fail(args[k] ? static_cast<Node*>(args[k]) : at, "the member " + sym(designator) + " of " + qualifiedName(c) + " is given a value twice in one list: name it once");
         valueOf[found] = args[k];
         next = found + 1;
         continue;
