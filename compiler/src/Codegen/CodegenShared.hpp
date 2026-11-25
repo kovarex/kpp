@@ -350,6 +350,7 @@ namespace codegen
       bodies.resize(moduleCount);
       moduleDecls.resize(moduleCount);
       vtablesIn.resize(moduleCount);
+      tableUsers.resize(moduleCount);
       for (LiteralShard& s : literals)
         s.modules.resize(moduleCount);
       definitions.resize(moduleCount);
@@ -396,6 +397,11 @@ namespace codegen
     NameKeyMap<ConstantGlobal> constantGlobals;
     NameKeyMap<std::string> threadLocalInits; // a thread_local global built per thread -> the function building it
     std::vector<NameKeySet> vtablesIn; // per module: the vtables it already has
+    // Per module: each of those vtables and descriptors -> the functions whose emission asked the module for it, by the hashes of
+    // their names (Emitter::noteTableUser). A build from scratch gives a module the tables its texts store and no other; a compile
+    // server's rebuild takes a dropped text's asking back, and a table that no text of the module asks for any more goes from
+    // the module's declarations (rebuildModules, dropUnusedTables).
+    std::vector<NameKeyMap<std::vector<uint64_t>>> tableUsers;
     std::unordered_map<ParsedFile*, unsigned> fileModule;   // file -> module
     NameKeyMap<unsigned> definedIn;    // function name -> module
     NameKeyMap<std::string> declareLines; // function name -> its declare line

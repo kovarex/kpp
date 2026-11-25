@@ -109,6 +109,9 @@
     // The vtables of a class are defined in every module that stores them (linkonce_odr), with the
     // descriptors they point at.
     void useVtable(const StructInfo& info);
+    // The function being emitted asked the current module for this table (a vtable, a descriptor): Shared::tableUsers.
+    // Under the shared lock.
+    void noteTableUser(const std::string& table);
 
     // The name a class descriptor (slot -1 of a vtable) starts with.
     std::string descriptorName(const std::string& descriptor);

@@ -1,4 +1,4 @@
-// spec: a compile server's build after an edit that stops using a polymorphic class template's instance is what a build from scratch gives: the functions its vtables alone named, its destructor helper and its name's string are in neither, and the instance used again is made anew. Such a class's member functions and its tables keep each other (the functions named by the vtables, the layout used by the functions), so the server asks whether a text still uses the layout of a polymorphic class instance that a dropped text used, and with none generates the program in full, as for a polymorphic class's changed layout (until 2026-11-25 they stayed in the server's build, the program right)
+// spec: a compile server's build after an edit that stops using a polymorphic class template's instance is what a build from scratch gives: the functions its vtables alone named, its destructor helper and its name's string are in neither, whether the program constructed the instance or only laid it out (its size), and the instance used again is made anew. Such a class's member functions and its tables keep each other (the functions named by the vtables, the layout used by the functions), so the server asks whether a text still uses the layout of a polymorphic class instance that a dropped text used, and with none generates the program in full, as for a polymorphic class's changed layout (until 2026-11-25 they stayed in the server's build, the program right)
 //--- step: the program
 class Shape
 {
@@ -100,3 +100,69 @@ int main()
   return 0;
 }
 // expect: 9 16
+//--- step: the second instance only laid out, its size printed
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+template<class T> class Square : public Shape
+{
+public:
+  Square(T side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (T i = 0; i < this.side; ++i)
+      sum += i32(this.side);
+    return sum;
+  }
+
+private:
+  T side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square<i32> a(3);
+  std::println(areaOf(a), " ", sizeof(Square<i64>));
+  return 0;
+}
+// expect: 9 16
+//--- step: its size asked no more
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+template<class T> class Square : public Shape
+{
+public:
+  Square(T side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (T i = 0; i < this.side; ++i)
+      sum += i32(this.side);
+    return sum;
+  }
+
+private:
+  T side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square<i32> a(3);
+  std::println(areaOf(a));
+  return 0;
+}
+// expect: 9

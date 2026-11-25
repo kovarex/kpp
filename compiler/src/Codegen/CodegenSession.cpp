@@ -405,6 +405,72 @@ static void dropUnusedLiterals(Shared& sh, std::vector<std::unique_ptr<Emitter>>
   }
 }
 
+// A module's own vtables and descriptors (an entry of its declarations each: Emitter::useVtable, useDescriptor) that it is
+// no longer asked for: no text of it stores the vtable or names the descriptor any more (Shared::tableUsers: the functions
+// that did are gone or emitted again without it), and for a descriptor no table that stays names it either (a vtable its
+// class's, a descriptor its bases'). A build from scratch gives a module the tables its texts ask for and no other; a debug
+// build's pieces left the others out where they are written (Emitter::moduleText), a release build's module, written with
+// all of its declarations, kept them (until 2026-11-25: kpp/server_class_no_longer_constructed_keeps_no_vtable_release). The
+// module's record of each goes with it (Shared::vtablesIn), so that a later use gives it the table again.
+static void dropUnusedTables(Shared& sh, unsigned k, std::vector<std::string>& entries)
+{
+  NameKeyMap<std::vector<uint64_t>>& users = sh.tableUsers[k];
+  NameKeySet& have = sh.vtablesIn[k];
+  struct Table
+  {
+    size_t entry;
+    std::string name; // the name the module records it by: the vtable's, the descriptor's
+    bool kept;
+  };
+  std::vector<Table> tables;
+  for (size_t i = 0; i < entries.size(); ++i)
+  {
+    std::string_view text = entries[i];
+    if (!text.starts_with("$\""))
+      continue; // (a table's entry starts with its comdat's line, `$"vtable.X" = comdat any`, `$"??_7X@@6B@"`, `$"typeinfo.X"`)
+    for (size_t from = 0; from < text.size();)
+    {
+      size_t end = text.find('\n', from);
+      end = end == std::string_view::npos ? text.size() : end + 1;
+      std::string_view line = text.substr(from, end - from);
+      if (size_t is = line.find(" = "); line.starts_with("@") && is != std::string_view::npos)
+        if (auto recorded = have.find(line.substr(0, is)); recorded != have.end())
+        {
+          auto asked = users.find(*recorded);
+          tables.push_back({i, *recorded, asked != users.end() && !asked->second.empty()});
+          break;
+        }
+      from = end;
+    }
+  }
+  if (std::all_of(tables.begin(), tables.end(), [](const Table& t) { return t.kept; }))
+    return;
+  for (bool more = true; more;)
+  {
+    more = false;
+    NameViewKeySet named;
+    for (const Table& t : tables)
+      if (t.kept)
+        irNamesIn(entries[t.entry], [&](size_t at, size_t length) { named.insert(std::string_view(entries[t.entry]).substr(at, length)); });
+    for (Table& t : tables)
+      if (!t.kept && named.count(t.name))
+        t.kept = more = true;
+  }
+  std::vector<char> gone(entries.size(), 0);
+  for (const Table& t : tables)
+    if (!t.kept)
+    {
+      gone[t.entry] = 1;
+      have.erase(t.name);
+      users.erase(t.name);
+    }
+  std::vector<std::string> left;
+  for (size_t i = 0; i < entries.size(); ++i)
+    if (!gone[i])
+      left.push_back(std::move(entries[i]));
+  entries = std::move(left);
+}
+
 unsigned codegenOutputModules(unsigned moduleCount, bool debug, bool optimize)
 {
   return moduleCount > 1 && debug && !optimize ? 2 * moduleCount : moduleCount;
@@ -3205,11 +3271,13 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   {
     Dropped& was = dropped[k];
     std::vector<Shared::Definition>& defs = sh.definitions[k];
+    std::vector<uint64_t> droppedOwners; // the owners of the module's dropped texts, by their names' hashes (Shared::tableUsers)
     size_t kept = 0;
     for (size_t i = 0; i < defs.size(); ++i)
     {
       if (owners.holdsOwnerOf(defs[i]))
       {
+        droppedOwners.push_back(NameHash::hash(defs[i].owner.data(), defs[i].owner.size()));
         for (auto [at, length] : defs[i].names)
           noteLost(std::string_view(defs[i].text).substr(at, length), defs[i].name);
         droppedBeyond = droppedBeyond || !unreachedNames.count(defs[i].owner);
@@ -3240,6 +3308,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     {
       if (owners.holdsOwnerOf(owned[i]))
       {
+        droppedOwners.push_back(NameHash::hash(owned[i].owner.data(), owned[i].owner.size()));
         irNamesIn(owned[i].text, [&](size_t at, size_t length) { noteLost(std::string_view(owned[i].text).substr(at, length), owned[i].owner); });
         was.owned.push_back(std::move(owned[i].text));
         continue;
@@ -3250,6 +3319,15 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     }
     owned.erase(owned.begin() + kept, owned.end());
     was.keptOwned = kept;
+    // What a dropped text asked the module for, a vtable its constructor's code stores, a descriptor a cast names, it asks for
+    // no more (one emitted again asks again: Emitter::noteTableUser); a table left with no asker goes when the module is
+    // assembled (dropUnusedTables).
+    if (!droppedOwners.empty() && !sh.tableUsers[k].empty())
+    {
+      std::sort(droppedOwners.begin(), droppedOwners.end());
+      for (auto& [table, users] : sh.tableUsers[k])
+        std::erase_if(users, [&](uint64_t user) { return std::binary_search(droppedOwners.begin(), droppedOwners.end(), user); });
+    }
     std::sort(was.definitions.begin(), was.definitions.end());
     std::sort(was.owned.begin(), was.owned.end());
   }
@@ -3894,6 +3972,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     kept.insert(kept.end(), sh.moduleDecls[k].entries.begin(), sh.moduleDecls[k].entries.end());
     dropSharedLiterals(sh, kept);
     dropUnusedLiterals(sh, emitters, k, kept);
+    dropUnusedTables(sh, k, kept);
     std::vector<std::string> entries = kept;
     appendOwnedEntries(sh, k, entries);
     sh.moduleDecls[k].entries = std::move(entries);

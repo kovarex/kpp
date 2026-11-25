@@ -563,10 +563,24 @@ auto codegen::Emitter::parameterNamesConstant(FunctionDecl* function) -> std::st
 auto codegen::Emitter::useVtable(const StructInfo& info) -> void
 {
   auto lock = sharedLock();
-  if (info.vtableText.empty() || !vtablesIn[currentModule].insert(info.vtableName).second)
+  if (info.vtableText.empty())
+    return;
+  noteTableUser(info.vtableName);
+  if (!vtablesIn[currentModule].insert(info.vtableName).second)
     return;
   moduleDecls[currentModule] += info.vtableText;
-  useDescriptor(info);
+  useDescriptor(info, false);
+}
+
+auto codegen::Emitter::noteTableUser(const std::string& table) -> void
+{
+  const std::string& user = owner.empty() ? currentFunctionName : owner; // (as an owned entry's: addOwnedEntry)
+  uint64_t hash = NameHash::hash(user.data(), user.size());
+  // (a function that asks again, each object it constructs, is its last asker already; one listed twice otherwise is taken
+  // out twice: no search here, which a class constructed all over a module would make long)
+  std::vector<uint64_t>& users = sh.tableUsers[currentModule][table];
+  if (users.empty() || users.back() != hash)
+    users.push_back(hash);
 }
 
 auto codegen::Emitter::descriptorName(const std::string& descriptor) -> std::string

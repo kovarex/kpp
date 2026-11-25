@@ -1646,13 +1646,26 @@ template needs none of it (its member functions are the program's own). Under `-
 the step after a difference can fail to link, and that failure is the comparison's: its build from
 scratch has left its objects where the kept session takes its own for compiled.
 
+**A module gives up the tables no text of it asks for (2026-11-25).** A module is given a class's
+vtable when a text emitted in it stores the vtable's address (a constructor's code, an object built
+in place), and a descriptor with it or when a cast names one (`Emitter::useVtable`, `useDescriptor`:
+an entry of the module's own declarations each, kept from build to build). When that text went and
+the class stayed laid out, the entry stayed. A debug build's pieces carry only the declarations their
+texts reach, so nothing showed there; a release build's module is written with all of them, and its
+server's build had a vtable where a build from scratch has none (`--verify-incremental`: "what it
+wrote differs"; the program right; older than the changes above, found beside them). Now each module
+remembers who asked: for every table, the functions whose emission asked for it, by their names'
+hashes (`Shared::tableUsers`). A rebuild takes a dropped text's asking back (one emitted again asks
+again), and when the module is assembled a vtable that no function asks for goes from its
+declarations, and a descriptor that no function asks for and no table that stays names
+(`dropUnusedTables`, beside the literals'), with the module's record of it, so that a later use gives
+it again. Spec kpp/server_class_no_longer_constructed_keeps_no_vtable_release (a release build: two
+classes that are no templates, built in place and through a constructor), and the steps of
+kpp/server_polymorphic_class_instance_no_longer_used in which the instance is only laid out, which
+failed in release for this alone.
+
 Left as it was: a helper of the shared definitions (a destructor's, a copy's) whose last use an edit
-takes out stays, where no polymorphic class instance went with it. And in a release build the vtable
-and the descriptor a module was given for a text that is gone stay in that module: a release build's
-module is written with all of its own declarations, where a debug build's pieces carry only those
-their texts reach (pending spec kpp/server_class_no_longer_constructed_keeps_no_vtable_release: a
-polymorphic class, a template's instance or not, that functions stop constructing while it stays laid
-out; found 2026-11-25, older than that day's changes).
+takes out stays, where no polymorphic class instance went with it.
 
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:

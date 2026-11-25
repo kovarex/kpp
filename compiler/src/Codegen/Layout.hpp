@@ -226,7 +226,9 @@
     std::vector<BaseSubobject> handlerBases(const Ty* cls, Node* at);
 
     // A class's descriptor and its bases' in the module being emitted (each once).
-    void useDescriptor(const StructInfo& info);
+    // (asked: by the function being emitted, a cast's or a typeid's; not when a table the module is given names it, a
+    // vtable its class's descriptor, a descriptor its bases': that one stays while the table naming it does)
+    void useDescriptor(const StructInfo& info, bool asked = true);
 
     // Identity of a method for override matching: name, parameter types and constness.
     std::string methodKey(FunctionDecl* f);

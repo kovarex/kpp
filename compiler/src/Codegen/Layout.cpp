@@ -1576,7 +1576,7 @@ auto codegen::Emitter::descriptorFor(const Ty* cls, Node* at) -> std::string
   return name;
 }
 
-auto codegen::Emitter::useDescriptor(const StructInfo& info) -> void
+auto codegen::Emitter::useDescriptor(const StructInfo& info, bool asked) -> void
 {
   std::string name, text;
   {
@@ -1585,11 +1585,15 @@ auto codegen::Emitter::useDescriptor(const StructInfo& info) -> void
     text = info.descriptorText;
   }
   auto lock = sharedLock(); // (vtablesIn)
-  if (text.empty() || !vtablesIn[currentModule].insert(name).second)
+  if (text.empty())
+    return;
+  if (asked)
+    noteTableUser(name);
+  if (!vtablesIn[currentModule].insert(name).second)
     return;
   moduleDecls[currentModule] += text;
   for (auto& [baseDef, index] : std::vector<std::pair<Decl*, uint32_t>>(info.bases))
-    useDescriptor(structFor(info.fieldTypes[index], nullptr));
+    useDescriptor(structFor(info.fieldTypes[index], nullptr), false);
 }
 
 auto codegen::Emitter::methodKey(FunctionDecl* f) -> std::string

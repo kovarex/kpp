@@ -1,6 +1,5 @@
-// spec: a compile server's release build after an edit that stops constructing a polymorphic class is what a build from scratch gives: the module that stored the class's vtable, for the constructor's code or the object built in place, carries the vtable and the class's descriptor no more once no text of it stores them (the class is still laid out: its member functions use it)
+// spec: a compile server's release build after an edit that stops constructing a polymorphic class is what a build from scratch gives: the module that stored the class's vtable, for the constructor's code or the object built in place, carries the vtable and the class's descriptor no more once no text of it asks for them (the class is still laid out: its member functions use it). Each module remembers the functions whose emission asked it for a table and gives the table up with the last of them (until 2026-11-25 a release build's module, written with all of its own declarations, kept it; a debug build's pieces carry only what their texts reach)
 // kpp: --release
-// pending: a release build's module is written with all of its own declarations, and the vtable and descriptor a module was given for a text that is gone stay among them (--verify-incremental: "what it wrote differs"; the program is right). A debug build's pieces carry only the declarations their texts reach, so the same edit is as from scratch there. Found 2026-11-25 beside kpp/server_polymorphic_class_instance_no_longer_used; mine (the compile server's leftovers)
 //--- step: the program
 class Shape
 {
