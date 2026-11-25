@@ -1,0 +1,306 @@
+// spec: when an exception leaves a function, a constructor or a try block with many objects alive, each of them is destroyed exactly once, the last built first, whatever their number: 75 locals with the throw at each place among them, 70 members with the throw at each place among them and in the body, temporaries of the statement before the locals, a temporary that was not built left alone, and a try block's objects before its handler while the ones outside wait for the function's end
+// on Windows a cleanup pad destroys the outermost objects of a chain 64 or 8 at a time (Emitter::cleanupChain, 2026-11-25: a scope table has an entry for each invoke and each pad on its way out, so a pad per object made the tables grow with the square of the objects alive); the counts here cross those sizes, and a pad of eight holds the temporary that may not be built
+extern "C" import "stdio.h";
+int order[512];
+int destroyed = 0;
+int throwAt = 0;
+struct Tracked
+{
+  int id;
+  Tracked(int i) : id(i)
+  {
+    if (i == throwAt)
+      throw i;
+  }
+  ~Tracked()
+  {
+    order[destroyed] = this.id;
+    ++destroyed;
+  }
+};
+// The ids from `first` down to `last` were destroyed in that order, after `skip` others.
+bool descending(int skip, int first, int last)
+{
+  for (int id = first; id >= last; --id)
+    if (order[skip + first - id] != id)
+      return false;
+  return true;
+}
+void locals()
+{
+  Tracked a1(1);
+  Tracked a2(2);
+  Tracked a3(3);
+  Tracked a4(4);
+  Tracked a5(5);
+  Tracked a6(6);
+  Tracked a7(7);
+  Tracked a8(8);
+  Tracked a9(9);
+  Tracked a10(10);
+  Tracked a11(11);
+  Tracked a12(12);
+  Tracked a13(13);
+  Tracked a14(14);
+  Tracked a15(15);
+  Tracked a16(16);
+  Tracked a17(17);
+  Tracked a18(18);
+  Tracked a19(19);
+  Tracked a20(20);
+  Tracked a21(21);
+  Tracked a22(22);
+  Tracked a23(23);
+  Tracked a24(24);
+  Tracked a25(25);
+  Tracked a26(26);
+  Tracked a27(27);
+  Tracked a28(28);
+  Tracked a29(29);
+  Tracked a30(30);
+  Tracked a31(31);
+  Tracked a32(32);
+  Tracked a33(33);
+  Tracked a34(34);
+  Tracked a35(35);
+  Tracked a36(36);
+  Tracked a37(37);
+  Tracked a38(38);
+  Tracked a39(39);
+  Tracked a40(40);
+  Tracked a41(41);
+  Tracked a42(42);
+  Tracked a43(43);
+  Tracked a44(44);
+  Tracked a45(45);
+  Tracked a46(46);
+  Tracked a47(47);
+  Tracked a48(48);
+  Tracked a49(49);
+  Tracked a50(50);
+  Tracked a51(51);
+  Tracked a52(52);
+  Tracked a53(53);
+  Tracked a54(54);
+  Tracked a55(55);
+  Tracked a56(56);
+  Tracked a57(57);
+  Tracked a58(58);
+  Tracked a59(59);
+  Tracked a60(60);
+  Tracked a61(61);
+  Tracked a62(62);
+  Tracked a63(63);
+  Tracked a64(64);
+  Tracked a65(65);
+  Tracked a66(66);
+  Tracked a67(67);
+  Tracked a68(68);
+  Tracked a69(69);
+  Tracked a70(70);
+  Tracked a71(71);
+  Tracked a72(72);
+  Tracked a73(73);
+  Tracked a74(74);
+  Tracked a75(75);
+  if (throwAt == 76)
+    throw 0;
+}
+struct Many
+{
+  Tracked m1{1};
+  Tracked m2{2};
+  Tracked m3{3};
+  Tracked m4{4};
+  Tracked m5{5};
+  Tracked m6{6};
+  Tracked m7{7};
+  Tracked m8{8};
+  Tracked m9{9};
+  Tracked m10{10};
+  Tracked m11{11};
+  Tracked m12{12};
+  Tracked m13{13};
+  Tracked m14{14};
+  Tracked m15{15};
+  Tracked m16{16};
+  Tracked m17{17};
+  Tracked m18{18};
+  Tracked m19{19};
+  Tracked m20{20};
+  Tracked m21{21};
+  Tracked m22{22};
+  Tracked m23{23};
+  Tracked m24{24};
+  Tracked m25{25};
+  Tracked m26{26};
+  Tracked m27{27};
+  Tracked m28{28};
+  Tracked m29{29};
+  Tracked m30{30};
+  Tracked m31{31};
+  Tracked m32{32};
+  Tracked m33{33};
+  Tracked m34{34};
+  Tracked m35{35};
+  Tracked m36{36};
+  Tracked m37{37};
+  Tracked m38{38};
+  Tracked m39{39};
+  Tracked m40{40};
+  Tracked m41{41};
+  Tracked m42{42};
+  Tracked m43{43};
+  Tracked m44{44};
+  Tracked m45{45};
+  Tracked m46{46};
+  Tracked m47{47};
+  Tracked m48{48};
+  Tracked m49{49};
+  Tracked m50{50};
+  Tracked m51{51};
+  Tracked m52{52};
+  Tracked m53{53};
+  Tracked m54{54};
+  Tracked m55{55};
+  Tracked m56{56};
+  Tracked m57{57};
+  Tracked m58{58};
+  Tracked m59{59};
+  Tracked m60{60};
+  Tracked m61{61};
+  Tracked m62{62};
+  Tracked m63{63};
+  Tracked m64{64};
+  Tracked m65{65};
+  Tracked m66{66};
+  Tracked m67{67};
+  Tracked m68{68};
+  Tracked m69{69};
+  Tracked m70{70};
+  Many()
+  {
+    if (throwAt == 71)
+      throw 0;
+  }
+};
+int take(const Tracked& a, const Tracked& b, int value)
+{
+  if (value == throwAt)
+    throw value;
+  return a.id + b.id + value;
+}
+bool seen(const Tracked& t) { return t.id > 0; }
+// Fifteen locals and two temporaries of the statement: seventeen objects alive at the call that throws.
+int temporaries()
+{
+  Tracked b1(1);
+  Tracked b2(2);
+  Tracked b3(3);
+  Tracked b4(4);
+  Tracked b5(5);
+  Tracked b6(6);
+  Tracked b7(7);
+  Tracked b8(8);
+  Tracked b9(9);
+  Tracked b10(10);
+  Tracked b11(11);
+  Tracked b12(12);
+  Tracked b13(13);
+  Tracked b14(14);
+  Tracked b15(15);
+  return take(Tracked(101), Tracked(102), 300);
+}
+// Seven locals and a temporary that is built only when `build` is set: eight objects in the chain either way.
+int whenBuilt(bool build)
+{
+  Tracked c1(1);
+  Tracked c2(2);
+  Tracked c3(3);
+  Tracked c4(4);
+  Tracked c5(5);
+  Tracked c6(6);
+  Tracked c7(7);
+  bool was = build && seen(Tracked(201));
+  int sum = (build && seen(Tracked(202)) ? 1 : 0) + take(c1, c2, 400);
+  return sum + (was ? 1 : 0);
+}
+// Ten objects outside a try block and nine inside it: the handler runs after the nine, the ten wait.
+int nested()
+{
+  Tracked o1(1);
+  Tracked o2(2);
+  Tracked o3(3);
+  Tracked o4(4);
+  Tracked o5(5);
+  Tracked o6(6);
+  Tracked o7(7);
+  Tracked o8(8);
+  Tracked o9(9);
+  Tracked o10(10);
+  int inHandler = -1;
+  try
+  {
+    Tracked i11(11);
+    Tracked i12(12);
+    Tracked i13(13);
+    Tracked i14(14);
+    Tracked i15(15);
+    Tracked i16(16);
+    Tracked i17(17);
+    Tracked i18(18);
+    Tracked i19(19);
+    take(o1, o2, 500);
+  }
+  catch (int)
+  {
+    inHandler = destroyed;
+  }
+  return inHandler;
+}
+int main()
+{
+  int wrong = 0;
+  for (int at = 1; at <= 76; ++at)
+  {
+    destroyed = 0;
+    throwAt = at;
+    try { locals(); } catch (int) {}
+    if (destroyed != at - 1 || !descending(0, at - 1, 1))
+    {
+      printf("locals, throw at %d: %d destroyed\n", at, destroyed);
+      ++wrong;
+    }
+  }
+  printf("locals: %d wrong\n", wrong);
+  wrong = 0;
+  for (int at = 1; at <= 71; ++at)
+  {
+    destroyed = 0;
+    throwAt = at;
+    try { Many many; } catch (int) {}
+    if (destroyed != at - 1 || !descending(0, at - 1, 1))
+    {
+      printf("members, throw at %d: %d destroyed\n", at, destroyed);
+      ++wrong;
+    }
+  }
+  printf("members: %d wrong\n", wrong);
+  destroyed = 0;
+  throwAt = 300;
+  try { temporaries(); } catch (int) {}
+  // (the two temporaries first, in either order, then the locals)
+  printf("temporaries: %d destroyed, the temporaries first %d, the locals in order %d\n", destroyed, order[0] + order[1] == 203 ? 1 : 0, descending(2, 15, 1) ? 1 : 0);
+  destroyed = 0;
+  throwAt = 400;
+  try { whenBuilt(true); } catch (int) {}
+  printf("conditional, built: %d destroyed, the temporaries first %d, the locals in order %d\n", destroyed, order[0] + order[1] == 403 ? 1 : 0, descending(2, 7, 1) ? 1 : 0);
+  destroyed = 0;
+  try { whenBuilt(false); } catch (int) {}
+  printf("conditional, not built: %d destroyed, the locals in order %d\n", destroyed, descending(0, 7, 1) ? 1 : 0);
+  destroyed = 0;
+  throwAt = 500;
+  int inHandler = nested();
+  printf("nested: %d destroyed before the handler, in order %d; %d in all, in order %d\n", inHandler, descending(0, 19, 11) ? 1 : 0, destroyed, descending(9, 10, 1) ? 1 : 0);
+  return 0;
+}

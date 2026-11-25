@@ -1877,6 +1877,84 @@ class-typed values, natvis, member function calls), and run_tests' debug info ch
 class's unique name to 16 hex digits, one for its forward references and its definition alike (with the
 spelling it fails: "the unique name(s) of game::Shape's records are [game::Shape]").
 
+**A cleanup pad for eight objects, and one for sixty-four (2026-11-25).** On Windows a function's
+unwinding is described to `__C_specific_handler` by a scope table, and LLVM writes that table with one
+entry for each range of invokes that share an unwind destination and each pad on the way out of the
+function from there (WinException::emitSEHActionsForRange walks the chain of states): 16 bytes and
+three relocations, 46 bytes of an object. kpp made a pad for each object (Emitter::cleanupChain: the
+pad of a chain's objects destroys the first and goes on to the pad of the rest, which the function's
+other chains share), so an invoke with n objects alive had n entries, and a function that builds n
+objects one after another about n²/2. A probe with 400 locals has 79,800 entries, 3.7 MB of object
+for one function, and its table grows four times when the locals double. In the game's 256 debug
+objects (kpp 0.2.1795) the scope tables were 972,237 entries: 15.6 MB of .xdata and 29.2 MB of
+relocations, 9.2% of the objects' bytes and a third of their relocations. Of the 55,613 functions
+with a table 31,211 had one entry; the 88 with 1,024 entries or more held 59% of all, and two
+constructors a quarter: `UtilitySprites::UtilitySprites(const PropertyTree&)`, whose 500 members make
+a chain 500 pads long, 131,740 entries, and
+`ControlSettings::ControlSettings(const PropertyTree&, ControlSettings::KeyboardLayout)` 120,574.
+
+- **What.** A pad takes the outermost objects of a chain 64 or 8 at a time: where the objects left in
+  a chain are a multiple of 64 the pad destroys the next 64, where they are a multiple of 8 the next
+  8, else one; then it goes on to the pad of the rest. The blocks are counted from the chain's end,
+  which is the same for every invoke of the function, so the pads are shared as before. A chain of n
+  objects is n mod 8 + (n div 8) mod 8 + n div 64 pads long: 17 for 500 objects. The handler, the
+  funclets and the order of destruction are what they were, and every object of a chain is alive
+  wherever an invoke unwinds to its first pad; an object's destruction is written up to three times
+  (its own pad, its eight's, its sixty-four's).
+- **Measured** on the game (kpp-factorio 0c18a3229e; kpp master e327a4abf with the change, a temporary
+  switch giving a pad per object back; eight clean debug builds each way in turn under
+  `heavy.cmd --exclusive`, medians; the tables read from the objects, `objxdata.py`):
+
+  | | a pad per object | pads of 64, 8 and 1 | |
+  |---|---:|---:|---:|
+  | scope table entries | 972,237 | 398,209 | -59.0% |
+  | the ten largest functions' | 375,108 | 37,561 | |
+  | `UtilitySprites::UtilitySprites`' | 131,740 | 5,376 | |
+  | `ControlSettings::ControlSettings`' | 120,574 | 9,505 | |
+  | cleanup pads (funclets) | 147,080 | 143,087 | |
+  | .xdata and its relocations | 19.5 + 29.8 MB | 10.3 + 12.6 MB | |
+  | all relocations | 86.1 MB | 69.1 MB | |
+  | the objects | 488.4 MB | 462.3 MB | -5.4% |
+  | factorio.exe | 119.7 MB | 110.0 MB | -8.1% |
+  | the PDB | 254.8 MB | 254.8 MB | |
+  | the IR | 1,495.7 MB | 1,505.1 MB | +0.6% |
+  | the build, from its start to its exit | 9.60 s | 9.61 s | |
+  | kpp's part of it, the link | 8.2 s, 1.2 s | 8.2 s, 1.2 s | |
+  | CPU time of the build's processes | 199.0 s | 198.2 s | |
+
+  The time is the same: the builds took 9.55 to 9.96 s with a pad per object and 9.55 to 9.69 s with
+  the blocks; the one with the blocks was the shorter in five of the eight rounds and the longer in
+  three, by less than the rounds differ among themselves. The linker applies 1.7 million relocations
+  fewer and writes an executable 9.7 MB smaller in the same 1.2 s; the back end writes 574,000 entries
+  fewer and the block pads' destructor calls besides (the IR's 9.4 MB). What it gives is the size: a
+  twentieth of the objects, a twelfth of the executable. There are fewer pads, not more: a block's
+  pad stands where a single one stood, and the pads that only a longer chain passed through are gone.
+- **Checked.** Spec language/long_cleanup_chain_destroys_each_object_once_in_order: 75 locals and 70
+  members with the throw at each place among them, a statement's temporaries before the locals, a
+  temporary that may not have been built in a pad of eight, a try block's objects before its handler
+  (it passes with a pad per object too: what must hold either way); in debug, with --debug-info, in
+  release and through the C++ back end. Its IR has what was meant: the function with the 75 locals 66
+  pads of one object, eight of 8 and one of 64, where it had 75 of one. The game's tests built with
+  the blocks: "9558 tests, 0 failed".
+- **The sizes.** `ehcensus.py` counts over the game's IR the entries its invokes ask for (the sum of
+  their chains' lengths: an upper bound, 1.59 million, invokes next to each other sharing a range).
+  Blocks of 8 leave 46.7% of them, 8 and 64 44.4%, 16 55.4%, 32 67.5%; blocks of 4, 16 and 64 leave
+  34.1%, with 13,415 block pads and 58,785 destructor calls written again in them where 8 and 64
+  have 3,786 and 31,934. What is left is mostly chains shorter than eight (a third of all the
+  entries), which no block shortens.
+- **Not done: the C++ frame handler for the largest functions.** `__CxxFrameHandler3`'s tables are
+  linear in the function (an IP-to-state map and an unwind map), and LLVM writes them for the same
+  IR: the probe's object with 400 locals went from 4,262 KB to 680 KB with that personality, to 618
+  KB with it for the functions of 64 entries or more alone. But it is another exception handler for
+  a part of the functions (it runs cleanups for an exception that is not C++'s only under the module
+  flag `eh-asynch`), each function with it gets three named symbols (`$cppxdata$`, `$stateUnwindMap$`
+  and `$ip2state$` before its whole name: the objects of 230 small standard library functions grew by
+  13% with it), and the UCRT that windows-gnu links has no such handler. The blocks keep one handler
+  and take the same functions' tables down by nine tenths.
+- LLVM gives every funclet a symbol, `?dtor$N@?0?FUNCTION@4HA` with the function's whole name: 147,010
+  symbols, 16.6 MB of the string tables and 2.6 MB of the symbol tables. That is the long names again
+  ("Left, by what it would give", below).
+
 **Measured and left.**
 
 - **Numbers for local values.** The emitter makes a value's name before it writes the value's
@@ -1905,7 +1983,7 @@ spelling it fails: "the unique name(s) of game::Shape's records are [game::Shape
 | the string tables | 102.5 MB | 21.0% | the symbols' names |
 | .debug$S | 94.6 MB | 19.4% | S_GPROC32_ID 37.7 MB (257,549 records of 146.5 bytes: a function's name as the debugger shows it), the lines 17.8, S_LOCAL 11.5, S_DEFRANGE_FRAMEPOINTER_REL 10.1, S_FRAMEPROC 8.2 |
 | .debug$T | 78.2 MB | 16.0% | LF_CLASS 23.6 MB (248,980 records of 94.8 bytes), LF_FUNC_ID 12.3 (87,176 of 141.1), LF_MFUNC_ID 9.1, LF_FIELDLIST 9.1, LF_STRUCTURE 8.5, LF_MFUNCTION 6.4, LF_POINTER 5.3 |
-| relocations | 74.3 MB | 15.2% | .debug$S's 24.5, .xdata's 18.0, .text's 14.5, .pdata's 12.2 |
+| relocations | 86.1 MB | 17.6% | .xdata's 29.8, .debug$S's 24.5, .text's 14.5, .pdata's 12.2 (this row said 74.3 MB and 18.0 for .xdata until the count read the sections with over 65,535 relocations right; .xdata's are the scope tables', above) |
 | .text | 56.3 MB | 11.5% | the code |
 | the symbol tables | 28.1 MB | 5.7% | |
 | .xdata | 19.5 MB | 4.0% | the unwind and exception tables |

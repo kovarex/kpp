@@ -132,7 +132,19 @@ auto codegen::Emitter::cleanupChain(const std::vector<Object>& objects, size_t f
   auto it = cleanupPads.find(key);
   if (it != cleanupPads.end())
     return it->second;
-  std::string rest = cleanupChain(objects, from + 1, next, parent);
+  // One pad destroys the outermost objects of a chain 64 or 8 at a time (the objects left, counted
+  // from the chain's end, so that the chains of a function's invokes share those pads), and the
+  // others one each. __C_specific_handler's scope table has an entry for each range of invokes and
+  // each pad on its way out, 16 bytes and three relocations: with a pad per object a function's
+  // table grew with the square of the objects alive in it (the game's 972,237 entries, 9.2% of its
+  // objects' bytes, a quarter of them two constructors', whose chains reach 500 and 200 objects;
+  // 2026-11-25). A chain of n objects is n mod 8 + (n div 8) mod 8 + n div 64 pads long now. What
+  // a pad destroys, and in which order, is what the chain of single pads destroyed from there:
+  // every object of a chain is alive wherever an invoke unwinds to its first pad, and a pad goes
+  // on to the pad of the objects it left. docs/codegen-speed.md, section 10.
+  size_t left = objects.size() - from;
+  size_t count = left % 64 == 0 ? 64 : left % 8 == 0 ? 8 : 1;
+  std::string rest = cleanupChain(objects, from + count, next, parent);
   std::string padLabel = newLabel("cleanup"), pad = newTemp();
   cleanupPads[key] = padLabel;
   // The pad is emitted aside, after the function body.
@@ -142,7 +154,8 @@ auto codegen::Emitter::cleanupChain(const std::vector<Object>& objects, size_t f
   startBlock(padLabel);
   fn += "  " + pad + " = cleanuppad within " + (parent.empty() ? "none" : parent) + " []\n";
   funcletOverride = pad;
-  destroyObject(objects[from]);
+  for (size_t i = from; i < from + count; ++i)
+    destroyObject(objects[i]);
   funcletOverride = savedOverride;
   fn += "  cleanupret from " + pad + " unwind " + (rest.empty() ? "to caller" : "label %" + rest) + "\n";
   ehBlocks += fn;

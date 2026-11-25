@@ -1,0 +1,6 @@
+locals: 0 wrong
+members: 0 wrong
+temporaries: 17 destroyed, the temporaries first 1, the locals in order 1
+conditional, built: 9 destroyed, the temporaries first 1, the locals in order 1
+conditional, not built: 7 destroyed, the locals in order 1
+nested: 9 destroyed before the handler, in order 1; 19 in all, in order 1
