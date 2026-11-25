@@ -1114,6 +1114,77 @@ jobs:
             [ "$out" = "42 mac 10" ]
           done
 
+      # --toolchain xcode (design.md, "Xcode's tools for what is not kpp code"): Xcode's clang reads the C
+      # headers and compiles the C libraries, Apple's linker links, and kpp's own modules stay KPP_CLANG's. A
+      # program with an exception, a thread_local and a C import, then the C library project, each in debug
+      # and release (whose ThinLTO Apple's linker finishes); the link's response file names no lld; the
+      # default toolchain builds the same project afterwards; and what the option refuses.
+      - name: Xcode's tools for what is not kpp code
+        run: |
+          kpp="$GITHUB_WORKSPACE/compiler/build/kpp"
+          rm -rf /tmp/xcode && mkdir -p /tmp/xcode && cd /tmp/xcode
+          {
+            echo 'extern "C" import "math.h";'
+            echo 'thread_local i32 counter = 0;'
+            echo 'struct Thing'
+            echo '{'
+            echo '  ~Thing() { std::println("thing gone"); }'
+            echo '};'
+            echo 'void fail(i32 value)'
+            echo '{'
+            echo '  Thing thing;'
+            echo '  if (value > 2)'
+            echo '    throw std::RuntimeError("too large");'
+            echo '}'
+            echo 'int main(int argc, char** argv)'
+            echo '{'
+            echo '  ++counter;'
+            echo '  try'
+            echo '  {'
+            echo '    fail(argc + 2);'
+            echo '  }'
+            echo '  catch (const std::Exception& e)'
+            echo '  {'
+            echo '    std::println("caught ", e.what());'
+            echo '  }'
+            echo '  std::println("hello xcode ", counter, " ", i32(floor(2.5)));'
+            echo '  return 0;'
+            echo '}'
+          } > main.kpp
+          set +e
+          failed=0
+          for mode in "--no-optimize" "--release"; do
+            rm -f app app.link.rsp
+            out=$("$kpp" --toolchain xcode $mode --exe /tmp/xcode/app main.kpp 2>&1)
+            echo "$out" | grep -e '^toolchain:' -e '^clang:' -e 'error'
+            echo "$out" | grep -q "links with Apple's linker through" || { echo "FAIL $mode: no toolchain line of Apple's linker"; failed=1; }
+            if grep -q 'fuse-ld=lld' app.link.rsp; then echo "FAIL $mode: the link's response file names lld"; failed=1; fi
+            ran=$(./app 2>&1)
+            echo "$ran"
+            [ "$(echo "$ran" | tail -n 1)" = "hello xcode 1 2" ] || { echo "FAIL $mode: not hello xcode 1 2"; failed=1; }
+            echo "$ran" | grep -q "caught too large" || { echo "FAIL $mode: the exception was not caught"; failed=1; }
+          done
+          rm -rf /tmp/xcode-clibrary && cp -r "$GITHUB_WORKSPACE/compiler/tests/targets/clibrary" /tmp/xcode-clibrary && cd /tmp/xcode-clibrary
+          for configuration in debug release; do
+            out=$("$kpp" "$configuration" --toolchain xcode --no-server --run 2>&1)
+            echo "$out" | tail -n 4
+            [ "$(echo "$out" | tail -n 1)" = "42 mac 10" ] || { echo "FAIL $configuration: the project did not print 42 mac 10"; failed=1; }
+            echo "$out" | grep -q "Xcode's clang and Apple's linker" || { echo "FAIL $configuration: kpp's line does not name Xcode's tools"; failed=1; }
+            echo "$out" | grep -q "numbers: compiling .* with $(xcrun --find clang) " || { echo "FAIL $configuration: the C library was not compiled by Xcode's clang"; failed=1; }
+          done
+          out=$("$kpp" debug --no-server --run 2>&1)
+          echo "$out" | tail -n 3
+          [ "$(echo "$out" | tail -n 1)" = "42 mac 10" ] || { echo "FAIL: the default toolchain after Xcode's"; failed=1; }
+          echo "$out" | grep -q "numbers: compiling .* with $KPP_CLANG " || { echo "FAIL: the default toolchain did not compile the C library again"; failed=1; }
+          cd /tmp/xcode
+          out=$("$kpp" --toolchain xcode --target linux --exe /tmp/xcode/linux main.kpp 2>&1)
+          echo "$out" | tail -n 1
+          echo "$out" | grep -q -- "--toolchain xcode builds for macOS" || { echo "FAIL: --target linux was not refused"; failed=1; }
+          out=$("$kpp" --toolchain xcode --release --lto full --exe /tmp/xcode/full main.kpp 2>&1)
+          echo "$out" | grep -- '--toolchain'
+          echo "$out" | grep -q -- "--toolchain xcode does not build with --lto full yet" || { echo "FAIL: --lto full was not refused"; failed=1; }
+          exit $failed
+
       # (the server's log is in the user's temporary directory, $TMPDIR on a Mac)
       - name: the compile server
         run: |

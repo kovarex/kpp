@@ -256,6 +256,13 @@ namespace projects
       fprintf(stderr, "error: %s (%s): %s\n", p.name.c_str(), p.configuration.c_str(), error.c_str());
       return 1;
     }
+    // (Xcode's tools build for a Mac: said before the C libraries compile with them)
+    if (std::string platform = targetPlatform(p, request); xcodeToolchain() && platform != "mac")
+    {
+      fprintf(stderr, "error: %s (%s): --toolchain xcode builds for macOS (--target macos, macos-x64), not for %s\n", p.name.c_str(),
+              p.configuration.c_str(), platform.c_str());
+      return 1;
+    }
     // A list's later toolchain (msvc,bundled where Visual Studio's clang is missing): why the first
     // one is not taken, a warning Visual Studio's Error List shows (a build of the other dialect, whose
     // C imports and libraries differ, is never a silent one).
@@ -483,6 +490,7 @@ namespace projects
     // Visual Studio's link.exe and libraries nor MinGW-w64's.
     std::string platform = targetPlatform(p, request), name = toolchainName();
     std::string used = platform == "windows" ? name + " toolchain"
+                       : name == "xcode"     ? platform + ": Xcode's clang and Apple's linker"
                                              : platform + ": " + (name == "msvc" ? std::string("Visual Studio's") : name == "bundled" ? std::string("the bundled") : name + "'s") +
                                                  " clang and ld.lld";
     if (code == 0)

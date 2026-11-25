@@ -398,7 +398,7 @@ namespace projects
       std::string language = c.language.empty() ? std::string("c++17") : c.language;
       std::string cppFlags = gnu ? " -std=" + language : " /EHsc /std:" + language;
       // What the objects are built with: the flags and the compiler (another toolchain's are built again).
-      job.stamp = flags + cppFlags + "\n" + clangPath() + (c.precompiled.empty() ? std::string() : "\nprecompiled " + c.precompiled);
+      job.stamp = flags + cppFlags + "\n" + platformClangPath() + (c.precompiled.empty() ? std::string() : "\nprecompiled " + c.precompiled);
       bool flagsChanged = readText(job.directory / "flags.txt") != job.stamp;
       // Gone until all of this build's objects are made (written before the archive): a build that
       // fails part way leaves objects of the new flags beside the old ones, which the old flags'
@@ -463,10 +463,10 @@ namespace projects
         p.state->store(0);
         p.log = log;
         if (gnu)
-          p.command = quoteArg(clangPath()) + " " + flags + (l ? cppFlags : "") + (l ? " -x c++-header" : " -x c-header") + " -MD -MF" + quoteArg(deps.string()) +
+          p.command = quoteArg(platformClangPath()) + " " + flags + (l ? cppFlags : "") + (l ? " -x c++-header" : " -x c-header") + " -MD -MF" + quoteArg(deps.string()) +
                       " -o " + quoteArg(pchFile[l].string()) + " " + quoteArg(stub.string()) + " > " + quoteArg(log.string()) + " 2>&1";
         else
-          p.command = quoteArg(clangPath()) + " --driver-mode=cl " + flags + (l ? cppFlags : "") + " /Yc" + quoteArg(c.precompiled) + " /Fp" +
+          p.command = quoteArg(platformClangPath()) + " --driver-mode=cl " + flags + (l ? cppFlags : "") + " /Yc" + quoteArg(c.precompiled) + " /Fp" +
                       quoteArg(pchFile[l].string()) + " /clang:-MD /clang:-MF" + quoteArg(deps.string()) + " /Fo" +
                       quoteArg((job.directory / (name + ".obj")).string()) + " " + quoteArg(stub.string()) + " > " + quoteArg(log.string()) + " 2>&1";
       }
@@ -490,10 +490,10 @@ namespace projects
                                                          : " /Yu" + quoteArg(c.precompiled) + " /Fp" + quoteArg(pchFile[l].string());
         // clang-cl is clang in its cl mode (no clang-cl.exe to ship).
         if (gnu)
-          job.commands.push_back(quoteArg(clangPath()) + " " + flags + (cpp ? cppFlags : "") + pch + " -MD -MF" + quoteArg(dependencies.string()) +
+          job.commands.push_back(quoteArg(platformClangPath()) + " " + flags + (cpp ? cppFlags : "") + pch + " -MD -MF" + quoteArg(dependencies.string()) +
                                  " -o " + quoteArg(object.string()) + " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1");
         else
-          job.commands.push_back(quoteArg(clangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") + pch +
+          job.commands.push_back(quoteArg(platformClangPath()) + " --driver-mode=cl " + flags + (cpp ? cppFlags : "") + pch +
                                  " /clang:-MD /clang:-MF" + quoteArg(dependencies.string()) + " /Fo" + quoteArg(object.string()) +
                                  " " + quoteArg(source.string()) + " > " + quoteArg(job.logs.back().string()) + " 2>&1");
       }
@@ -507,7 +507,7 @@ namespace projects
                             : gnu          ? "Windows' GNU dialect, llvm-mingw's clang for " + target.triple
                                            : std::string("clang-cl, MSVC's dialect");
       if (job.archive)
-        printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), job.commands.size(), sources.size(), clangPath().c_str(),
+        printf("kpp: %s: compiling %zu of %zu C/C++ files with %s (%s)\n", c.name.c_str(), job.commands.size(), sources.size(), platformClangPath().c_str(),
                dialect.c_str());
     }
     for (const std::string& rc : resourceEntries)

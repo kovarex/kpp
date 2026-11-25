@@ -573,6 +573,13 @@ int compile(int argc, char** argv)
                       "naming such a clang\n");
       return 2;
     }
+    // --toolchain xcode is a Mac's for a macOS target: said before anything about another target's tools.
+    if (xcodeToolchain() && !options.target.mac())
+    {
+      fprintf(stderr, "--toolchain xcode builds for macOS (--target macos, macos-x64), not for %s: Xcode's clang and Apple's linker are a Mac's\n",
+              options.target.name.c_str());
+      return 2;
+    }
     options.target.cpp = options.viaCpp; // (once the target is settled: a --target after --via-cpp replaces it whole)
     // --subsystem (docs/build.md, "Options"): the PE header's, which no other platform's executable has;
     // said before anything about the target's tools (its sysroot, its SDK).

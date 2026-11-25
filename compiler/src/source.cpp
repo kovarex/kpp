@@ -692,6 +692,7 @@ std::string macSdkProblem(const std::string& sdk, const char* arch)
 namespace
 {
   std::string chosenClang; // --toolchain's (selectToolchain), for this build
+  std::string chosenPlatformClang; // --toolchain xcode: Xcode's clang (platformClangPath)
   bool chosenBundled = false;
   std::string skippedToolchains; // why a list's toolchains before the one taken are not here (toolchainSkipped)
 
@@ -703,6 +704,36 @@ namespace
   // A POSIX host's own clang, on PATH (Linux's, FreeBSD's, macOS's), when kpp has none of its own and
   // KPP_CLANG names none; empty on Windows, whose clang is the bundled one or Visual Studio's.
   std::string systemClang() { return host::platformName() == std::string("windows") ? std::string() : host::findOnPath("clang").string(); }
+
+  // Xcode's clang, as xcrun finds it (the selected Xcode's, or the command line tools'): empty when there
+  // is none, or off a Mac. Asked once.
+  std::string xcodeClang()
+  {
+    static std::mutex mutex;
+    static bool asked = false;
+    static std::string found;
+    std::lock_guard lock(mutex);
+    if (asked)
+      return found;
+    asked = true;
+    if (host::platformName() != std::string("macos"))
+      return found;
+    if (FILE* pipe = host::openPipe("xcrun --find clang 2>/dev/null", "r"))
+    {
+      char line[4096] = {};
+      if (fgets(line, sizeof line, pipe))
+      {
+        std::string path = line;
+        while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' '))
+          path.pop_back();
+        std::error_code ec;
+        if (!path.empty() && std::filesystem::exists(path, ec))
+          found = path;
+      }
+      host::closePipe(pipe);
+    }
+    return found;
+  }
 
   // The oldest clang kpp's IR compiles with: it names LLVM 19's intrinsics (llvm.eh.typeid.for.p0,
   // which clang 18 takes for a function and leaves undefined at the link), as the bundled toolchain's
@@ -766,6 +797,7 @@ namespace
 std::string selectToolchain(const std::filesystem::path& compiler, const std::string& toolchain)
 {
   chosenClang.clear();
+  chosenPlatformClang.clear();
   chosenBundled = false;
   skippedToolchains.clear();
   std::error_code ec;
@@ -781,8 +813,8 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
       at = end + 1;
     }
     for (const std::string& one : names)
-      if (one != "bundled" && one != "msvc")
-        return "--toolchain takes bundled, msvc or a list of them in the order preferred (msvc,bundled), not '" + toolchain + "'";
+      if (one != "bundled" && one != "msvc" && one != "xcode")
+        return "--toolchain takes bundled, msvc, xcode or a list of them in the order preferred (msvc,bundled), not '" + toolchain + "'";
     std::string missing;
     for (const std::string& one : names)
     {
@@ -795,6 +827,18 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
       missing += (missing.empty() ? "" : "; ") + error;
     }
     return "--toolchain " + toolchain + ": none of them is here (" + missing + ")";
+  }
+  // xcode: Xcode's clang for what is not kpp's own code (platformClangPath); kpp's own modules go through
+  // the clang they would without it (KPP_CLANG, the installation's, the system's), found below.
+  std::string xcode;
+  if (toolchain == "xcode")
+  {
+    if (host::platformName() != std::string("macos"))
+      return "--toolchain xcode is a Mac's (Xcode's clang and Apple's linker for the parts of a macOS build that are not kpp code): this is " +
+             std::string(host::platformName());
+    xcode = xcodeClang();
+    if (xcode.empty())
+      return "--toolchain xcode: xcrun finds no clang (install Xcode, or its command line tools: xcode-select --install)";
   }
   if (toolchain == "bundled")
   {
@@ -810,8 +854,8 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
     if (chosenClang.empty())
       return "--toolchain msvc " + visualStudioMissing();
   }
-  else if (!toolchain.empty())
-    return "--toolchain takes bundled, msvc or a list of them in the order preferred (msvc,bundled), not '" + toolchain + "'";
+  else if (!toolchain.empty() && xcode.empty())
+    return "--toolchain takes bundled, msvc, xcode or a list of them in the order preferred (msvc,bundled), not '" + toolchain + "'";
   else if (getenv("KPP_CLANG"))
     ;
   else if (std::filesystem::exists(bundledClang(compiler), ec))
@@ -832,8 +876,13 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
       if (int major = clangMajorVersion(clang); major && major < oldestClang)
         return clang + " is clang " + std::to_string(major) + ", and kpp's IR needs clang " + std::to_string(oldestClang) +
                " or later (LLVM " + std::to_string(oldestClang) + "'s intrinsics): name one with KPP_CLANG";
+  chosenPlatformClang = xcode; // (last: an error above leaves no toolchain half chosen)
   return "";
 }
+
+bool xcodeToolchain() { return !chosenPlatformClang.empty(); }
+
+std::string platformClangPath() { return chosenPlatformClang.empty() ? clangPath() : chosenPlatformClang; }
 
 bool bundledToolchain()
 {
@@ -845,6 +894,8 @@ bool bundledToolchain()
 
 std::string toolchainName()
 {
+  if (xcodeToolchain())
+    return "xcode";
   if (bundledToolchain())
     return "bundled";
   return chosenClang.empty() && getenv("KPP_CLANG") ? "KPP_CLANG" : "msvc";

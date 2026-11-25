@@ -92,7 +92,7 @@
     // Waits for the thread; whether clang was asked, and the three below are importCHeaders' own.
     bool take();
 
-    std::string clang;       // clangPath()
+    std::string clang;       // platformClangPath()
     std::string includeArgs; // importIncludeArgs(options)
     std::string toolchain;   // clangToolchain(clang, includeArgs)
 

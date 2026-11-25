@@ -206,6 +206,13 @@ std::string selectToolchain(const std::filesystem::path& compiler, const std::st
 // Whether clangPath() is the bundled toolchain's: its links are lld-link's (Visual Studio's link.exe
 // is not part of it).
 bool bundledToolchain();
+// --toolchain xcode (a Mac's, for a macOS target; design.md, "Xcode's tools for what is not kpp code"): the
+// clang of everything that is not kpp's own code is Xcode's (`xcrun --find clang`): the C import's
+// preprocessing, the C libraries' compiles, and the link, which is then Apple's linker's. kpp's own modules
+// are compiled by clangPath() as ever, an LLVM clang that reads kpp's IR. platformClangPath() is that
+// clang, clangPath() without the option.
+bool xcodeToolchain();
+std::string platformClangPath();
 // For a Windows target (triple: clang's --target) on a host whose file names have case (Linux,
 // FreeBSD): ` -ivfsoverlay "FILE"`, an overlay in which the toolchain's system include directories are
 // found without case, as on Windows: MinGW-w64's headers are lower case, and Windows code includes

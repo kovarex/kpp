@@ -116,7 +116,10 @@ try
   if ($r.code -ne 0 -or $r.out -ne 'toolchain 9') { Fail "--toolchain bundled,msvc without bin\ did not build with Visual Studio's clang: $($r.report)" }
   elseif ($r.line -notlike "toolchain: *(Visual Studio's, windows*") { Fail "--toolchain bundled,msvc without bin\ is not Visual Studio's clang: '$($r.line)'" }
   $r = Probe $KppExe 'badlist' @('--toolchain', 'msvc,gcc')
-  if ($r.code -ne 2 -or $r.report -notmatch 'takes bundled, msvc or a list') { Fail "--toolchain msvc,gcc was not an error: exit $($r.code), $($r.report)" }
+  if ($r.code -ne 2 -or $r.report -notmatch 'takes bundled, msvc, xcode or a list') { Fail "--toolchain msvc,gcc was not an error: exit $($r.code), $($r.report)" }
+  # Xcode's tools are a Mac's (ci.yml's macos_host job builds with them): an error here, never another toolchain in their place
+  $r = Probe $KppExe 'xcode' @('--toolchain', 'xcode')
+  if ($r.code -ne 2 -or $r.report -notmatch "--toolchain xcode is a Mac's") { Fail "--toolchain xcode on Windows was not an error: exit $($r.code), $($r.report)" }
 
   $r = Probe $KppExe 'none' @('--toolchain', 'bundled')
   if ($r.code -ne 2 -or $r.report -notmatch '--toolchain bundled: this installation has no') { Fail "--toolchain bundled without bin\ was not an error: exit $($r.code), $($r.report)" }

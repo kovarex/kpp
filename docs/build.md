@@ -1458,6 +1458,15 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   ld.lld, total ...)`). The build's report says more (`toolchain: ... (bundled, windows-gnu: links
   with lld)`). A compile server takes `bin\` next to its client's kpp.exe. A project's C libraries compile with clang's own flags under the
   bundled toolchain, with clang-cl's (`clang --driver-mode=cl`) under Visual Studio's.
+- **On a Mac, `--toolchain xcode`** (2026-11-25; design.md, "Xcode's tools for what is not kpp code"): Xcode's
+  clang (`xcrun --find clang`) preprocesses the C import's headers, compiles the C libraries and links, so the
+  linker is Apple's; kpp's own modules are compiled as without it (KPP_CLANG, an installation's clang). It is
+  for a macOS target on a Mac: an error on another host or for another target, and `--lto full` and
+  `--via-cpp` are errors with it for now. A release build's ThinLTO is finished by Apple's linker. kpp's lines
+  name it: `toolchain: /opt/homebrew/opt/llvm@19/bin/clang (KPP_CLANG, macos: links with Apple's linker
+  through /Applications/Xcode.app/.../usr/bin/clang)` and `kpp: built app (debug, mac: Xcode's clang and
+  Apple's linker, total ...)`. Without the option a Mac build links with lld, as before. It is given on the
+  command line (`kpp debug --toolchain xcode`) or among build.kpp's arguments, as any toolchain is.
 - **The link:** the bundled toolchain links with lld, debug builds too. `--incremental-link`
   (link.exe `/INCREMENTAL`, the debug edit loop's link) is Visual Studio's: with the bundled
   toolchain it is an error, and a project's debug build leaves it out. Measured on the converted

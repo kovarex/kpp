@@ -126,7 +126,7 @@ void placeSanitizerRuntime(const Options& options)
 
 std::string linkFlags(const Options& options, bool wideEntry)
 {
-  if (options.target.gnu || !options.target.windows())
+  if ((options.target.gnu || !options.target.windows()) && !xcodeToolchain()) // (--toolchain xcode: Apple's linker)
     requireLld();
   // Windows' GNU dialect (windows-gnu): lld's GNU driver, unused sections dropped as /OPT:REF
   // drops them, the Windows libraries programs commonly reach, ucrtbase's functions MinGW-w64's
@@ -170,7 +170,8 @@ std::string linkFlags(const Options& options, bool wideEntry)
   // leading underscore.
   if (options.target.mac())
   {
-    std::string flags = targetFlags(options).substr(1) + " -fuse-ld=lld -Wl,-dead_strip";
+    // --toolchain xcode: Apple's linker, which Xcode's clang runs by default; it takes the same flags.
+    std::string flags = targetFlags(options).substr(1) + (xcodeToolchain() ? "" : " -fuse-ld=lld") + " -Wl,-dead_strip";
     // The personality's weak references to kpp_eh_offset and kpp_eh_terminate (Runtime.cpp), which a
     // program without a throw of its own does not define: ELF makes a missing one null, ld64.lld wants
     // every undefined symbol found unless told (-U), and dyld then binds the missing weak import to
@@ -279,7 +280,7 @@ std::string splitDebugInfoCommand(const Options& options)
 std::string ltoLinkFlags(const Options& options)
 {
   std::string flags;
-  if (!options.optimize)
+  if (!options.optimize || xcodeToolchain()) // (--toolchain xcode: these are lld's options, and the link is Apple's linker's)
     return flags;
   bool msvc = options.target.msvc();
   std::string partitions = std::to_string(options.ltoPartitions ? options.ltoPartitions : std::max(1u, options.threads));

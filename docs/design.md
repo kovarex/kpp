@@ -6487,6 +6487,42 @@ kovarex, 2026-11-13: "kpp running on macOS itself is still planned it was just p
   (macos-x64 as the host), and the plan's next steps (docs/mac-development.md: the .dSYM, LLDB views, the
   Xcode and CLion integration).
 
+### Xcode's tools for what is not kpp code (decided by kovarex, 2026-11-25)
+
+A Factorio Mac developer's requirement (2026-11-23): a Mac build "NEEDS to be compatible with the Xcode tool
+chain", updated every year with Apple's new SDKs; building and linking with LLVM's own clang and linker there
+"was too much of a headache to manage". kpp on a Mac did exactly that (stage 9: Homebrew's LLVM 19 and lld for
+everything). kovarex, 2026-11-25, after the options were laid out: "Ok, so do it this way". The rule:
+- **kpp compiles kpp code, Xcode's tools do the rest.** Under `--toolchain xcode` the C import's headers are
+  preprocessed by Xcode's clang, the C libraries are compiled by it, and the link is its link: Apple's linker.
+  kpp's own modules are compiled by the LLVM clang they are compiled by without the option (KPP_CLANG, an
+  installation's own), which reads kpp's IR; what leaves kpp is Mach-O objects and the C calling convention,
+  which Apple keeps from one Xcode to the next. Xcode's clang is the one `xcrun --find clang` names: the
+  selected Xcode's, or the Command Line Tools'.
+- **Every other platform is as it was**, and so is a Mac build without the option (lld, as stage 8 and 9
+  have it): building a Mac program on Windows or Linux has no Xcode to ask. The option on another host, or
+  for another target, is an error.
+- **Release builds:** the modules are ThinLTO bitcode as elsewhere, and Apple's linker finishes the
+  optimization with its own LLVM. That works as long as Apple's LLVM is no older than the one that wrote the
+  bitcode (LLVM reads older bitcode, not newer): Xcode 16.4's linker read LLVM 19.1.7's on CI's Mac
+  (2026-11-25), and an Xcode only gets newer. A linker that cannot read it says so at the link, by name; it is
+  never a silent difference. So kpp's LLVM for Apple targets must not run ahead of the oldest Xcode supported;
+  finishing the optimization inside kpp before the link (native objects only) is the fallback, not built.
+  With the C libraries compiled by Xcode's clang with `-flto`, the same linker optimizes across them and kpp's
+  code; not measured yet.
+- **What was tried first, on GitHub's macos-15 runner (Xcode 16.4, Apple clang 17, ld-1167.5):** kpp's debug
+  and release objects linked by Apple's linker run (exceptions with kpp's personality, destructors on the
+  way, thread_locals, ad hoc signing by the linker); a project's C and C++ library archived by llvm-ar links
+  with `-lc++`; Apple's clang compiles kpp's IR files and an Objective-C file. LLVM's own `llvm-lto` as the
+  finisher of ThinLTO left symbols undefined (it knows nothing of the link's other inputs): not that way.
+- **Not yet:** the default on a Mac (still lld: the option is asked for), `--lto full` and `--via-cpp` with
+  it (errors), `.m` and `.mm` sources and frameworks in build.kpp, an iOS target, Apple's framework headers
+  through the C import (tried with LLVM's clang: mach-o/dyld.h, sys/sysctl.h and objc/runtime.h import;
+  CoreFoundation's stop at `#pragma clang arc_cf_code_audited` in kpp's macro pass and CoreServices at
+  `#pragma options align=power`).
+- Tested by ci.yml's macos_host job, step "Xcode's tools for what is not kpp code", and tests/toolchain.ps1
+  (the option on Windows is an error).
+
 ### Questions for kovarex
 
 - **Q1:** `long` on LP64 targets: decided 2026-11-01, "Distinct fixed types, deprecate long" (above).

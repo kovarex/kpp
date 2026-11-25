@@ -1106,7 +1106,7 @@ ImportToolchain::ImportToolchain(const std::vector<SourceFile>& files, const Opt
     for (const SourceFile& file : files)
       if (file.text.find("extern \"C\" import") != std::string::npos)
       {
-        clang = clangPath();
+        clang = platformClangPath(); // (the headers are the platform's: Xcode's clang reads them under --toolchain xcode)
         includeArgs = importIncludeArgs(options);
         toolchain = clangToolchain(clang, includeArgs);
         asked = true;
@@ -1243,7 +1243,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   std::error_code ec;
   bool asked = early && early->take();
   std::string includeArgs = asked ? early->includeArgs : importIncludeArgs(options);
-  std::string clang = asked ? early->clang : clangPath();
+  std::string clang = asked ? early->clang : platformClangPath();
   std::string toolchain = asked ? early->toolchain : clangToolchain(clang, includeArgs);
   if (toolchain.find("clang version") == std::string::npos)
   {

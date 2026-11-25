@@ -832,9 +832,28 @@ void runCodegen(Build& build)
   if (options.check)
     return; // the errors are all it is for
   std::string clang = clangPath();
+  // --toolchain xcode (design.md, "Xcode's tools for what is not kpp code"): a Mac's, for a macOS target.
+  // Its link is Apple's linker's. A release build's ThinLTO is then finished by that linker's own LLVM,
+  // which reads the bitcode kpp's clang wrote as long as it is no older than kpp's (Xcode 16.4's read LLVM
+  // 19.1.7's, CI's Mac, 2026-11-25); one that cannot says so at the link. --lto full and --via-cpp are not
+  // tried with it yet: errors, said before anything compiles.
+  if (xcodeToolchain())
+  {
+    const char* problem = !options.target.mac() ? "builds for macOS (--target macos, macos-x64), not for"
+                          : fullLTO            ? "does not build with --lto full yet (--lto thin, the default, does): not"
+                          : options.viaCpp     ? "does not build through C++ yet (--via-cpp): not"
+                                               : nullptr;
+    if (problem)
+    {
+      fprintf(stderr, "error: --toolchain xcode %s %s\n", problem, options.target.name.c_str());
+      codegenExit = 1;
+      return;
+    }
+  }
   report("toolchain: %s (%s, %s: links with %s)\n", clang.c_str(),
          bundledToolchain() ? "bundled" : getenv("KPP_CLANG") ? "KPP_CLANG" : "Visual Studio's", options.target.name.c_str(),
-         !options.target.msvc() ? "lld" : bundledToolchain() || options.optimize ? "lld-link" : "link.exe");
+         xcodeToolchain() ? ("Apple's linker through " + platformClangPath()).c_str()
+         : !options.target.msvc() ? "lld" : bundledToolchain() || options.optimize ? "lld-link" : "link.exe");
   // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
   // linked; the functions errors left out are listed next to the executable for the link's report.
   bool stop = codegenExit && !options.keepGoing;
@@ -895,6 +914,11 @@ void runCodegen(Build& build)
     std::string command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " " + source + " -o \"" + options.exe + "\" " +
                           (fullLTO ? "-fuse-ld=lld " + ltoLinkFlags(options) + " " : std::string()) + linkFlags(options, wideEntry(parsed, symbols, options.target)) +
                           splitDebugInfoCommand(options);
+    // --toolchain xcode: the module compiled by kpp's clang into an object, which Xcode's clang links (two
+    // commands: the one above would link through kpp's clang).
+    if (xcodeToolchain())
+      command = "\"" + clang + "\" " + level + targetFlags(options) + " -w " + compileFlags + " -c " + source + " -o \"" + options.exe + ".o\" && \"" +
+                platformClangPath() + "\" \"" + options.exe + ".o\" -o \"" + options.exe + "\" " + linkFlags(options, wideEntry(parsed, symbols, options.target));
     if (options.deferLink) // (one module: its compile goes with the link)
     {
       deferLinkCommand(options, command);
@@ -953,8 +977,11 @@ void runCodegen(Build& build)
     {
       // lld runs the ThinLTO back ends on the compiler's threads, and keeps their results for the
       // modules that did not change (the cache next to the executable).
-      response += "-fuse-ld=lld\n-flto=thin\n" + optLevel + "\n";
-      if (options.target.msvc())
+      // (--toolchain xcode: Apple's linker finishes it, with its own cache option and its own count of threads)
+      response += std::string(xcodeToolchain() ? "" : "-fuse-ld=lld\n") + "-flto=thin\n" + optLevel + "\n";
+      if (xcodeToolchain())
+        response += "\"-Wl,-cache_path_lto," + slashes(options.exe) + ".ltocache\"\n";
+      else if (options.target.msvc())
       {
         response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
         response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
@@ -1211,8 +1238,8 @@ void runCodegen(Build& build)
                             : linkAsk.asked && linkAsk.lines.objects == lines.objects && linkAsk.lines.flags == lines.flags
                               ? linkAsk.command
                               : directLinkCommand(clang, options.exe, lines.objects, lines.flags);
-  if (linkCommand.empty())
-    linkCommand = "\"" + clang + "\" @\"" + responsePath + "\"";
+  if (linkCommand.empty()) // (--toolchain xcode: Xcode's clang, which runs Apple's linker)
+    linkCommand = "\"" + platformClangPath() + "\" @\"" + responsePath + "\"";
   std::string link = linkCommand;
   if (options.keepGoing) // the link's complaints (unresolved externals) go to a file next to the executable
     link = linkCommand + " > \"" + options.exe + ".link.txt\" 2>&1";
