@@ -1,0 +1,147 @@
+// kpp standard library: an enum's names in snake_case and kebab-case, made at compile time from its enumerators' names
+// (kovarex, 2026-11-25: one generic mechanism in place of hand-written switches; the game's Lua API spells names in
+// snake_case, its prototypes in kebab-case). docs/stdlib/enumnames.md.
+//
+// The rule: a name is split into words at '_', before a capital that follows a small letter or a digit, and before the
+// last capital of a run of capitals that a small letter follows (GUIElement: gui, element); a digit stays with the word
+// before it (UTF16LowSurrogate: utf16, low, surrogate). The words are written in small letters, joined by '_' or '-'.
+// ENTITY_DESTROYED and EntityDestroyed both give entity_destroyed.
+
+// Whether name[i] (i > 0, not '_') starts a new word.
+constexpr bool caseStartsWord(const char* name, u64 i)
+{
+  char c = name[i];
+  if (c < 'A' || c > 'Z')
+    return false;
+  char before = name[i - 1];
+  if ((before >= 'a' && before <= 'z') || (before >= '0' && before <= '9'))
+    return true;
+  return before >= 'A' && before <= 'Z' && name[i + 1] >= 'a' && name[i + 1] <= 'z';
+}
+
+// The length of name written by the rule, without its zero.
+constexpr u64 caseLength(const char* name)
+{
+  u64 n = 0;
+  bool separate = false;
+  for (u64 i = 0; name[i] != 0; ++i)
+  {
+    if (name[i] == '_')
+    {
+      separate = n != 0;
+      continue;
+    }
+    if (separate || (i > 0 && caseStartsWord(name, i)))
+      ++n;
+    separate = false;
+    ++n;
+  }
+  return n;
+}
+
+// Writes name by the rule, words joined by separator, and a zero to out (caseLength(name) + 1 chars).
+constexpr void caseWrite(const char* name, char separator, char* out)
+{
+  u64 n = 0;
+  bool separate = false;
+  for (u64 i = 0; name[i] != 0; ++i)
+  {
+    char c = name[i];
+    if (c == '_')
+    {
+      separate = n != 0;
+      continue;
+    }
+    if (separate || (i > 0 && caseStartsWord(name, i)))
+      out[n++] = separator;
+    separate = false;
+    out[n++] = c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c;
+  }
+  out[n] = 0;
+}
+
+// A name written by the rule as constant data: `static constexpr std::CaseText<std::caseLength(name) + 1> text =
+// std::caseText<std::caseLength(name) + 1>(name, '_');` in a for constexpr's body over reflected names.
+template<u64 N>
+struct CaseText
+{
+  char chars[N];
+};
+
+template<u64 N>
+constexpr CaseText<N> caseText(const char* name, char separator)
+{
+  CaseText<N> out = {};
+  caseWrite(name, separator, out.chars);
+  return out;
+}
+
+// The value's name in snake_case (entity_destroyed), constant data made at compile time. Of several enumerators of one
+// value, the first names it, as in str(); a value that is none aborts, as a switch on a kpp enum does. A name that
+// does not follow the rule is written before the call: `if (this == Rails) return "rail"; return std::snakeName(this);`.
+template<typename E>
+const char* snakeName(E value)
+{
+  switch (value)
+  {
+    for constexpr (auto e : enumerators(E))
+      case e.value:
+      {
+        static constexpr CaseText<caseLength(e.name) + 1> text = caseText<caseLength(e.name) + 1>(e.name, '_');
+        return text.chars;
+      }
+  }
+}
+
+// The value's name in kebab-case (entity-destroyed), as snakeName.
+template<typename E>
+const char* kebabName(E value)
+{
+  switch (value)
+  {
+    for constexpr (auto e : enumerators(E))
+      case e.value:
+      {
+        static constexpr CaseText<caseLength(e.name) + 1> text = caseText<caseLength(e.name) + 1>(e.name, '-');
+        return text.chars;
+      }
+  }
+}
+
+// The value whose snakeName is text, or none.
+template<typename E>
+Optional<E> fromSnakeName(StringView text)
+{
+  for constexpr (auto e : enumerators(E))
+    if (text == snakeName(e.value))
+      return Optional<E>(e.value);
+  return Optional<E>();
+}
+
+// The value whose kebabName is text, or none.
+template<typename E>
+Optional<E> fromKebabName(StringView text)
+{
+  for constexpr (auto e : enumerators(E))
+    if (text == kebabName(e.value))
+      return Optional<E>(e.value);
+  return Optional<E>();
+}
+
+// Any name written by the rule at run time (a method's name made a Lua name at startup): snakeCase("readWeight") is
+// "read_weight".
+String snakeCase(const char* name)
+{
+  String out;
+  out.resize(ContainerSize(caseLength(name)));
+  caseWrite(name, '_', out.data());
+  return out;
+}
+
+String kebabCase(const char* name)
+{
+  String out;
+  out.resize(ContainerSize(caseLength(name)));
+  caseWrite(name, '-', out.data());
+  return out;
+}

@@ -40,6 +40,8 @@ Files:
 - [Bitset](bitset.md): a fixed number of bits (std::bitset).
 - [Filesystem](filesystem.md): paths, files and directories (std::filesystem), and the error codes
   they report with (std::error_code, std::errc, std::system_error).
+- [Enum names](enumnames.md): an enum value's name in snake_case or kebab-case, made at compile time (snakeName,
+  kebabName, fromSnakeName, fromKebabName, snakeCase, kebabCase).
 - [Text](text.md): numbers as text (std::to_string) and the formatting pieces (hex, fixed,
   significant, alignRight, zeroPadded, address, ...; design.md 14).
 
