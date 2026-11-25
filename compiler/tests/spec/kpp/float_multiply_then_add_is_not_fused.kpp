@@ -1,0 +1,20 @@
+// spec: a product that is added to is two operations, each rounded, on every target and through C++ (--via-cpp): never one fused multiply-add, which rounds once and gives another result (a C++ compiler fuses `a * b + c` for arm64 unless told not to)
+extern "C" int printf(const char* format, ...);
+
+f64 multiplyAdd(f64 a, f64 b, f64 c) { return a * b + c; }
+f32 multiplyAdd(f32 a, f32 b, f32 c) { return a * b + c; }
+
+int main(int argc, char** argv)
+{
+  f64 one = f64(argc); // 1, and no constant
+  f64 a = one + 1.0 / 1073741824.0; // 1 + 2^-30
+  f64 b = one - 1.0 / 1073741824.0; // 1 - 2^-30: the product is 1 - 2^-60, which rounds to 1
+  printf("%d\n", multiplyAdd(a, b, -one) == 0.0 ? 1 : 0);
+  f32 small = f32(argc);
+  f32 c = small + 1.0f / 8192.0f; // 1 + 2^-13
+  f32 d = small - 1.0f / 8192.0f; // 1 - 2^-13: the product is 1 - 2^-26, which rounds to 1
+  printf("%d\n", multiplyAdd(c, d, -small) == 0.0f ? 1 : 0);
+  f64 inPlace = a * b - one;
+  printf("%d\n", inPlace == 0.0 ? 1 : 0);
+  return 0;
+}
