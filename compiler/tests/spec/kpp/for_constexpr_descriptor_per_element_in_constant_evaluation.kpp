@@ -1,0 +1,96 @@
+// spec: in a function run at compile time, a for constexpr over members(T), ownMembers(T), methods(T) or alternatives(U) reads each element's descriptor (m.name, m.hasInitializer, f.isNoDiscard, a.tag) for that element, as at run time: the loop body, shared by the elements, does not read the last element's for every one
+// design.md 8.3 (found 2026-11-25 by the prototype explorer's hidden-member check: `same("y", m.name)` was true for every member, the last member's name read each time)
+class Thing
+{
+public:
+  i32 x = 1;
+  i32 y;
+  i32 z = 3;
+  [[nodiscard]] i32 first() const { return this.x; }
+  i32 second() const { return this.y; }
+};
+
+union enum class Shape : u8
+{
+  { {Square, f64}, {Circle, f32} }
+};
+
+constexpr bool same(const char* a, const char* b)
+{
+  usize i = 0;
+  for (; a[i] != 0; ++i)
+    if (a[i] != b[i])
+      return false;
+  return b[i] == 0;
+}
+
+template<typename T>
+constexpr i32 countNamed(const char* name)
+{
+  i32 found = 0;
+  for constexpr (auto m : members(T))
+    if (same(name, m.name))
+      found += 1;
+  return found;
+}
+
+template<typename T>
+constexpr i32 ownIndexOf(const char* name)
+{
+  i32 i = 0;
+  for constexpr (auto m : ownMembers(T))
+  {
+    if (same(name, m.name))
+      return i;
+    ++i;
+  }
+  return -1;
+}
+
+template<typename T>
+constexpr i32 initialized()
+{
+  i32 count = 0;
+  for constexpr (auto m : members(T))
+    if (m.hasInitializer)
+      count += 1;
+  return count;
+}
+
+template<typename T>
+constexpr i32 noDiscardIndex()
+{
+  i32 i = 0;
+  for constexpr (auto f : methods(T))
+  {
+    if (f.isNoDiscard)
+      return i;
+    ++i;
+  }
+  return -1;
+}
+
+template<typename U>
+constexpr i32 circleTag()
+{
+  for constexpr (auto a : alternatives(U))
+    if (same(a.name, "Circle"))
+      return i32(a.tag);
+  return -1;
+}
+
+int main()
+{
+  constexpr i32 x = countNamed<Thing>("x");
+  constexpr i32 y = countNamed<Thing>("y");
+  constexpr i32 indexOfX = ownIndexOf<Thing>("x");
+  constexpr i32 withInitializer = initialized<Thing>();
+  constexpr i32 noDiscard = noDiscardIndex<Thing>();
+  constexpr i32 tag = circleTag<Shape>();
+  std::println(x, " ", y, " ", indexOfX, " ", withInitializer, " ", noDiscard, " ", tag);
+  std::println(countNamed<Thing>("x"), " ", countNamed<Thing>("y"), " ", ownIndexOf<Thing>("x"), " ", initialized<Thing>(), " ",
+               noDiscardIndex<Thing>(), " ", circleTag<Shape>());
+  Thing t;
+  t.y = 2;
+  return t.first() + t.second() == 3 ? 0 : 1;
+}
