@@ -1688,6 +1688,7 @@ an `i1` argument, a struct by value), 254 instructions take the rest of their bl
   the change and after it.
 - **Half of the back end's threads while codegen runs** (BackEndPool, below).
 - **Codegen's threads kept between its parallel steps** (KeptThreads, below).
+- **clang asked for the C import's toolchain beside the lexing and the parsing** (ImportToolchain, below).
 
 **The back end's threads while codegen runs.** Section 8's timeline has LLVM's threads compile the
 program pieces beside codegen's levels 1 and 2, every hardware thread busy, then wait 2 s for the
@@ -1758,6 +1759,15 @@ is 4.4 s where the busier afternoon of the timelines above had 5.2 s: what the c
 between nothing and 0.1 s, and what it takes away is the delay that other work on the machine could
 cause, the 1.6 s above.
 
+**The C import's question to clang, asked early.** An import's cache key holds what clang says of its
+toolchain (`clang -x c -E -v`: its version, the target, the directories its `#include <...>`
+searches). That is a process of its own, which the import started after the sources were parsed, with
+nothing else running. A thread now asks when the sources are read, beside their lexing and parsing, if
+one of them has an import (ImportToolchain in Driver/CImport.cpp; a program without one starts no
+clang), and the import takes its answer. Six builds each in turn: the import's step 0.197 s before
+(0.191 to 0.208 s) and 0.162 s after (0.159 to 0.183 s), the shorter in every round. That is 0.035 s
+of every build that parses, less than whole builds resolve (kpp's part 8.6 s and 8.55 s).
+
 **Measured and left.**
 
 - **Numbers for local values.** The emitter makes a value's name before it writes the value's
@@ -1780,6 +1790,27 @@ cause, the 1.6 s above.
 - **The verifier**, 4.6% (section 8's question: off by default, on for kpp's own tests).
 - **No text at all** between codegen and LLVM (the IR built in memory): the parse is 30% of the back
   end's time, and writing the text is part of codegen's.
+
+**The clean build, from the study's start to here.** The compiler this study began with (section 8's:
+5bdcfe34b of 2026-11-23, kpp 0.2.1738, with the standard library of that commit) against master's
+(e6a09cfe4), on the same game (kpp-factorio 0c18a3229e): eight clean debug builds each in turn, the
+machine quiet (under 2.3% busy before each), medians:
+
+| | 5bdcfe34b | e6a09cfe4 | |
+|---|---:|---:|---:|
+| the build, from its start to its exit | 12.39 s | 10.34 s | -16.6% |
+| kpp's part of it | 10.1 s | 8.4 s | |
+| codegen | 5.35 s | 4.22 s | -21.2% |
+| LLVM after codegen | 2.49 s | 2.21 s | -11.1% |
+| the link | 1.7 s | 1.4 s | |
+| the IR | 1,710.7 MB | 1,573.4 MB | -8.0% |
+| CPU time of the build's processes | 236.3 s | 207.9 s | -12.0% |
+
+Every build with master's compiler (10.22 to 10.43 s) is shorter than every one with the older
+(12.12 to 12.48 s). Half a second of each is the six build.kpp files described again, only because
+the two compilers take turns (the description's key names the compiler): by kpp's own count, which
+leaves that out, a build is 9.8 s where it was 11.85 s. Between the two are master's 31 commits of
+those two days: sections 8 to 10's changes, and other threads' work.
 
 ## Reproduce
 

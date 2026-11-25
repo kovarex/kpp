@@ -28,6 +28,8 @@
   };
 
 
+  struct ImportToolchain; // (CImport.hpp, after this)
+
   // Everything one build made, from the files read to the resolved program. A compile server keeps
   // it for the next request: a request that changes only function bodies is built from it, the
   // changed bodies checked again and nothing else (docs/compile-speed.md, step 3b).
@@ -35,6 +37,9 @@
   {
     Options options;
     std::vector<SourceFile> files;
+    // clang asked for the C import's toolchain while the files are lexed and parsed (runParse takes it;
+    // after files: it reads them until it is taken or destroyed)
+    std::unique_ptr<ImportToolchain> importToolchain;
     std::vector<LexResult> lexed;
     std::unique_ptr<SymbolTable> symbols;
     std::unique_ptr<SourceConfiguration> configuration;

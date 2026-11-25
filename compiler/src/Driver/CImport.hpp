@@ -74,6 +74,34 @@
   std::string clangToolchain(const std::string& clang, const std::string& includeArgs);
 
 
+  // The target flags and include directories of an import's clang command line: the options' alone.
+  std::string importIncludeArgs(const Options& options);
+
+
+  // clangToolchain's answer asked for early. clang's own process takes 60 ms, which the import spent
+  // after the sources were parsed, with nothing else running. Made once the sources are read, this asks
+  // beside their lexing and parsing, on a thread of its own, when one of the sources has an import
+  // (`extern "C" import`, looked for on that thread: a program without one starts no clang).
+  // importCHeaders takes the answer. The sources stay as they are until take() or the destructor.
+  struct ImportToolchain
+  {
+    ImportToolchain(const std::vector<SourceFile>& files, const Options& options);
+    ~ImportToolchain();
+    ImportToolchain(const ImportToolchain&) = delete;
+    ImportToolchain& operator=(const ImportToolchain&) = delete;
+    // Waits for the thread; whether clang was asked, and the three below are importCHeaders' own.
+    bool take();
+
+    std::string clang;       // clangPath()
+    std::string includeArgs; // importIncludeArgs(options)
+    std::string toolchain;   // clangToolchain(clang, includeArgs)
+
+  private:
+    std::thread thread;
+    bool asked = false; // (the thread's, read after it is joined)
+  };
+
+
   // Whether two types are written alike: the same builtin type, the same name (no template
   // arguments), or const, volatile and pointers to such (sameWrittenType's whole rule: any other form
   // is another type here).
@@ -96,3 +124,6 @@
 
   void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                       SymbolTable& symbols, const Options& options);
+  // (with the toolchain asked for early, or null)
+  void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
+                      SymbolTable& symbols, const Options& options, ImportToolchain* early);

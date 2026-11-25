@@ -983,6 +983,11 @@ int compile(int argc, char** argv)
   }
   double collectTime = seconds(Clock::now() - startCollect);
 
+  // clang asked for the C import's toolchain beside the lexing and the parsing (ImportToolchain: 60 ms
+  // of a process of its own, which the import spent after the parse with nothing else running).
+  if (options.parse)
+    build->importToolchain = std::make_unique<ImportToolchain>(files, options);
+
   // Phase 1: lex everything in parallel.
   double bestLex = 1e9;
   FileStats total;

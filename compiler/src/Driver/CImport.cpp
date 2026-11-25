@@ -1069,8 +1069,73 @@ static bool isHeaderName(const std::string& path)
   return true;
 }
 
+std::string importIncludeArgs(const Options& options)
+{
+  // The include directories as absolute paths, in the key and on clang's command line: a relative
+  // `--cinclude native\include` names another directory in every worktree.
+  std::error_code ec;
+  // Another target's headers: clang preprocesses them for it, from its sysroot (in the key too).
+  std::string includeArgs = targetFlags(options);
+  if (!options.target.msvc() && !options.sysroot.empty())
+    includeArgs += " \"--sysroot=" + options.sysroot + "\"";
+  // glibc's headers as g++ and clang++ read them for C++ (libstdc++ needs _GNU_SOURCE): GNU's own
+  // functions (pthread_setname_np, which the game's Linux code calls) and GNU's variants where
+  // POSIX has another (strerror_r's char*), the declarations C++ code on Linux is written against
+  // (design.md, "Targets and hosts").
+  if (options.target.os == Target::Os::Linux)
+    includeArgs += " -D_GNU_SOURCE";
+  // Windows' headers found without case on a Linux or FreeBSD host, as on Windows (<Windows.h> of
+  // MinGW-w64's windows.h: source.cpp's headerCaseOverlay); nothing on a Windows host.
+  if (options.target.windows())
+    includeArgs += headerCaseOverlay(clangPath(), options.target.triple);
+  for (const std::string& dir : options.cIncludeDirs)
+  {
+    std::filesystem::path absolute = std::filesystem::absolute(dir, ec);
+    includeArgs += " -I\"" + (ec ? dir : absolute.lexically_normal().string()) + "\"";
+  }
+  return includeArgs;
+}
+
+ImportToolchain::ImportToolchain(const std::vector<SourceFile>& files, const Options& options)
+{
+  // (the options copied: the thread outlives no source, but the caller goes on with its own)
+  thread = std::thread([this, &files, options = options]
+  {
+    // An import as it is written, `extern "C" import "header.h";`. One spelled another way (a comment
+    // between the words) starts nothing here, and importCHeaders asks clang itself, as it did.
+    for (const SourceFile& file : files)
+      if (file.text.find("extern \"C\" import") != std::string::npos)
+      {
+        clang = clangPath();
+        includeArgs = importIncludeArgs(options);
+        toolchain = clangToolchain(clang, includeArgs);
+        asked = true;
+        return;
+      }
+  });
+}
+
+ImportToolchain::~ImportToolchain()
+{
+  if (thread.joinable())
+    thread.join();
+}
+
+bool ImportToolchain::take()
+{
+  if (thread.joinable())
+    thread.join();
+  return asked;
+}
+
 void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
                     SymbolTable& symbols, const Options& options)
+{
+  importCHeaders(files, lexed, parsed, symbols, options, nullptr);
+}
+
+void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
+                    SymbolTable& symbols, const Options& options, ImportToolchain* early)
 {
   std::vector<std::string> headers;
   std::vector<std::string> importedAt; // each header's first `extern "C" import`, `file:line`
@@ -1179,30 +1244,13 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     size_t start = text.find("__builtin_"), end = text.find('(', start);
     wrapper += "#ifndef " + text.substr(start, end - start) + "\n" + text + ";\n#endif\n";
   }
-  // The include directories as absolute paths, in the key and on clang's command line: a relative
-  // `--cinclude native\include` names another directory in every worktree.
+  // The target flags and include directories (importIncludeArgs), in the key and on clang's command
+  // line, and clang's own toolchain: asked for early (ImportToolchain) or now.
   std::error_code ec;
-  // Another target's headers: clang preprocesses them for it, from its sysroot (in the key too).
-  std::string includeArgs = targetFlags(options);
-  if (!options.target.msvc() && !options.sysroot.empty())
-    includeArgs += " \"--sysroot=" + options.sysroot + "\"";
-  // glibc's headers as g++ and clang++ read them for C++ (libstdc++ needs _GNU_SOURCE): GNU's own
-  // functions (pthread_setname_np, which the game's Linux code calls) and GNU's variants where
-  // POSIX has another (strerror_r's char*), the declarations C++ code on Linux is written against
-  // (design.md, "Targets and hosts").
-  if (options.target.os == Target::Os::Linux)
-    includeArgs += " -D_GNU_SOURCE";
-  // Windows' headers found without case on a Linux or FreeBSD host, as on Windows (<Windows.h> of
-  // MinGW-w64's windows.h: source.cpp's headerCaseOverlay); nothing on a Windows host.
-  if (options.target.windows())
-    includeArgs += headerCaseOverlay(clangPath(), options.target.triple);
-  for (const std::string& dir : options.cIncludeDirs)
-  {
-    std::filesystem::path absolute = std::filesystem::absolute(dir, ec);
-    includeArgs += " -I\"" + (ec ? dir : absolute.lexically_normal().string()) + "\"";
-  }
-  std::string clang = clangPath();
-  std::string toolchain = clangToolchain(clang, includeArgs);
+  bool asked = early && early->take();
+  std::string includeArgs = asked ? early->includeArgs : importIncludeArgs(options);
+  std::string clang = asked ? early->clang : clangPath();
+  std::string toolchain = asked ? early->toolchain : clangToolchain(clang, includeArgs);
   if (toolchain.find("clang version") == std::string::npos)
   {
     fprintf(stderr, "importing C headers failed: %s -v gave no version\n", clang.c_str());

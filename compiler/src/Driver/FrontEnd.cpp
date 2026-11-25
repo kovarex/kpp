@@ -319,7 +319,8 @@ void runParse(Build& build)
       }
   }
   lastImportsLine.clear();
-  importCHeaders(files, lexed, parsed, symbols, options);
+  importCHeaders(files, lexed, parsed, symbols, options, build.importToolchain.get());
+  build.importToolchain.reset(); // (joined: it read the files)
   build.importsLine = lastImportsLine;
   reportParse(build, parseTime);
   build.parseErrors += checkConfigEnumerations(build);
