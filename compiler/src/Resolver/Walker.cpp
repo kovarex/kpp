@@ -167,7 +167,7 @@ auto GlobalScope::Impl::Walker::reflectionElements(Node* list, bool withBases, s
   ReflectionList which = *reflectionListNamed(symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(list)->callee)->name.last().symbol));
   const Ty* cls = reflectedType(subject);
   dependent = cls && types.isDependent(cls);
-  if (!cls || cls->kind != TyKind::Class || dependent)
+  if (!cls || cls->kind != (which == ReflectionList::Enumerators ? TyKind::Enum : TyKind::Class) || dependent)
     return false;
   if (which == ReflectionList::Members && !withBases)
     if (ClassDecl* def = impl.classDefinition(cls); !def || !def->bases.empty())
@@ -182,7 +182,8 @@ auto GlobalScope::Impl::Walker::typeOfReflectionSize(MemberExpr* m) -> const Ty*
   std::vector<const Ty*> elements;
   bool dependent = false;
   if (!reflectionElements(m->base, true, elements, dependent) && !dependent && !inGenericTemplate())
-    reportHere(m->token, "members(T).size or methods(T).size of a type that is no class, or alternatives(U).size of one that is no typed union");
+    reportHere(m->token, "members(T).size or methods(T).size of a type that is no class, alternatives(U).size of one that is no typed union, or "
+                         "enumerators(E).size of one that is no enum");
   m->resolved = nullptr;
   ++stats.membersBound;
   return types.sizeType();
@@ -222,7 +223,9 @@ auto GlobalScope::Impl::Walker::typeOfReflectionIndex(IndexExpr* i) -> const Ty*
   std::string list(symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(i->base)->callee)->name.last().symbol));
   if (!known)
   {
-    reportHere(i->token, list == "alternatives" ? "alternatives(U)[i] of a type that is no typed union" : list + "(T)[i] of a type that is no class");
+    reportHere(i->token, list == "alternatives"  ? "alternatives(U)[i] of a type that is no typed union"
+                         : list == "enumerators" ? "enumerators(E)[i] of a type that is no enum"
+                                                 : list + "(T)[i] of a type that is no class");
     return unknown(Why::Unsupported);
   }
   std::optional<int64_t> at = impl.constEval(i->args[0], ctx());
@@ -236,7 +239,7 @@ auto GlobalScope::Impl::Walker::typeOfReflectionIndex(IndexExpr* i) -> const Ty*
   if (*at < 0 || uint64_t(*at) >= elements.size())
   {
     std::string named = types.toString(reflectedType(subject), &symbols);
-    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" || list == "ownMembers" ? "member" : list == "methods" ? "method" : "alternative") +
+    reportHere(i->token, list + "(" + named + ")[" + std::to_string(*at) + "] is past its last " + (list == "members" || list == "ownMembers" ? "member" : list == "methods" ? "method" : list == "enumerators" ? "value" : "alternative") +
                            ": " + named + " has " + std::to_string(elements.size()));
     return unknown(Why::Unsupported);
   }
@@ -868,10 +871,18 @@ auto GlobalScope::Impl::Walker::statementEnds(Stmt* s, EndFlow& flow) -> bool
       // element has its own copy of `case a.tag: S`; elsewhere the one body, walked per alternative, says it: a return or
       // a throw ends it in every alternative, an S that ends in none (`this[].f();`, coordinator 2026-11-23: no error
       // was given) ends it in none. One that ends by a call ([[noreturn]] in the alternative walked last) is not judged:
-      // each alternative's callee may differ.
+      // each alternative's callee may differ. `switch (value) { for constexpr (auto e : enumerators(E)) case e.value: S }`
+      // over a kpp enum likewise names every value (design.md 8.3), and any other value aborts there, as in any switch on it.
+      auto kppEnumSwitched = [&]() {
+        Expr* ce = w->cond && uint8_t(w->cond->kind) >= uint8_t(NodeKind::NameExpr) ? strip(static_cast<Expr*>(w->cond)) : nullptr;
+        const Ty* ct = ce && ce->ty && ce->ty->isKnown() ? types.unqualified(types.stripRef(ce->ty)) : nullptr;
+        Decl* def = ct && ct->kind == TyKind::Enum ? ct->decl : nullptr;
+        return def && def->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(def)->isKpp;
+      };
       if (static_cast<BlockStmt*>(w->body)->stmts.size() == 1 && static_cast<BlockStmt*>(w->body)->stmts[0]->kind == NodeKind::ForConstexprStmt)
         if (auto* fc = static_cast<ForConstexprStmt*>(static_cast<BlockStmt*>(w->body)->stmts[0]); reflectionSubject(fc->list) &&
-            symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(fc->list)->callee)->name.last().symbol) == "alternatives")
+            (symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(fc->list)->callee)->name.last().symbol) == "alternatives" ||
+             (symbols.name(static_cast<NameExpr*>(static_cast<CallExpr*>(fc->list)->callee)->name.last().symbol) == "enumerators" && kppEnumSwitched())))
         {
           auto caseStatement = [](Stmt* b) -> Stmt* {
             return b && b->kind == NodeKind::BlockStmt && static_cast<BlockStmt*>(b)->stmts.size() == 2 && static_cast<BlockStmt*>(b)->stmts[0]->kind == NodeKind::CaseStmt
@@ -4527,6 +4538,14 @@ auto GlobalScope::Impl::Walker::typeOfMember(MemberExpr* m) -> const Ty*
     std::string_view which = symbols.name(symbol);
     if (which == "name")
       return types.pointer(types.qualified(types.charType(), true, false));
+    if (descriptor->decl && descriptor->decl->kind == NodeKind::EnumeratorDecl)
+    {
+      // A descriptor of enumerators(E) (design.md 8.3): e.value, the enumerator's value, a constant of E.
+      if (which == "value")
+        return descriptor->inner ? descriptor->inner : types.unknown();
+      reportHere(m->token, "an enumerator's descriptor has name and value only");
+      return unknown(Why::Member);
+    }
     if (descriptor->decl && descriptor->decl->kind == NodeKind::FunctionDecl)
     {
       // A descriptor of methods(T) (design.md 8.3): f.pointer, the pointer to the member function, a constant; f.isNoDiscard;

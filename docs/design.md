@@ -696,7 +696,22 @@ Done 2026-10-25: `for constexpr (auto m : members(T))` with `m.name`, `m.offset`
 `object.[m]` (bases' members first, then the class's own, in declaration order; a member
 descriptor is a compile-time value the loop binds, like a template argument). Done 2026-10-29:
 `m.type`, written where a type is (`m.type copy = object.[m];`), and `alternatives(U)` (8.5). Not
-yet: `enumerators(E)`, comparing types with `==` in `if constexpr`.
+yet: comparing types with `==` in `if constexpr`.
+*enumerators(E)* (kovarex, 2026-11-25, option B of the "Generated enum name strings" study: the game's hand-written
+name switches replaced by std::snakeName / std::kebabName, docs/stdlib/enumnames.md, built on it): an enum's values in
+declaration order, one entry per value, its first enumerator (as the generated str() names a value: `Last = Blue`
+adds none), in the forms members(T) has: `for constexpr (auto e : enumerators(E))`, `enumerators(E)[i]`,
+`enumerators(E).size`. Each `e` has `e.name`, the enumerator's name as a string literal, a constant expression, and
+`e.value`, its value as E, a constant (a case label, a template argument, `if constexpr`). Nothing else ("an
+enumerator's descriptor has name and value only"). `switch (value) { for constexpr (auto e : enumerators(E)) case
+e.value: S }` over a kpp enum names every value, so a function ending in it where each S returns ends there. A
+`static constexpr` in the body is the element's own (8.2), so `case e.value: { static constexpr auto text =
+make(e.name); return text.chars; }` keeps one constant per enumerator. Any enum declared in kpp or imported, not an
+enumeration of a class template's instance (codegen error); of a type that is no enum it is an error, as members(T)'s
+of one that is no class. Specs kpp/reflection_enumerators, reflection_enumerator_name_builds_constant_text,
+reflection_enumerators_of_a_type_that_is_no_enum_is_error.
+e.name and e.value in a constexpr function's for constexpr are each element's, as m.name is (descriptorTypeOf); spec
+kpp/reflection_descriptor_per_element_in_constexpr_function covers every descriptor kind.
 *m.initializer* (kovarex, 2026-11-21, for InputActionTestMaker's VariableToCode: "you read the defaults by constructing
 the whole class"): the member's default value alone, a prvalue of `m.type`, made in a temporary of its own without the
 object: its default member initializer as typed for the class (a class template's instance's, evaluated at each use: a

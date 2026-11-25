@@ -1080,14 +1080,16 @@ static_assert(twice(4) == 8);
   `object.[m]`; `members(T)[i]` (the i-th descriptor anywhere, not only in a loop) and `members(T).size`; `ownMembers(T)`, T's own members without
   its bases', in the same forms; `object.[m]` reads a private or protected member too (the descriptor is the permission); `methods(T)`, the
   public member functions declared in T, with `f.name`, `f.pointer` (the pointer to it, a constant usable as a template
-  argument), `f.isNoDiscard` and `f.parameterNames` (its parameters' names, for a binding's error messages), in the same forms; `nameof(x)`; `qualifiednameof(T)`, a type as source names it (a template's instance by its alias closest to the global scope, `EntityID`). C++26 has
+  argument), `f.isNoDiscard` and `f.parameterNames` (its parameters' names, for a binding's error messages), in the same forms; `enumerators(E)`, an enum's values (one entry per value) with
+  `e.name` and `e.value`, in the same forms (C++26's `enumerators_of`); `nameof(x)`; `qualifiednameof(T)`, a type as source names it (a template's instance by its alias closest to the global scope, `EntityID`). C++26 has
   `has_default_member_initializer` but no way to read the value, and C++ has no portable type name. Inside functions today, not yet at
   namespace or class scope.
 - **Why:** save, load and display are written once per class, without X-macros; methods(T) lets a binding (the game's
-  LuaBinder) register a class's functions from the functions themselves.
+  LuaBinder) register a class's functions from the functions themselves; enumerators(E) makes an enum's name strings
+  (std::snakeName, std::kebabName) at compile time instead of a hand-written switch per enum.
 - **See:** [design 8][d8]; specs `kpp/for_constexpr_types`, `kpp/reflection_members`, `kpp/nameof`,
-  `kpp/reflection_member_initializer`, `kpp/reflection_member_index`, `kpp/reflection_methods`, `kpp/qualifiednameof`,
-  `kpp/qualifiednameof_alias`.
+  `kpp/reflection_member_initializer`, `kpp/reflection_member_index`, `kpp/reflection_methods`, `kpp/reflection_enumerators`,
+  `kpp/qualifiednameof`, `kpp/qualifiednameof_alias`.
 
 ```cpp
 for constexpr (auto m : members(T))

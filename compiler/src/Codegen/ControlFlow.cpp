@@ -8,7 +8,7 @@ auto codegen::Emitter::isTypesList(const NamedType* n) -> bool
   return n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && sym(n->name.parts[0].symbol) == "types";
 }
 
-auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* methods, bool* own) -> Expr*
+auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* methods, bool* own, bool* enumerators) -> Expr*
 {
   if (!list || list->kind != NodeKind::CallExpr)
     return nullptr;
@@ -19,7 +19,7 @@ auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* m
   if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
     return nullptr;
   std::string which = sym(name.parts[0].symbol);
-  if (which != "members" && which != "alternatives" && which != "methods" && which != "ownMembers")
+  if (which != "members" && which != "alternatives" && which != "methods" && which != "ownMembers" && which != "enumerators")
     return nullptr;
   if (own)
     *own = which == "ownMembers";
@@ -27,6 +27,8 @@ auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* m
     *alternatives = which == "alternatives";
   if (methods)
     *methods = which == "methods";
+  if (enumerators)
+    *enumerators = which == "enumerators";
   return c->args[0];
 }
 
@@ -165,6 +167,26 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
       elements.push_back(types.valueType(elementTy, *v));
     }
   }
+  else if (bool enumerators = false; reflectionSubject(list, nullptr, nullptr, nullptr, &enumerators) && enumerators)
+  {
+    // `enumerators(E)`: an enum's values, the first enumerator of each, in declaration order (design.md 8.3).
+    if (var->isType)
+      unsupported(f, "enumerators(E) for a for constexpr type variable");
+    Expr* subject = reflectionSubject(list);
+    const Ty* e = nullptr;
+    if (subject->kind == NodeKind::NameExpr)
+    {
+      NamedType tmp{};
+      tmp.kind = NodeKind::NamedType;
+      tmp.name = static_cast<NameExpr*>(subject)->name;
+      e = global.typeOfAstIn(&tmp, currentFunction, original);
+    }
+    e = e ? types.unqualified(types.stripRef(e)) : nullptr;
+    if (!e || e->kind != TyKind::Enum)
+      unsupported(f, "enumerators(E) where E is not an enum");
+    if (!global.enumeratorDescriptorsOf(e, elements))
+      unsupported(f, "enumerators(E) of an enum whose values the compiler cannot list");
+  }
   else if (bool alternatives = false, methods = false, own = false; Expr* subject = reflectionSubject(list, &alternatives, &methods, &own))
   {
     // `members(T)`: T's non-static data members, bases first, in declaration order; `ownMembers(T)` the ones T declares;
@@ -205,7 +227,7 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
       collectMembers(cls, elements, f, 0, !own); // (ownMembers(T): T's own members alone, without its bases', design.md 8.3)
   }
   else
-    unsupported(f, "a for constexpr list that is neither types<...>, members(T), alternatives(U) nor a brace list of constants");
+    unsupported(f, "a for constexpr list that is neither types<...>, members(T), methods(T), alternatives(U), enumerators(E) nor a brace list of constants");
   const TemplateArgs* savedArgs = currentArgs;
   // Each element re-types the statements down to the loop and the loop, not the whole function: a loop of n elements
   // in a function of size m cost n * m before (kovarex, 2026-11-17: 400 alternatives beside a 2,000-case switch, 0.47 s

@@ -709,6 +709,16 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         // A reflection descriptor: m.name is the member's name, m.offset its offset in the class;
         // an alternative's (alternatives(U)) a.name is the alternative's, a.tag its tag value.
         std::string which = m->member.empty() ? std::string() : sym(m->member.last().symbol);
+        if (bt->decl && bt->decl->kind == NodeKind::EnumeratorDecl)
+        {
+          // An enumerator's (enumerators(E), design.md 8.3): e.name, and e.value, its value as E.
+          auto* en = static_cast<EnumeratorDecl*>(bt->decl);
+          if (which == "name")
+            return {cStringConstant(sym(en->name)), e->ty};
+          if (which == "value")
+            return {std::to_string(enumeratorNamed(en, e)), bt->inner};
+          unsupported(e, "an enumerator's descriptor has name and value only");
+        }
         if (bt->decl && bt->decl->kind == NodeKind::FunctionDecl)
         {
           // A method's (methods(T), design.md 8.3): f.name, f.isNoDiscard, f.parameterNames, and f.pointer, what `&T::f` is here.

@@ -1,0 +1,53 @@
+// spec: a constexpr function over e.name builds a new text at compile time, kept as constant data by a static constexpr variable in the for constexpr's body (one per element), and a switch returns it: the name strings of an enum generated from its enumerators, with no code run at startup
+// design.md 8.3 (kovarex, 2026-11-25: generated snake_case and kebab-case names in place of hand-written switches)
+enum class AlertType : u8
+{
+  { ENTITY_DESTROYED, TURRET_FIRE, CUSTOM }
+};
+
+enum class Mode : u8 { RuntimeGlobal, GUIElement };
+
+template<u64 N> struct Text { char chars[N]; };
+
+constexpr u64 lowerLength(const char* name)
+{
+  u64 n = 0;
+  for (u64 i = 0; name[i] != 0; ++i)
+    n += 1 + (i > 0 && name[i] >= 'A' && name[i] <= 'Z' && name[i - 1] >= 'a' && name[i - 1] <= 'z');
+  return n;
+}
+
+template<u64 N> constexpr Text<N> lowered(const char* name, char separator)
+{
+  Text<N> out = {};
+  u64 n = 0;
+  for (u64 i = 0; name[i] != 0; ++i)
+  {
+    char c = name[i];
+    if (i > 0 && c >= 'A' && c <= 'Z' && name[i - 1] >= 'a' && name[i - 1] <= 'z')
+      out.chars[n++] = separator;
+    out.chars[n++] = c == '_' ? separator : c >= 'A' && c <= 'Z' ? char(c - 'A' + 'a') : c;
+  }
+  return out;
+}
+
+template<typename E> const char* kebabName(E value)
+{
+  switch (value)
+  {
+    for constexpr (auto e : enumerators(E))
+      case e.value:
+      {
+        static constexpr Text<lowerLength(e.name) + 1> text = lowered<lowerLength(e.name) + 1>(e.name, '-');
+        return text.chars;
+      }
+  }
+}
+
+int main()
+{
+  std::println(kebabName(AlertType::ENTITY_DESTROYED), " ", kebabName(AlertType::TURRET_FIRE), " ", kebabName(AlertType::CUSTOM));
+  std::println(kebabName(Mode::RuntimeGlobal), " ", kebabName(Mode::GUIElement));
+  std::println(kebabName(Mode::GUIElement) == kebabName(Mode::GUIElement));
+  return 0;
+}

@@ -1950,6 +1950,11 @@ bool GlobalScope::methodDescriptorsOf(const Ty* cls, std::vector<const Ty*>& out
   return impl->reflectedElementsOf(cls, Impl::ReflectionList::Methods, out, 0);
 }
 
+bool GlobalScope::enumeratorDescriptorsOf(const Ty* enumType, std::vector<const Ty*>& out)
+{
+  return impl->enumeratorDescriptorsOf(enumType, out, 0);
+}
+
 const Ty* GlobalScope::templateArgumentIn(Node* arg, Decl* param, Decl* context, const TemplateArgs& args)
 {
   return inTypeContextOf(arg, param, true, context, args);

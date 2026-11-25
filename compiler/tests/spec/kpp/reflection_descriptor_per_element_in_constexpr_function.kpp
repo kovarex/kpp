@@ -1,0 +1,77 @@
+// spec: a for constexpr in a constexpr function reads each element's own descriptor (m.name, m.hasInitializer, a.name, a.tag, f.name, e.name, e.value), not the last element's for every element (2026-11-25: members(T)'s names all read the last member's name, silently)
+// design.md 8.2, 8.3
+struct Pos
+{
+  i32 xxxxx = 1;
+  i32 yy;
+  i32 z = 3;
+};
+
+struct Walking { i32 steps; };
+struct Waiting { i32 ticks; };
+union enum State : u8
+{
+  { {Walk, Walking}, {WaitLonger, Waiting}, {Run, Walking} }
+};
+
+class Api
+{
+public:
+  i32 readWeight() { return 5; }
+  i32 x() { return 1; }
+};
+
+enum class Side : u8 { { Left, Right = 4, Up } };
+
+constexpr u64 longestMember()
+{
+  u64 longest = 0;
+  for constexpr (auto m : members(Pos))
+    if (std::StringView(m.name).size() > longest)
+      longest = std::StringView(m.name).size();
+  return longest;
+}
+
+constexpr u64 initialized()
+{
+  u64 n = 0;
+  for constexpr (auto m : members(Pos))
+    n += m.hasInitializer;
+  return n;
+}
+
+constexpr u64 alternativeLetters()
+{
+  u64 n = 0;
+  for constexpr (auto a : alternatives(State))
+    n += std::StringView(a.name).size() * (u64(a.tag) + 1);
+  return n;
+}
+
+constexpr u64 methodLetters()
+{
+  u64 n = 0;
+  for constexpr (auto f : methods(Api))
+    n = n * 100 + std::StringView(f.name).size();
+  return n;
+}
+
+constexpr i32 enumeratorSum()
+{
+  i32 n = 0;
+  for constexpr (auto e : enumerators(Side))
+    n = n * 100 + i32(std::StringView(e.name).size()) * 10 + i32(Side::UnderlyingType(e.value));
+  return n;
+}
+
+static_assert(longestMember() == 5);
+static_assert(initialized() == 2);
+static_assert(alternativeLetters() == 4 + 10 * 2 + 3 * 3);
+static_assert(methodLetters() == 1001);
+static_assert(enumeratorSum() == 405425);
+
+int main()
+{
+  std::println(longestMember(), " ", initialized(), " ", alternativeLetters(), " ", methodLetters(), " ", enumeratorSum());
+  return 0;
+}

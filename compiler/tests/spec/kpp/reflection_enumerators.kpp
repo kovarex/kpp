@@ -1,0 +1,44 @@
+// spec: enumerators(E) lists an enum's values in declaration order, one entry per value (the first enumerator of it, as str() names a value), each e with e.name (a string literal, a constant) and e.value (the value, a constant of E); in the forms members(T) has: for constexpr, enumerators(E)[i], enumerators(E).size; `case e.value:` in a switch's for constexpr names every value, and an enum written as C++ writes it is listed too
+// design.md 8.3 (kovarex, 2026-11-25: name strings generated from the enumerators, compile time)
+enum class Direction : u8
+{
+  { North, East, South, West, None = 7, Last = 3 }
+};
+
+enum class Sparse : i32 { Low = -2, High = 40, AlsoLow = -2 };
+
+constexpr u64 longestName()
+{
+  u64 longest = 0;
+  for constexpr (auto e : enumerators(Direction))
+    if (std::StringView(e.name).size() > longest)
+      longest = std::StringView(e.name).size();
+  return longest;
+}
+
+static_assert(enumerators(Direction).size == 5);
+static_assert(std::StringView(enumerators(Direction)[4].name) == "None");
+static_assert(enumerators(Direction)[3].value == Direction::West);
+static_assert(longestName() == 5);
+
+template<typename E> const char* nameOf(E value)
+{
+  switch (value)
+  {
+    for constexpr (auto e : enumerators(E))
+      case e.value: return e.name;
+  }
+}
+
+template<typename E> u64 count() { return enumerators(E).size; }
+
+int main()
+{
+  for constexpr (auto e : enumerators(Direction))
+    std::println(e.name, " = ", Direction::UnderlyingType(e.value));
+  for constexpr (auto e : enumerators(Sparse))
+    std::println(e.name, " = ", Sparse::UnderlyingType(e.value));
+  std::println(nameOf(Direction::South), " ", nameOf(Direction::Last), " ", nameOf(Sparse::AlsoLow));
+  std::println(count<Direction>(), " ", count<Sparse>(), " ", enumerators(Sparse)[1].name);
+  return 0;
+}
