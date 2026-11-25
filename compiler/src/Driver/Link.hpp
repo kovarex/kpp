@@ -49,5 +49,3 @@
 
   // Splits a flag string on spaces, keeping quoted paths whole (without the quotes).
   std::vector<std::string> splitFlags(const std::string& text);
-  void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexed, std::vector<std::unique_ptr<ParsedFile>>& parsed,
-                      SymbolTable& symbols, const Options& options);
