@@ -1,0 +1,221 @@
+// spec: a compile server's build drops, with a function made on demand that an edit left unreached, what only that function named, as a build from scratch makes none of it: an instance only it called (scaled<int32>, called by total<int32> alone), an instance that names itself (countDown<int32>, recursive), two that name each other and that nothing else names (ping<int32> and pong<int32>), and one with a static local (tally<int32>: its static goes with it). All called again, each is made anew, the static local with its function (2026-11-25, with kpp/server_instance_member_function_no_longer_called)
+//--- step: the program
+template<class T> T scaled(T x, i32 by)
+{
+  T result = 0;
+  for (i32 i = 0; i < by; ++i)
+    result += x;
+  return result;
+}
+template<class T> T total(T x)
+{
+  T sum = 0;
+  for (i32 i = 1; i <= 3; ++i)
+    sum += scaled(x, i);
+  return sum;
+}
+template<class T> T countDown(T x)
+{
+  T steps = 0;
+  for (T left = x; left > 0; --left)
+    ++steps;
+  if (x > 0)
+    steps += countDown(x - 1);
+  return steps;
+}
+template<class T> T ping(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 1; ++i)
+    ++hops;
+  if (x > 0)
+    hops += pong(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T pong(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++hops;
+  if (x > 0)
+    hops += ping(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T tally(T x)
+{
+  static i32 calls = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++calls;
+  return x + calls;
+}
+int main()
+{
+  std::println(total(2), " ", countDown(3), " ", ping(4), " ", tally(1));
+  return 0;
+}
+// expect: 12 6 6 3
+//--- step: none of them called
+template<class T> T scaled(T x, i32 by)
+{
+  T result = 0;
+  for (i32 i = 0; i < by; ++i)
+    result += x;
+  return result;
+}
+template<class T> T total(T x)
+{
+  T sum = 0;
+  for (i32 i = 1; i <= 3; ++i)
+    sum += scaled(x, i);
+  return sum;
+}
+template<class T> T countDown(T x)
+{
+  T steps = 0;
+  for (T left = x; left > 0; --left)
+    ++steps;
+  if (x > 0)
+    steps += countDown(x - 1);
+  return steps;
+}
+template<class T> T ping(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 1; ++i)
+    ++hops;
+  if (x > 0)
+    hops += pong(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T pong(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++hops;
+  if (x > 0)
+    hops += ping(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T tally(T x)
+{
+  static i32 calls = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++calls;
+  return x + calls;
+}
+int main()
+{
+  std::println(7);
+  return 0;
+}
+// expect: 7
+//--- step: all called again
+template<class T> T scaled(T x, i32 by)
+{
+  T result = 0;
+  for (i32 i = 0; i < by; ++i)
+    result += x;
+  return result;
+}
+template<class T> T total(T x)
+{
+  T sum = 0;
+  for (i32 i = 1; i <= 3; ++i)
+    sum += scaled(x, i);
+  return sum;
+}
+template<class T> T countDown(T x)
+{
+  T steps = 0;
+  for (T left = x; left > 0; --left)
+    ++steps;
+  if (x > 0)
+    steps += countDown(x - 1);
+  return steps;
+}
+template<class T> T ping(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 1; ++i)
+    ++hops;
+  if (x > 0)
+    hops += pong(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T pong(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++hops;
+  if (x > 0)
+    hops += ping(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T tally(T x)
+{
+  static i32 calls = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++calls;
+  return x + calls;
+}
+int main()
+{
+  std::println(total(2), " ", countDown(3), " ", ping(4), " ", tally(1));
+  return 0;
+}
+// expect: 12 6 6 3
+//--- step: the chain and the pair alone
+template<class T> T scaled(T x, i32 by)
+{
+  T result = 0;
+  for (i32 i = 0; i < by; ++i)
+    result += x;
+  return result;
+}
+template<class T> T total(T x)
+{
+  T sum = 0;
+  for (i32 i = 1; i <= 3; ++i)
+    sum += scaled(x, i);
+  return sum;
+}
+template<class T> T countDown(T x)
+{
+  T steps = 0;
+  for (T left = x; left > 0; --left)
+    ++steps;
+  if (x > 0)
+    steps += countDown(x - 1);
+  return steps;
+}
+template<class T> T ping(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 1; ++i)
+    ++hops;
+  if (x > 0)
+    hops += pong(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T pong(T x)
+{
+  T hops = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++hops;
+  if (x > 0)
+    hops += ping(x - 1);
+  return x > 0 ? hops : 0;
+}
+template<class T> T tally(T x)
+{
+  static i32 calls = 0;
+  for (i32 i = 0; i < 2; ++i)
+    ++calls;
+  return x + calls;
+}
+int main()
+{
+  std::println(total(2), " ", ping(4));
+  return 0;
+}
+// expect: 12 6

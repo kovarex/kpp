@@ -1561,6 +1561,50 @@ it; a layout's field held in an array counts as held, `RowCell cells[2]`, B's re
 scratch), and a local of a class instance the program did not have added and taken out (codegen in full
 before).
 
+**A function made on demand that an edit leaves unreached is dropped (2026-11-25).** The resolver drops
+an instance nobody asks for; codegen kept the function it had emitted for it (only an instance made for
+an old lambda's closure went, and one made trivial). So an edit that took out the last call of a function
+template's instance, or of a member function of a class template's instance, left that function in the
+server's build: the program right, its code not a build from scratch's (`--verify-incremental`: "what it
+wrote differs"). Found through the debug information's member function lists (docs/debugging.md), whose
+test stopped calling one. The resolver's records do not decide what goes (they need not hold every use
+codegen makes, above); codegen's own texts do. A function made on demand (`Shared::requested`: a
+template's instance, a member function of a class template's instance, a defaulted function, a local
+class's member function, a C header's inline function) is in a build from scratch when a text that build
+emits names it. So once a rebuild has emitted its functions, it takes the names its dropped texts used
+that no definition emitted now uses, and when one of them is such a function it asks every text what
+reaches what (`unreachedOnDemand`: each definition's recorded names, the owned entries, the modules' own
+declarations, the shared texts, the startup list, and the vtables of the classes that are laid out: a
+class's layout is what asks for the functions its vtables name, so a destructor defaulted in a
+polymorphic class is made when the class is laid out, constructed anywhere or not). Reached is what a
+text of no such function names, and what a reached one's texts name: a function that names itself, or
+two that name each other, are not reached by that. The unreached ones go in a rebuild of their own that follows at once (`rebuildLLVM`), as
+a removed function does: with their lambdas' operators, their static locals, the instances made for their
+closures and the layouts only they used, and their names released, so that a later use makes them anew.
+The first rebuild assembles no module, the second those that either changed. The pass over every
+definition runs only when a name was lost: an edit that keeps the calls it had asks nothing. The other
+half is checked in every run of the specification (with the barrier check, `KPP_CHECK_BARRIER`): a build
+from scratch has no function made on demand that its texts do not reach, or the server would drop what a
+build from scratch makes. Specs kpp/server_instance_member_function_no_longer_called,
+kpp/server_function_template_instance_no_longer_called,
+kpp/server_unreached_instance_takes_what_only_it_named (an instance only the dropped one called, a
+recursive one, a pair, one with a static local), kpp/server_unreached_instance_with_lambdas and
+kpp/server_unreached_instance_holding_a_function_object; each failed at the step that stops calling,
+with the compiler of 87b8d9481.
+
+With `--debug-info` a second thing stayed: the debug definition of a class that an edit stopped using. A
+build from scratch defines the classes that are laid out (Emitter::homeDebugClasses); a rebuild dropped
+the layout of a class nothing used any more and kept its definition in its home module. The definition
+now goes with the layout, and the home is assembled again; a class laid out again by the same build (an
+edited function's lambda held in a class instance, which has the name it had) is defined again, its home
+assembled only when the definition changed. Specs kpp/server_class_no_longer_used (failed with
+`--debug-info` before) and kpp/server_class_instance_no_longer_used (failed in every configuration: its
+member functions stayed too).
+
+Left as it was: a helper of the shared definitions (a destructor's, a copy's) whose last use an edit
+takes out stays; so do the virtual functions of a polymorphic class instance that an edit stops using
+(the class's vtable names them, in the module that stored it, and their definitions hold its layout).
+
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
 1.01 to 1.07 s on the game (timed around `build.codegen.reset()`, 4 builds). The replaced session is

@@ -118,7 +118,9 @@ Nothing runs (macOS programs run on CI's macOS runners, design.md Q5). Skipped a
 import argparse, hashlib, os, platform, re, shlex, shutil, subprocess, sys, concurrent.futures, time
 
 # Streaming's barrier check in codegen (KPP_CHECK_BARRIER, docs/codegen-speed.md), on for every
-# snippet built here, spec.cmd's or not, until program pieces rely on it.
+# snippet built here, spec.cmd's or not, until program pieces rely on it. With it codegen also checks
+# that a build from scratch has no function made on demand that its texts do not reach, which a compile
+# server's drop of the unreached ones relies on (docs/compile-speed.md): it stays on for that.
 os.environ.setdefault("KPP_CHECK_BARRIER", "1")
 
 HERE = os.path.dirname(os.path.abspath(__file__))

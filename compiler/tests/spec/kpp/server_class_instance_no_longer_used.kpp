@@ -1,0 +1,105 @@
+// spec: a compile server's build after an edit that stops using a class template's instance is what a build from scratch gives: the instance's member functions are functions made on demand that no text reaches, so they go (kpp/server_instance_member_function_no_longer_called), its layout goes as a build from scratch never lays it out, and with --debug-info its debug definition goes with the layout (kpp/server_class_no_longer_used); used again, all of it is made anew (2026-11-25)
+//--- step: the program
+template<class T> struct Counter
+{
+  T count = 0;
+  void add(T by)
+  {
+    for (i32 i = 0; i < 2; ++i)
+      this.count += by;
+  }
+  T doubled() const
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += this.count;
+    return sum;
+  }
+};
+int main()
+{
+  Counter<i32> a;
+  a.add(3);
+  Counter<i64> b;
+  b.add(5);
+  std::println(a.doubled(), " ", b.doubled());
+  return 0;
+}
+// expect: 12 20
+//--- step: one instance used no more
+template<class T> struct Counter
+{
+  T count = 0;
+  void add(T by)
+  {
+    for (i32 i = 0; i < 2; ++i)
+      this.count += by;
+  }
+  T doubled() const
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += this.count;
+    return sum;
+  }
+};
+int main()
+{
+  Counter<i32> a;
+  a.add(3);
+  std::println(a.doubled());
+  return 0;
+}
+// expect: 12
+//--- step: both again
+template<class T> struct Counter
+{
+  T count = 0;
+  void add(T by)
+  {
+    for (i32 i = 0; i < 2; ++i)
+      this.count += by;
+  }
+  T doubled() const
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += this.count;
+    return sum;
+  }
+};
+int main()
+{
+  Counter<i32> a;
+  a.add(3);
+  Counter<i64> b;
+  b.add(5);
+  std::println(a.doubled(), " ", b.doubled());
+  return 0;
+}
+// expect: 12 20
+//--- step: the other alone
+template<class T> struct Counter
+{
+  T count = 0;
+  void add(T by)
+  {
+    for (i32 i = 0; i < 2; ++i)
+      this.count += by;
+  }
+  T doubled() const
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += this.count;
+    return sum;
+  }
+};
+int main()
+{
+  Counter<i64> b;
+  b.add(5);
+  std::println(b.doubled());
+  return 0;
+}
+// expect: 20

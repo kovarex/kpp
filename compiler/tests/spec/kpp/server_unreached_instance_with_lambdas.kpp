@@ -1,0 +1,169 @@
+// spec: a compile server's build drops a function made on demand that an edit left unreached with the lambdas written in it and the instances made for their closures, as a build from scratch makes none of them: a function template's instance whose lambda it passes to another template (bumped<int32>, its lambda's call operator, applyTwice of that closure), and a member function of a class template's instance that does the same (Scaler<int32>::scale). Called again, each is made anew with its lambda; the closures have the names a build from scratch gives them (2026-11-25, with kpp/server_instance_member_function_no_longer_called)
+//--- step: the program
+template<class F> i32 applyTwice(F f, i32 x)
+{
+  i32 result = x;
+  for (i32 i = 0; i < 2; ++i)
+    result = f(result);
+  return result;
+}
+template<class T> T bumped(T x)
+{
+  T step = 3;
+  auto add = [step](T v)
+  {
+    T sum = v;
+    for (i32 i = 0; i < 1; ++i)
+      sum += step;
+    return sum;
+  };
+  return applyTwice(add, x);
+}
+template<class T> struct Scaler
+{
+  T factor;
+  T scale(T x) const
+  {
+    auto times = [&this](T v)
+    {
+      T sum = 0;
+      for (i32 i = 0; i < this.factor; ++i)
+        sum += v;
+      return sum;
+    };
+    return applyTwice(times, x);
+  }
+};
+int main()
+{
+  Scaler<i32> s{2};
+  std::println(bumped(5), " ", s.scale(3));
+  return 0;
+}
+// expect: 11 12
+//--- step: the function template's instance called no more
+template<class F> i32 applyTwice(F f, i32 x)
+{
+  i32 result = x;
+  for (i32 i = 0; i < 2; ++i)
+    result = f(result);
+  return result;
+}
+template<class T> T bumped(T x)
+{
+  T step = 3;
+  auto add = [step](T v)
+  {
+    T sum = v;
+    for (i32 i = 0; i < 1; ++i)
+      sum += step;
+    return sum;
+  };
+  return applyTwice(add, x);
+}
+template<class T> struct Scaler
+{
+  T factor;
+  T scale(T x) const
+  {
+    auto times = [&this](T v)
+    {
+      T sum = 0;
+      for (i32 i = 0; i < this.factor; ++i)
+        sum += v;
+      return sum;
+    };
+    return applyTwice(times, x);
+  }
+};
+int main()
+{
+  Scaler<i32> s{2};
+  std::println(s.scale(3));
+  return 0;
+}
+// expect: 12
+//--- step: the member function called no more either
+template<class F> i32 applyTwice(F f, i32 x)
+{
+  i32 result = x;
+  for (i32 i = 0; i < 2; ++i)
+    result = f(result);
+  return result;
+}
+template<class T> T bumped(T x)
+{
+  T step = 3;
+  auto add = [step](T v)
+  {
+    T sum = v;
+    for (i32 i = 0; i < 1; ++i)
+      sum += step;
+    return sum;
+  };
+  return applyTwice(add, x);
+}
+template<class T> struct Scaler
+{
+  T factor;
+  T scale(T x) const
+  {
+    auto times = [&this](T v)
+    {
+      T sum = 0;
+      for (i32 i = 0; i < this.factor; ++i)
+        sum += v;
+      return sum;
+    };
+    return applyTwice(times, x);
+  }
+};
+int main()
+{
+  Scaler<i32> s{2};
+  std::println(s.factor);
+  return 0;
+}
+// expect: 2
+//--- step: both called again
+template<class F> i32 applyTwice(F f, i32 x)
+{
+  i32 result = x;
+  for (i32 i = 0; i < 2; ++i)
+    result = f(result);
+  return result;
+}
+template<class T> T bumped(T x)
+{
+  T step = 3;
+  auto add = [step](T v)
+  {
+    T sum = v;
+    for (i32 i = 0; i < 1; ++i)
+      sum += step;
+    return sum;
+  };
+  return applyTwice(add, x);
+}
+template<class T> struct Scaler
+{
+  T factor;
+  T scale(T x) const
+  {
+    auto times = [&this](T v)
+    {
+      T sum = 0;
+      for (i32 i = 0; i < this.factor; ++i)
+        sum += v;
+      return sum;
+    };
+    return applyTwice(times, x);
+  }
+};
+int main()
+{
+  Scaler<i32> s{2};
+  std::println(bumped(5), " ", s.scale(3));
+  return 0;
+}
+// expect: 11 12

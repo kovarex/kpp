@@ -493,7 +493,9 @@ void runCodegen(Build& build)
                  : cg.failed()        ? "codegen: the session kept across " + std::to_string(cg.errors.size() + cg.hiddenErrors) + " error(s), " +
                                             std::to_string(cg.emittedAgain) + " function(s) emitted again"
                                       : "codegen: " + std::to_string(std::count(cg.changedModules.begin(), cg.changedModules.end(), true)) +
-                                            " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again");
+                                            " module(s) assembled again, " + std::to_string(cg.emittedAgain) + " function(s) emitted again" +
+                                            (cg.droppedUnreached ? ", " + std::to_string(cg.droppedUnreached) + " made on demand that nothing names now dropped" : std::string()) +
+                                            (cg.unreachedAsked > 0 ? ", the texts asked for those in " + std::to_string(cg.unreachedAsked).substr(0, 5) + " s" : std::string()));
   }
   build.rebuildCodegen = false;
   build.editedFiles.clear();
