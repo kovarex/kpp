@@ -1,0 +1,21 @@
+// spec: `union enum class alignas(N) U` aligns the union to N and pads its size to a multiple of it, as `struct alignas(N) S` does; without it the union takes its widest alternative's alignment (2026-11-25: the alignas was skipped with the attributes, silently, and the game's SignalIDBase came out 2-aligned)
+// design.md 8.5
+union enum class alignas(4) Packed : u8 { { {A, u16}, {B, u8} } };
+union enum class Plain : u8 { { {A, u16}, {B, u8} } };
+union enum alignas(16) Wide { { {X, u32}, {Y, void} } };
+
+struct Holder
+{
+  u8 flag = 0;
+  Packed packed;
+};
+
+int main()
+{
+  std::println(alignof(Packed), " ", sizeof(Packed), " ", alignof(Plain), " ", sizeof(Plain), " ", alignof(Wide), " ", sizeof(Wide), " ",
+               sizeof(Holder));
+  Packed a = Packed::A(7);
+  Packed b = Packed::A(7);
+  std::println(a == b, " ", Packed::B(1) < Packed::A(9));
+  return 0;
+}
