@@ -1625,8 +1625,17 @@ assembled only when the definition changed. Specs kpp/server_class_no_longer_use
 member functions stayed too).
 
 Left as it was: a helper of the shared definitions (a destructor's, a copy's) whose last use an edit
-takes out stays; so do the virtual functions of a polymorphic class instance that an edit stops using
-(the class's vtable names them, in the module that stored it, and their definitions hold its layout).
+takes out stays; so do the virtual functions of a polymorphic class template's instance that an edit
+stops using. The class's vtable names them, in the layout's own text and in the entry of the module
+that stored it, and both are texts of no function made on demand; their definitions hold the layout in
+turn. Looked at on 2026-11-25 (pending spec kpp/server_polymorphic_class_instance_no_longer_used):
+after `Square<int64>` goes from main, the server's build has three things a build from scratch has
+not, the definition of `Square<int64>::area() const`, the instance's destructor helper in the shared
+definitions and its name's string in the shared declarations; the module's text no longer carries the
+table itself, and the program is right. A polymorphic class that is no template is as from scratch
+(its member functions are the program's own). Under `--verify-incremental` the step after such a
+difference can fail to link, and that failure is the comparison's: its build from scratch has left
+its objects where the kept session takes its own for compiled.
 
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:

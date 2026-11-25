@@ -1,0 +1,103 @@
+// spec: a compile server's build after an edit that stops using a polymorphic class template's instance is what a build from scratch gives: the instance's virtual functions, which its vtable alone named, are in neither, nor are its destructor helper and its name's string, and the instance used again is made anew
+// pending: the server's build keeps three things a build from scratch does not make (--verify-incremental: "what it wrote differs"; the program is right): the instance's virtual function, which the class's vtable names in the layout's text and in the module's kept entry, both texts of no function made on demand for the question of what reaches what (unreachedOnDemand); its destructor helper in the shared definitions; and its name's string in the shared declarations. docs/compile-speed.md, "Left as it was" (found 2026-11-25 with the compile server's drop of unreached functions; the coordinator names its owner)
+//--- step: the program
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+template<class T> class Square : public Shape
+{
+public:
+  Square(T side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (T i = 0; i < this.side; ++i)
+      sum += i32(this.side);
+    return sum;
+  }
+
+private:
+  T side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square<i32> a(3);
+  Square<i64> b(4);
+  std::println(areaOf(a), " ", areaOf(b));
+  return 0;
+}
+// expect: 9 16
+//--- step: one instance used no more
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+template<class T> class Square : public Shape
+{
+public:
+  Square(T side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (T i = 0; i < this.side; ++i)
+      sum += i32(this.side);
+    return sum;
+  }
+
+private:
+  T side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square<i32> a(3);
+  std::println(areaOf(a));
+  return 0;
+}
+// expect: 9
+//--- step: both again
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+template<class T> class Square : public Shape
+{
+public:
+  Square(T side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (T i = 0; i < this.side; ++i)
+      sum += i32(this.side);
+    return sum;
+  }
+
+private:
+  T side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square<i32> a(3);
+  Square<i64> b(4);
+  std::println(areaOf(a), " ", areaOf(b));
+  return 0;
+}
+// expect: 9 16
