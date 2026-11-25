@@ -268,10 +268,27 @@ struct Tree
   mutable bool used = false;
 };
 
+// (a class template's instance: a member function of it that the program calls has code, and a watch calls it, as
+// it does a class's that is no template; one of a single expression is emitted in its callers, and has none)
+template<class T>
+struct Cell
+{
+  T doubled() const
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += this.value;
+    return sum;
+  }
+
+  T value;
+};
+
 i32 main()
 {
   Square square;
   square.side = 7;
+  Cell<i32> cell{5};
   std::Vector<i32> numbers = {1, 2, 3};
   std::String name = "kpp";
   std::Deque<i32> queue;
@@ -327,6 +344,6 @@ i32 main()
   tree.children[0].number = 4;
   tree.children[1].name = "b";
   tree.children[1].number = 5;
-  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide, " ", handle.index, " ", none0.index, " ", outside.index, " ", emptySignal.value, " ", gearSignal.value, " ", waterSignal.value, " ", badSignal.value, " ", ring.count, " ", shelf.size, " ", chain.head.next->value, " ", tree.children.size());
+  std::println(square.area(), " ", numbers.size(), " ", name, " ", queue.size(), " ", corner.x, " ", held.label, " ", none, " ", one, " ", many, " ", wide, " ", handle.index, " ", none0.index, " ", outside.index, " ", emptySignal.value, " ", gearSignal.value, " ", waterSignal.value, " ", badSignal.value, " ", ring.count, " ", shelf.size, " ", chain.head.next->value, " ", tree.children.size(), " ", cell.doubled());
   return 0;
 }

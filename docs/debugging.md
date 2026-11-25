@@ -90,7 +90,12 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   copy. Until 2026-11-25 the copy was looked for among the class's members and never found, so an
   instance's member function named no declaration, kept its parameters in its name
   (`std::Vector<int32>::push_back(const int32&)`) and could not be called, while its class listed every
-  member function it declares. One that nobody calls is never emitted and is not listed. A compile
+  member function it declares: Visual Studio answered a watch of one "Function Cell<int32>::doubled has
+  no address, possibly due to compiler optimizations" (tools\vs\vsix\debugger-check.ps1 calls
+  `cell.doubled()` now, and gets 10). One that nobody calls is never emitted and is not listed; nor is an
+  instance's whose body is one expression, which is emitted in its callers in a debug build too
+  (`Box<int32>::get() const { return this.value; }` has no definition, where a class's that is no
+  template has one). A compile
   server's build defines a class again when an edit gives one of its member functions its first
   definition or takes its last away. An edit that stops calling a member function of an instance takes
   it away: the server's build drops a function made on demand that no text reaches any more

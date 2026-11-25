@@ -99,6 +99,10 @@ try
   Check 'step out' ($mode -eq 2 -and $dte.Debugger.CurrentStackFrame.FunctionName -like '*main') "mode $mode, $($dte.Debugger.CurrentStackFrame.FunctionName)"
   Expect 'square.side' '11'
   Expect 'square.area()' '121'
+  # A member function of a class template's instance: it names its class's declaration since 2026-11-25 (before, its
+  # definition named none and kept its parameters in its name, and the debugger had nothing to call).
+  Expect 'cell.value' '5'
+  Expect 'cell.doubled()' '10'
   Expect 'numbers' '{ length=3 }'
   Expect 'numbers.items[2]' '3'
   Expect 'name' '"kpp"'
