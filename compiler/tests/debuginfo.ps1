@@ -195,6 +195,14 @@ function Methods([string]$name)
   if (-not $record -or ($script:records[$record] -join ' ') -notmatch 'field list: (0x[0-9A-F]+)') { return @() }
   return @($script:records[$Matches[1]] | ForEach-Object { if ($_ -match '- LF_(?:ONE)?METHOD \[name = `([^`]*)`') { $Matches[1] } })
 }
+# The unique names of the records of class or enumeration $name, its forward references and its definition alike, by
+# the records of the last Summary: each one once.
+function UniqueNames([string]$name)
+{
+  $pattern = 'LF_(CLASS|STRUCTURE|UNION|ENUM) \[size = \d+\] `' + [regex]::Escape($name) + '`'
+  return @($script:records.Keys | Where-Object { $script:records[$_][0] -match $pattern } |
+           ForEach-Object { if (($script:records[$_] -join ' ') -match 'unique name: `([^`]*)`') { $Matches[1] } else { '(none)' } } | Sort-Object -Unique)
+}
 $expectedValues = @(Get-Content (Join-Path $PSScriptRoot 'debuginfo\values.expected'))
 foreach ($modules in '1', '64')
 {
@@ -221,6 +229,18 @@ foreach ($modules in '1', '64')
   {
     "FAIL debug info: values.kpp at $modules module(s): the member functions listed are Vector<int32>'s [$($vector -join ' ')] and Shape's [$($shape -join ' ')]"
     exit 1
+  }
+  # A type's identifier (CodeView's unique name, by which a module's forward reference finds the definition) is
+  # 16 hex digits, its key's, one for all of the type's records: not the type's name a second time in every
+  # declaration (Emitter::debugTypeIdentifier; docs/codegen-speed.md, section 10).
+  foreach ($name in 'game::Shape', 'game::Square', 'std::Vector<int32>', 'game::Mode')
+  {
+    $unique = @(UniqueNames $name)
+    if ($unique.Count -ne 1 -or $unique[0] -notmatch '^[0-9a-f]{16}$')
+    {
+      "FAIL debug info: values.kpp at $modules module(s): the unique name(s) of ${name}'s records are [$($unique -join ' ')], not one of 16 hex digits"
+      exit 1
+    }
   }
 }
 # A static constant's debug value is the same through a compile server and in a build of its own process: a cached answer's

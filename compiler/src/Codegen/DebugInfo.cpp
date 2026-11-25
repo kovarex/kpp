@@ -68,6 +68,16 @@ auto codegen::Emitter::debugTypePlaceholder(uint64_t key) -> std::string
   return text;
 }
 
+auto codegen::Emitter::debugTypeIdentifier(const std::string& spelling) -> std::string
+{
+  uint64_t key = 14695981039346656037ull; // (debugType's key)
+  for (unsigned char c : spelling)
+    key = (key ^ c) * 1099511628211ull;
+  char text[24];
+  snprintf(text, sizeof text, "\"%016llx\"", (unsigned long long)key);
+  return text;
+}
+
 auto codegen::Emitter::debugAskedThisGeneration() -> void
 {
   if (debugAskedGeneration == sh.debugGeneration)
@@ -293,7 +303,7 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
         }
         return one("!DICompositeType(tag: DW_TAG_enumeration_type, name: " + metadataString(debuggerTypeName(spelling)) +
                    (underlying ? ", baseType: " + debugType(underlying) : std::string()) + ", size: " + std::to_string(sizeOf(t) * 8) +
-                   (e->isClass ? ", flags: DIFlagEnumClass" : "") + ", elements: " + debugId(1) + ", identifier: " + metadataString(spelling) + ")") +
+                   (e->isClass ? ", flags: DIFlagEnumClass" : "") + ", elements: " + debugId(1) + ", identifier: " + debugTypeIdentifier(spelling) + ")") +
                debugId(1) + " = !{ " + elements + "}\n" + enumerators; // (`!{ `: renumberDebugIds takes an id after a blank)
       }
       break;
@@ -305,7 +315,7 @@ auto codegen::Emitter::debugTypeText(const Ty* t, const std::string& spelling) -
       auto* cd = t->decl && t->decl->kind == NodeKind::ClassDecl ? static_cast<ClassDecl*>(t->decl) : nullptr;
       const char* tag = cd && cd->keyword == Kw::union_ ? "DW_TAG_union_type" : cd && cd->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
       return one(std::string("!DICompositeType(tag: ") + tag + ", name: " + metadataString(readableGeneratedName(debuggerClassName(t))) + ", flags: DIFlagFwdDecl, identifier: " +
-                 metadataString(spelling) + ")");
+                 debugTypeIdentifier(spelling) + ")");
     }
     case TyKind::Function:
     {
@@ -701,7 +711,7 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
   nodes += debugId(self) + " = distinct !DICompositeType(tag: " + tag + (spelling ? ", name: " + metadataString(readableGeneratedName(debuggerClassName(ct))) : std::string()) +
            ", size: " + std::to_string(sizeOf(ct, nullptr) * 8) + ", elements: " + debugId(list) +
            (spelling && info.polymorphic && !info.primaryBase ? ", vtableHolder: " + debugId(self) : std::string()) +
-           (spelling ? ", identifier: " + metadataString(*spelling) : std::string()) + ")\n";
+           (spelling ? ", identifier: " + debugTypeIdentifier(*spelling) : std::string()) + ")\n";
 }
 
 auto codegen::Emitter::homeDebugClasses() -> void

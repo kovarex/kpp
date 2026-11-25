@@ -23,6 +23,13 @@
     // key's 16 hex digits, as wide as module assembly's id and its padding: appendDebugTypes).
     static std::string debugTypePlaceholder(uint64_t key);
 
+    // --debug-info with variables: the `identifier:` of the type whose IR spelling this is, quoted: the 16 hex
+    // digits of the spelling's hash, which is debugType's key. An identifier is what one module's declaration of
+    // a class finds another module's definition by (CodeView's unique name), and nothing shows it: a debugger
+    // names a type by its name. Until 2026-11-25 it was the spelling itself, the type's whole name a second time
+    // in every declaration (docs/codegen-speed.md, section 10).
+    static std::string debugTypeIdentifier(const std::string& spelling);
+
     // --debug-info with variables: the placeholder of type t's metadata, made the first time any
     // emitter names the type (Shared::debugTypeShards). Its key is its IR spelling's hash (irString tells
     // every type apart: a class's path, its template's arguments, where a local class is declared).

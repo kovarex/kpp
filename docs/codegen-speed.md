@@ -1845,6 +1845,38 @@ the build 10.19 s to 9.76 s, the IR 1,573.4 MB to 1,492.4 MB, the objects 520.9 
 member functions from a watch, which had never worked for another reason (above), and was replaced: what
 the final form lists besides, the instances' member functions that have code, is the difference.
 
+**A type's identifier is its key, not its name a second time (2026-11-25).** Every module that names a
+class has a declaration of it in its debug information, which finds the class's definition in another
+module by its `identifier:` (CodeView's unique name). The identifier was the type's whole spelling,
+`std::Vector<std::Pair<uint8, uint16>>`, beside the `name:` that says nearly the same: the name twice
+in each of the game's 288,000 class declarations, in the IR, in each object's type records and in the
+PDB. Nothing shows an identifier (a debugger names a type by its name), and any text that is the same
+in the declaration and the definition does its work: it is now the 16 hex digits of the spelling's
+hash, the key the type's debug node already has (`Emitter::debugTypeIdentifier`). Measured on the game
+(kpp-factorio 0c18a3229e), eight clean debug builds each way in turn with one compiler (this change on
+master 5f3bec056 and three commits of this branch; a temporary switch gave the spellings back),
+medians:
+
+| | the spelling | the key | |
+|---|---:|---:|---:|
+| the build, from its start to its exit | 9.54 s | 9.43 s | -1.1% |
+| kpp's part of it | 8.1 s | 8.0 s | |
+| codegen | 4.14 s | 4.12 s | |
+| LLVM after codegen | 2.09 s | 2.06 s | |
+| the link | 1.25 s | 1.20 s | |
+| the IR | 1,508.1 MB | 1,495.7 MB | -0.8% |
+| the objects | 501.8 MB | 488.4 MB | -2.7% |
+| the PDB | 257.5 MB | 254.8 MB | -1.0% |
+| CPU time of the build's processes | 202.7 s | 200.7 s | -1.0% |
+
+The builds with the spelling took 9.44 to 9.89 s, those with the key 9.40 to 9.49 s: in seven of the
+eight rounds the one with the key was the shorter, by 0.08 to 0.12 s in six of them (0.49 s in the
+first, whose build with the spelling was the 9.89 s one; in the sixth the other way, by 0.05 s).
+Visual Studio's debugger check passes with it (48 checks:
+class-typed values, natvis, member function calls), and run_tests' debug info check now holds each
+class's unique name to 16 hex digits, one for its forward references and its definition alike (with the
+spelling it fails: "the unique name(s) of game::Shape's records are [game::Shape]").
+
 **Measured and left.**
 
 - **Numbers for local values.** The emitter makes a value's name before it writes the value's
