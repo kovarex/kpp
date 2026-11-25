@@ -117,7 +117,7 @@ function Summary([string]$pdb)
     $line = $symbols[$i]
     if ($depth -eq 0)
     {
-      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::(area|sideBy)|game::Square::sideBy::__lambda_\w+::operator\(\)\(.*\)|Qualified::bothOne|Qualified::leftOne|scoped\(int32\)|functionTypes\(int32\)|Cell<Cell<int32> >::bump\(int32\))`')
+      if ($line -match 'S_GPROC32 \[size = \d+\] `(inspect(\(.*\)|::__lambda_\w+::operator\(\)\(.*\))|game::Square::(area|sideBy)|game::Square::sideBy::__lambda_\w+::operator\(\)\(.*\)|Qualified::bothOne|Qualified::leftOne|scoped\(int32\)|functionTypes\(int32\)|Cell<Cell<int32> >::bump)`')
       {
         $function = $Matches[1]
         $lines = New-Object System.Collections.Generic.List[string]
@@ -186,6 +186,15 @@ function Summary([string]$pdb)
   $out.Add("vftables $($tables -join ' ')")
   return $out
 }
+# The member functions the definition of class $name lists (LF_ONEMETHOD, or LF_METHOD for overloads), by the
+# records of the last Summary.
+function Methods([string]$name)
+{
+  $pattern = 'LF_(CLASS|STRUCTURE) \[size = \d+\] `' + [regex]::Escape($name) + '`'
+  $record = @($script:records.Keys | Where-Object { $l = $script:records[$_]; $l[0] -match $pattern -and ($l -join ' ') -notmatch 'forward ref' } | Sort-Object) | Select-Object -First 1
+  if (-not $record -or ($script:records[$record] -join ' ') -notmatch 'field list: (0x[0-9A-F]+)') { return @() }
+  return @($script:records[$Matches[1]] | ForEach-Object { if ($_ -match '- LF_(?:ONE)?METHOD \[name = `([^`]*)`') { $Matches[1] } })
+}
 $expectedValues = @(Get-Content (Join-Path $PSScriptRoot 'debuginfo\values.expected'))
 foreach ($modules in '1', '64')
 {
@@ -201,6 +210,16 @@ foreach ($modules in '1', '64')
   {
     "FAIL debug info: values.kpp's variables and types at $modules module(s) differ from tests\debuginfo\values.expected"
     $summary | ForEach-Object { "  $_" }
+    exit 1
+  }
+  # A class lists the member functions a watch can call: those that have code (Vector<int32>::push_back, which
+  # inspect calls; not pop_back or shrink_to_fit, which nothing calls: an instance's member function without a
+  # caller is never emitted) and the virtual ones (Shape::area, called through the object's vtable pointer).
+  $vector = @(Methods 'std::Vector<int32>')
+  $shape = @(Methods 'game::Shape')
+  if ($vector -notcontains 'push_back' -or $vector -contains 'pop_back' -or $vector -contains 'shrink_to_fit' -or $shape -notcontains 'area')
+  {
+    "FAIL debug info: values.kpp at $modules module(s): the member functions listed are Vector<int32>'s [$($vector -join ' ')] and Shape's [$($shape -join ' ')]"
     exit 1
   }
 }

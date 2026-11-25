@@ -1616,7 +1616,9 @@ for master, 13.14 s with the emitter changes) are closer than one compiler's own
 - **The member function lists in the debug information** (301,359 declarations no definition in their
   module names, with a type node and an argument list each): no time in kpp's back end, 3.8% of the
   objects' size and the linker's work on them. Visual Studio uses them to call a member function from
-  the watch window.
+  the watch window. (Done on 2026-11-25 for the member functions that have no code, the bulk of them:
+  section 10. What the variant here did not show is kpp's own time making the lists, and the classes
+  their types alone named.)
 
 ## 10. What LLVM does with the IR, by phase, by pass and by function (2026-11-24)
 
@@ -1706,6 +1708,10 @@ an `i1` argument, a struct by value), 254 instructions take the rest of their bl
 - **Half of the back end's threads while codegen runs** (BackEndPool, below).
 - **Codegen's threads kept between its parallel steps** (KeptThreads, below).
 - **clang asked for the C import's toolchain beside the lexing and the parsing** (ImportToolchain, below).
+- **link.exe's command asked of clang's driver without the objects, beside the back end** (directLinkCommand,
+  below).
+- **A class lists the member functions that have code in its debug information, and a class template's
+  instance's member functions name their declarations** (debugComposite and debugLines, below).
 
 **The back end's threads while codegen runs.** Section 8's timeline has LLVM's threads compile the
 program pieces beside codegen's levels 1 and 2, every hardware thread busy, then wait 2 s for the
@@ -1784,6 +1790,54 @@ one of them has an import (ImportToolchain in Driver/CImport.cpp; a program with
 clang), and the import takes its answer. Six builds each in turn: the import's step 0.197 s before
 (0.191 to 0.208 s) and 0.162 s after (0.159 to 0.183 s), the shorter in every round. That is 0.035 s
 of every build that parses, less than whole builds resolve (kpp's part 8.6 s and 8.55 s).
+
+**link.exe's command, asked without the objects.** A link that is no LTO's runs link.exe directly with
+the clang driver's translation of the link's response file, kept beside the executable. A clean build
+has no kept answer, and asked the driver once its last object was written, with nothing else running:
+0.065 s from the back end's end to the link's command (below). The driver cannot be asked sooner with
+the objects in the response, since it fails on one that is not written yet. It is asked with a linker
+option in the objects' place, which it passes on where an object given there goes (the 312 link.exe
+arguments of the game's tests are the same asked either way), on a thread beside the back end: 0.004 s.
+The kept answer no longer names the objects either, so a compile server's first edit of a file, which
+adds an object, asks nobody (it asked again: 0.07 s on a quiet machine, up to 0.5 s on a loaded one).
+
+**The member functions a class's debug information lists.** A class's definition listed every member
+function it declares, so that a watch expression can call one (`shape.area()`): the function's
+definition names the class's declaration of it. For a class template's instance that never worked. An
+instance is emitted from its own copy of the function, and the copy was looked for among the class's
+members, which are the functions as written: the definition named no declaration and kept its
+parameters in its name, and the debugger had no function for what such a class listed, called or never
+instantiated alike (`std::Vector<int32>` in a small program listed 36 names). Each listed member was
+three nodes and a type the resolver worked out, and their parameters' types named classes nothing else
+did. Now the function as written is looked for, so an instance's member function is its class's like
+any other, and a class lists the member functions that have code (a definition names them), its
+virtual ones and its static ones: one that nobody calls is never emitted and is not listed.
+
+What the lists cost was measured with an earlier form of the change, in which an instance listed only
+its virtual and static member functions (the upper bound: the final form also lists the instances'
+member functions that have code). The game (kpp-factorio 0c18a3229e), eight clean debug builds each in
+turn of master 87b8d9481 and of that form with the link command's change (each with the temporary
+timers), the machine quiet, medians:
+
+| | 87b8d9481 | with both | |
+|---|---:|---:|---:|
+| the build, from its start to its exit | 10.19 s | 9.76 s | -4.3% |
+| kpp's part of it | 8.35 s | 8.0 s | |
+| codegen | 4.22 s | 4.08 s | |
+| of it the debug classes defined (homeDebugClasses' levels) | 0.182 s | 0.055 s | |
+| LLVM after codegen | 2.23 s | 2.09 s | |
+| from the back end's end to the link's command | 0.065 s | 0.004 s | |
+| the link | 1.33 s | 1.26 s | |
+| the IR | 1,573.4 MB | 1,492.4 MB | -5.1% |
+| the objects | 520.9 MB | 506.1 MB | -2.8% |
+| the PDB | 274.1 MB | 258.8 MB | -5.6% |
+| CPU time of the build's processes | 208.6 s | 199.4 s | -4.4% |
+
+Every build with them (9.70 to 9.90 s) is shorter than every build without (10.12 to 10.35 s). The
+classes that only another class's definition names, defined at the second level, went from 15,383 to
+720: the others were named by the listed member functions' types alone. With codegen ending 0.15 s
+sooner, 16 of the 119 program pieces were not compiled yet at its end, where all were before: the back
+end's width while codegen runs (half of the threads, above) was measured for the longer codegen.
 
 **Measured and left.**
 

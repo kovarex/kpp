@@ -1,4 +1,4 @@
-function Cell<Cell<int32> >::bump(int32)
+function Cell<Cell<int32> >::bump
   member of Cell<Cell<int32> >
   parameter this Cell<Cell<int32> >*
   parameter by int

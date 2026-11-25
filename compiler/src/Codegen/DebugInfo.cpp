@@ -426,14 +426,23 @@ auto codegen::Emitter::staticConstant(VariableDecl* v, const Ty* t, const Templa
   return ", extraData: i" + std::to_string(bits) + " " + std::to_string(n);
 }
 
-auto codegen::Emitter::debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args) -> std::string
+// The key of a member function's declaration: its class's IR spelling and its place among the class's members.
+static uint64_t debugMethodKey(const std::string& classSpelling, size_t index)
+{
+  uint64_t key = 14695981039346656037ull;
+  for (unsigned char ch : "method " + classSpelling + "#" + std::to_string(index))
+    key = (key ^ ch) * 1099511628211ull;
+  return key;
+}
+
+auto codegen::Emitter::debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args, bool definition) -> std::string
 {
   // (A class whose layout or vtable fails here is no member function the debugger gets: not the
   // build's error, which only debug information asked for.)
   size_t errorsBefore = errors.size();
   try
   {
-    return debugMethodText(cls, c, m, index, args);
+    return debugMethodText(cls, c, m, index, args, definition);
   }
   catch (Unsupported&)
   {
@@ -442,7 +451,7 @@ auto codegen::Emitter::debugMethod(const Ty* cls, ClassDecl* c, FunctionDecl* m,
   }
 }
 
-auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args) -> std::string
+auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl* m, size_t index, const TemplateArgs& args, bool definition) -> std::string
 {
   if (!cls || !c || !m->templateParams.empty() || (m->flags & (DF_Constructor | DF_Destructor | DF_Friend)) || m->builtin || m->name.parts.size() != 1 ||
       m->name.last().special || m->name.last().symbol == UINT32_MAX)
@@ -495,15 +504,14 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
     if (slot < 0 || adjustment)
       return {};
   }
-  std::string spelling = "method " + irString(cls) + "#" + std::to_string(index);
-  uint64_t key = 14695981039346656037ull;
-  for (unsigned char ch : spelling)
-    key = (key ^ ch) * 1099511628211ull;
+  uint64_t key = debugMethodKey(irString(cls), index);
   std::string placeholder = debugTypePlaceholder(key);
   Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
   {
     std::lock_guard lock(shard.mutex);
     auto [it, isNew] = shard.types.try_emplace(key);
+    if (definition)
+      it->second.hasCode = true; // (its class lists it: debugMethodWithCode)
     if (!isNew && it->second.generation == sh.debugGeneration)
       return placeholder;
     it->second.generation = sh.debugGeneration;
@@ -522,6 +530,7 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
   {
     std::lock_guard lock(shard.mutex);
     shard.types[key].generation = UINT32_MAX; // (not made: debugMethod leaves the function out)
+    shard.types[key].hasCode = false;
     throw;
   }
   std::string access = m->access == Access::Public ? " | DIFlagPublic" : m->access == Access::Protected ? " | DIFlagProtected" :
@@ -539,6 +548,15 @@ auto codegen::Emitter::debugMethodText(const Ty* cls, ClassDecl* c, FunctionDecl
   made.text = std::move(text);
   made.type = nullptr;
   return placeholder;
+}
+
+auto codegen::Emitter::debugMethodWithCode(const std::string& classSpelling, size_t index) -> std::string
+{
+  uint64_t key = debugMethodKey(classSpelling, index);
+  Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
+  std::lock_guard lock(shard.mutex);
+  auto it = shard.types.find(key);
+  return it != shard.types.end() && it->second.hasCode && !it->second.text.empty() ? debugTypePlaceholder(key) : std::string();
 }
 
 auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint32_t self, const std::string* spelling, std::string& nodes, uint32_t& next, int depth) -> void
@@ -661,12 +679,22 @@ auto codegen::Emitter::debugComposite(const Ty* ct, const StructInfo& info, uint
              ", baseType: " + debugType(st) + flagsOf({"DIFlagStaticMember", access(m->access)}) + staticConstant(v, st, args) + ")\n";
     element(id);
   }
-  // Its member functions (debugMethod), each a node shared with its definition's `declaration:`.
+  // Its member functions that a watch can call. One that has code (debugMethodWithCode): the node its
+  // definition made for its `declaration:`. A virtual one whatever defines it (debugMethod): the debugger
+  // calls it through the object's vtable pointer, a pure one too. A static one as well: its definition is
+  // a free function's, which names no declaration. Any other is not listed: a member function of a class
+  // template's instance that nobody calls is never emitted, and most of what the game's classes listed
+  // was that, each three nodes and a type worked out for nothing, with the classes those types alone
+  // named (docs/codegen-speed.md, section 10).
   if (spelling && sh.target.windows())
     for (size_t i = 0; i < c->members.size(); ++i)
       if (c->members[i]->kind == NodeKind::FunctionDecl)
-        if (std::string method = debugMethod(ct, c, static_cast<FunctionDecl*>(c->members[i]), i, args); !method.empty())
+      {
+        auto* m = static_cast<FunctionDecl*>(c->members[i]);
+        bool always = (m->flags & (DF_Static | DF_Virtual | DF_Override)) != 0;
+        if (std::string method = always ? debugMethod(ct, c, m, i, args) : debugMethodWithCode(*spelling, i); !method.empty())
           elements += (elements.empty() ? "" : ", ") + method;
+      }
   std::string tag = info.isUnion || c->keyword == Kw::union_ ? "DW_TAG_union_type" : c->keyword == Kw::class_ ? "DW_TAG_class_type" : "DW_TAG_structure_type";
   uint32_t list = next++;
   nodes += debugId(list) + " = !{ " + elements + "}\n";
@@ -938,15 +966,19 @@ auto codegen::Emitter::debugLines(std::string header, size_t declLine) -> std::s
       // The declaration in the class's debug information (debugMethod), which the debugger calls.
       if (currentFunction)
       {
-        FunctionDecl* declared = global.declarationOf(currentFunction);
+        // (an instance's member function is emitted from a copy, which no class has for a member: the
+        // function as written is one. Until 2026-11-25 the copy was looked for, so an instance's member
+        // function named no declaration and kept its parameters in its name, and a watch could call none.)
+        FunctionDecl* written = debugWritten ? debugWritten : currentFunction;
+        FunctionDecl* declared = global.declarationOf(written);
         if (!declared)
-          declared = currentFunction;
+          declared = written;
         // (a class's: an enumeration's member function, `Direction::isVertical()` of a real enum,
         // has no class declaration to name, and its type no class layout to ask for)
         if (ClassDecl* c = isClass(cls) && cls->decl ? classDef(cls->decl, nullptr) : nullptr)
           for (size_t i = 0; i < c->members.size(); ++i)
             if (c->members[i] == declared)
-              if (std::string method = debugMethod(cls, c, declared, i, global.classArgsOf(canonicalClass(cls, nullptr))); !method.empty())
+              if (std::string method = debugMethod(cls, c, declared, i, global.classArgsOf(canonicalClass(cls, nullptr)), true); !method.empty())
               {
                 // (named as the declaration, `area`, as clang's: the debugger finds the function
                 // a watch calls by its class and name; `area() const` was no name it looks for)

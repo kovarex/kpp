@@ -81,7 +81,18 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   pointer (DIFlagArtificial | DIFlagObjectPointer). The PDB has it as a member function (LF_MFUNC_ID,
   LF_MFUNCTION), so Visual Studio evaluates `this` and `this->member` in it; as a free function it said
   "'this' may only be used inside a nonstatic member function" (thread F, 2026-11-05). A static member
-  function and DWARF's functions stay free functions; the class's field list does not list its methods.
+  function and DWARF's functions stay free functions. The class's field list names the member functions
+  a watch can call (`shape.area()`): one that has code, by the declaration its definition names; a
+  virtual one whatever defines it, a pure one too, which the debugger calls through the object's vtable
+  pointer; a static one. Not templates, constructors, destructors, operators and friends. A member
+  function of a class template's instance is one of its class like any other (`values.push_back`): its
+  definition names the declaration of the function as written, of which the instance is emitted from a
+  copy. Until 2026-11-25 the copy was looked for among the class's members and never found, so an
+  instance's member function named no declaration, kept its parameters in its name
+  (`std::Vector<int32>::push_back(const int32&)`) and could not be called, while its class listed every
+  member function it declares. One that nobody calls is never emitted and is not listed. A compile
+  server's build defines a class again when an edit gives one of its member functions its first
+  definition or takes its last away.
 - **Globals**: each global of the program by the name kpp's IR gives it (`game::counter`,
   `PrototypeList<EntityPrototype>::sorted`; a static data member's storage is `Class::member`), where
   the debugger reads it: the module whose text defines it (its home, in a debug build) describes it

@@ -3104,6 +3104,60 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     for (const char* name : {"@kpp.main", "@kpp.wmain"})
       if (owners.count(name))
         e.emitEntry(name);
+  // --debug-info: a class's definition lists the member functions a definition names (Shared::DebugTypeText::hasCode,
+  // Emitter::debugMethodWithCode). The definitions dropped and the ones emitted now say which member functions lost theirs and
+  // which got one (each names its declaration, `declaration: !T` and its key, in its class, `scope: !T`): their classes are
+  // defined again below (homeDebugClasses, which marks the home of a definition that changed unassembled), as a build from
+  // scratch defines them.
+  bool methodsChanged = false;
+  if (sh.fullDebugInfo && sh.target.windows())
+  {
+    struct Change
+    {
+      int definitions = 0; // those emitted now less those dropped
+      uint64_t classKey = 0;
+    };
+    std::unordered_map<uint64_t, Change> methods; // by the declaration's key
+    auto note = [&](std::string_view text, int by)
+    {
+      static constexpr std::string_view declaration = ", declaration: !T", scope = ", scope: !T";
+      for (size_t at = text.find(declaration); at != std::string_view::npos; at = text.find(declaration, at + 1))
+      {
+        size_t line = text.rfind('\n', at);
+        size_t in = text.find(scope, line == std::string_view::npos ? 0 : line + 1);
+        std::optional<uint64_t> method = debugTypeKeyAt(text, at + declaration.size() - 2);
+        std::optional<uint64_t> cls = in < at ? debugTypeKeyAt(text, in + scope.size() - 2) : std::nullopt;
+        if (!method || !cls)
+          continue;
+        Change& change = methods[*method];
+        change.definitions += by;
+        change.classKey = *cls;
+      }
+    };
+    for (unsigned k = 0; k < sh.moduleCount; ++k)
+    {
+      for (const std::string& text : dropped[k].definitions)
+        note(text, -1);
+      for (size_t i = dropped[k].keptDefinitions; i < sh.definitions[k].size(); ++i)
+        note(sh.definitions[k][i].text, 1);
+    }
+    // (the emission is done: the shards are read and written on this thread alone)
+    for (const auto& [method, change] : methods)
+    {
+      if (change.definitions == 0)
+        continue;
+      Shared::DebugTypeShard& methodShard = sh.debugTypeShard(method);
+      if (auto it = methodShard.types.find(method); it != methodShard.types.end())
+        it->second.hasCode = change.definitions > 0;
+      Shared::DebugTypeShard& classShard = sh.debugTypeShard(change.classKey);
+      if (auto it = classShard.types.find(change.classKey); it != classShard.types.end() && it->second.type)
+      {
+        it->second.generation = sh.debugGeneration; // (named now: homeDebugClasses defines those again)
+        classShard.classesNamed.push_back(change.classKey);
+        methodsChanged = true;
+      }
+    }
+  }
   // An error, or a first use that added to the shared declarations (in every module): from scratch.
   // What it was goes to the server's log (the first one, cut).
   auto cut = [](const std::string& text) { return text.substr(0, std::min(text.find('\n'), size_t(240))); };
@@ -3292,6 +3346,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     out.declined = std::to_string(added.size()) + " first use(s) added to the shared declarations, the first: " + cut(added.front());
     return out;
   }
+  // (the classes whose member functions with code changed: defined again, unless prepareModuleTexts did above)
+  if (methodsChanged && !layoutsReplaced && newTypes.empty())
+    e.homeDebugClasses();
   std::vector<unsigned> which;
   std::vector<bool> linesOnly(sh.moduleCount, false); // (texts changed in their lines alone, debug or assert lines: linesOnlyModules)
   for (unsigned k = 0; k < sh.moduleCount; ++k)
