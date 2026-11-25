@@ -660,11 +660,28 @@ auto GlobalScope::Impl::constObjectType(Expr* object, const TypeContext& ctx, bo
   return t && t->kind == TyKind::Class && !types.isDependent(t) && !mentionsUnknown(t) ? t : nullptr;
 }
 
+auto GlobalScope::Impl::descriptorTypeOf(Expr* base, const TypeContext& ctx) -> const Ty*
+{
+  // The descriptor base names: a for constexpr's variable bound in ctx is that element's. In a function run at compile
+  // time the loop's body is shared by its elements (constForConstexpr binds the variable per element in ctx's subst),
+  // and the type the walker stored on the expression is the last element's: until 2026-11-25 every element read the last
+  // one's m.name, m.hasInitializer, f.isNoDiscard (`same("y", m.name)` true for every member: the prototype explorer's
+  // hidden-member check). Else the expression's own type, as before.
+  if (base && base->kind == NodeKind::NameExpr && ctx.subst)
+    if (Decl* d = static_cast<NameExpr*>(base)->resolved; d && d->kind == NodeKind::TemplateParamDecl)
+      for (size_t i = ctx.subst->pairs.size(); i-- > 0;)
+        if (ctx.subst->pairs[i].param == d && ctx.subst->pairs[i].type)
+          return ctx.subst->pairs[i].type;
+  if (!base)
+    return nullptr;
+  return base->ty && base->ty->isKnown() && !types.isDependent(base->ty) ? base->ty : typeOfSignatureExpression(base, ctx);
+}
+
 auto GlobalScope::Impl::constDescriptorTag(MemberExpr* m, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
 {
   if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "tag")
     return std::nullopt;
-  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  const Ty* t = descriptorTypeOf(m->base, ctx);
   t = t ? types.stripRef(t) : nullptr;
   size_t index = 0;
   ClassDecl* u = t && t->kind == TyKind::Member ? Walker::alternativeOf(t, index) : nullptr;
@@ -683,7 +700,7 @@ auto GlobalScope::Impl::constDescriptorHasInitializer(MemberExpr* m, const TypeC
   // `m.hasInitializer`: whether a member descriptor's member has a default member initializer (design.md 8.3), a bool.
   if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "hasInitializer")
     return std::nullopt;
-  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  const Ty* t = descriptorTypeOf(m->base, ctx);
   t = t ? types.stripRef(t) : nullptr;
   size_t index = 0;
   if (!t || t->kind != TyKind::Member || !t->decl || t->decl->kind != NodeKind::VariableDecl || Walker::alternativeOf(t, index))
@@ -709,7 +726,7 @@ auto GlobalScope::Impl::constDescriptorName(MemberExpr* m, const TypeContext& ct
   // `m.name`: the member's, alternative's or function's name, the char array a string literal is (constString).
   if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "name")
     return std::nullopt;
-  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  const Ty* t = descriptorTypeOf(m->base, ctx);
   t = t ? types.stripRef(t) : nullptr;
   if (!t || t->kind != TyKind::Member || !t->decl)
     return std::nullopt;
@@ -748,7 +765,7 @@ auto GlobalScope::Impl::constDescriptorIsNoDiscard(MemberExpr* m, const TypeCont
   // `f.isNoDiscard`: whether a methods(T) descriptor's function is declared [[nodiscard]] (design.md 8.3), a bool.
   if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "isNoDiscard")
     return std::nullopt;
-  const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+  const Ty* t = descriptorTypeOf(m->base, ctx);
   t = t ? types.stripRef(t) : nullptr;
   if (!t || t->kind != TyKind::Member || !t->decl || t->decl->kind != NodeKind::FunctionDecl)
     return std::nullopt;
