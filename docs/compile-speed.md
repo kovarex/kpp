@@ -1592,6 +1592,29 @@ recursive one, a pair, one with a static local), kpp/server_unreached_instance_w
 kpp/server_unreached_instance_holding_a_function_object; each failed at the step that stops calling,
 with the compiler of 87b8d9481.
 
+What the question costs, and what it cost at first. The game has 265,404 definitions, 170,574 of them
+functions made on demand, with 1.35 million recorded names. As first written (0a3de6dd2) every lost name
+asked every text: 0.095 to 0.099 s of a build that takes 1 to 2 s from the edit to the linked game, whether
+the function then went or was still called from elsewhere, which is the usual case of a call taken out.
+Timed phase by phase, 0.039 s of it filled a `std::unordered_map` of the 170,574 names on one thread, and
+0.018 s read the shared texts on one thread (mostly `declare` lines, which name no use). Three changes
+(2026-11-25): a first test, one pass over the names of the program functions' texts (80,270 of the
+definitions) with the few candidates, since one that such a text names is reached whatever else names it
+(0.005 s); the names' numbers in an open table filled by hashes taken on the threads (0.039 s -> 0.001 s),
+the shared texts and the vtables in the threads' step, a `declare` line skipped by its first word (the
+whole question 0.096 s -> 0.039 s); and the rebuild that drops what the question found asks nothing again
+unless it dropped more than that (what the first pass reached, the dropped ones did not reach). Measured
+with master's compiler and this one in turn, two rounds each, the same edits of the game as an edit loop
+makes them (a function appended to src/Util/StringUtil.kpp that uses instances nothing else has, stops
+using them, uses `std::Vector<int32>`, stops, uses the first again, and goes; `heavy.cmd --exclusive`, the
+server's log): a call taken out whose function is still called from a program function 0.095, 0.098 s ->
+0.005, 0.005 s (that build 1.08, 1.08 s -> 1.01, 0.98 s), one whose nine functions go 0.097, 0.097, 0.099,
+0.097 s -> 0.044, 0.043, 0.043, 0.044 s (those builds 2.03, 2.01 -> 2.00, 1.95 s and 1.84, 1.81 -> 1.76,
+1.76 s). The same edits with `--verify-incremental`: each build the same as from scratch. Spec
+kpp/server_instance_still_reached_after_a_call_goes holds the three answers apart (still called from a
+program function; still called from other instances only; called by a dropped instance and by one that
+stays): it passed before these changes too.
+
 With `--debug-info` a second thing stayed: the debug definition of a class that an edit stopped using. A
 build from scratch defines the classes that are laid out (Emitter::homeDebugClasses); a rebuild dropped
 the layout of a class nothing used any more and kept its definition in its home module. The definition

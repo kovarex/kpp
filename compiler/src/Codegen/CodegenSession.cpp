@@ -692,76 +692,135 @@ static NameKeyMap<std::string> definedNames(const Shared& sh)
 static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, bool moduleTexts)
 {
   // Those that have a definition: each module's found on the threads (Shared::requested is asked of every definition's name,
-  // the game's 270,000), then numbered in the modules' order.
+  // the game's 265,000), each with its name's hash, then numbered in the modules' order.
   const unsigned workers = std::max(1u, std::min(threads, sh.moduleCount));
-  std::vector<std::vector<const std::string*>> madeIn(sh.moduleCount);
+  struct Made
+  {
+    const std::string* name;
+    uint64_t hash;
+  };
+  std::vector<std::vector<Made>> madeIn(sh.moduleCount);
   std::atomic<unsigned> nextMade{0};
   auto findMade = [&](unsigned)
   {
     for (unsigned k; (k = nextMade++) < sh.moduleCount;)
       for (const Shared::Definition& d : sh.definitions[k])
         if (!d.name.empty() && d.name == d.owner && sh.requested.contains(d.name))
-          madeIn[k].push_back(&d.name);
+          madeIn[k].push_back({&d.name, NameHash::hash(d.name.data(), d.name.size())});
   };
   onThreads(workers, findMade);
-  NameViewKeyMap<uint32_t> made; // each one's name -> its number
-  std::vector<const std::string*> names;
-  for (const std::vector<const std::string*>& in : madeIn)
-    for (const std::string* name : in)
-      if (made.emplace(*name, uint32_t(names.size())).second)
-        names.push_back(name);
-  if (names.empty())
+  size_t made = 0;
+  for (const std::vector<Made>& in : madeIn)
+    made += in.size();
+  if (!made)
     return {};
-  constexpr uint32_t none = UINT32_MAX; // (a text of no function made on demand)
+  // Each one's name -> its number: an open table of the numbers, a name placed by the hash taken on the threads (the game has
+  // 170,000 of them, and a std::unordered_map of their names took 0.039 s to fill here, on one thread, of the 0.09 s all of this
+  // took: its nodes, and each name hashed where its bytes were in no cache).
+  size_t tableSize = 16;
+  while (tableSize < made * 2)
+    tableSize *= 2;
+  const uint64_t mask = tableSize - 1;
+  std::vector<uint32_t> table(tableSize, 0); // a number + 1, 0 where it is free
+  std::vector<const std::string*> names;
+  std::vector<uint64_t> hashes;
+  names.reserve(made);
+  hashes.reserve(made);
+  for (const std::vector<Made>& in : madeIn)
+    for (const Made& m : in)
+    {
+      uint64_t at = m.hash & mask;
+      while (table[at] && !(hashes[table[at] - 1] == m.hash && *names[table[at] - 1] == *m.name))
+        at = (at + 1) & mask;
+      if (table[at])
+        continue; // (a name two modules define: numbered once)
+      names.push_back(m.name);
+      hashes.push_back(m.hash);
+      table[at] = uint32_t(names.size());
+    }
+  constexpr uint32_t none = UINT32_MAX; // (a text of no function made on demand; a name that is no such function's)
+  auto numberOf = [&](std::string_view name)
+  {
+    const uint64_t hash = NameHash::hash(name.data(), name.size());
+    for (uint64_t at = hash & mask; table[at]; at = (at + 1) & mask)
+      if (uint32_t i = table[at] - 1; hashes[i] == hash && *names[i] == name)
+        return i;
+    return none;
+  };
   struct Found
   {
     std::vector<uint32_t> named;                        // by such a text
     std::vector<std::pair<uint32_t, uint32_t>> namedBy; // the function made on demand whose text names it, and it
   };
   std::vector<Found> found(workers);
-  auto ownerOf = [&](const std::string& owner)
-  {
-    auto it = made.find(owner);
-    return it == made.end() ? none : it->second;
-  };
   auto note = [&](Found& into, uint32_t owner, std::string_view name)
   {
-    auto it = made.find(name);
-    if (it == made.end() || it->second == owner)
+    uint32_t named = numberOf(name);
+    if (named == none || named == owner)
       return; // (its own name, or its lambda's naming it: no other's use)
     if (owner == none)
-      into.named.push_back(it->second);
+      into.named.push_back(named);
     else
-      into.namedBy.push_back({owner, it->second});
+      into.namedBy.push_back({owner, named});
   };
+  // (a text read line by line: a `declare` line names what it declares, no use of it, and the shared declarations are mostly
+  // those)
   auto scan = [&](Found& into, uint32_t owner, std::string_view text)
   {
-    irNamesIn(text, [&](size_t at, size_t length)
+    for (size_t from = 0; from < text.size();)
     {
-      std::string_view name = text.substr(at, length);
-      if (!made.count(name))
-        return;
-      // (a `declare` line names what it declares: no use of it)
-      size_t line = text.rfind('\n', at);
-      line = line == std::string_view::npos ? 0 : line + 1;
-      if (text.substr(line, 8) != "declare ")
-        note(into, owner, name);
-    });
+      size_t end = text.find('\n', from);
+      end = end == std::string_view::npos ? text.size() : end + 1;
+      std::string_view line = text.substr(from, end - from);
+      if (!line.starts_with("declare "))
+        irNamesIn(line, [&](size_t at, size_t length) { note(into, owner, line.substr(at, length)); });
+      from = end;
+    }
   };
+  // The texts of no function beside the modules' own: the shared definitions and declarations, in pieces of whole lines for
+  // the threads, and the vtables of the classes laid out. A class's layout asks for the functions its vtables' slots name when
+  // it is made (Emitter::emitVtables: a destructor defaulted in the class, `virtual ~Written() = default;`, is defined then),
+  // whether or not a module then carries the tables (a class the program lays out and never constructs:
+  // std::isTriviallyDestructible of it, offsetof into it).
+  std::vector<std::string_view> others;
+  auto addOther = [&](std::string_view text)
+  {
+    constexpr size_t piece = size_t(1) << 18;
+    while (text.size() > piece)
+    {
+      size_t end = text.find('\n', piece);
+      if (end == std::string_view::npos)
+        break;
+      others.push_back(text.substr(0, end + 1));
+      text.remove_prefix(end + 1);
+    }
+    if (!text.empty())
+      others.push_back(text);
+  };
+  for (const SharedText* text : {&sh.shared, &sh.decls})
+  {
+    addOther(text->text);
+    for (const std::string& entry : text->entries)
+      addOther(entry);
+  }
+  for (const auto& [type, info] : sh.structs)
+    if (!info.vtableText.empty())
+      addOther(info.vtableText);
   std::atomic<unsigned> nextModule{0};
-  auto scanModules = [&](unsigned t)
+  std::atomic<size_t> nextOther{0};
+  auto scanTexts = [&](unsigned t)
   {
     Found& into = found[t];
     for (unsigned k; (k = nextModule++) < sh.moduleCount;)
     {
       for (const Shared::Definition& d : sh.definitions[k])
       {
-        uint32_t owner = ownerOf(d.owner);
+        uint32_t owner = numberOf(d.owner);
         for (auto [at, length] : d.names)
           note(into, owner, std::string_view(d.text).substr(at, length));
       }
       for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
-        scan(into, ownerOf(o.owner), o.text);
+        scan(into, numberOf(o.owner), o.text);
       if (moduleTexts)
         scan(into, none, sh.moduleDecls[k].text);
       else
@@ -769,24 +828,12 @@ static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, 
           for (const std::string& entry : *entries)
             scan(into, none, entry);
     }
+    for (size_t i; (i = nextOther++) < others.size();)
+      scan(into, none, others[i]);
   };
-  onThreads(workers, scanModules);
-  Found& first = found[0];
-  for (const SharedText* text : {&sh.shared, &sh.decls})
-  {
-    scan(first, none, text->text);
-    for (const std::string& entry : text->entries)
-      scan(first, none, entry);
-  }
+  onThreads(workers, scanTexts);
   for (const Shared::Startup& s : sh.startups)
-    note(first, none, s.function);
-  // The vtables of the classes laid out: a class's layout asks for the functions its vtables' slots name when it is made
-  // (Emitter::emitVtables: a destructor defaulted in the class, `virtual ~Written() = default;`, is defined then), whether or
-  // not a module then carries the tables (a class the program lays out and never constructs: std::isTriviallyDestructible of
-  // it, offsetof into it).
-  for (const auto& [type, info] : sh.structs)
-    if (!info.vtableText.empty())
-      scan(first, none, info.vtableText);
+    note(found[0], none, s.function);
   // Reached: named by a text of no function made on demand, or by a reached one's.
   std::vector<std::vector<uint32_t>> uses(names.size());
   for (const Found& f : found)
@@ -3070,6 +3117,9 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     if (name != own && !sh.programFunctions.count(name) && sh.definedIn.count(name) && !lost.count(name))
       lost.insert(std::string(name));
   };
+  // (the rebuild that drops what the one before it left unreached: whether it drops more than those and what they own)
+  const NameKeySet unreachedNames(unreached.begin(), unreached.end());
+  bool droppedBeyond = false;
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     Dropped& was = dropped[k];
@@ -3081,6 +3131,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
       {
         for (auto [at, length] : defs[i].names)
           noteLost(std::string_view(defs[i].text).substr(at, length), defs[i].name);
+        droppedBeyond = droppedBeyond || !unreachedNames.count(defs[i].owner);
         droppedNames.insert(defs[i].name);
         droppedUses.insert(droppedUses.end(), defs[i].layouts.begin(), defs[i].layouts.end());
         droppedFunctions += defs[i].counted;
@@ -3341,9 +3392,16 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         if (const Shared::OwnedEntry& o = sh.ownedEntries[k][i]; sh.programOwned(o.owner) || !lost.count(o.owner))
           irNamesIn(o.text, [&](size_t at, size_t length) { named(std::string_view(o.text).substr(at, length)); });
     }
-    bool ask = sh.onDemandUnchecked;
-    for (const std::string& name : lost)
-      ask = ask || (sh.definedIn.count(name) && sh.requested.contains(name));
+    // The candidates: the lost names that are functions made on demand and defined. None in the rebuild that drops what the
+    // one before it found unreached, unless it dropped more than that (an instance made for a dropped one's closure): that
+    // pass found everything its texts left unreached, and what it reached, the dropped ones did not reach it.
+    NameKeySet candidates;
+    if (unreached.empty() || droppedBeyond)
+      for (const std::string& name : lost)
+        if (sh.definedIn.count(name) && sh.requested.contains(name))
+          candidates.insert(name);
+    const bool open = sh.onDemandUnchecked; // (an earlier build left the question to this one: every text is asked)
+    const bool ask = open || !candidates.empty();
     const bool failing = std::any_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em)
     {
       return !em->errors.empty() || em->unattributedErrors || em->hiddenErrors != 0;
@@ -3354,7 +3412,45 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     if (ask && !failing && assembleModules)
     {
       auto asked = std::chrono::steady_clock::now();
-      unreachedNow = unreachedOnDemand(sh, session.threads, false);
+      // First the usual case of a call taken out, its function still called from elsewhere: a candidate that a program
+      // function's text names (its definition's, its lambdas') is reached, whatever else names it. One pass over those texts'
+      // names with the few candidates, on the threads: 0.005 s on the game (80,270 of its 265,404 definitions), against
+      // 0.039 s for what reaches what, which only a candidate that is left asks.
+      if (!open && !candidates.empty())
+      {
+        std::vector<const std::string*> list;
+        NameViewKeyMap<uint32_t> index;
+        size_t shortest = SIZE_MAX, longest = 0;
+        for (const std::string& name : candidates)
+        {
+          index.emplace(name, uint32_t(list.size()));
+          list.push_back(&name);
+          shortest = std::min(shortest, name.size());
+          longest = std::max(longest, name.size());
+        }
+        const unsigned workers = std::max(1u, std::min(session.threads, sh.moduleCount));
+        std::vector<std::vector<char>> namedBy(workers, std::vector<char>(list.size(), 0));
+        std::atomic<unsigned> nextModule{0};
+        auto byProgram = [&](unsigned t)
+        {
+          for (unsigned k; (k = nextModule++) < sh.moduleCount;)
+            for (const Shared::Definition& d : sh.definitions[k])
+              if (sh.programOwned(d.owner))
+                for (auto [at, length] : d.names)
+                  if (length >= shortest && length <= longest)
+                    if (auto it = index.find(std::string_view(d.text).substr(at, length)); it != index.end())
+                      namedBy[t][it->second] = 1;
+        };
+        onThreads(workers, byProgram);
+        std::vector<std::string> reached;
+        for (size_t i = 0; i < list.size(); ++i)
+          if (std::any_of(namedBy.begin(), namedBy.end(), [&](const std::vector<char>& by) { return by[i] != 0; }))
+            reached.push_back(*list[i]);
+        for (const std::string& name : reached)
+          candidates.erase(name);
+      }
+      if (open || !candidates.empty())
+        unreachedNow = unreachedOnDemand(sh, session.threads, false);
       out.unreachedAsked = std::chrono::duration<double>(std::chrono::steady_clock::now() - asked).count();
     }
   }

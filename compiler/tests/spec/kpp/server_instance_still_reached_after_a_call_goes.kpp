@@ -1,0 +1,161 @@
+// spec: a compile server's build keeps a function made on demand whose call an edit takes out while another text still reaches it, as a build from scratch has it: one that another program function still calls (answered by the first test, over the names of the program functions' texts), one that only other instances still call (answered by what reaches what, asked of every text), and one that a dropped instance called and another instance still calls (the rebuild that drops asks nothing again: what the first pass reached, the dropped ones did not reach); then the last instance calling it goes and it goes with it. The bodies have a loop (a body of one expression is emitted in its callers)
+//--- step: the program
+template<class T> T sumTo(T n)
+{
+  T sum = 0;
+  for (T i = 0; i <= n; ++i)
+    sum += i;
+  return sum;
+}
+template<class T> T twiceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 2; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+template<class T> T thriceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 3; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+i32 elsewhere()
+{
+  return sumTo<i32>(4);
+}
+int main()
+{
+  std::println(sumTo<i32>(3), " ", elsewhere(), " ", sumTo<i64>(3), " ", twiceSumTo<i64>(3), " ", thriceSumTo<i64>(3));
+  return 0;
+}
+// expect: 6 10 6 12 18
+//--- step: main's own calls of the two instances taken out: another function still calls one, two instances the other
+template<class T> T sumTo(T n)
+{
+  T sum = 0;
+  for (T i = 0; i <= n; ++i)
+    sum += i;
+  return sum;
+}
+template<class T> T twiceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 2; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+template<class T> T thriceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 3; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+i32 elsewhere()
+{
+  return sumTo<i32>(4);
+}
+int main()
+{
+  std::println(elsewhere(), " ", twiceSumTo<i64>(3), " ", thriceSumTo<i64>(3));
+  return 0;
+}
+// expect: 10 12 18
+//--- step: one of the two instances that call it no longer called: it goes, what it called stays
+template<class T> T sumTo(T n)
+{
+  T sum = 0;
+  for (T i = 0; i <= n; ++i)
+    sum += i;
+  return sum;
+}
+template<class T> T twiceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 2; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+template<class T> T thriceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 3; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+i32 elsewhere()
+{
+  return sumTo<i32>(4);
+}
+int main()
+{
+  std::println(elsewhere(), " ", thriceSumTo<i64>(3));
+  return 0;
+}
+// expect: 10 18
+//--- step: the other no longer called: both go
+template<class T> T sumTo(T n)
+{
+  T sum = 0;
+  for (T i = 0; i <= n; ++i)
+    sum += i;
+  return sum;
+}
+template<class T> T twiceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 2; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+template<class T> T thriceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 3; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+i32 elsewhere()
+{
+  return sumTo<i32>(4);
+}
+int main()
+{
+  std::println(elsewhere());
+  return 0;
+}
+// expect: 10
+//--- step: all called again
+template<class T> T sumTo(T n)
+{
+  T sum = 0;
+  for (T i = 0; i <= n; ++i)
+    sum += i;
+  return sum;
+}
+template<class T> T twiceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 2; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+template<class T> T thriceSumTo(T n)
+{
+  T sum = 0;
+  for (i32 i = 0; i < 3; ++i)
+    sum += sumTo(n);
+  return sum;
+}
+i32 elsewhere()
+{
+  return sumTo<i32>(4);
+}
+int main()
+{
+  std::println(sumTo<i32>(3), " ", elsewhere(), " ", sumTo<i64>(3), " ", twiceSumTo<i64>(3), " ", thriceSumTo<i64>(3));
+  return 0;
+}
+// expect: 6 10 6 12 18
