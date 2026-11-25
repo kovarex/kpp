@@ -1662,7 +1662,14 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
   (gorating's broke on 2026-11-05 when its pin, v0.2.242, went with the 20 kept then; a project that
   pins a release adds its tag there, or pins a nightly one). The nightly ones are never deleted. From 2026-11-02 until this, a push run published only the rolling
   prerelease `dev` and only the nightly a numbered release, so a green push left Latest old; the run
-  deletes `dev` now. Releases by hand stay with release.yml.
+  deletes `dev` now. Releases by hand stay with release.yml. Its calls are tried again as the
+  publish step's are (no answer or a 5xx: up to 4 times, 10, 30 and 60 s apart), and an old release
+  GitHub's side still has not deleted then is left to the next run, said in a line, without
+  failing this one, whose own release is published and Latest by then; any other failure (a 403)
+  fails it. Until 2026-11-25 one failed call failed the run: 45644587269, master's on pull request
+  13's merge, went red on one "Server Error" to the delete of the 51st release, in an outage of
+  GitHub's. run_tests' settle check runs it against the fake GitHub
+  (`tools/release/settle-test.ps1`).
 - **What kovarex sets up for kpp.net:** until then, the step says "kpp.net: skipped" and CI works
   as before. Nothing in the repository holds a secret.
   - the repository secret `KPP_NET_SSH_KEY`: an Ed25519 private key, its public half added to

@@ -124,6 +124,10 @@ Add 'format' (PsCheck 'tests\format.ps1') -seconds 2
 # The release's publish step against a fake GitHub that fails a call of each kind once
 # (tools\release\publish-test.ps1): every one tried again, the release whole.
 Add 'publish' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\tools\release\publish-test.ps1') -seconds 2
+# The step after it, which makes the newest release Latest and deletes the old ones, against the same
+# fake GitHub (tools\release\settle-test.ps1): a call it fails is tried again, an old release it never
+# deletes is left to the next run, a delete it refuses fails.
+Add 'settle' @('powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '..\tools\release\settle-test.ps1') -seconds 4
 $skipped = New-Object System.Collections.Generic.List[string]
 if (Get-Command node -ErrorAction SilentlyContinue) { Add 'lsp-smoke' @('node', '..\tools\vscode\test\lsp-smoke.js', $kpp, '--lsp') -seconds 3 }
 else { $skipped.Add('lsp-smoke (no Node.js)') }
