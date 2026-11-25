@@ -596,7 +596,7 @@ auto GlobalScope::Impl::templateArgument(Node* arg, Decl* param, const TypeConte
     // `registerRead<f.pointer>` of a methods(T) descriptor (design.md 8.3): the pointer to its member function, the value
     // `&T::f` gives (functionArgument), so that both are one argument.
     auto* m = static_cast<MemberExpr*>(arg);
-    const Ty* t = m->base->ty && m->base->ty->isKnown() && !types.isDependent(m->base->ty) ? m->base->ty : typeOfSignatureExpression(m->base, ctx);
+    const Ty* t = descriptorTypeOf(m->base, ctx);
     t = t ? types.stripRef(t) : nullptr;
     if (t && t->kind == TyKind::Member && t->decl && t->decl->kind == NodeKind::FunctionDecl)
       return t->inner && t->inner->isKnown() && !types.isDependent(t->inner) ? types.functionValue(t->inner, t->decl) : types.unknown();

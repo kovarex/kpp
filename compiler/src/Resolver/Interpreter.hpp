@@ -113,6 +113,9 @@
   std::optional<ConstValue> constDescriptorName(MemberExpr* m, const TypeContext& ctx);
   // `f.isNoDiscard` of a descriptor of methods(T) (design.md 8.3): whether the function is [[nodiscard]], a bool.
   std::optional<ConstValue> constDescriptorIsNoDiscard(MemberExpr* m, const TypeContext& ctx);
+  // The type of the descriptor an expression names: a for constexpr's variable bound in ctx is that element's (the loop
+  // body is shared by the elements), else the expression's type.
+  const Ty* descriptorTypeOf(Expr* base, const TypeContext& ctx);
   std::optional<ConstValue> constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth);
   // Which list a reflection names: members(T), alternatives(U) or methods(T) (design.md 8.3, 8.5).
   enum class ReflectionList : uint8_t { Members, Alternatives, Methods, OwnMembers };
