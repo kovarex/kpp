@@ -1813,31 +1813,37 @@ did. Now the function as written is looked for, so an instance's member function
 any other, and a class lists the member functions that have code (a definition names them), its
 virtual ones and its static ones: one that nobody calls is never emitted and is not listed.
 
-What the lists cost was measured with an earlier form of the change, in which an instance listed only
-its virtual and static member functions (the upper bound: the final form also lists the instances'
-member functions that have code). The game (kpp-factorio 0c18a3229e), eight clean debug builds each in
-turn of master 87b8d9481 and of that form with the link command's change (each with the temporary
-timers), the machine quiet, medians:
+Measured on the game (kpp-factorio 0c18a3229e): eight clean debug builds each in turn of master
+235ab7c14 with the change taken back out and of master 235ab7c14 as it is (b88217f64 is the change; each
+with the temporary timers), medians:
 
-| | 87b8d9481 | with both | |
+| | without it | with it | |
 |---|---:|---:|---:|
-| the build, from its start to its exit | 10.19 s | 9.76 s | -4.3% |
-| kpp's part of it | 8.35 s | 8.0 s | |
-| codegen | 4.22 s | 4.08 s | |
-| of it the debug classes defined (homeDebugClasses' levels) | 0.182 s | 0.055 s | |
-| LLVM after codegen | 2.23 s | 2.09 s | |
-| from the back end's end to the link's command | 0.065 s | 0.004 s | |
-| the link | 1.33 s | 1.26 s | |
-| the IR | 1,573.4 MB | 1,492.4 MB | -5.1% |
-| the objects | 520.9 MB | 506.1 MB | -2.8% |
-| the PDB | 274.1 MB | 258.8 MB | -5.6% |
-| CPU time of the build's processes | 208.6 s | 199.4 s | -4.4% |
+| the build, from its start to its exit | 10.23 s | 9.90 s | -3.2% |
+| kpp's part of it | 8.35 s | 8.10 s | |
+| codegen | 4.31 s | 4.17 s | |
+| of it the debug classes defined (homeDebugClasses' levels) | 0.183 s | 0.099 s | |
+| LLVM after codegen | 2.23 s | 2.11 s | |
+| the link | 1.35 s | 1.30 s | |
+| the IR | 1,561.9 MB | 1,510.1 MB | -3.3% |
+| the objects | 517.4 MB | 503.8 MB | -2.6% |
+| the PDB | 274.1 MB | 257.6 MB | -6.0% |
+| CPU time of the build's processes | 206.3 s | 199.4 s | -3.3% |
 
-Every build with them (9.70 to 9.90 s) is shorter than every build without (10.12 to 10.35 s). The
-classes that only another class's definition names, defined at the second level, went from 15,383 to
-720: the others were named by the listed member functions' types alone. With codegen ending 0.15 s
-sooner, 16 of the 119 program pieces were not compiled yet at its end, where all were before: the back
-end's width while codegen runs (half of the threads, above) was measured for the longer codegen.
+In each of the eight rounds the build with it was the shorter, by 0.09 to 0.39 s (10.09 to 10.44 s
+without, 9.82 to 10.35 s with; in the last two rounds other work ran on the machine, 5 to 8% busy before
+three of their four builds, and all four took 10.3 to 10.4 s). The classes that only another class's
+definition names, defined at the second level, went from 15,383 to 720: the others were named by the
+listed member functions' types alone. With codegen ending 0.14 s sooner, 3 or 4 of the 119 program
+pieces were not compiled yet at its end at the median, where 1 was before: the back end's width while
+codegen runs (half of the threads, above) was measured for the longer codegen.
+
+An earlier form of the change, in which a class template's instance listed only its virtual and static
+member functions, was measured the same way against 87b8d9481, together with the link command's change:
+the build 10.19 s to 9.76 s, the IR 1,573.4 MB to 1,492.4 MB, the objects 520.9 MB to 506.1 MB, the PDB
+274.1 MB to 258.8 MB, the debug classes' levels 0.182 s to 0.055 s. It gave up the calls of instances'
+member functions from a watch, which had never worked for another reason (above), and was replaced: what
+the final form lists besides, the instances' member functions that have code, is the difference.
 
 **Measured and left.**
 
