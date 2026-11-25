@@ -116,14 +116,18 @@
   // The type of the descriptor an expression names: a for constexpr's variable bound in ctx is that element's (the loop
   // body is shared by the elements), else the expression's type.
   const Ty* descriptorTypeOf(Expr* base, const TypeContext& ctx);
+  // `e.value` of a descriptor of enumerators(E) (design.md 8.3): the enumerator's value, a constant of E.
+  std::optional<ConstValue> constDescriptorValue(MemberExpr* m, const TypeContext& ctx, int depth);
   std::optional<ConstValue> constReflectionSize(MemberExpr* m, const TypeContext& ctx, int depth);
-  // Which list a reflection names: members(T), alternatives(U) or methods(T) (design.md 8.3, 8.5).
-  enum class ReflectionList : uint8_t { Members, Alternatives, Methods, OwnMembers };
+  // Which list a reflection names: members(T), ownMembers(T), alternatives(U), methods(T) or enumerators(E) (design.md 8.3, 8.5).
+  enum class ReflectionList : uint8_t { Members, Alternatives, Methods, OwnMembers, Enumerators };
   static std::optional<ReflectionList> reflectionListNamed(std::string_view name);
   bool reflectedElementsOf(const Ty* cls, ReflectionList list, std::vector<const Ty*>& out, int depth);
   bool reflectionListType(Node* list, const TypeContext& ctx, const Ty*& cls, ReflectionList& which, int depth);
   // methods(T)'s descriptor of f, a member function of cls: a Member type of f whose inner type is the pointer to it.
   const Ty* methodDescriptor(FunctionDecl* f, const Ty* cls, const Subst* s);
+  // enumerators(E)'s descriptors: one per value, the first enumerator of it, in declaration order (design.md 8.3).
+  bool enumeratorDescriptorsOf(const Ty* enumType, std::vector<const Ty*>& out, int depth);
 
   // Bounds of one evaluation: the steps it takes and the calls nested in it.
   static uint64_t& constSteps();

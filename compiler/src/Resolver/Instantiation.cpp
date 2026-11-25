@@ -2305,6 +2305,15 @@ auto GlobalScope::Impl::convertType(Type* t, const TypeContext& ctx, int depth) 
           return types.rref(typed); // `decltype((move(h).v))`: an xvalue's member is one, T&& ([expr.ref] 6.2)
         return typed->isReference() || !isLvalueExpression(e) ? typed : types.lref(typed);
       };
+      // `a.type` of a for constexpr's descriptor a (the parser's decltype of it): the element's type, a member's or an
+      // alternative's, where ctx binds a (coordinator, 2026-11-25: `typename a.type::IDType` and `a.type::baseID` were
+      // "not declared", the expression typed anew having no type).
+      if (d->expr && d->expr->kind == NodeKind::MemberExpr && !d->isAuto)
+        if (auto* m = static_cast<MemberExpr*>(d->expr); m->op == P::Dot && m->base && m->base->kind == NodeKind::NameExpr && m->member.parts.size() == 1 &&
+                                                          symbols.name(m->member.parts[0].symbol) == "type")
+          if (const Ty* descriptor = descriptorTypeOf(m->base, ctx); descriptor && types.stripRef(descriptor)->kind == TyKind::Member &&
+                                                                         types.stripRef(descriptor)->inner && !types.isDependent(types.stripRef(descriptor)))
+            return types.stripRef(descriptor)->inner;
       const Ty* generic = d->expr && d->expr->ty ? decltypeOfExpr(d->expr->ty, d->expr) : types.unknown();
       if (namesTupleBinding(d->expr))
         generic = types.stripRef(generic); // `decltype(a)` of a tuple-like binding: the type get gives it, not its reference

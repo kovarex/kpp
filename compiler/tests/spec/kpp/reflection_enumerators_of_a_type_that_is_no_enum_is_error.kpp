@@ -1,0 +1,15 @@
+// spec: enumerators(E)[i] and enumerators(E).size of a type that is no enum are errors, as members(T)'s of one that is no class are; so is enumerators(E)[i] past the last value, naming the count; an enumerator's descriptor has name and value only
+// design.md 8.3
+// error: reflection_enumerators_of_a_type_that_is_no_enum_is_error.kpp:11: error: enumerators(E)[i] of a type that is no enum
+// error: reflection_enumerators_of_a_type_that_is_no_enum_is_error.kpp:12: error: enumerators(Side)[2] is past its last value: Side has 2
+// error: reflection_enumerators_of_a_type_that_is_no_enum_is_error.kpp:13: error: an enumerator's descriptor has name and value only
+struct Pos { i32 x = 0; };
+enum class Side : u8 { { Left, Right } };
+int main()
+{
+  std::println(enumerators(Side)[0].name);
+  std::println(enumerators(Pos)[0].name);
+  std::println(enumerators(Side)[2].name);
+  std::println(enumerators(Side)[1].offset);
+  return 0;
+}

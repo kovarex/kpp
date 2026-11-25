@@ -1784,6 +1784,18 @@ auto GlobalScope::Impl::lookupWritten(const QualifiedName& name, Scope* context,
     // `decltype(this->inventories)::mapped_type`: the name inside the class the type names.
     const Ty* q = convertType(name.typeQualifier, own, depth + 1);
     q = q ? types.unqualified(types.stripRef(q)) : nullptr;
+    auto descriptorType = [&](Type* t) {
+      Expr* x = t && t->kind == NodeKind::DecltypeType ? static_cast<DecltypeType*>(t)->expr : nullptr;
+      auto* m = x && x->kind == NodeKind::MemberExpr ? static_cast<MemberExpr*>(x) : nullptr;
+      return m && m->op == P::Dot && m->base && m->base->kind == NodeKind::NameExpr && m->member.parts.size() == 1 &&
+             symbols.name(m->member.parts[0].symbol) == "type" && static_cast<NameExpr*>(m->base)->resolved &&
+             static_cast<NameExpr*>(m->base)->resolved->kind == NodeKind::TemplateParamDecl;
+    };
+    if ((!q || !q->isKnown()) && descriptorType(name.typeQualifier))
+    {
+      out.found = Found::Dependent; // (`a.type::baseID` where the element a is bound to is not known yet: each element's walk names it)
+      return out;
+    }
     if (!q || !q->isKnown())
       return out;
     if (types.isDependent(q))

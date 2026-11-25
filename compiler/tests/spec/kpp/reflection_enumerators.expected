@@ -1,0 +1,9 @@
+North = 0
+East = 1
+South = 2
+West = 3
+None = 7
+Low = -2
+High = 40
+South West Low
+5 2 High

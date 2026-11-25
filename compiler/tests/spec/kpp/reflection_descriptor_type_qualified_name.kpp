@@ -1,0 +1,38 @@
+// spec: a name inside a descriptor's type, `a.type::IDType` (with or without typename) where a type is written and `a.type::baseID` where a value is, in decltype too, for alternatives(U) and members(T), in a function and in a class template's member; until 2026-11-25 "a type the compiler could not resolve" and "not declared"
+// design.md 8.3, 8.5 (found writing the game's IDButton<ChatIconID>::createToolTip)
+struct AlphaID { i32 v = 1; };
+struct BetaID { i64 v = 2; };
+struct Alpha { using IDType = AlphaID; static constexpr i32 baseID = 3; };
+struct Beta { using IDType = BetaID; static constexpr i64 baseID = 40; };
+union enum Icon : u8 { { {First, Alpha}, {Second, Beta} } };
+struct Pair { Alpha alpha; Beta beta; };
+
+template<typename T> u64 sizeOfIt() { return sizeof(T); }
+
+template<typename U>
+struct Button
+{
+  i64 total() const
+  {
+    i64 sum = 0;
+    for constexpr (auto a : alternatives(U))
+    {
+      typename a.type::IDType id;
+      sum += i64(sizeof(id)) * 100 + a.type::baseID;
+    }
+    return sum;
+  }
+};
+
+int main()
+{
+  for constexpr (auto a : alternatives(Icon))
+  {
+    decltype(a.type::baseID) base = a.type::baseID;
+    std::println(sizeOfIt<typename a.type::IDType>(), " ", sizeOfIt<a.type::IDType>(), " ", base, " ", sizeof(base));
+  }
+  for constexpr (auto m : members(Pair))
+    std::println(m.name, " ", m.type::baseID, " ", sizeOfIt<typename m.type::IDType>());
+  std::println(Button<Icon>().total());
+  return 0;
+}

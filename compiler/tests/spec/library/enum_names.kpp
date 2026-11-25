@@ -1,0 +1,34 @@
+// spec: std::snakeName and std::kebabName give an enum value's name by the naming rule, constant data made at compile time from enumerators(E); std::fromSnakeName and std::fromKebabName read one back; std::snakeCase and std::kebabCase apply the rule to any name at run time; a name the rule does not give is written before the call
+// docs/stdlib/enumnames.md (kovarex, 2026-11-25: generic name strings in place of the game's hand-written switches)
+enum class AlertType : u8
+{
+  { ENTITY_DESTROYED, NOT_ENOUGH_CONSTRUCTION_ROBOTS, TURRET_FIRE, CUSTOM }
+  const char* str() const { return std::snakeName(this); }
+};
+
+enum class Kind : u8
+{
+  { RuntimeGlobal, GUIElement, UTF16LowSurrogate, Rails, Layer2Mask, Last = Rails }
+  const char* str() const
+  {
+    if (this == Rails)
+      return "rail";
+    return std::kebabName(this);
+  }
+};
+
+int main()
+{
+  for (AlertType a : AlertType::values)
+    std::print(a.str(), " ");
+  std::println();
+  for (Kind k : Kind::values)
+    std::print(k.str(), " ", std::snakeName(k), " ");
+  std::println();
+  std::println(AlertType::fromStr("turret_fire").hasValue(), " ", Kind::fromStr("rail").hasValue(), " ", Kind::fromStr("rails").hasValue());
+  std::println(std::fromKebabName<Kind>("gui-element").value() == Kind::GUIElement, " ", std::fromSnakeName<Kind>(std::String("layer2_mask")).value() == Kind::Layer2Mask,
+               " ", std::fromSnakeName<Kind>("gui-element").hasValue());
+  std::println(std::snakeCase("readWeight"), " ", std::kebabCase("HTTPServer_Port"), " ", std::snakeCase(""), ".");
+  std::println(std::snakeName(Kind::Last), " ", std::kebabName(AlertType::CUSTOM) == std::kebabName(AlertType::CUSTOM));
+  return 0;
+}

@@ -672,6 +672,15 @@ auto GlobalScope::Impl::descriptorTypeOf(Expr* base, const TypeContext& ctx) -> 
       for (size_t i = ctx.subst->pairs.size(); i-- > 0;)
         if (ctx.subst->pairs[i].param == d && ctx.subst->pairs[i].type)
           return ctx.subst->pairs[i].type;
+  // (a name nothing resolved yet, the parser's `a` in `a.type::baseID`'s decltype: the loop variable of that name bound in
+  // ctx, when it is a descriptor)
+  if (base && base->kind == NodeKind::NameExpr && ctx.subst && !static_cast<NameExpr*>(base)->resolved &&
+      static_cast<NameExpr*>(base)->name.parts.size() == 1)
+    for (size_t i = ctx.subst->pairs.size(); i-- > 0;)
+      if (const Subst::Pair& p = ctx.subst->pairs[i]; p.type && p.param && p.param->kind == NodeKind::TemplateParamDecl &&
+                                                      static_cast<TemplateParamDecl*>(p.param)->name == static_cast<NameExpr*>(base)->name.parts[0].symbol &&
+                                                      types.stripRef(p.type)->kind == TyKind::Member)
+        return p.type;
   if (!base)
     return nullptr;
   return base->ty && base->ty->isKnown() && !types.isDependent(base->ty) ? base->ty : typeOfSignatureExpression(base, ctx);
@@ -892,6 +901,8 @@ auto GlobalScope::Impl::constValueIn(Expr* e, const TypeContext& ctx, int depth)
         return size;
       if (std::optional<ConstValue> noDiscard = constDescriptorIsNoDiscard(m, ctx))
         return noDiscard;
+      if (std::optional<ConstValue> value = constDescriptorValue(m, ctx, depth))
+        return value;
       if (std::optional<ConstValue> named = constDescriptorName(m, ctx))
         return named;
       if (std::optional<ConstValue> has = constDescriptorHasInitializer(m, ctx))
@@ -9885,6 +9896,8 @@ auto GlobalScope::Impl::reflectionListNamed(std::string_view name) -> std::optio
     return ReflectionList::Methods;
   if (name == "ownMembers")
     return ReflectionList::OwnMembers;
+  if (name == "enumerators")
+    return ReflectionList::Enumerators;
   return std::nullopt;
 }
 
@@ -9907,7 +9920,53 @@ auto GlobalScope::Impl::reflectionListType(Node* list, const TypeContext& ctx, c
   named.name = static_cast<NameExpr*>(c->args[0])->name;
   cls = convertType(&named, ctx, depth + 1);
   cls = cls ? types.unqualified(types.stripRef(cls)) : nullptr;
-  return cls && cls->kind == TyKind::Class && !types.isDependent(cls) && !mentionsUnknown(cls);
+  return cls && cls->kind == (which == ReflectionList::Enumerators ? TyKind::Enum : TyKind::Class) && !types.isDependent(cls) && !mentionsUnknown(cls);
+}
+
+auto GlobalScope::Impl::enumeratorDescriptorsOf(const Ty* enumType, std::vector<const Ty*>& out, int depth) -> bool
+{
+  // enumerators(E): one descriptor per value, its first enumerator's, in declaration order (as the generated str()
+  // names a value); each a Member type of the enumerator whose inner type is E (design.md 8.3).
+  Decl* def = enumType ? enumType->decl : nullptr;
+  if (def && !def->ownScope)
+  {
+    Entry e{def, nullptr};
+    if (Scope* s = scopeOfEntry(e, 0))
+      def = s->owner;
+  }
+  if (!def || def->kind != NodeKind::EnumDecl || !static_cast<EnumDecl*>(def)->isDefinition)
+    return false;
+  auto* e = static_cast<EnumDecl*>(def);
+  if (enumType != types.enumType(e))
+    return false; // (an enumeration of a class template's instance: its values are the instance's)
+  TypeContext ctx{e->ownScope ? e->ownScope : lexicalScopeOf(e), nullptr, nullptr, e->file ? e->file->tokens : nullptr,
+                  e->file ? e->file->text : std::string_view()};
+  std::vector<int64_t> seen;
+  for (Decl* m : e->enumerators)
+  {
+    if (m->kind != NodeKind::EnumeratorDecl)
+      continue;
+    std::optional<ConstValue> v = constValueOfDecl(m, ctx, depth + 1);
+    if (!v || v->kind != ConstValue::Kind::Int)
+      return false;
+    if (std::find(seen.begin(), seen.end(), v->i) != seen.end())
+      continue;
+    seen.push_back(v->i);
+    out.push_back(types.member(enumType, m, enumType));
+  }
+  return true;
+}
+
+auto GlobalScope::Impl::constDescriptorValue(MemberExpr* m, const TypeContext& ctx, int depth) -> std::optional<ConstValue>
+{
+  // `e.value` of an enumerators(E) descriptor: its enumerator's value.
+  if (!m->base || m->op != P::Dot || m->member.parts.size() != 1 || symbols.name(m->member.parts[0].symbol) != "value")
+    return std::nullopt;
+  const Ty* t = descriptorTypeOf(m->base, ctx);
+  t = t ? types.stripRef(t) : nullptr;
+  if (!t || t->kind != TyKind::Member || !t->decl || t->decl->kind != NodeKind::EnumeratorDecl)
+    return std::nullopt;
+  return constValueOfDecl(t->decl, ctx, depth + 1);
 }
 
 auto GlobalScope::Impl::methodDescriptor(FunctionDecl* f, const Ty* cls, const Subst* s) -> const Ty*
@@ -9925,6 +9984,8 @@ auto GlobalScope::Impl::reflectedElementsOf(const Ty* cls, ReflectionList list, 
   // that have an address, in declaration order (design.md 8.3, 8.5).
   if (depth > maxNestedLevels)
     return false;
+  if (list == ReflectionList::Enumerators)
+    return enumeratorDescriptorsOf(cls, out, depth);
   if (list == ReflectionList::Methods)
   {
     ClassDecl* def = classDefinition(cls);

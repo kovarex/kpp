@@ -1,0 +1,3 @@
+entity-destroyed turret-fire custom
+runtime-global guielement
+true
