@@ -1624,18 +1624,35 @@ assembled only when the definition changed. Specs kpp/server_class_no_longer_use
 `--debug-info` before) and kpp/server_class_instance_no_longer_used (failed in every configuration: its
 member functions stayed too).
 
+**A polymorphic class instance that nothing uses any more: codegen in full (2026-11-25).** The virtual
+functions of a polymorphic class template's instance stayed when an edit stopped using the class. Its
+vtables name them, in the layout's own text and in the entry of each module that stored them, both
+texts of no function made on demand; and their definitions use the layout in turn: the member functions
+and the tables kept each other. After `Square<int64>` went from main the server's build had three things
+a build from scratch has not: the definition of `Square<int64>::area() const`, the instance's
+destructor helper in the shared definitions and its name's string in the shared declarations (the
+module's text no longer carried the table itself, and the program was right). Now a rebuild notes the
+polymorphic class instances whose layout a dropped text used and that no definition emitted now uses,
+as it notes the lost names, and asks the same question about them (`unreachedOnDemand`'s asked
+layouts): such a layout is used when a text of no function made on demand, or a reached one's, uses it
+(a definition's recorded layouts), names one of its tables, or is the layout of a class that holds it;
+only then do its vtables name their functions. One that a program function's text uses is answered by
+the first test. One that no text uses is not taken apart piece by piece (its tables in the modules, the
+helper, the string in the shared declarations would each need a rule): the rebuild declines, "a
+polymorphic class instance that no text uses any more", and the program is generated in full, as for a
+polymorphic class's changed layout. Spec kpp/server_polymorphic_class_instance_no_longer_used (the
+instance constructed, then gone; only laid out by `sizeof`, then gone); a polymorphic class that is no
+template needs none of it (its member functions are the program's own). Under `--verify-incremental`
+the step after a difference can fail to link, and that failure is the comparison's: its build from
+scratch has left its objects where the kept session takes its own for compiled.
+
 Left as it was: a helper of the shared definitions (a destructor's, a copy's) whose last use an edit
-takes out stays; so do the virtual functions of a polymorphic class template's instance that an edit
-stops using. The class's vtable names them, in the layout's own text and in the entry of the module
-that stored it, and both are texts of no function made on demand; their definitions hold the layout in
-turn. Looked at on 2026-11-25 (pending spec kpp/server_polymorphic_class_instance_no_longer_used):
-after `Square<int64>` goes from main, the server's build has three things a build from scratch has
-not, the definition of `Square<int64>::area() const`, the instance's destructor helper in the shared
-definitions and its name's string in the shared declarations; the module's text no longer carries the
-table itself, and the program is right. A polymorphic class that is no template is as from scratch
-(its member functions are the program's own). Under `--verify-incremental` the step after such a
-difference can fail to link, and that failure is the comparison's: its build from scratch has left
-its objects where the kept session takes its own for compiled.
+takes out stays, where no polymorphic class instance went with it. And in a release build the vtable
+and the descriptor a module was given for a text that is gone stay in that module: a release build's
+module is written with all of its own declarations, where a debug build's pieces carry only those
+their texts reach (pending spec kpp/server_class_no_longer_constructed_keeps_no_vtable_release: a
+polymorphic class, a template's instance or not, that functions stop constructing while it stays laid
+out; found 2026-11-25, older than that day's changes).
 
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:

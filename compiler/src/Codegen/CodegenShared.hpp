@@ -567,7 +567,9 @@ namespace codegen
     // text reaches now (the functions that failed have no text; a check writes no module): the first build without errors
     // that writes its modules asks (rebuildModules, unreachedOnDemand).
     bool onDemandUnchecked = false;
-    bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
+    // (with it: the polymorphic class instances whose layout those texts used, asked about then too)
+    std::vector<const Ty*> layoutsUnchecked;
+    bool inlineTrivial = true;                          // trivial callees emitted in their callers (--no-inline: false)
     bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck
     bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
     bool sanitizeThread = false;                         // --sanitize thread: vtable pointers' loads and stores tagged (vptrAccess)

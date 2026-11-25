@@ -1,0 +1,163 @@
+// spec: a compile server's release build after an edit that stops constructing a polymorphic class is what a build from scratch gives: the module that stored the class's vtable, for the constructor's code or the object built in place, carries the vtable and the class's descriptor no more once no text of it stores them (the class is still laid out: its member functions use it)
+// kpp: --release
+// pending: a release build's module is written with all of its own declarations, and the vtable and descriptor a module was given for a text that is gone stay among them (--verify-incremental: "what it wrote differs"; the program is right). A debug build's pieces carry only the declarations their texts reach, so the same edit is as from scratch there. Found 2026-11-25 beside kpp/server_polymorphic_class_instance_no_longer_used; mine (the compile server's leftovers)
+//--- step: the program
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Circle : public Shape
+{
+public:
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.radius; ++i)
+      sum += this.radius;
+    return sum;
+  }
+  i32 radius = 2;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.side; ++i)
+      sum += this.side;
+    return sum;
+  }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+i32 circles()
+{
+  Circle c;
+  return areaOf(c);
+}
+i32 squares()
+{
+  Square s(3);
+  return areaOf(s);
+}
+int main()
+{
+  std::println(circles(), " ", squares());
+  return 0;
+}
+// expect: 4 9
+//--- step: neither constructed any more
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Circle : public Shape
+{
+public:
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.radius; ++i)
+      sum += this.radius;
+    return sum;
+  }
+  i32 radius = 2;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.side; ++i)
+      sum += this.side;
+    return sum;
+  }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+i32 circles()
+{
+  return 4;
+}
+i32 squares()
+{
+  return 9;
+}
+int main()
+{
+  std::println(circles(), " ", squares());
+  return 0;
+}
+// expect: 4 9
+//--- step: both constructed again
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Circle : public Shape
+{
+public:
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.radius; ++i)
+      sum += this.radius;
+    return sum;
+  }
+  i32 radius = 2;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.side; ++i)
+      sum += this.side;
+    return sum;
+  }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+i32 circles()
+{
+  Circle c;
+  return areaOf(c);
+}
+i32 squares()
+{
+  Square s(3);
+  return areaOf(s);
+}
+int main()
+{
+  std::println(circles(), " ", squares());
+  return 0;
+}
+// expect: 4 9
