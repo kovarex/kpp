@@ -30,7 +30,7 @@ public:
   using pointer = char*;
   using const_pointer = const char*;
 
-  String() noexcept { this.becomeEmpty(); }
+  String() { this.becomeEmpty(); }
   implicit String(const char* text) { this.initialize(text, checkedSize(strlen(text), "string too long")); }
   implicit String(StringView text) { this.initialize(text.data(), text.size()); }
   String(const char* text, ContainerSize count) { this.initialize(text, count); }

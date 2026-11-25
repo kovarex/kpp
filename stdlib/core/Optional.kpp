@@ -171,8 +171,8 @@ struct Optional : OptionalValue<T>
   T* slot() noexcept { return &this.storage.value; }
   const T* slot() const noexcept { return &this.storage.value; }
 
-  Optional() noexcept {}
-  implicit Optional(NullOpt) noexcept {}
+  Optional() {}
+  implicit Optional(NullOpt) {}
 
   implicit Optional(const T& v)
   {
