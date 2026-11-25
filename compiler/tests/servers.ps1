@@ -10,7 +10,10 @@ $work = Join-Path $PSScriptRoot '..\build\tests\servers'
 function StopLeftovers()
 {
   $root = [IO.Path]::GetFullPath($work)
-  Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.Id -Force }
+  # (a process's Path read once, here and below: one that exits between two reads has none the second time,
+  # and `$_.Path -and $_.Path.StartsWith(...)` then called a method on null and failed the whole check: master's
+  # CI run 1592 of 2026-11-25, in Servers)
+  Get-Process | Where-Object { $path = $_.Path; $path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
 }
 if (Test-Path $work) { StopLeftovers; cmd /c rd /s /q "$work" }
 New-Item -ItemType Directory -Force "$work\bin", "$work\tmp" | Out-Null
@@ -37,9 +40,10 @@ function Servers()
 {
   $dir = [IO.Path]::GetFullPath("$work\tmp\kpp-server")
   $out = @()
-  foreach ($process in @(Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase) }))
+  foreach ($process in @(Get-Process))
   {
-    if ((Split-Path -Leaf $process.Path) -match '^kpp-server-([0-9a-f]{16})\.exe$')
+    $path = $process.Path
+    if ($path -and $path.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $path) -match '^kpp-server-([0-9a-f]{16})\.exe$')
     {
       $out += [pscustomobject]@{ Key = (Join-Path $dir "$($Matches[1]).log"); Value = $process.Id }
     }
@@ -56,7 +60,7 @@ function ServerState()
     $text += "`n  $($log.Name): " + ((@(Get-Content -LiteralPath $log.FullName -Tail 4 -ErrorAction SilentlyContinue)) -join "`n    ")
   }
   $root = [IO.Path]::GetFullPath($work)
-  $processes = @(Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { "$($_.Id) $(Split-Path -Leaf $_.Path)" })
+  $processes = @(Get-Process | ForEach-Object { $path = $_.Path; if ($path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) { "$($_.Id) $(Split-Path -Leaf $path)" } })
   return "$text`n  processes from the test's folder: $(if ($processes) { $processes -join ', ' } else { 'none' })"
 }
 # (Alive only while the process runs from this test's folder: a server that ended may have its id reused
@@ -64,7 +68,9 @@ function ServerState()
 function Alive([int]$id)
 {
   $process = Get-Process -Id $id -ErrorAction SilentlyContinue
-  return $null -ne $process -and $process.Path -and $process.Path.StartsWith([IO.Path]::GetFullPath($work), [StringComparison]::OrdinalIgnoreCase)
+  $path = $null
+  if ($null -ne $process) { $path = $process.Path }
+  return $path -and $path.StartsWith([IO.Path]::GetFullPath($work), [StringComparison]::OrdinalIgnoreCase)
 }
 $script:lastReport = ''
 function Build([string]$name)
