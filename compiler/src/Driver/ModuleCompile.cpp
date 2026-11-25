@@ -281,28 +281,11 @@ void reportAccessWarnings(Build& build)
     }
   }
 
-std::string directLinkCommand(const std::string& clang, const std::string& responsePath, const std::string& response, const std::string& exe)
+// The clang driver's one job for a response file (`clang -###`), as its arguments, the tool first: each as the
+// driver quotes it, a backslash or a quote in one escaped with a backslash. None when the driver failed, or
+// gave no job, or more than one.
+static std::vector<std::string> driverJob(const std::string& clang, const std::string& responsePath)
 {
-  Sha256 key;
-  // (2: the command is kept without cmd's outer quotes, which host::shell adds since 5bf9a63c; a
-  // kept one of 1 has them and was run quoted twice, '""C:\Program' is not recognized)
-  key.add("kpp direct link 2\n");
-  key.add(objectcache::stamp(clang));
-  for (const char* name : {"PATH", "LIB", "LIBPATH", "INCLUDE", "VCINSTALLDIR", "VCToolsInstallDir", "VSINSTALLDIR", "VisualStudioVersion",
-                           "WindowsSdkDir", "WindowsSDKVersion", "UniversalCRTSdkDir", "UCRTVersion", "Platform"})
-  {
-    const char* value = getenv(name);
-    key.add(std::string("\n") + name + "=" + (value ? value : ""));
-  }
-  key.add("\n");
-  key.add(response);
-  std::string keyText = key.hex();
-  std::string cachePath = exe + ".link.direct";
-  std::string cached = readWholeFile(cachePath);
-  if (size_t end = cached.find('\n'); end != std::string::npos && cached.compare(0, end, keyText) == 0)
-    return cached.substr(end + 1);
-  // The driver's answer: its one job, link.exe's arguments each quoted, a backslash or a quote in
-  // one escaped with a backslash.
   std::string said;
   if (FILE* pipe = host::openPipe("\"" + clang + "\" -### @\"" + responsePath + "\" 2>&1", "r"))
   {
@@ -311,7 +294,7 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
     while ((n = fread(chunk, 1, sizeof chunk, pipe)) > 0)
       said.append(chunk, n);
     if (host::closePipe(pipe) != 0)
-      return "";
+      return {};
   }
   std::vector<std::string> args;
   for (size_t at = 0; at < said.size();)
@@ -322,7 +305,7 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
     if (line.size() < 2 || line[0] != ' ' || line[1] != '"')
       continue;
     if (!args.empty())
-      return ""; // (two jobs: not one link)
+      return {}; // (two jobs: not one link)
     for (size_t i = 1; i < line.size();)
     {
       if (line[i] == ' ' || line[i] == '\r')
@@ -331,32 +314,37 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
         continue;
       }
       if (line[i] != '"')
-        return "";
+        return {};
       std::string arg;
       for (++i; i < line.size() && line[i] != '"'; ++i)
         arg += line[i] == '\\' && i + 1 < line.size() ? line[++i] : line[i];
       if (i >= line.size())
-        return "";
+        return {};
       ++i;
       args.push_back(std::move(arg));
     }
   }
-  if (args.size() < 2)
-    return "";
-  std::string tool = std::filesystem::path(args[0]).filename().string();
-  for (char& c : tool)
-    c = char(tolower((unsigned char)c));
-  if (tool != "link.exe")
-    return "";
-  std::string arguments;
-  for (size_t i = 1; i < args.size(); ++i)
+  return args;
+}
+
+std::string directLinkCommand(const std::string& clang, const std::string& exe, const std::string& objects, const std::string& flags)
+{
+  Sha256 key;
+  // (3: the driver is asked without the objects, and its arguments are kept with the objects' place; 2:
+  // the command is kept without cmd's outer quotes, which host::shell adds since 5bf9a63c; a kept one of
+  // 1 has them and was run quoted twice, '""C:\Program' is not recognized)
+  key.add("kpp direct link 3\n");
+  key.add(objectcache::stamp(clang));
+  for (const char* name : {"PATH", "LIB", "LIBPATH", "INCLUDE", "VCINSTALLDIR", "VCToolsInstallDir", "VSINSTALLDIR", "VisualStudioVersion",
+                           "WindowsSdkDir", "WindowsSDKVersion", "UniversalCRTSdkDir", "UCRTVersion", "Platform"})
   {
-    if (args[i].find('"') != std::string::npos || (!args[i].empty() && args[i].back() == '\\'))
-      return "";
-    arguments += "\"" + args[i] + "\"\n";
+    const char* value = getenv(name);
+    key.add(std::string("\n") + name + "=" + (value ? value : ""));
   }
-  std::string linkResponse = exe + ".link.exe.rsp";
-  std::string command = "\"" + args[0] + "\" @\"" + linkResponse + "\"";
+  key.add("\n");
+  key.add(flags);
+  std::string keyText = key.hex();
+  std::string cachePath = exe + ".link.direct";
   auto write = [](const std::string& path, const std::string& text) // (one that fails: the link goes through clang)
   {
     FILE* out = fopen(path.c_str(), "wb");
@@ -365,7 +353,67 @@ std::string directLinkCommand(const std::string& clang, const std::string& respo
     bool written = fwrite(text.data(), 1, text.size(), out) == text.size();
     return fclose(out) == 0 && written;
   };
-  if (!write(linkResponse, arguments) || !write(cachePath, keyText + "\n" + command))
+  // Where the objects go among the kept arguments: the one line that is no argument (each of those is quoted).
+  static constexpr std::string_view place = "<objects>\n";
+  auto placeIn = [](const std::string& arguments)
+  {
+    size_t at = arguments.find(place);
+    while (at != std::string::npos && at != 0 && arguments[at - 1] != '\n')
+      at = arguments.find(place, at + 1);
+    return at;
+  };
+  // What is kept: the key's line, the command's, then link.exe's arguments.
+  std::string command, arguments;
+  std::string cached = readWholeFile(cachePath);
+  if (size_t end = cached.find('\n'); end != std::string::npos && cached.compare(0, end, keyText) == 0)
+    if (size_t next = cached.find('\n', end + 1); next != std::string::npos)
+    {
+      command = cached.substr(end + 1, next - end - 1);
+      arguments = cached.substr(next + 1);
+    }
+  if (command.empty() || placeIn(arguments) == std::string::npos)
+  {
+    // The driver is asked with a linker option where the objects' lines would be: it passes that on as it
+    // is, at the place an object given there goes to.
+    static constexpr std::string_view standIn = "kpp-link-objects";
+    std::string askPath = exe + ".link.ask.rsp";
+    if (!write(askPath, "-Wl," + std::string(standIn) + "\n" + flags))
+      return "";
+    std::vector<std::string> args = driverJob(clang, askPath);
+    std::error_code ec;
+    std::filesystem::remove(askPath, ec);
+    if (args.size() < 2)
+      return "";
+    std::string tool = std::filesystem::path(args[0]).filename().string();
+    for (char& c : tool)
+      c = char(tolower((unsigned char)c));
+    if (tool != "link.exe")
+      return "";
+    arguments.clear();
+    bool placed = false;
+    for (size_t i = 1; i < args.size(); ++i)
+    {
+      if (args[i] == standIn && !placed)
+      {
+        placed = true;
+        arguments += place;
+        continue;
+      }
+      if (args[i] == standIn || args[i].find('"') != std::string::npos || (!args[i].empty() && args[i].back() == '\\'))
+        return ""; // (the stand-in twice: not this one's alone)
+      arguments += "\"" + args[i] + "\"\n";
+    }
+    if (!placed)
+      return "";
+    command = "\"" + args[0] + "\" @\"" + exe + ".link.exe.rsp\"";
+    if (!write(cachePath, keyText + "\n" + command + "\n" + arguments))
+      return "";
+  }
+  // link.exe's arguments with this build's objects, written unless the file holds them already.
+  size_t at = placeIn(arguments);
+  std::string linkArguments = arguments.substr(0, at) + objects + arguments.substr(at + place.size());
+  std::string linkResponse = exe + ".link.exe.rsp";
+  if (readWholeFile(linkResponse) != linkArguments && !write(linkResponse, linkArguments))
     return "";
   return command;
 }
@@ -867,6 +915,89 @@ void runCodegen(Build& build)
     return; // (backEnd drops what it has not started)
   }
   start = Clock::now();
+  // The link's arguments, which go through a response file (64 objects' paths do not fit a command line):
+  // the objects' lines, and the lines after them.
+  struct LinkLines
+  {
+    std::string objects, flags;
+  };
+  auto linkLines = [&]
+  {
+    LinkLines lines;
+    auto slashes = [](std::string path) // clang reads a backslash in a response file as an escape
+    {
+      for (char& c : path)
+        if (c == '\\')
+          c = '/';
+      return path;
+    };
+    for (const std::string& o : objects)
+    {
+      std::error_code ec;
+      if (options.keepGoing && !std::filesystem::exists(o, ec))
+        continue; // a module clang rejected (--keep-going): the link reports what it would have defined
+      lines.objects += "\"" + slashes(o) + "\"\n";
+    }
+    std::string& response = lines.flags;
+    if (options.viaCpp)
+      for (const std::string& flag : splitFlags(cppLinkFlags(options)))
+        response += "\"" + slashes(flag) + "\"\n";
+    response += "-o \"" + slashes(options.exe) + "\"\n";
+    if (thinLTO)
+    {
+      // lld runs the ThinLTO back ends on the compiler's threads, and keeps their results for the
+      // modules that did not change (the cache next to the executable).
+      response += "-fuse-ld=lld\n-flto=thin\n" + optLevel + "\n";
+      if (options.target.msvc())
+      {
+        response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
+        response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
+      }
+      else
+      {
+        // (ld64.lld names its cache -cache_path_lto)
+        response += "-Wl,--thinlto-jobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
+        response += options.target.mac() ? "\"-Wl,-cache_path_lto," + slashes(options.exe) + ".ltocache\"\n"
+                                         : "\"-Wl,--thinlto-cache-dir=" + slashes(options.exe) + ".ltocache\"\n";
+      }
+    }
+    else if (fullLTO)
+      response += "-fuse-ld=lld\n-flto\n" + optLevel + "\n";
+    for (const std::string& flag : splitFlags(ltoLinkFlags(options)))
+      response += flag + "\n";
+    placeSanitizerRuntime(options);
+    for (const std::string& flag : splitFlags(linkFlags(options, wideEntry(parsed, symbols, options.target))))
+    {
+      // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.
+      std::string one = slashes(flag);
+      response += (one.find(' ') != std::string::npos ? "\"" + one + "\"" : one) + "\n";
+    }
+    return lines;
+  };
+  // An MSVC link that is no LTO's runs link.exe directly (directLinkCommand). Its command is asked for now, on
+  // a thread of its own beside the back end: the answer kept beside the executable is gone in a clean build, and
+  // clang's driver took 0.07 to 0.09 s of the game's after the back end to give it again, with nothing else
+  // running. (Not under --keep-going, whose link leaves out the object of a module clang rejects: asked then.)
+  const bool directLink = options.target.msvc() && !thinLTO && !fullLTO && !bundledToolchain();
+  struct LinkAsk
+  {
+    ~LinkAsk() { wait(); }
+    void wait()
+    {
+      if (thread.joinable())
+        thread.join();
+    }
+    std::thread thread;
+    bool asked = false;
+    LinkLines lines;
+    std::string command; // (the thread's, read once it is joined)
+  } linkAsk;
+  if (directLink && !options.keepGoing)
+  {
+    linkAsk.lines = linkLines();
+    linkAsk.asked = true;
+    linkAsk.thread = std::thread([&linkAsk, clang, exe = options.exe] { linkAsk.command = directLinkCommand(clang, exe, linkAsk.lines.objects, linkAsk.lines.flags); });
+  }
   // Output module k's object: the last build's when rebuildLLVM did not assemble it again or its hash
   // file has its text, else compiled (by LLVM's back end in this process, or by clang).
   // --verify-incremental: module k's object, its line tables patched, against its compile from the same .ll (whose name the
@@ -1064,61 +1195,16 @@ void runCodegen(Build& build)
       return;
   }
   start = Clock::now();
-  // The objects go through a response file: 64 paths do not fit a command line.
-  std::string response;
-  auto slashes = [](std::string path) // clang reads a backslash in a response file as an escape
-  {
-    for (char& c : path)
-      if (c == '\\')
-        c = '/';
-    return path;
-  };
-  for (const std::string& o : objects)
-  {
-    std::error_code ec;
-    if (options.keepGoing && !std::filesystem::exists(o, ec))
-      continue; // a module clang rejected (--keep-going): the link reports what it would have defined
-    response += "\"" + slashes(o) + "\"\n";
-  }
-  if (options.viaCpp)
-    for (const std::string& flag : splitFlags(cppLinkFlags(options)))
-      response += "\"" + slashes(flag) + "\"\n";
-  response += "-o \"" + slashes(options.exe) + "\"\n";
-  if (thinLTO)
-  {
-    // lld runs the ThinLTO back ends on the compiler's threads, and keeps their results for the
-    // modules that did not change (the cache next to the executable).
-    response += "-fuse-ld=lld\n-flto=thin\n" + optLevel + "\n";
-    if (options.target.msvc())
-    {
-      response += "-Wl,/opt:lldltojobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
-      response += "\"-Wl,/lldltocache:" + slashes(options.exe) + ".ltocache\"\n";
-    }
-    else
-    {
-      // (ld64.lld names its cache -cache_path_lto)
-      response += "-Wl,--thinlto-jobs=" + std::to_string(std::max(1u, options.threads)) + "\n";
-      response += options.target.mac() ? "\"-Wl,-cache_path_lto," + slashes(options.exe) + ".ltocache\"\n"
-                                       : "\"-Wl,--thinlto-cache-dir=" + slashes(options.exe) + ".ltocache\"\n";
-    }
-  }
-  else if (fullLTO)
-    response += "-fuse-ld=lld\n-flto\n" + optLevel + "\n";
-  for (const std::string& flag : splitFlags(ltoLinkFlags(options)))
-    response += flag + "\n";
-  placeSanitizerRuntime(options);
-  for (const std::string& flag : splitFlags(linkFlags(options, wideEntry(parsed, symbols, options.target))))
-  {
-    // A library under "C:\Program Files (x86)\..." (the Windows SDK's) stays one argument.
-    std::string one = slashes(flag);
-    response += (one.find(' ') != std::string::npos ? "\"" + one + "\"" : one) + "\n";
-  }
+  linkAsk.wait();
+  LinkLines lines = linkLines();
   std::string responsePath = options.exe + ".link.rsp";
-  if (!writeFile(responsePath, response))
+  if (!writeFile(responsePath, lines.objects + lines.flags))
     return;
-  // (an MSVC link that is no LTO's: link.exe directly, directLinkCommand)
-  std::string linkCommand = options.target.msvc() && !thinLTO && !fullLTO && !bundledToolchain()
-                              ? directLinkCommand(clang, responsePath, response, options.exe) : std::string();
+  // (an MSVC link that is no LTO's: link.exe directly, directLinkCommand: asked above for these lines, or now)
+  std::string linkCommand = !directLink ? std::string()
+                            : linkAsk.asked && linkAsk.lines.objects == lines.objects && linkAsk.lines.flags == lines.flags
+                              ? linkAsk.command
+                              : directLinkCommand(clang, options.exe, lines.objects, lines.flags);
   if (linkCommand.empty())
     linkCommand = "\"" + clang + "\" @\"" + responsePath + "\"";
   std::string link = linkCommand;

@@ -29,12 +29,18 @@
   // response file kept beside the executable: the driver, which finds MSVC's and the Windows SDK's
   // libraries before it runs link.exe, took 141 to 519 ms by itself (`clang -###` on the game's 256
   // objects, a loaded machine, 2026-11-05), every edit's link. EXE.link.direct holds the key, then
-  // link.exe's command; EXE.link.exe.rsp its arguments. The key: the response file's text, clang's
-  // path, size and time, and the environment the driver reads for the toolchain (a VsDevCmd's
-  // variables, PATH). A key that changed asks the driver again (`clang -###`, one run, its command
-  // kept); "" when its answer is not one link.exe command this can read (an argument with a quote or
-  // ending in a backslash), and the link goes through clang.
-  std::string directLinkCommand(const std::string& clang, const std::string& responsePath, const std::string& response, const std::string& exe);
+  // link.exe's command, then its arguments with a line `<objects>` where the objects go; EXE.link.exe.rsp
+  // those arguments with this build's objects.
+  // The driver is asked without the objects (objects: the response's lines that name them; flags: its
+  // lines after them), a linker option standing in their place, which it passes on where an object given
+  // there goes: the game's 312 arguments are the same asked either way (2026-11-25). So the question
+  // needs no object to exist yet (runCodegen puts it beside the back end's work), and the answer stays
+  // when the objects change (a compile server's first edit of a file adds an object: each asked again).
+  // The key: the flags, clang's path, size and time, and the environment the driver reads for the
+  // toolchain (a VsDevCmd's variables, PATH). A key that changed asks the driver again (`clang -###`,
+  // one run, its answer kept); "" when the answer is not one link.exe command this can read (an argument
+  // with a quote or ending in a backslash), and the link goes through clang.
+  std::string directLinkCommand(const std::string& clang, const std::string& exe, const std::string& objects, const std::string& flags);
 
 
   void runCodegen(Build& build);
