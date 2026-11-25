@@ -610,7 +610,9 @@ replacements, in the order of how much code they remove:
      value by its own rule; a C or C++ text's switch (cRules), one with a case range and one with a value the
      walk cannot evaluate are not judged;
    - an integer division stored in a floating variable, assigned to one or returned as one
-     (`double h = a / b;`): it truncates first. `double(a) / b`, or `double(a / b)` when the truncation is
+     (`double h = a / b;`), given to a floating parameter, or to a floating member in a list (by name or
+     in order), or to a class taking a floating value (a constructor of one floating parameter and none of
+     an integer one: `std::Optional<f64> b = 5 / 6;`; these since 2026-11-25): it truncates first. `double(a) / b`, or `double(a / b)` when the truncation is
      meant; constants that divide exactly (`3600 / 2`) are not one.
    The last four are on by default since 2026-11-16, when the game's kpp branch was free of its 24 (13
    assignments as conditions, 8 empty bodies, StackWalker's switch without NumSymTypes, and 2 divisions,

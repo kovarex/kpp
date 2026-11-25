@@ -1,0 +1,21 @@
+// spec: a designated initializer that names a member twice is an error, as in C++ ([dcl.init.aggr] 3.1; kpp took the last value until 2026-11-25), in a variable's list, a temporary, a `new` and a returned list
+// error: designated_initializer_member_twice_is_error.kpp:12: error: the member x of Point is given a value twice in one list: name it once
+// error: designated_initializer_member_twice_is_error.kpp:15: error: the member y of Point is given a value twice in one list: name it once
+// error: designated_initializer_member_twice_is_error.kpp:16: error: the member x of Point is given a value twice in one list: name it once
+// error: designated_initializer_member_twice_is_error.kpp:17: error: the member z of Point is given a value twice in one list: name it once
+struct Point
+{
+  int x = 0;
+  int y = 0;
+  int z = 0;
+};
+Point make() { return {.x = 1, .y = 2, .x = 3}; }
+int main()
+{
+  Point p{.x = 1, .y = 2, .y = 3};
+  Point q = Point{.x = 1, .x = 2};
+  Point* n = new Point{.z = 1, .z = 2};
+  int r = p.y + q.x + n->z + make().x;
+  delete n;
+  return r;
+}
