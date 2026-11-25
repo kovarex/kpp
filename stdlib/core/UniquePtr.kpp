@@ -23,8 +23,8 @@ public:
   using deleter_type = D;
   using pointer = T*; // TechnologyGraphGui's `typename GraphT::value_type::pointer`
 
-  UniquePtr() noexcept {}
-  implicit UniquePtr(nullptr_t) noexcept {}
+  UniquePtr() {}
+  implicit UniquePtr(nullptr_t) {}
   UniquePtr(T* object) noexcept : held(object) {}
   UniquePtr(const UniquePtr<T, D>& other) = delete;
   UniquePtr(UniquePtr<T, D>&& other) noexcept : held(other.held) { other.held = nullptr; }
