@@ -177,6 +177,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
   {
     debugAt = f;
     debugFile = currentFile;
+    debugWritten = original;
   }
   currentReturn = ft->inner;
   // If the return type is unknown, pretend it's ptr so the function body can be emitted;

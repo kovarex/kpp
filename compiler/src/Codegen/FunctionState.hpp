@@ -151,6 +151,10 @@
     // file, or null for a definition without line information (a global's startup function).
     Node* debugAt = nullptr;
     ParsedFile* debugFile = nullptr;
+    // --debug-info: the function as written, which emitFunction was given: an instantiation is emitted
+    // from its own copy of it (GlobalScope::instanceBody), and a class's members are the functions as
+    // written (debugLines finds the definition's declaration among them). Null for a lambda's operator.
+    FunctionDecl* debugWritten = nullptr;
     std::vector<DebugVariable> debugVariables;
     std::vector<DebugBlock> debugBlocks;
     uint32_t debugBlock = 0;

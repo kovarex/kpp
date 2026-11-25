@@ -330,6 +330,8 @@ namespace codegen
     // types their own build made.
     // A class's text is its declaration (DIFlagFwdDecl, by its identifier); its definition, made once
     // the emission is done (Emitter::homeDebugClasses), is in its home's text alone (debugHomes).
+    // A member function's (Emitter::debugMethod: the declaration its definition names) has code while a
+    // definition of the program names it: its class's definition lists those alone.
     struct DebugTypeText
     {
       std::string text;
@@ -337,6 +339,7 @@ namespace codegen
       const Ty* type = nullptr;       // a class's, as its build named it
       std::string definition;         // a class's members, bases and vtable pointer
       uint32_t definitionGeneration = UINT32_MAX;
+      bool hasCode = false;           // a member function's: a definition names it (rebuildModules takes it back with the definition)
     };
 
     explicit Shared(CodegenResult& result) : result(result) {}
