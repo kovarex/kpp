@@ -468,6 +468,25 @@ void runCodegen(Build& build)
   // so the sections drop nothing there and cost every edit's link (the game's 650,000 section
   // contributions in its PDB, half its .ilk: about a fifth of the link; docs/debugging.md).
   const bool functionSections = !options.incrementalLink;
+  // Every function in its own section, so that the linker drops the ones nobody calls (and
+  // the libraries they would need): a program pays only for what it uses. (Not in an
+  // --incremental-link build, whose link keeps them all: functionSections above.)
+  // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
+  // /fp:strict, design.md section 2)
+  // -fverify-intermediate-code: LLVM's verifier checks the module, as the back end in kpp does
+  // (src/backend.cpp). A release clang passes -disable-llvm-verifier by default, which took an IR
+  // bug of kpp's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
+  // (KPP_TEST_BROKEN_MODULE's use its definition does not dominate, tests\verifier.ps1).
+  // macOS: compact unwind for the functions whose personality is kpp's, which LLVM gives only Darwin's own
+  // personalities by itself, the others DWARF's FDEs (forTarget; ltoLinkFlags for a ThinLTO link's back end).
+  std::string compileFlags = functionSections ? "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code"
+                                              : "-ffp-contract=off -fverify-intermediate-code";
+  if (options.target.mac())
+    compileFlags += " -femit-compact-unwind-non-canonical";
+  // An unoptimized module's jumps in their long form at once (-mrelax-all), as the back end in kpp
+  // assembles them (backend.cpp): no relaxation in the assembler's layout.
+  if (!options.optimize)
+    compileFlags += " -mrelax-all";
   auto writeFile = [&](const std::string& path, const std::string& text)
   {
     FILE* out = fopen(path.c_str(), "wb");
@@ -515,7 +534,11 @@ void runCodegen(Build& build)
   // whether its functions have sections of their own.
   // Otherwise hashText is what the hash file gets once the module is compiled.
   // The shared object cache (objectcache, KPP_OBJECT_CACHE): its directory, and what keys an object
-  // besides its text: the compiler and the flags (compileFlags', below, follow functionSections).
+  // besides its text: the compiler and the flags, compileFlags among them (the compile line's own: until
+  // 2026-11-25 only what follows functionSections, so an object an older kpp's clang line made without
+  // -mrelax-all was taken for one made with it, and a compile server's --verify-incremental reported a
+  // patched kept object "not what its compile gives", spec kpp/server_moved_positions_of_sanitizer_checks
+  // in a full gate's spec run whose cache an earlier kpp had filled).
   std::filesystem::path objectCacheDir;
   if (const char* dir = getenv("KPP_OBJECT_CACHE"); dir && *dir)
     objectCacheDir = dir;
@@ -529,7 +552,7 @@ void runCodegen(Build& build)
     // directory: a snippet's object made from another directory differed from its compile there, and a compile server's
     // --verify-incremental reported the patched kept object "not what its compile gives", 2026-11-21)
     std::error_code cwdError;
-    objectCacheFlags = targetFlags(options) + " " + options.clangFlags + (functionSections ? " sections" : " no-sections") + (options.viaCpp ? " via-cpp" : "") +
+    objectCacheFlags = targetFlags(options) + " " + compileFlags + " " + options.clangFlags + (functionSections ? " sections" : " no-sections") + (options.viaCpp ? " via-cpp" : "") +
                        (options.target.mac() ? " compact-unwind-non-canonical" : "") + " in " + std::filesystem::current_path(cwdError).string();
   }
   std::vector<std::string> objectCacheKeys(outputModules);
@@ -762,25 +785,6 @@ void runCodegen(Build& build)
   report("toolchain: %s (%s, %s: links with %s)\n", clang.c_str(),
          bundledToolchain() ? "bundled" : getenv("KPP_CLANG") ? "KPP_CLANG" : "Visual Studio's", options.target.name.c_str(),
          !options.target.msvc() ? "lld" : bundledToolchain() || options.optimize ? "lld-link" : "link.exe");
-  // Every function in its own section, so that the linker drops the ones nobody calls (and
-  // the libraries they would need): a program pays only for what it uses. (Not in an
-  // --incremental-link build, whose link keeps them all: functionSections above.)
-  // (-ffp-contract=off: no multiply-add fused, every operation rounded as written; the game's
-  // /fp:strict, design.md section 2)
-  // -fverify-intermediate-code: LLVM's verifier checks the module, as the back end in kpp does
-  // (src/backend.cpp). A release clang passes -disable-llvm-verifier by default, which took an IR
-  // bug of kpp's in silently: at -O0 the module compiled (exit 0), at -O2 clang hung on it
-  // (KPP_TEST_BROKEN_MODULE's use its definition does not dominate, tests\verifier.ps1).
-  // macOS: compact unwind for the functions whose personality is kpp's, which LLVM gives only Darwin's own
-  // personalities by itself, the others DWARF's FDEs (forTarget; ltoLinkFlags for a ThinLTO link's back end).
-  std::string compileFlags = functionSections ? "-ffunction-sections -fdata-sections -ffp-contract=off -fverify-intermediate-code"
-                                              : "-ffp-contract=off -fverify-intermediate-code";
-  if (options.target.mac())
-    compileFlags += " -femit-compact-unwind-non-canonical";
-  // An unoptimized module's jumps in their long form at once (-mrelax-all), as the back end in kpp
-  // assembles them (backend.cpp): no relaxation in the assembler's layout.
-  if (!options.optimize)
-    compileFlags += " -mrelax-all";
   // --keep-going: the errors stay reported (and the exit code), but what was emitted is compiled and
   // linked; the functions errors left out are listed next to the executable for the link's report.
   bool stop = codegenExit && !options.keepGoing;
