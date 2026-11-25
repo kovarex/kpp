@@ -1687,6 +1687,7 @@ an `i1` argument, a struct by value), 254 instructions take the rest of their bl
   are the same, byte for byte: the 64 modules here, and the game's 256 built by the compiler before
   the change and after it.
 - **Half of the back end's threads while codegen runs** (BackEndPool, below).
+- **Codegen's threads kept between its parallel steps** (KeptThreads, below).
 
 **The back end's threads while codegen runs.** Section 8's timeline has LLVM's threads compile the
 program pieces beside codegen's levels 1 and 2, every hardware thread busy, then wait 2 s for the
@@ -1718,6 +1719,44 @@ Between 14 and 20 these rounds show no difference; half of the threads is in the
 The other way round does not help: with fewer threads for codegen itself (`--codegen-threads`; the
 back end with all 32) the build is longer, kpp's time 11.15 s with 32 or 24, 11.70 s with 16, 12.20 s
 with 12, 12.95 s with 8.
+
+**Codegen's threads kept between its steps.** A timeline of the build with a mark at every parallel
+step of codegen (temporary timers, the compile's own clock) showed where the back end's threads hurt it
+most. Each step (a level's emission, the three parts of collecting the next level, the barrier's
+pieces, the homing, the finishing, the assembling: some forty a build, half of them a few milliseconds
+of work) started threads of its own, 31 of them with a 1 GB stack each. On an idle machine the last of
+them started 5 to 8 ms into its step. With all of the back end's threads compiling beside codegen the
+last thread of level 1 started 0.25 to 1.6 s into the level, which so took 1.28 s instead of 0.56 s,
+and the scan of the requests after it, 5 ms of work, took 0.4 s: a thread's start waits for the lock
+of the process's address space, which the back end's allocator takes all the time as it maps and
+unmaps memory. Over a build the last threads' starts added up to 0.9 to 1.8 s with all of the back
+end's threads beside codegen and to 0.5 to 1.0 s with half of them.
+
+Codegen's threads are kept from one step to the next while a build's code is generated
+(CodegenSession.cpp, KeptThreads): started by the first step that needs them, woken for each step,
+joined when codegen ends. Five builds each in turn, with half of the back end's threads while codegen
+runs and with all of them (medians; times from the compile's start):
+
+| | a step's own threads, half | kept, half | own, all | kept, all |
+|---|---:|---:|---:|---:|
+| the last threads' starts, summed over the build | 0.66 s | 0.11 s | 1.35 s | 0.09 s |
+| level 1 | 0.56 s | 0.54 s | 1.28 s | 0.72 s |
+| the next level collected after it | 0.07 s | 0.08 s | 0.41 s | 0.11 s |
+| levels 3 to 16 | 0.97 s | 0.85 s | 0.66 s | 0.82 s |
+| codegen's end | 7.19 s | 6.95 s | 7.47 s | 7.19 s |
+| the back end's end | 9.76 s | 9.67 s | 10.16 s | 9.80 s |
+
+Codegen ends 0.24 s sooner with half of the back end's threads beside it and 0.29 s with all of them,
+the back end 0.1 s and 0.36 s. Half stays the better width with kept threads too (9.67 s against
+9.80 s).
+
+The compilers before and after it without the timers, on a quiet machine at night (eight builds each
+in turn, medians): codegen 4.43 s against 4.36 s, the shorter in six of the eight rounds; kpp's part
+8.75 s for both (8.6 to 9.5 s before, 8.5 to 8.9 s and one of 10.2 s after), the build 11.0 s. The game's
+256 objects are the same bytes. On a quiet machine the late starts cost little, and codegen's own time
+is 4.4 s where the busier afternoon of the timelines above had 5.2 s: what the change gives a build is
+between nothing and 0.1 s, and what it takes away is the delay that other work on the machine could
+cause, the 1.6 s above.
 
 **Measured and left.**
 

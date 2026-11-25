@@ -4,6 +4,9 @@
 // a change.
 #include "Emitter.hpp"
 #include "host.hpp"
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 #ifdef _WIN32
 // SEH wrapper: catches stack overflow that C++ try/catch can't.
 // Returns 0 on success, 1 on stack overflow.
@@ -50,12 +53,165 @@ void CodegenSessionDeleter::operator()(CodegenSession* session) const
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                               const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream);
 
+// The threads of codegen's parallel steps, kept from one step to the next while a build's code is
+// generated (KeptThreadsScope). A step used to start its own, n - 1 of them with a 1 GB stack each:
+// 5 to 8 ms for 31 on an idle machine before the last of them did any work, and a build has some forty
+// steps, most of them a few milliseconds of work. While the back end's threads compiled beside codegen
+// it was far worse: the last thread of level 1 started up to 1.2 s into the level, which most of its
+// threads so emitted for a part of its time only (the back end's allocator maps and unmaps memory all
+// the time, and a thread's start waits for the same lock of the address space). A kept thread waits
+// for the next step and is woken for it (docs/codegen-speed.md, "Codegen's threads kept between its
+// steps").
+namespace
+{
+  struct KeptThreads
+  {
+    // call(argument, i) for i in [1, n) on kept threads, each with a 1 GB stack as a step's own have.
+    // False, with nothing run, when no scope is open, when a step is running (another build's in this
+    // process, or a step inside a step) or when a thread did not start: the caller starts threads of its
+    // own then, as before. After true, wait() once the caller's own part is done.
+    bool run(unsigned n, void (*stepCall)(void*, unsigned), void* stepArgument)
+    {
+      std::unique_lock lock(mutex);
+      if (scopes == 0 || busy || closing)
+        return false;
+      while (threads.size() + 1 < n)
+      {
+        starts.push_back({this, unsigned(threads.size()) + 1});
+        host::LargeStackThread thread;
+        if (!host::startOnLargeStack(size_t(1) << 30, [](void* p)
+        {
+          auto* start = static_cast<Start*>(p);
+          start->threads->work(start->index);
+        }, &starts.back(), thread))
+        {
+          starts.pop_back();
+          return false; // (those started stay, for a later step)
+        }
+        threads.push_back(thread);
+      }
+      busy = true;
+      call = stepCall;
+      argument = stepArgument;
+      count = n;
+      left = n - 1;
+      ++step;
+      lock.unlock();
+      wake.notify_all();
+      return true;
+    }
+
+    void wait()
+    {
+      std::unique_lock lock(mutex);
+      done.wait(lock, [&] { return left == 0; });
+      busy = false;
+      lock.unlock();
+      done.notify_all(); // (close, waiting for the step to end)
+    }
+
+    void open()
+    {
+      std::lock_guard lock(mutex);
+      ++scopes;
+    }
+
+    // The last scope's end: the threads return and are joined, their stacks freed.
+    void close()
+    {
+      std::vector<host::LargeStackThread> ended;
+      {
+        std::unique_lock lock(mutex);
+        if (--scopes != 0)
+          return;
+        done.wait(lock, [&] { return !busy; });
+        closing = true;
+        ended.swap(threads);
+      }
+      wake.notify_all();
+      for (host::LargeStackThread& thread : ended)
+        host::joinThread(thread);
+      std::lock_guard lock(mutex);
+      starts.clear();
+      closing = false;
+    }
+
+  private:
+    struct Start
+    {
+      KeptThreads* threads;
+      unsigned index;
+    };
+
+    // A kept thread: each step once, when its index is one of the step's.
+    void work(unsigned index)
+    {
+      uint64_t seen = 0;
+      std::unique_lock lock(mutex);
+      for (;;)
+      {
+        wake.wait(lock, [&] { return closing || step != seen; });
+        if (closing)
+          return;
+        seen = step;
+        if (index >= count)
+          continue;
+        void (*stepCall)(void*, unsigned) = call;
+        void* stepArgument = argument;
+        lock.unlock();
+        stepCall(stepArgument, index);
+        lock.lock();
+        if (--left == 0)
+          done.notify_all();
+      }
+    }
+
+    std::mutex mutex;
+    std::condition_variable wake, done;
+    std::vector<host::LargeStackThread> threads; // thread k runs a step's index k + 1
+    std::deque<Start> starts;                    // what each was started with (the addresses stay put)
+    void (*call)(void*, unsigned) = nullptr;     // the step running: its work
+    void* argument = nullptr;
+    unsigned count = 0;                          // its indices are [0, count)
+    unsigned left = 0;                           // its threads not done yet
+    uint64_t step = 0;                           // its number: a thread takes each step once
+    unsigned scopes = 0;                         // KeptThreadsScope objects alive
+    bool busy = false;                           // a step is running
+    bool closing = false;                        // the last scope ended: the threads return
+  };
+
+  // (never destroyed: a program that exits beside waiting threads must not wait for them)
+  KeptThreads& keptThreads = *new KeptThreads;
+
+  // While one is alive, onThreads keeps its threads.
+  struct KeptThreadsScope
+  {
+    KeptThreadsScope() { keptThreads.open(); }
+    ~KeptThreadsScope() { keptThreads.close(); }
+    KeptThreadsScope(const KeptThreadsScope&) = delete;
+    KeptThreadsScope& operator=(const KeptThreadsScope&) = delete;
+  };
+}
+
 // Runs work(i) for i in [0, n): the calling thread runs work(0), n - 1 threads with 1 GB stacks
-// (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest.
+// (reserved, committed as used: the emitter recurses as deep as the code it walks) the rest: the kept
+// ones (KeptThreads), else threads of the call's own.
 // (on every host: a Linux one's default 8 MB stacks are less than the game's deepest code needs)
 template<typename F>
 static void onThreads(unsigned n, F& work)
 {
+  if (n > 1 && keptThreads.run(n, [](void* w, unsigned i) { (*static_cast<F*>(w))(i); }, &work))
+  {
+    struct Done
+    {
+      ~Done() { keptThreads.wait(); } // (whatever work(0) does: the threads use work)
+    };
+    {
+      Done done;
+      work(0);
+    }
+    return;
+  }
   struct Arg
   {
     F* work;
@@ -907,6 +1063,7 @@ static void publishClassLayouts(Shared& sh, GlobalScope& global)
 static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, GlobalScope& global, const SymbolTable& symbols,
                               const CodegenOptions& options, CodegenSessionPtr* keep, PieceStream* stream)
 {
+  KeptThreadsScope keptThreadsScope;
   bool debug = options.debug, despiteErrors = options.despiteErrors, stubMissing = options.stubMissing;
   bool inlineTrivial = options.inlineTrivial, debugInfo = options.debugInfo, optimize = options.optimize;
   unsigned moduleCount = options.moduleCount, threads = options.threads;
@@ -1937,6 +2094,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
                                     const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
                                     bool assembleModules)
 {
+  KeptThreadsScope keptThreadsScope;
   rebuilt = false;
   CodegenResult out;
   if (!session.usable || !session.shared || session.emitters.empty())
