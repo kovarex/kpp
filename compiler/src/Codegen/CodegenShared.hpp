@@ -563,6 +563,10 @@ namespace codegen
     NameKeyMap<FunctionDecl*> erroring;
     NameKeyMap<Instantiation> erroringInstances;
     std::vector<bool> unassembled;
+    // A build with errors, or a check, dropped texts that named functions made on demand, and did not ask which of those no
+    // text reaches now (the functions that failed have no text; a check writes no module): the first build without errors
+    // that writes its modules asks (rebuildModules, unreachedOnDemand).
+    bool onDemandUnchecked = false;
     bool inlineTrivial = true;                           // trivial callees emitted in their callers (--no-inline: false)
     bool sanitizeUndefined = false;                      // --sanitize undefined: Emitter::undefinedCheck
     bool sanitizeOverflow = false;                       // --sanitize overflow: signed overflow, Emitter::undefinedCheck
@@ -599,6 +603,10 @@ namespace codegen
     // The classes that have a definition (homeDebugClasses alone changes one), kept with the entries
     // across a compile server's builds.
     std::unordered_set<uint64_t> debugClassesDefined;
+    // The classes whose definition a compile server's build dropped with their layout (rebuildModules' dropDebugClass) and
+    // that no build has defined again since. A build that names one again defines it (homeDebugClasses): laid out again, it
+    // has the type line the shared declarations kept, so no new type line calls prepareModuleTexts for it.
+    std::unordered_set<uint64_t> debugClassesUndefined;
     // --debug-info's globals (Emitter::debugGlobal), by their IR names' hash: the metadata of each,
     // which the module whose text defines it gets (appendDebugTypes).
     std::unordered_map<uint64_t, std::string> debugGlobals;

@@ -1,0 +1,40 @@
+// spec: a compile server's build after an edit that takes out the only use of a class is what a build from scratch gives with --debug-info too: the class is laid out no more, and a build from scratch defines in the debug information the classes that are laid out (Emitter::homeDebugClasses), so the server's build drops the class's debug definition with its layout and assembles its home module again; used again, it is laid out and defined again. Until 2026-11-25 the definition stayed in its home (--verify-incremental: "what it wrote differs"), found beside kpp/server_instance_member_function_no_longer_called
+// kpp: --debug-info
+//--- step: the program
+struct Pair
+{
+  i32 first;
+  i32 second;
+};
+int main()
+{
+  Pair p{2, 3};
+  std::println(p.first + p.second);
+  return 0;
+}
+// expect: 5
+//--- step: the class used no more
+struct Pair
+{
+  i32 first;
+  i32 second;
+};
+int main()
+{
+  std::println(4);
+  return 0;
+}
+// expect: 4
+//--- step: back
+struct Pair
+{
+  i32 first;
+  i32 second;
+};
+int main()
+{
+  Pair p{2, 3};
+  std::println(p.first + p.second);
+  return 0;
+}
+// expect: 5

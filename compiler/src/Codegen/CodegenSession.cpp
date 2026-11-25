@@ -678,6 +678,148 @@ static NameKeyMap<std::string> definedNames(const Shared& sh)
   return names;
 }
 
+// The functions made on demand that no text of the program reaches. One is made when code that is emitted names it for the
+// first time (Emitter::claimInstantiation, Shared::requested: a function template's instance, a member function of a class
+// template's instance, a defaulted function, a local class's member function, a C header's inline function), so a build from
+// scratch has none: each of its is named by a text that is no such function's own (a program function's definition or its
+// lambdas', a global's constructor, a helper, a module's own declarations or the shared ones, the startup list), or by the texts
+// of one that is reached (its definition, its lambdas', its static locals'). A compile server's build has one once an edit took
+// its last naming away (the edited function called it, and calls it no more): rebuildLLVM drops those, with what only they
+// named, as a build from scratch never makes them (until 2026-11-25 they stayed, the program right and its code not a build
+// from scratch's: kpp/server_instance_member_function_no_longer_called). moduleTexts: the modules' own declarations read as
+// finished (a build from scratch); a kept session's, read after it emitted, are its kept entries, the new ones and the owned
+// entries. Sorted by name.
+static std::vector<std::string> unreachedOnDemand(Shared& sh, unsigned threads, bool moduleTexts)
+{
+  // Those that have a definition: each module's found on the threads (Shared::requested is asked of every definition's name,
+  // the game's 270,000), then numbered in the modules' order.
+  const unsigned workers = std::max(1u, std::min(threads, sh.moduleCount));
+  std::vector<std::vector<const std::string*>> madeIn(sh.moduleCount);
+  std::atomic<unsigned> nextMade{0};
+  auto findMade = [&](unsigned)
+  {
+    for (unsigned k; (k = nextMade++) < sh.moduleCount;)
+      for (const Shared::Definition& d : sh.definitions[k])
+        if (!d.name.empty() && d.name == d.owner && sh.requested.contains(d.name))
+          madeIn[k].push_back(&d.name);
+  };
+  onThreads(workers, findMade);
+  NameViewKeyMap<uint32_t> made; // each one's name -> its number
+  std::vector<const std::string*> names;
+  for (const std::vector<const std::string*>& in : madeIn)
+    for (const std::string* name : in)
+      if (made.emplace(*name, uint32_t(names.size())).second)
+        names.push_back(name);
+  if (names.empty())
+    return {};
+  constexpr uint32_t none = UINT32_MAX; // (a text of no function made on demand)
+  struct Found
+  {
+    std::vector<uint32_t> named;                        // by such a text
+    std::vector<std::pair<uint32_t, uint32_t>> namedBy; // the function made on demand whose text names it, and it
+  };
+  std::vector<Found> found(workers);
+  auto ownerOf = [&](const std::string& owner)
+  {
+    auto it = made.find(owner);
+    return it == made.end() ? none : it->second;
+  };
+  auto note = [&](Found& into, uint32_t owner, std::string_view name)
+  {
+    auto it = made.find(name);
+    if (it == made.end() || it->second == owner)
+      return; // (its own name, or its lambda's naming it: no other's use)
+    if (owner == none)
+      into.named.push_back(it->second);
+    else
+      into.namedBy.push_back({owner, it->second});
+  };
+  auto scan = [&](Found& into, uint32_t owner, std::string_view text)
+  {
+    irNamesIn(text, [&](size_t at, size_t length)
+    {
+      std::string_view name = text.substr(at, length);
+      if (!made.count(name))
+        return;
+      // (a `declare` line names what it declares: no use of it)
+      size_t line = text.rfind('\n', at);
+      line = line == std::string_view::npos ? 0 : line + 1;
+      if (text.substr(line, 8) != "declare ")
+        note(into, owner, name);
+    });
+  };
+  std::atomic<unsigned> nextModule{0};
+  auto scanModules = [&](unsigned t)
+  {
+    Found& into = found[t];
+    for (unsigned k; (k = nextModule++) < sh.moduleCount;)
+    {
+      for (const Shared::Definition& d : sh.definitions[k])
+      {
+        uint32_t owner = ownerOf(d.owner);
+        for (auto [at, length] : d.names)
+          note(into, owner, std::string_view(d.text).substr(at, length));
+      }
+      for (const Shared::OwnedEntry& o : sh.ownedEntries[k])
+        scan(into, ownerOf(o.owner), o.text);
+      if (moduleTexts)
+        scan(into, none, sh.moduleDecls[k].text);
+      else
+        for (const std::vector<std::string>* entries : {&sh.keptModuleEntries[k], &sh.moduleDecls[k].entries})
+          for (const std::string& entry : *entries)
+            scan(into, none, entry);
+    }
+  };
+  onThreads(workers, scanModules);
+  Found& first = found[0];
+  for (const SharedText* text : {&sh.shared, &sh.decls})
+  {
+    scan(first, none, text->text);
+    for (const std::string& entry : text->entries)
+      scan(first, none, entry);
+  }
+  for (const Shared::Startup& s : sh.startups)
+    note(first, none, s.function);
+  // The vtables of the classes laid out: a class's layout asks for the functions its vtables' slots name when it is made
+  // (Emitter::emitVtables: a destructor defaulted in the class, `virtual ~Written() = default;`, is defined then), whether or
+  // not a module then carries the tables (a class the program lays out and never constructs: std::isTriviallyDestructible of
+  // it, offsetof into it).
+  for (const auto& [type, info] : sh.structs)
+    if (!info.vtableText.empty())
+      scan(first, none, info.vtableText);
+  // Reached: named by a text of no function made on demand, or by a reached one's.
+  std::vector<std::vector<uint32_t>> uses(names.size());
+  for (const Found& f : found)
+    for (auto [by, name] : f.namedBy)
+      uses[by].push_back(name);
+  std::vector<char> reached(names.size(), 0);
+  std::vector<uint32_t> work;
+  auto reach = [&](uint32_t i)
+  {
+    if (!reached[i])
+    {
+      reached[i] = 1;
+      work.push_back(i);
+    }
+  };
+  for (const Found& f : found)
+    for (uint32_t i : f.named)
+      reach(i);
+  while (!work.empty())
+  {
+    uint32_t i = work.back();
+    work.pop_back();
+    for (uint32_t used : uses[i])
+      reach(used);
+  }
+  std::vector<std::string> unreached;
+  for (size_t i = 0; i < names.size(); ++i)
+    if (!reached[i])
+      unreached.push_back(*names[i]);
+  std::sort(unreached.begin(), unreached.end());
+  return unreached;
+}
+
 // The function an entry of the shared definitions defines, when that is all it holds (its comdat
 // line, then one linkonce_odr definition: a destructor helper `@kpp.dtor.<class>`, a runtime
 // function such as `@kpp_throw`), with its header; an empty name for any other entry.
@@ -1644,6 +1786,12 @@ static CodegenResult generate(std::vector<std::unique_ptr<ParsedFile>>& files, G
   onThreads(std::max(1u, std::min(unsigned(emitters.size()), sh.moduleCount)), finishModules);
   if (finishOutOfMemory)
     throw std::bad_alloc();
+  // With the barrier check (Shared::checkBarrier: the specification's runs): every function this build made on demand is reached
+  // by its texts. A compile server's build drops one that an edit left unreached (unreachedOnDemand), so one that a build from
+  // scratch makes and no text names (a use that left no name) would go from the server's builds, or stay out of them: kpp's error.
+  if (sh.checkBarrier && sh.moduleCount > 1 && !failed && result.errors.empty())
+    for (const std::string& name : unreachedOnDemand(sh, threads, true))
+      result.errors.push_back("codegen: " + name + " is made on demand and no text of the build reaches it (unreachedOnDemand: a compile server's build would drop it)");
   // Skip IR assembly when there are errors: the IR would be invalid anyway, and assembling
   // gigabytes of text just to discard it wastes memory and time. With despiteErrors the IR is
   // assembled from what was emitted, and what an error left out is declared (declareUndefined).
@@ -2012,7 +2160,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
                                     const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
                                     const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
                                     const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
-                                    bool assembleModules);
+                                    bool assembleModules, const std::vector<std::string>& unreached, std::vector<std::string>& unreachedNow);
 
 CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDecl*>& changedBodies, const std::vector<FunctionDecl*>& movedLines,
                           const std::vector<MovedPositions>& movedPositions, const std::vector<FunctionDecl*>& replaced,
@@ -2021,8 +2169,34 @@ CodegenResult rebuildLLVM(CodegenSession& session, const std::vector<FunctionDec
                           const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
                           bool assembleModules)
 {
+  std::vector<std::string> unreached;
   CodegenResult out = rebuildModules(session, changedBodies, movedLines, movedPositions, replaced, added, removed, changedLayouts, instancesOf,
-                                     changedGlobals, droppedClasses, rebuilt, assembleModules);
+                                     changedGlobals, droppedClasses, rebuilt, assembleModules, {}, unreached);
+  // The functions made on demand that no text reaches once the edit's functions are emitted again (unreachedOnDemand; rebuildModules
+  // found some and assembled no module): dropped by a rebuild of their own, as a removed function is, each with its lambdas, its
+  // static locals and the instances made for its closures, and its name released, so that a later use makes it anew. That rebuild
+  // assembles the modules both changed; what it leaves unreached in turn, the next one drops.
+  size_t dropped = 0;
+  for (int round = 0; rebuilt && !unreached.empty() && round < 16; ++round)
+  {
+    const std::vector<std::string> unreachedBefore = std::move(unreached);
+    unreached.clear();
+    const size_t emittedAgain = out.emittedAgain;
+    const double asked = out.unreachedAsked;
+    dropped += unreachedBefore.size();
+    out = rebuildModules(session, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, rebuilt, assembleModules, unreachedBefore, unreached);
+    out.emittedAgain += emittedAgain;
+    out.unreachedAsked += asked;
+  }
+  if (rebuilt && !unreached.empty())
+  {
+    // (never seen: sixteen rounds each left functions unreached; no module was assembled)
+    rebuilt = false;
+    session.usable = false;
+    out = CodegenResult();
+    out.declined = "the functions made on demand that no text reaches did not end (" + unreached.front() + ")";
+  }
+  out.droppedUnreached = dropped;
   // The classes every module defines (the session's, made again by homeDebugClasses when this
   // build named a class), whatever path the rebuild took: one place, so that no return of it
   // gives the natvis an empty list. (A build from scratch's homeDebugClasses fills its result.)
@@ -2092,10 +2266,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
                                     const std::vector<FunctionDecl*>& added, const std::vector<FunctionDecl*>& removed,
                                     const std::vector<const Decl*>& changedLayouts, const std::vector<const Decl*>& instancesOf,
                                     const std::vector<const Decl*>& changedGlobals, const std::vector<const Ty*>& droppedClasses, bool& rebuilt,
-                                    bool assembleModules)
+                                    bool assembleModules, const std::vector<std::string>& unreached, std::vector<std::string>& unreachedNow)
 {
   KeptThreadsScope keptThreadsScope;
   rebuilt = false;
+  unreachedNow.clear();
   CodegenResult out;
   if (!session.usable || !session.shared || session.emitters.empty())
   {
@@ -2160,6 +2335,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         startupsChanged = true;
       }
     }
+  // The functions made on demand that the rebuild before this one left unreached (rebuildLLVM, unreachedOnDemand): each goes as a
+  // removed function does, with what its emission added, and none is emitted again (its name is released below).
+  for (const std::string& name : unreached)
+    owners.insert(name);
   for (FunctionDecl* f : added)
     if (e.isProgramFunction(f))
     {
@@ -2522,6 +2701,8 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     sh.requested.release(name);
     releasedNames.insert(name);
   };
+  for (const std::string& name : unreached)
+    releaseName(name); // (a later use makes it anew)
   auto forOldClosure = [&](const Instantiation& inst)
   {
     if (goneDecl(inst.f) || oldClosure(inst.classTy))
@@ -2873,6 +3054,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   NameKeySet removedNames;
   for (FunctionDecl* f : removed)
     removedNames.insert(e.functionName(f, {}, nullptr));
+  removedNames.insert(unreached.begin(), unreached.end()); // (gone for good too: their lambdas' operators with them)
   struct Operator
   {
     std::string name;
@@ -2880,6 +3062,14 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     const Ty* callType;
   };
   std::vector<Operator> operators;
+  // The functions the dropped texts name that are defined and no program function: one of them made on demand may have lost its
+  // last naming (a call the edit took out), which the texts emitted now say (unreachedOnDemand, once they are).
+  NameKeySet lost;
+  auto noteLost = [&](std::string_view name, const std::string& own)
+  {
+    if (name != own && !sh.programFunctions.count(name) && sh.definedIn.count(name) && !lost.count(name))
+      lost.insert(std::string(name));
+  };
   for (unsigned k = 0; k < sh.moduleCount; ++k)
   {
     Dropped& was = dropped[k];
@@ -2889,6 +3079,8 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     {
       if (owners.holdsOwnerOf(defs[i]))
       {
+        for (auto [at, length] : defs[i].names)
+          noteLost(std::string_view(defs[i].text).substr(at, length), defs[i].name);
         droppedNames.insert(defs[i].name);
         droppedUses.insert(droppedUses.end(), defs[i].layouts.begin(), defs[i].layouts.end());
         droppedFunctions += defs[i].counted;
@@ -2916,6 +3108,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     {
       if (owners.holdsOwnerOf(owned[i]))
       {
+        irNamesIn(owned[i].text, [&](size_t at, size_t length) { noteLost(std::string_view(owned[i].text).substr(at, length), owned[i].owner); });
         was.owned.push_back(std::move(owned[i].text));
         continue;
       }
@@ -2933,6 +3126,25 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     {
       std::erase_if(em.usedFunctions, [&](const auto& used) { return releasedNames.count(used.first) || releasedNames.count(used.second.name); });
     });
+  // --debug-info: a class whose layout goes below (one that nothing uses any more, or made for an old closure) has no definition
+  // in a build from scratch, where homeDebugClasses defines the classes that are laid out: its debug definition goes with the
+  // layout, and its home module is assembled again without it. Until 2026-11-25 it stayed: a class that an edit stopped using
+  // kept its definition in the server's build (--verify-incremental: "what it wrote differs" with --debug-info;
+  // kpp/server_class_no_longer_used). One laid out again by this build's emissions (an edited function's lambda held in a class
+  // instance: the same name) is defined again below, its home assembled again only when its definition changed; one laid out
+  // again by a later build's use is defined by that build (Shared::debugClassesUndefined: the shared declarations kept its
+  // type line, so nothing else says it is back).
+  std::vector<uint64_t> debugClassesDropped; // their keys (Emitter::debugType's: the IR spelling's hash)
+  auto dropDebugClass = [&](const Ty* t)
+  {
+    if (!sh.fullDebugInfo || !t)
+      return;
+    uint64_t key = 14695981039346656037ull;
+    for (unsigned char c : e.irString(e.types.unqualified(t)))
+      key = (key ^ c) * 1099511628211ull;
+    if (sh.debugClassesDefined.erase(key))
+      debugClassesDropped.push_back(key);
+  };
   // A closure of a function emitted again: its name goes to the closure the function's new walk makes
   // (the same lambda: irTypeName would give it `.2`), whose type line, when its layout is the same, is
   // already in the shared declarations (below).
@@ -3000,6 +3212,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         if (sh.structs[key].complete)
           --sh.result.structs;
         sh.structs.erase(key);
+        dropDebugClass(key);
       }
       onEachEmitter([](Emitter& em) { em.forgetLayoutAnswers(); });
       sh.finalLayouts.clear();
@@ -3104,6 +3317,47 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     for (const char* name : {"@kpp.main", "@kpp.wmain"})
       if (owners.count(name))
         e.emitEntry(name);
+  // The functions made on demand that the dropped texts named: one that the texts emitted now do not name may be named by no
+  // text any more (the edit took out its last call), and a build from scratch does not make such a function. Whether some
+  // text still reaches it is asked of every text (unreachedOnDemand: a pass over the program's definitions, so only when a
+  // name was lost). What a definition emitted now names is not lost, when that definition is a program function's or its
+  // function did not lose a naming itself. A build with errors lacks the texts of the functions that failed, and a check
+  // writes nothing: asked by the first build without errors that writes its modules (Shared::onDemandUnchecked). The
+  // unreached ones go in a rebuild of their own (rebuildLLVM), and this one assembles no module.
+  if (!lost.empty() || sh.onDemandUnchecked)
+  {
+    for (unsigned k = 0; k < sh.moduleCount && !lost.empty(); ++k)
+    {
+      auto named = [&](std::string_view name)
+      {
+        if (auto it = lost.find(name); it != lost.end())
+          lost.erase(it);
+      };
+      for (size_t i = dropped[k].keptDefinitions; i < sh.definitions[k].size(); ++i)
+        if (const Shared::Definition& d = sh.definitions[k][i]; sh.programOwned(d.owner) || !lost.count(d.owner))
+          for (auto [at, length] : d.names)
+            named(std::string_view(d.text).substr(at, length));
+      for (size_t i = dropped[k].keptOwned; i < sh.ownedEntries[k].size(); ++i)
+        if (const Shared::OwnedEntry& o = sh.ownedEntries[k][i]; sh.programOwned(o.owner) || !lost.count(o.owner))
+          irNamesIn(o.text, [&](size_t at, size_t length) { named(std::string_view(o.text).substr(at, length)); });
+    }
+    bool ask = sh.onDemandUnchecked;
+    for (const std::string& name : lost)
+      ask = ask || (sh.definedIn.count(name) && sh.requested.contains(name));
+    const bool failing = std::any_of(emitters.begin(), emitters.end(), [](const std::unique_ptr<Emitter>& em)
+    {
+      return !em->errors.empty() || em->unattributedErrors || em->hiddenErrors != 0;
+    });
+    // (a check writes no module: the pass over the definitions is left to the first build that does, an editor's checks
+    // between two builds being many)
+    sh.onDemandUnchecked = ask && (failing || !assembleModules);
+    if (ask && !failing && assembleModules)
+    {
+      auto asked = std::chrono::steady_clock::now();
+      unreachedNow = unreachedOnDemand(sh, session.threads, false);
+      out.unreachedAsked = std::chrono::duration<double>(std::chrono::steady_clock::now() - asked).count();
+    }
+  }
   // --debug-info: a class's definition lists the member functions a definition names (Shared::DebugTypeText::hasCode,
   // Emitter::debugMethodWithCode). The definitions dropped and the ones emitted now say which member functions lost theirs and
   // which got one (each names its declaration, `declaration: !T` and its key, in its class, `scope: !T`): their classes are
@@ -3275,6 +3529,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         if (sh.structs[t].complete)
           --sh.result.structs;
         sh.structs.erase(t);
+        dropDebugClass(t);
       }
       onEachEmitter([](Emitter& em) { em.forgetLayoutAnswers(); });
       sh.finalLayouts.clear();
@@ -3346,9 +3601,32 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     out.declined = std::to_string(added.size()) + " first use(s) added to the shared declarations, the first: " + cut(added.front());
     return out;
   }
-  // (the classes whose member functions with code changed: defined again, unless prepareModuleTexts did above)
-  if (methodsChanged && !layoutsReplaced && newTypes.empty())
+  // (the classes whose member functions with code changed: defined again, unless prepareModuleTexts did above; and the homes
+  // made again without the classes whose definitions went with their layouts, which prepareModuleTexts did only where a new
+  // type line called it after them)
+  // And a class this build names whose definition an earlier build dropped (Shared::debugClassesUndefined): laid out again, its
+  // type line is the one the shared declarations kept, so no new type line called prepareModuleTexts for it.
+  bool undefinedNamed = false;
+  for (uint64_t key : sh.debugClassesUndefined)
+    if (const Shared::DebugTypeText* entry = sh.findDebugType(key); entry && entry->generation == sh.debugGeneration)
+      undefinedNamed = true;
+  if ((methodsChanged && !layoutsReplaced && newTypes.empty()) || ((!debugClassesDropped.empty() || undefinedNamed) && newTypes.empty()))
     e.homeDebugClasses();
+  // A class whose definition went and that no emission of this build named again: its home loses the definition.
+  for (uint64_t key : debugClassesDropped)
+    if (!sh.debugClassesDefined.count(key) && sh.moduleCount)
+    {
+      Shared::DebugTypeShard& shard = sh.debugTypeShard(key);
+      if (auto it = shard.types.find(key); it != shard.types.end())
+      {
+        it->second.definition.clear();
+        it->second.definitionGeneration = UINT32_MAX;
+      }
+      sh.unassembled.resize(sh.moduleCount);
+      sh.unassembled[key % sh.moduleCount] = true;
+      sh.debugClassesUndefined.insert(key);
+    }
+  std::erase_if(sh.debugClassesUndefined, [&](uint64_t key) { return sh.debugClassesDefined.count(key) != 0; });
   std::vector<unsigned> which;
   std::vector<bool> linesOnly(sh.moduleCount, false); // (texts changed in their lines alone, debug or assert lines: linesOnlyModules)
   for (unsigned k = 0; k < sh.moduleCount; ++k)
@@ -3486,9 +3764,10 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   sh.erroring = std::move(erroring);
   sh.erroringInstances = std::move(erroringInstances);
   sh.unassembled.resize(sh.moduleCount);
-  if (errors || !assembleModules)
+  if (errors || !assembleModules || !unreachedNow.empty())
   {
-    // Nothing assembled (a build with errors writes no module, nor does a check: assembleModules false): the modules
+    // Nothing assembled (a build with errors writes no module, nor does a check: assembleModules false; nor one that left
+    // functions made on demand unreached, which rebuildLLVM drops in a rebuild that follows this one at once): the modules
     // that changed are assembled by the first build without errors that writes them.
     for (unsigned k : which)
       sh.unassembled[k] = true;

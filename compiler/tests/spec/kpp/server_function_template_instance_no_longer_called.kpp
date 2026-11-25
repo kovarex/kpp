@@ -1,0 +1,85 @@
+// spec: a compile server's build after an edit that stops calling a function template's instance is what a build from scratch gives: the instance is in neither (a build from scratch makes one when emitted code names it; the server's build drops one that no text reaches once the edited functions are emitted again), and one called again is made anew. The bodies have a loop: a body that is one expression is emitted in its callers, and there is then no function to drop (2026-11-25: the control that took such bodies said a function template's instance goes, when it stayed as a member function's did)
+//--- step: the program
+template<class T> T twice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 2; ++i)
+    total += x;
+  return total;
+}
+template<class T> T thrice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 3; ++i)
+    total += x;
+  return total;
+}
+int main()
+{
+  std::println(twice(2));
+  return 0;
+}
+// expect: 4
+//--- step: another instance called for the first time
+template<class T> T twice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 2; ++i)
+    total += x;
+  return total;
+}
+template<class T> T thrice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 3; ++i)
+    total += x;
+  return total;
+}
+int main()
+{
+  std::println(twice(2), " ", thrice(3));
+  return 0;
+}
+// expect: 4 9
+//--- step: the first called no more
+template<class T> T twice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 2; ++i)
+    total += x;
+  return total;
+}
+template<class T> T thrice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 3; ++i)
+    total += x;
+  return total;
+}
+int main()
+{
+  std::println(thrice(3));
+  return 0;
+}
+// expect: 9
+//--- step: the first alone again
+template<class T> T twice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 2; ++i)
+    total += x;
+  return total;
+}
+template<class T> T thrice(T x)
+{
+  T total = 0;
+  for (i32 i = 0; i < 3; ++i)
+    total += x;
+  return total;
+}
+int main()
+{
+  std::println(twice(2));
+  return 0;
+}
+// expect: 4

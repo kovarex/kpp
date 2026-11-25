@@ -1,0 +1,55 @@
+// spec: a compile server's build after an edit that stops calling an instance whose lambda a std::Function holds is what a build from scratch gives: the instance, its lambda's call operator and what the std::Function made for that closure are in neither build (the server's drops them when it can, or generates the program in full); called again, they are made anew (2026-11-25, with kpp/server_instance_member_function_no_longer_called)
+//--- step: the program
+template<class T> T viaFunction(T x)
+{
+  std::Function<T(T)> twice = [](T v)
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += v;
+    return sum;
+  };
+  return twice(x) + 1;
+}
+int main()
+{
+  std::println(viaFunction(4));
+  return 0;
+}
+// expect: 9
+//--- step: called no more
+template<class T> T viaFunction(T x)
+{
+  std::Function<T(T)> twice = [](T v)
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += v;
+    return sum;
+  };
+  return twice(x) + 1;
+}
+int main()
+{
+  std::println(2);
+  return 0;
+}
+// expect: 2
+//--- step: called again
+template<class T> T viaFunction(T x)
+{
+  std::Function<T(T)> twice = [](T v)
+  {
+    T sum = 0;
+    for (i32 i = 0; i < 2; ++i)
+      sum += v;
+    return sum;
+  };
+  return twice(x) + 1;
+}
+int main()
+{
+  std::println(viaFunction(4));
+  return 0;
+}
+// expect: 9

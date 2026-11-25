@@ -92,10 +92,10 @@ In a debug build (unoptimized) `--debug-info` describes the program's data too (
   (`std::Vector<int32>::push_back(const int32&)`) and could not be called, while its class listed every
   member function it declares. One that nobody calls is never emitted and is not listed. A compile
   server's build defines a class again when an edit gives one of its member functions its first
-  definition or takes its last away. (An edit that only stops calling a member function of an instance
-  does not take it away yet: a compile server keeps the function, with debug information or without,
-  where a build from scratch has none; the pending snippet
-  kpp/server_instance_member_function_no_longer_called.)
+  definition or takes its last away. An edit that stops calling a member function of an instance takes
+  it away: the server's build drops a function made on demand that no text reaches any more
+  (docs/compile-speed.md, "A function made on demand that an edit leaves unreached is dropped";
+  kpp/server_instance_member_function_no_longer_called).
 - **Globals**: each global of the program by the name kpp's IR gives it (`game::counter`,
   `PrototypeList<EntityPrototype>::sorted`; a static data member's storage is `Class::member`), where
   the debugger reads it: the module whose text defines it (its home, in a debug build) describes it

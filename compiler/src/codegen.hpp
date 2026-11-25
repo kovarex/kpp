@@ -68,6 +68,8 @@ struct CodegenResult
   // (handed over at level 0's barrier, the same at the end).
   std::vector<bool> streamed;
   size_t emittedAgain = 0;          // rebuildLLVM: the functions it emitted (the changed and added ones, those that inlined a changed body, first uses)
+  size_t droppedUnreached = 0;      // rebuildLLVM: the functions made on demand it dropped, which no text reached once those were emitted
+  double unreachedAsked = 0;        // rebuildLLVM: the seconds it took asking every text for them (0: no name was lost, nothing asked)
   std::string declined;             // rebuildLLVM: why it did not rebuild (rebuilt false), for the server's log
   size_t instanceAssertsChecked = 0; // the class template instances whose static_asserts it checked (GlobalScope::checkerErrors)
   std::vector<DebugClass> debugClasses; // --debug-info: the classes the program's modules define, sorted by name

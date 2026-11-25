@@ -1,5 +1,4 @@
-// spec: a compile server's build after an edit that stops calling a member function of a class template's instance, whose class the program still uses, is what a build from scratch gives: nothing uses the member function, so it is not instantiated ([temp.inst] 11) and has no code, as a function template's instance that an edit stops calling has none
-// pending: the member function stays defined in the server's build (--verify-incremental: "what it wrote differs"; the program runs right): a class instance's member body is no recorded request of the walk that called it, so GlobalScope::dropUnusedInstances does not find it unused while its class is used. In debug, release and --via-cpp builds alike, with --debug-info or without. Found 2026-11-25 by the debug information's member function lists (b88217f64), whose snippet stopped calling one; the compiler before them (87b8d9481) fails the same; its owner is the coordinator's to name
+// spec: a compile server's build after an edit that stops calling a member function of a class template's instance, whose class the program still uses, is what a build from scratch gives: nothing names the member function, so a build from scratch does not make it ([temp.inst] 11), and the server's build drops the one it had made (codegen's rebuild: a function made on demand that no text reaches once the edited functions are emitted again goes, as a removed function does). Called again, it is made anew; with neither called both go and the class stays. Until 2026-11-25 the function stayed in the server's build, the program right and its code not a build from scratch's (--verify-incremental: "what it wrote differs"), found by the debug information's member function lists (b88217f64), whose class's list it changes too (docs/debugging.md, "Member functions")
 //--- step: the program
 template<class T> struct Box
 {
@@ -52,3 +51,55 @@ int main()
   return 0;
 }
 // expect: 27
+//--- step: called again
+template<class T> struct Box
+{
+  T value;
+  T sum(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total += this.value;
+    return total;
+  }
+  T product(i32 times) const
+  {
+    T total = 1;
+    for (i32 i = 0; i < times; ++i)
+      total *= this.value;
+    return total;
+  }
+};
+int main()
+{
+  Box<i32> b{3};
+  std::println(b.sum(2), " ", b.product(3));
+  return 0;
+}
+// expect: 6 27
+//--- step: neither called, the class still used
+template<class T> struct Box
+{
+  T value;
+  T sum(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total += this.value;
+    return total;
+  }
+  T product(i32 times) const
+  {
+    T total = 1;
+    for (i32 i = 0; i < times; ++i)
+      total *= this.value;
+    return total;
+  }
+};
+int main()
+{
+  Box<i32> b{3};
+  std::println(b.value);
+  return 0;
+}
+// expect: 3
