@@ -1647,7 +1647,12 @@ the step after a difference can fail to link, and that failure is the comparison
 scratch has left its objects where the kept session takes its own for compiled.
 
 Left as it was: a helper of the shared definitions (a destructor's, a copy's) whose last use an edit
-takes out stays, where no polymorphic class instance went with it.
+takes out stays, where no polymorphic class instance went with it. And in a release build the vtable
+and the descriptor a module was given for a text that is gone stay in that module: a release build's
+module is written with all of its own declarations, where a debug build's pieces carry only those
+their texts reach (pending spec kpp/server_class_no_longer_constructed_keeps_no_vtable_release: a
+polymorphic class, a template's instance or not, that functions stop constructing while it stays laid
+out; found 2026-11-25, older than that day's changes).
 
 **Codegen in full in the server, 1 s slower than in a new process: the old session's freeing.**
 `runCodegen` freed the kept codegen session before generating anew, on the build's own time:
