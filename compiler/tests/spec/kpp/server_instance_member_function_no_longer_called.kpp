@@ -1,0 +1,54 @@
+// spec: a compile server's build after an edit that stops calling a member function of a class template's instance, whose class the program still uses, is what a build from scratch gives: nothing uses the member function, so it is not instantiated ([temp.inst] 11) and has no code, as a function template's instance that an edit stops calling has none
+// pending: the member function stays defined in the server's build (--verify-incremental: "what it wrote differs"; the program runs right): a class instance's member body is no recorded request of the walk that called it, so GlobalScope::dropUnusedInstances does not find it unused while its class is used. In debug, release and --via-cpp builds alike, with --debug-info or without. Found 2026-11-25 by the debug information's member function lists (b88217f64), whose snippet stopped calling one; the compiler before them (87b8d9481) fails the same; its owner is the coordinator's to name
+//--- step: the program
+template<class T> struct Box
+{
+  T value;
+  T sum(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total += this.value;
+    return total;
+  }
+  T product(i32 times) const
+  {
+    T total = 1;
+    for (i32 i = 0; i < times; ++i)
+      total *= this.value;
+    return total;
+  }
+};
+int main()
+{
+  Box<i32> b{3};
+  std::println(b.sum(2), " ", b.product(3));
+  return 0;
+}
+// expect: 6 27
+//--- step: one of the two called no more
+template<class T> struct Box
+{
+  T value;
+  T sum(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total += this.value;
+    return total;
+  }
+  T product(i32 times) const
+  {
+    T total = 1;
+    for (i32 i = 0; i < times; ++i)
+      total *= this.value;
+    return total;
+  }
+};
+int main()
+{
+  Box<i32> b{3};
+  std::println(b.product(3));
+  return 0;
+}
+// expect: 27

@@ -1,0 +1,68 @@
+// spec: a compile server's build after an edit that calls a member function of a class template's instance for the first time is what a build from scratch gives with --debug-info: the instance's debug definition lists the member functions that have code, so it is made again, and its home module assembled again, when one gets its first definition (docs/debugging.md, "Member functions"; 2026-11-25). The other way, an edit that stops calling one, is kpp/server_instance_member_function_no_longer_called
+// kpp: --debug-info
+//--- step: the program
+template<class T> struct Box
+{
+  T value;
+  T sum(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total += this.value;
+    return total;
+  }
+  T product(i32 times) const
+  {
+    T total = 1;
+    for (i32 i = 0; i < times; ++i)
+      total *= this.value;
+    return total;
+  }
+  T difference(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total -= this.value;
+    return total;
+  }
+};
+int main()
+{
+  Box<i32> b{3};
+  std::println(b.sum(2));
+  return 0;
+}
+// expect: 6
+//--- step: another member function of the instance called for the first time
+template<class T> struct Box
+{
+  T value;
+  T sum(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total += this.value;
+    return total;
+  }
+  T product(i32 times) const
+  {
+    T total = 1;
+    for (i32 i = 0; i < times; ++i)
+      total *= this.value;
+    return total;
+  }
+  T difference(i32 times) const
+  {
+    T total = 0;
+    for (i32 i = 0; i < times; ++i)
+      total -= this.value;
+    return total;
+  }
+};
+int main()
+{
+  Box<i32> b{3};
+  std::println(b.sum(2), " ", b.product(3));
+  return 0;
+}
+// expect: 6 27
