@@ -1,20 +1,22 @@
-// spec: a typed union whose alternatives are each one integer compared by value (an ID class with one u16 and a defaulted == and <=>, an enum over u8 widened to the same width as a u16 class is not: one width only) or void compares as std::variant does, the alternative held, then its value, and kpp makes that one integer comparison: ==, !=, <, <=, >, >= and <=> agree with the rule for every pair, a void alternative equal to itself, a class defaulted == over such a union too
+// spec: a typed union whose alternatives are each one integer compared by value (an ID class with one u16 or u8 and a defaulted == and <=>; a narrower one's own bits of the storage) or void compares as std::variant does, the alternative held, then its value, and kpp makes that one integer comparison: ==, !=, <, <=, >, >= and <=> agree with the rule for every pair, a void alternative equal to itself, a class defaulted == over such a union too
 // design.md 8.5 (kovarex, 2026-11-25: the game's SignalIDBase as a union enum without a slower comparison than its packed u32)
-template<class P>
+template<class P, class Index = u16>
 struct ID
 {
-  u16 index = 0;
+  Index index = 0;
   constexpr std::strong_ordering operator<=>(const ID&) const = default;
   constexpr bool operator==(const ID&) const = default;
 };
 struct ItemTag {};
 struct FluidTag {};
+struct QualityTag {};
 using ItemID = ID<ItemTag>;
 using FluidID = ID<FluidTag>;
+using QualityID = ID<QualityTag, u8>;
 
 union enum class Signal : u8
 {
-  { {Item, ItemID}, {Fluid, FluidID}, {Nothing, void}, {Code, u16} }
+  { {Item, ItemID}, {Fluid, FluidID}, {Nothing, void}, {Code, u16}, {Quality, QualityID} }
 };
 
 struct Pair
@@ -29,11 +31,12 @@ int order(std::strong_ordering o) { return o < 0 ? -1 : o > 0 ? 1 : 0; }
 int main()
 {
   std::Vector<Signal> all;
-  for (u16 i : {u16(0), u16(1), u16(300)})
+  for (u16 i : {u16(0), u16(1), u16(200)})
   {
     all.push_back(Signal::Item(ItemID{i}));
     all.push_back(Signal::Fluid(FluidID{i}));
     all.push_back(Signal::Code(i));
+    all.push_back(Signal::Quality(QualityID{u8(i)}));
   }
   all.push_back(Signal::Nothing());
   i32 checked = 0, wrong = 0;
@@ -45,8 +48,8 @@ int main()
       int expected = byTag;
       if (byTag == 0 && a.tag() != Signal::Tag::Nothing)
       {
-        u16 va = a.tag() == Signal::Tag::Item ? a[Item].index : a.tag() == Signal::Tag::Fluid ? a[Fluid].index : a[Code];
-        u16 vb = b.tag() == Signal::Tag::Item ? b[Item].index : b.tag() == Signal::Tag::Fluid ? b[Fluid].index : b[Code];
+        u16 va = a.tag() == Signal::Tag::Item ? a[Item].index : a.tag() == Signal::Tag::Fluid ? a[Fluid].index : a.tag() == Signal::Tag::Quality ? u16(a[Quality].index) : a[Code];
+        u16 vb = b.tag() == Signal::Tag::Item ? b[Item].index : b.tag() == Signal::Tag::Fluid ? b[Fluid].index : b.tag() == Signal::Tag::Quality ? u16(b[Quality].index) : b[Code];
         expected = va < vb ? -1 : va > vb ? 1 : 0;
       }
       ++checked;
@@ -57,6 +60,10 @@ int main()
   Pair p{Signal::Fluid(FluidID{7}), 2};
   Pair q{Signal::Fluid(FluidID{7}), 2};
   Pair r{Signal::Item(ItemID{7}), 2};
-  std::println(checked, " pairs, ", wrong, " wrong; ", p == q, " ", p == r);
+  // a narrower alternative written over a wider one: the storage's other byte is not its value
+  Signal reused = Signal::Code(u16(0xFF00));
+  reused = Signal::Quality(QualityID{1});
+  Signal fresh = Signal::Quality(QualityID{1});
+  std::println(checked, " pairs, ", wrong, " wrong; ", p == q, " ", p == r, "; ", reused == fresh, " ", order(reused <=> fresh));
   return 0;
 }

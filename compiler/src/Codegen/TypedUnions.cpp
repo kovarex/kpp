@@ -1006,13 +1006,15 @@ auto codegen::Emitter::plainKeyBits(const Ty* t, bool order, Node* at, int depth
 
 auto codegen::Emitter::typedUnionKey(ClassDecl* c, const std::string& obj, const Ty* t, bool order, Node* at) -> std::optional<Value>
 {
-  // A typed union whose alternatives are all void or plainKeyBits ones of one width W, none on the heap: the
-  // alternative held and its value as one i64, ((tag + 1) << W) | value, a void alternative's value 0 and a
+  // A typed union whose alternatives are all void or plainKeyBits ones, W bits the widest, none on the heap: the
+  // alternative held and its value as one i64, ((tag + 1) << W) | value, a narrower one's value its own bits of the
+  // storage (little-endian: the low ones), a void alternative's value 0 and a
   // valueless union's key 0, so that == and <=> of two of them are one integer comparison, in the order the
   // alternative-then-value rule gives (design.md 8.5; kovarex, 2026-11-25, for the game's SignalIDBase).
   unsigned width = 0;
   std::optional<size_t> stored;
   std::vector<size_t> voids;
+  std::vector<unsigned> widths(c->alternatives.size(), 0);
   for (size_t k = 0; k < c->alternatives.size(); ++k)
   {
     if (static_cast<VariableDecl*>(c->alternatives[k])->voidAlternative)
@@ -1023,11 +1025,11 @@ auto codegen::Emitter::typedUnionKey(ClassDecl* c, const std::string& obj, const
     if (boxedAlternative(c, t, k, at))
       return std::nullopt;
     unsigned bits = plainKeyBits(alternativeType(c, t, k, at), order, at, 0);
-    if (!bits || (width && bits != width))
+    if (!bits)
       return std::nullopt;
-    width = bits;
-    if (!stored)
-      stored = k;
+    widths[k] = bits;
+    if (bits > width)
+      width = bits, stored = k;
   }
   const Ty* underlying = enumUnderlying(c->tagEnum);
   unsigned tagBits = 1;
@@ -1046,6 +1048,15 @@ auto codegen::Emitter::typedUnionKey(ClassDecl* c, const std::string& obj, const
   fn += "  " + value + " = load i" + std::to_string(width) + ", ptr " + alternativeSlot(c, t, obj, *stored, at) + "\n";
   fn += "  " + wide + " = zext i" + std::to_string(width) + " " + value + " to i64\n";
   std::string payload = wide;
+  for (size_t k = 0; k < c->alternatives.size(); ++k)
+    if (widths[k] && widths[k] < width)
+    {
+      std::string isIt = newTemp(), own = newTemp(), chosen = newTemp();
+      fn += "  " + isIt + " = icmp eq i64 " + tagType64 + ", " + std::to_string(tags[k]) + "\n";
+      fn += "  " + own + " = and i64 " + payload + ", " + std::to_string((uint64_t(1) << widths[k]) - 1) + "\n";
+      fn += "  " + chosen + " = select i1 " + isIt + ", i64 " + own + ", i64 " + payload + "\n";
+      payload = chosen;
+    }
   for (size_t k : voids)
   {
     std::string isVoid = newTemp(), cleared = newTemp();
