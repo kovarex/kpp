@@ -1890,6 +1890,32 @@ spelling it fails: "the unique name(s) of game::Shape's records are [game::Shape
 - **`zeroext` on a returned `i1`**: 0.7%, inside the noise.
 - **Freeing a module later** (while the linker runs): the freeing is 3.9% of the back end's time, and
   the instances' modules, which the build waits for, would have to be kept all at once.
+- **A local variable's file and line in the debug information** (2026-11-25). CodeView has no place
+  for them (S_LOCAL holds a type, flags and a name) and LLVM reads neither for it: a quarter of the
+  modules compiled without them, and without the lexical blocks' lines, gave the same objects byte for
+  byte (64 of 64). They are 1.6% of the IR's text and 0.4% of the back end's time, which is inside
+  the noise, and DWARF needs them. As with the padding and the address steps of offset zero (section
+  9): text that makes no work costs next to nothing.
+
+**What the objects hold (2026-11-25).** The linker's input, the game's 256 debug objects of kpp 0.2.1792
+(488.4 MB, with the identifiers as keys):
+
+| | | of the objects | |
+|---|---:|---:|---|
+| the string tables | 102.5 MB | 21.0% | the symbols' names |
+| .debug$S | 94.6 MB | 19.4% | S_GPROC32_ID 37.7 MB (257,549 records of 146.5 bytes: a function's name as the debugger shows it), the lines 17.8, S_LOCAL 11.5, S_DEFRANGE_FRAMEPOINTER_REL 10.1, S_FRAMEPROC 8.2 |
+| .debug$T | 78.2 MB | 16.0% | LF_CLASS 23.6 MB (248,980 records of 94.8 bytes), LF_FUNC_ID 12.3 (87,176 of 141.1), LF_MFUNC_ID 9.1, LF_FIELDLIST 9.1, LF_STRUCTURE 8.5, LF_MFUNCTION 6.4, LF_POINTER 5.3 |
+| relocations | 74.3 MB | 15.2% | .debug$S's 24.5, .xdata's 18.0, .text's 14.5, .pdata's 12.2 |
+| .text | 56.3 MB | 11.5% | the code |
+| the symbol tables | 28.1 MB | 5.7% | |
+| .xdata | 19.5 MB | 4.0% | the unwind and exception tables |
+| .rdata, .pdata, .data, .llvm_addrsig | 16.0 MB | 3.3% | |
+
+Code is a ninth of an object. Names are the largest part: a function's is in the string table as the
+IR spells it, in its S_GPROC32_ID as the debugger shows it, and for a function that is no member in
+its LF_FUNC_ID again; a class's is in each LF_CLASS record. Both ways to shorten them were measured
+for an edit's link on 2026-11-04 and left (docs/debugging.md: function names without their parameter
+lists, short linkage names); the identifier above was the one copy of a name that nothing reads.
 
 **Left, by what it would give.**
 
@@ -1899,7 +1925,10 @@ spelling it fails: "the unique name(s) of game::Shape's records are [game::Shape
 - **The verifier**, 4.6% (section 8's question: off by default, on for kpp's own tests).
 - **No text at all** between codegen and LLVM (the IR built in memory): the parse is 30% of the back
   end's time, and writing the text is part of codegen's.
-- **Long symbol names** (measured 2026-11-25), about 0.2 s of a clean build. A function's name in the IR
+- **Long symbol names**, about 0.2 s of a clean build: decided against already. Short linkage names
+  were measured on 2026-11-04 for an edit's link (8% of it) and kovarex left them (docs/debugging.md,
+  "Two more levers were measured, neither taken"); these are the same lever's numbers for a clean
+  build (2026-11-25, measured before that decision was looked up). A function's name in the IR
   is its whole readable name, `@"std::Vector<std::Pair<uint8, uint16>>::push_back(std::Pair<uint8,
   uint16>&&)"`: 54 bytes on average, 1,579 at most (an `MplVector` of the prototype lists), 14% of the
   text of sixteen modules. The whole game's IR (master 235ab7c14's, 256 modules) was compiled and
@@ -1925,7 +1954,8 @@ spelling it fails: "the unique name(s) of game::Shape's records are [game::Shape
   shorter would give was not measured. The price: the linker's messages, a map file, dumpbin, the PDB's
   public symbols and the stack of a build without debug information would show hashes (a debugger's
   names come from the debug information and stay), so kpp would have to translate them back where it
-  shows the linker's words, and a release would need the table beside it. A decision, not a change.
+  shows the linker's words, and a release would need the table beside it. The decision of 2026-11-04
+  stands.
 
 **The clean build, from the study's start to here.** The compiler this study began with (section 8's:
 5bdcfe34b of 2026-11-23, kpp 0.2.1738, with the standard library of that commit) against master's
