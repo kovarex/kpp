@@ -142,6 +142,24 @@
     // helper), at most 1000.
     std::unordered_map<const Ty*, size_t> destructionCallCounts;
     size_t destructionCalls(const Ty* t, Node* at, int depth = 0);
+    // How many calls a member-wise copy, move or assignment of t spells out where it is written, at most 1000: none for
+    // bytes, one for a part copied by a function (a copy constructor written for it, a typed union's helper), the sum of
+    // a member-wise part's own, an array's per element. Above 8 the class is copied through its helper (copyHelper).
+    // copiedInline when a part copied member by member is polymorphic: its copy stores its vtable pointer, and a vtable
+    // is defined in the modules whose functions name it, while a helper is a shared function, written in its home module.
+    // Each count keeps the class layouts computing it read (noteLayout), noted again wherever it is asked: whether a
+    // function copies t through the helper depends on them, and a compile server's emitter keeps its counts from build
+    // to build, so a function emitted by a warm emitter notes what one emitted from scratch notes (the server emits a
+    // function again when a layout it noted changes, and drops a layout no function notes).
+    static constexpr size_t copiedInline = size_t(-1);
+    struct MemberwiseCount
+    {
+      size_t calls = 0;
+      std::vector<const Ty*> layouts;
+    };
+    std::unordered_map<const Ty*, MemberwiseCount> memberwiseCallCounts;
+    std::vector<const Ty*>* memberwiseLayouts = nullptr; // a count being computed: the layouts it reads (noteLayout)
+    size_t memberwiseCalls(const Ty* t, Node* at, int depth = 0);
 
     void destroyMembers(const std::string& addr, const Ty* t, Node* at);
 

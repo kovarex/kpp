@@ -1,0 +1,172 @@
+// spec: a class copied member by member whose copy spells out many calls (more than eight members with constructors of their own) is copied, moved, copy-assigned and move-assigned as any class: its base first, then its members in order; a member whose copy throws leaves those built before it destroyed and the exception passes; a defaulted move constructor moves; a copy from a derived object is of the base part; a polymorphic class's copy stores its own vtable pointer; a member of another class copied with it, a vector's element copied with the vector
+// factorio: the game's ElementImageSet was 26 KB of IR at each of its 54 copies, MapSettings 36 KB at each of 17, the copy of every member spelled out at each (2026-11-23); since then each such class is copied through a helper of its own (a polymorphic one stays inline: its vtable belongs to the modules naming it), and this checks the helper does what the inline copy did
+int live = 0;
+struct Part
+{
+  char name = 'p';
+  bool fragile = false;
+  Part(char name) : name(name) { live += 1; }
+  Part(const Part& other) : name(other.name), fragile(other.fragile)
+  {
+    if (other.fragile)
+      throw 7;
+    live += 1;
+    std::print("c", this.name, " ");
+  }
+  Part(Part&& other) : name(other.name), fragile(other.fragile)
+  {
+    live += 1;
+    other.name = 'm';
+    std::print("m", this.name, " ");
+  }
+  Part& operator=(const Part& other)
+  {
+    std::print("a", other.name, " ");
+    this.name = other.name;
+    return this;
+  }
+  Part& operator=(Part&& other)
+  {
+    std::print("A", other.name, " ");
+    this.name = other.name;
+    other.name = 'm';
+    return this;
+  }
+  ~Part() { live -= 1; }
+};
+struct Base
+{
+  Part root = Part('r');
+};
+struct Big : Base
+{
+  Part a = Part('a');
+  Part b = Part('b');
+  int number = 5;
+  Part c = Part('c');
+  Part d = Part('d');
+  Part e = Part('e');
+  Part f = Part('f');
+  Part g = Part('g');
+  Part h = Part('h');
+  Part i = Part('i');
+};
+struct Derived : Big
+{
+  Part extra = Part('x');
+};
+class PolyBase
+{
+public:
+  Part root = Part('R');
+  virtual char kind() const { return 'B'; }
+  virtual ~PolyBase() {}
+};
+class PolyBig : public PolyBase
+{
+public:
+  Part a = Part('A');
+  Part b = Part('B');
+  Part c = Part('C');
+  Part d = Part('D');
+  Part e = Part('E');
+  Part f = Part('F');
+  Part g = Part('G');
+  Part h = Part('H');
+  Part i = Part('I');
+  virtual char kind() const override { return 'P'; }
+};
+class PolyDerived : public PolyBig
+{
+public:
+  virtual char kind() const override { return 'Q'; }
+};
+struct Moved
+{
+  Part a = Part('1');
+  Part b = Part('2');
+  Part c = Part('3');
+  Part d = Part('4');
+  Part e = Part('5');
+  Part f = Part('6');
+  Part g = Part('7');
+  Part h = Part('8');
+  Part i = Part('9');
+  Moved() = default;
+  Moved(Moved&&) = default;
+};
+struct Holder
+{
+  Big big;
+  Part after = Part('z');
+};
+int main()
+{
+  {
+    Big x;
+    x.number = 9;
+    Big y = x;
+    std::print(y.number);
+  }
+  std::println(" | copy");
+  {
+    Big x;
+    Big y = std::move(x);
+    std::print(y.i.name, x.i.name);
+  }
+  std::println(" | move");
+  {
+    Big x;
+    Big y;
+    y.e.name = 'q';
+    y = x;
+    std::print(y.e.name);
+    Big z;
+    z = std::move(y);
+    std::print(z.e.name);
+  }
+  std::println(" | assign");
+  {
+    Big x;
+    x.f.fragile = true;
+    try
+    {
+      Big y = x;
+      std::print("copied");
+    }
+    catch (int e)
+    {
+      std::print("caught ", e);
+    }
+  }
+  std::println(" | throwing member");
+  {
+    Moved x;
+    Moved y = std::move(x);
+    std::print(y.i.name, x.i.name);
+  }
+  std::println(" | defaulted move");
+  {
+    Derived d;
+    Big sliced = d;
+    std::print(sliced.a.name);
+  }
+  std::println(" | slicing copy");
+  {
+    PolyDerived d;
+    PolyBig copied = d;
+    std::print(copied.kind());
+  }
+  std::println(" | polymorphic copy");
+  {
+    Holder h;
+    Holder k = h;
+    std::Vector<Big> v;
+    v.push_back(Big());
+    std::Vector<Big> w = v;
+    std::print(w[0].a.name, k.after.name);
+  }
+  std::println(" | member and vector");
+  std::println("live ", live);
+  return 0;
+}

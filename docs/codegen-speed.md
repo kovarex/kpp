@@ -1017,6 +1017,23 @@ each).
   three interleaved pairs under `heavy.cmd --exclusive`: IR 2,244 -> 2,225 MB, clang 9.51 to 9.78 -> 9.09 to 9.36 s,
   codegen, kpp and the total within the noise (kpp 17.2 to 18.3 s and 17.2 to 18.0 s).
 
+**Classes copied member by member through helpers (2026-11-24).** kovarex, after the typed unions: "Do the rest as well".
+- **What.** A class copied, moved, copy-assigned or move-assigned member by member (no copy or move constructor, or
+  operator=, of its own), whose member-wise copy spells out more than 8 calls where it is written, goes through a helper
+  of its own as its destruction does (`@kpp.copy.` and the others with its struct): memberwiseCalls counts a call for a
+  part copied by a function (a copy constructor written for it, a typed union's helper), none for one copied as bytes,
+  a member-wise part's own, an array's per element. A class whose member-wise copy stores a vtable pointer (a
+  polymorphic one, a member or base of such, a typed union holding one) stays copied where it is used: a vtable is
+  defined in the modules whose functions name it, a helper in its home module only (the game's build did not link
+  with them in helpers). The same keeps a typed union with such an alternative inline, whose helper (above) named the
+  vtable from the helper's module.
+- **Measured:** `kpp factorio-test debug --no-server --verbose` on kpp-factorio kpp c0ffbea92, build\debug's outputs
+  removed before each build, master 334cba2f5 against this (scratch\enumnames\tools\irstats.py): IR 2,203.1 ->
+  2,196.1 MB, invokes 2,333,365 -> 2,316,958, calls 3,016,157 -> 2,998,813, cleanup pads 301,704 -> 298,593, function
+  definitions 357,351 -> 357,412 (61 helpers). Smaller than the typed unions' step: most of the 94 MB of special members
+  written where they are used are single calls, and the big member-wise copies were few (ElementImageSet, MapSettings,
+  ScenarioExecutionContext). The game's tests pass in debug and release (factorio-test, 9,572 tests, 0 failed).
+
 
 **Step 5: codegen's mutexes spin before they sleep (item 6's first lever; thread D, 2026-11-04).**
 - **Why.** A's profile of the clean build (A-clean-build-profile.md in the coordinator's notes) had

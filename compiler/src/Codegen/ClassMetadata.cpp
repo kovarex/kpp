@@ -2944,6 +2944,12 @@ auto codegen::Emitter::moveConstruct(const std::string& dst, const std::string& 
   {
     // `explicit Animation(Animation&&) = default` beside a deleted copy constructor: the
     // members moved, the copy constructor not looked at (a move is no copy).
+    if (size_t calls = memberwiseCalls(t, at); calls > 8 && calls != copiedInline)
+    {
+      const Ty* u = types.unqualified(types.stripRef(t));
+      emitCall("", "void " + copyHelper(u, true, false, at) + "(ptr " + dst + ", ptr " + src + ")", !global.constructsWithoutThrowing(u, true));
+      return;
+    }
     memberwiseConstruct(dst, src, t, at, true);
     return;
   }
@@ -2958,13 +2964,13 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
   ClassDecl* c = classDef(t->decl, at);
   if (c->isTypedUnion)
   {
-    // Through its helper (typedUnionHelper), the switch over its alternatives spelled out once there, not at each copy:
+    // Through its helper (copyHelper), the switch over its alternatives spelled out once there, not at each copy:
     // InputAction's (a union enum of 120 alternatives) was 0.29 MB of IR at each of its 21 copies in the game's tests and
     // 0.24 MB at each of its 17 moves (factorio-test debug, 2026-11-23).
     const Ty* u = types.unqualified(types.stripRef(t));
-    if (typedUnionThroughHelper(c))
+    if (typedUnionThroughHelper(c, u, at))
     {
-      emitCall("", "void " + typedUnionHelper(u, move, false, at) + "(ptr " + dst + ", ptr " + src + ")", !global.constructsWithoutThrowing(u, move));
+      emitCall("", "void " + copyHelper(u, move, false, at) + "(ptr " + dst + ", ptr " + src + ")", !global.constructsWithoutThrowing(u, move));
       return;
     }
     copyTypedUnion(c, u, dst, src, move, at);
@@ -3021,7 +3027,93 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
   if (!move)
     if (std::string why = implicitCopyDeletedBy(t, at); !why.empty())
       fail(at, "copying " + types.toString(types.unqualified(t), &symbols) + ", whose implicit copy constructor is deleted: " + why);
+  // Through its helper (copyHelper) where the member-wise copy spells out more than a few calls, as its destruction does:
+  // the game's ElementImageSet was 26 KB of IR at each of its 54 copies, MapSettings 36 KB at each of 17 (2026-11-23).
+  if (size_t calls = memberwiseCalls(t, at); calls > 8 && calls != copiedInline)
+  {
+    const Ty* u = types.unqualified(types.stripRef(t));
+    emitCall("", "void " + copyHelper(u, move, false, at) + "(ptr " + dst + ", ptr " + src + ")", !global.constructsWithoutThrowing(u, move));
+    return;
+  }
   memberwiseConstruct(dst, src, t, at, move);
+}
+
+auto codegen::Emitter::memberwiseCalls(const Ty* t, Node* at, int depth) -> size_t
+{
+  t = types.unqualified(types.stripRef(t));
+  if (auto it = memberwiseCallCounts.find(t); it != memberwiseCallCounts.end())
+  {
+    for (const Ty* layout : it->second.layouts)
+      noteLayout(layout); // (what computing it noted: see memberwiseCallCounts)
+    return it->second.calls;
+  }
+  // The layouts this count reads, as noteLayout sees them; an inner count's own go into this one's at its end.
+  std::vector<const Ty*> layouts;
+  struct Recording
+  {
+    Emitter& emitter;
+    std::vector<const Ty*>* outer;
+    ~Recording() { emitter.memberwiseLayouts = outer; }
+  } recording{*this, memberwiseLayouts};
+  memberwiseLayouts = &layouts;
+  size_t n = 0;
+  if (depth > 16)
+    n = 1000;
+  else if (t->kind == TyKind::Array)
+    n = std::min<size_t>(1000, size_t(t->count) * memberwiseCalls(t->inner, at, depth + 1));
+  else if (isLambda(t))
+    n = 1;
+  else if (isClass(t) && !(!needsDestruction(t, at) && relocatesBitwise(t, at)))
+  {
+    ClassDecl* c = classDef(t->decl, at);
+    bool own = false;
+    {
+      TemplateArgs args = global.classArgsOf(canonicalClass(t, at));
+      ArgsScope scope(*this, &args);
+      for (Decl* m : c->members)
+        if (m->kind == NodeKind::FunctionDecl && (m->flags & DF_Constructor) && !(m->flags & DF_Default) &&
+            static_cast<FunctionDecl*>(m)->params.size() == 1)
+          if (const Ty* pt = declType(static_cast<FunctionDecl*>(m)->params[0]); pt && pt->isReference() && isClass(pt->inner) &&
+                                                                                 classKey(pt->inner) == classKey(t))
+            own = true; // a copy or move constructor written for it: one call
+    }
+    if (own)
+      n = 1;
+    else if (c->isTypedUnion)
+    {
+      // Its helper's call, or its switch where the copy of one of its parts stores a vtable pointer.
+      n = 1;
+      for (size_t i = 0; i < c->alternatives.size() && n != copiedInline; ++i)
+        if (!static_cast<VariableDecl*>(c->alternatives[i])->voidAlternative &&
+            memberwiseCalls(alternativeType(c, t, i, at), at, depth + 1) == copiedInline)
+          n = copiedInline;
+      for (const Ty* ft : structFor(t, at).fieldTypes)
+        if (n != copiedInline && !ft->isReference() && memberwiseCalls(ft, at, depth + 1) == copiedInline)
+          n = copiedInline;
+    }
+    else if (structFor(t, at).polymorphic)
+      n = copiedInline;
+    else
+      for (const Ty* ft : structFor(t, at).fieldTypes)
+        if (!ft->isReference())
+        {
+          size_t part = memberwiseCalls(ft, at, depth + 1);
+          if (part == copiedInline)
+          {
+            n = copiedInline;
+            break;
+          }
+          n += part;
+        }
+  }
+  if (n != copiedInline)
+    n = std::min<size_t>(n, 1000);
+  std::sort(layouts.begin(), layouts.end());
+  layouts.erase(std::unique(layouts.begin(), layouts.end()), layouts.end());
+  if (recording.outer)
+    recording.outer->insert(recording.outer->end(), layouts.begin(), layouts.end());
+  memberwiseCallCounts.emplace(t, MemberwiseCount{n, std::move(layouts)});
+  return n;
 }
 
 auto codegen::Emitter::implicitCopyDeletedBy(const Ty* t, Node* at, int depth) -> std::string
@@ -3203,12 +3295,12 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
 {
   if (ClassDecl* c = typedUnionOf(t, at))
   {
-    // Through its helper (typedUnionHelper), as its copy: InputAction's assignment was 0.83 MB of IR at each of its uses
+    // Through its helper (copyHelper), as its copy: InputAction's assignment was 0.83 MB of IR at each of its uses
     // in the game's tests, its move assignment 0.62 MB (factorio-test debug, 2026-11-23).
     const Ty* u = types.unqualified(types.stripRef(t));
-    if (typedUnionThroughHelper(c))
+    if (typedUnionThroughHelper(c, u, at))
     {
-      emitCall("", "void " + typedUnionHelper(u, move, true, at) + "(ptr " + dst + ", ptr " + src + ")");
+      emitCall("", "void " + copyHelper(u, move, true, at) + "(ptr " + dst + ", ptr " + src + ")");
       return;
     }
     assignTypedUnion(c, u, dst, src, move, at);
@@ -3286,6 +3378,12 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
     unsupported(at, "assignment to " + qualifiedName(t->decl) + ", which declares a move constructor but no operator=");
   if (!defaulted && classDef(t->decl, at)->keyword == Kw::union_ && findDestructor(classDef(t->decl, at)))
     unsupported(at, "assignment to " + qualifiedName(t->decl) + ", a union with a destructor but no operator=");
+  // Through its helper (copyHelper) where the member-wise assignment spells out more than a few calls, as its copy.
+  if (size_t calls = memberwiseCalls(t, at); calls > 8 && calls != copiedInline)
+  {
+    emitCall("", "void " + copyHelper(types.unqualified(types.stripRef(t)), move, true, at) + "(ptr " + dst + ", ptr " + src + ")");
+    return;
+  }
   memberwiseAssign(dst, src, t, at, move);
 }
 

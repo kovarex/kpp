@@ -1,0 +1,61 @@
+// spec: a compile server's builds after each edit are what a build from scratch gives (docs/compile-speed.md, "The compile server") when an edit changes whether a class is copied through its helper (more than eight calls in its member-wise copy, docs/codegen-speed.md): nine String members copied through the helper, then four copied where they are used, then a virtual function making the copy store a vtable pointer (copied where it is used), then nine again; the count of a class's calls, kept by the server's emitters from build to build, goes with the class's layout and notes the layouts it read wherever it is asked (until 2026-11-24 a count asked again noted none: the full spec run saw kpp/server_moved_positions_of_sanitizer_checks's module differ from its compile)
+//--- step: nine members, through the helper
+struct Big
+{
+  std::String a, b, c, d, e, f, g, h, i;
+};
+int main()
+{
+  Big x{"a", "b", "c", "d", "e", "f", "g", "h", "i"};
+  Big y = x;
+  y = x;
+  std::println(y.a, y.i);
+  return 0;
+}
+// expect: ai
+//--- step: four members, inline
+struct Big
+{
+  std::String a, b, c, i;
+};
+int main()
+{
+  Big x{"a", "b", "c", "i"};
+  Big y = x;
+  y = x;
+  std::println(y.a, y.i);
+  return 0;
+}
+// expect: ai
+//--- step: nine members and a virtual function: the copy stores the vtable pointer, inline
+class Big
+{
+public:
+  std::String a, b, c, d, e, f, g, h, i;
+  virtual std::String last() const { return this.i; }
+};
+int main()
+{
+  Big x;
+  x.a = "a";
+  x.i = "i";
+  Big y = x;
+  y = x;
+  std::println(y.a, y.last());
+  return 0;
+}
+// expect: ai
+//--- step: nine members again, through the helper
+struct Big
+{
+  std::String a, b, c, d, e, f, g, h, i;
+};
+int main()
+{
+  Big x{"a", "b", "c", "d", "e", "f", "g", "h", "i"};
+  Big y = x;
+  y = x;
+  std::println(y.a, y.i);
+  return 0;
+}
+// expect: ai

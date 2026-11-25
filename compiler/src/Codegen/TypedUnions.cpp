@@ -495,7 +495,12 @@ auto codegen::Emitter::assignTypedUnion(ClassDecl* c, const Ty* t, const std::st
   startBlock(doneL);
 }
 
-auto codegen::Emitter::typedUnionHelper(const Ty* t, bool move, bool assign, Node* at) -> std::string
+auto codegen::Emitter::typedUnionThroughHelper(ClassDecl* c, const Ty* t, Node* at) -> bool
+{
+  return c->alternatives.size() > 2 && memberwiseCalls(t, at) != copiedInline;
+}
+
+auto codegen::Emitter::copyHelper(const Ty* t, bool move, bool assign, Node* at) -> std::string
 {
   std::string name = std::string(assign ? (move ? "@kpp.moveassign." : "@kpp.assign.") : (move ? "@kpp.move." : "@kpp.copy.")) +
                      structFor(t, at).name.substr(8);
@@ -511,10 +516,14 @@ auto codegen::Emitter::typedUnionHelper(const Ty* t, bool move, bool assign, Nod
   try
   {
     ClassDecl* c = classDef(t->decl, at);
-    if (assign)
+    if (assign && c->isTypedUnion)
       assignTypedUnion(c, t, "%dst", "%src", move, at);
-    else
+    else if (assign)
+      memberwiseAssign("%dst", "%src", t, at, move);
+    else if (c->isTypedUnion)
       copyTypedUnion(c, t, "%dst", "%src", move, at);
+    else
+      memberwiseConstruct("%dst", "%src", t, at, move);
     fn += "  ret void\n";
     shared += sharedComdat(name) + "define linkonce_odr void " + name + "(ptr %dst, ptr %src) comdat " +
               (usesEH ? "personality ptr " + personality() + " " : std::string()) + "{\nentry:\n" + allocas + fn + ehBlocks + "}\n";

@@ -967,6 +967,7 @@ auto codegen::Emitter::forgetLayoutAnswers() -> void
   sizeCache.clear();
   destructionCache.clear();
   destructionCallCounts.clear();
+  memberwiseCallCounts.clear();
   throwingDestructionCache.clear();
   bitwiseRelocation.clear();
   bitwiseAssignment.clear();
@@ -976,6 +977,8 @@ auto codegen::Emitter::forgetLayoutAnswers() -> void
 
 auto codegen::Emitter::noteLayout(const Ty* classTy) -> void
 {
+  if (memberwiseLayouts)
+    memberwiseLayouts->push_back(classTy); // (a member-wise count being computed: noted again where it is asked)
   if (moduleCount > 1 && !owner.empty())
     layoutsNow.push_back(classTy);
 }

@@ -1,0 +1,9 @@
+cr ca cb cc cd ce cf cg ch ci 9 | copy
+mr ma mb mc md me mf mg mh mi im | move
+ar aa ab ac ad ae af ag ah ai eAr Aa Ab Ac Ad Ae Af Ag Ah Ai e | assign
+cr ca cb cc cd ce caught 7 | throwing member
+m1 m2 m3 m4 m5 m6 m7 m8 m9 9m | defaulted move
+cr ca cb cc cd ce cf cg ch ci a | slicing copy
+cR cA cB cC cD cE cF cG cH cI P | polymorphic copy
+cr ca cb cc cd ce cf cg ch ci cz mr ma mb mc md me mf mg mh mi cr ca cb cc cd ce cf cg ch ci az | member and vector
+live 0

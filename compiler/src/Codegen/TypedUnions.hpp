@@ -115,13 +115,15 @@
     void copyTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
     // An assignment of a typed union (move: from an rvalue): its own members, then the alternative, as std::variant's.
     void assignTypedUnion(ClassDecl* c, const Ty* t, const std::string& dst, const std::string& src, bool move, Node* at);
-    // Whether typed union c is copied, moved and assigned through typedUnionHelper rather than inline: one of more than two
-    // alternatives, whose switch would otherwise be spelled out wherever one is copied (as destroyAlternative's helper).
-    bool typedUnionThroughHelper(ClassDecl* c) const { return c->alternatives.size() > 2; }
-    // The function copying (or moving: move) typed union t into the storage dst from src (`void (ptr %dst, ptr %src)`), or
-    // assigning it (assign), defined once in the shared definitions as its destructor helper is (destructorThunk):
-    // `@kpp.copy.`, `@kpp.move.`, `@kpp.assign.` or `@kpp.moveassign.` and t's struct. Its body spells the switch out.
-    std::string typedUnionHelper(const Ty* t, bool move, bool assign, Node* at);
+    // Whether typed union c (of type t) is copied, moved and assigned through copyHelper rather than inline: one of more
+    // than two alternatives, whose switch would otherwise be spelled out wherever one is copied (as destroyAlternative's
+    // helper), unless the copy of one of its parts stores a vtable pointer (memberwiseCalls).
+    bool typedUnionThroughHelper(ClassDecl* c, const Ty* t, Node* at);
+    // The function copying (or moving: move) an object of class t into the storage dst from src (`void (ptr %dst, ptr %src)`),
+    // or assigning it (assign), defined once in the shared definitions as a destructor helper is (destructorThunk):
+    // `@kpp.copy.`, `@kpp.move.`, `@kpp.assign.` or `@kpp.moveassign.` and t's struct. Its body spells the copy out: a typed
+    // union's switch over its alternatives (typedUnionThroughHelper), a class's members (ClassMetadata's memberwiseCalls).
+    std::string copyHelper(const Ty* t, bool move, bool assign, Node* at);
     // The destruction of a typed union: the alternative it holds, then its own members, last first.
     void destroyTypedUnion(ClassDecl* c, const Ty* t, const std::string& addr, Node* at);
     // The assignment of a typed union's own members (its alternative's is assignObject's).
