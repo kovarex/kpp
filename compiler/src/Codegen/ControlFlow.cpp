@@ -8,7 +8,7 @@ auto codegen::Emitter::isTypesList(const NamedType* n) -> bool
   return n->name.parts.size() == 1 && n->name.parts[0].hasTemplateArgs && sym(n->name.parts[0].symbol) == "types";
 }
 
-auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* methods) -> Expr*
+auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* methods, bool* own) -> Expr*
 {
   if (!list || list->kind != NodeKind::CallExpr)
     return nullptr;
@@ -19,8 +19,10 @@ auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* m
   if (name.parts.size() != 1 || name.parts[0].hasTemplateArgs)
     return nullptr;
   std::string which = sym(name.parts[0].symbol);
-  if (which != "members" && which != "alternatives" && which != "methods")
+  if (which != "members" && which != "alternatives" && which != "methods" && which != "ownMembers")
     return nullptr;
+  if (own)
+    *own = which == "ownMembers";
   if (alternatives)
     *alternatives = which == "alternatives";
   if (methods)
@@ -28,7 +30,7 @@ auto codegen::Emitter::reflectionSubject(Node* list, bool* alternatives, bool* m
   return c->args[0];
 }
 
-auto codegen::Emitter::collectMembers(const Ty* cls, std::vector<const Ty*>& out, Node* at, int depth) -> void
+auto codegen::Emitter::collectMembers(const Ty* cls, std::vector<const Ty*>& out, Node* at, int depth, bool withBases) -> void
 {
   if (depth > maxClassNesting)
     unsupported(at, "a class nested too deep for members(T)");
@@ -36,7 +38,7 @@ auto codegen::Emitter::collectMembers(const Ty* cls, std::vector<const Ty*>& out
   if (!def)
     unsupported(at, "members(T) of a class without a definition");
   TemplateArgs classArgs = global.classArgsOf(cls);
-  for (const Ty* written : basesOf(def, classArgs, at))
+  for (const Ty* written : withBases ? basesOf(def, classArgs, at) : std::vector<const Ty*>{}) // (ownMembers(T): none)
   {
     const Ty* bt = written ? types.unqualified(types.stripRef(written)) : nullptr;
     if (!isClass(bt))
@@ -163,9 +165,9 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
       elements.push_back(types.valueType(elementTy, *v));
     }
   }
-  else if (bool alternatives = false, methods = false; Expr* subject = reflectionSubject(list, &alternatives, &methods))
+  else if (bool alternatives = false, methods = false, own = false; Expr* subject = reflectionSubject(list, &alternatives, &methods, &own))
   {
-    // `members(T)`: T's non-static data members, bases first, in declaration order;
+    // `members(T)`: T's non-static data members, bases first, in declaration order; `ownMembers(T)` the ones T declares;
     // `alternatives(U)`: a typed union's alternatives, in declaration order;
     // `methods(T)`: the member functions declared in T that have an address, in declaration order (design.md 8.3).
     if (var->isType)
@@ -200,7 +202,7 @@ auto codegen::Emitter::forEachConstexprElement(ForConstexprStmt* f, const std::f
                                         u->alternatives[i], cls)); // (a void alternative's a.type is void: design.md 8.5)
     }
     else
-      collectMembers(cls, elements, f, 0);
+      collectMembers(cls, elements, f, 0, !own); // (ownMembers(T): T's own members alone, without its bases', design.md 8.3)
   }
   else
     unsupported(f, "a for constexpr list that is neither types<...>, members(T), alternatives(U) nor a brace list of constants");

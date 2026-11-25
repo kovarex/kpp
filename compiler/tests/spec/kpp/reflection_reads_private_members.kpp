@@ -1,0 +1,31 @@
+// spec: object.[m] reads the member its descriptor names whatever its access: members(T) lists private and protected fields, and a generic function of another class reads them through the descriptor (it named them only through it)
+// design.md 8.3 (kovarex, 2026-11-25: the prototype explorer reads every class's own members from class Values)
+class Account
+{
+public:
+  Account(i32 balance, i32 limit) : balance(balance), limit(limit) {}
+  i32 total() const { return this.balance + this.limit; }
+private:
+  i32 balance;
+protected:
+  i32 limit;
+};
+
+class Printer
+{
+public:
+  template<typename T>
+  static void print(const T& object)
+  {
+    for constexpr (auto m : members(T))
+      std::println(m.name, " = ", object.[m]);
+    std::println(object.[members(T)[0]] + object.[ownMembers(T)[1]]);
+  }
+};
+
+int main()
+{
+  Account account(10, 5);
+  Printer::print(account);
+  return account.total() == 15 ? 0 : 1;
+}

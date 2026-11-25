@@ -1,0 +1,54 @@
+// spec: ownMembers(T) lists the non-static data members T itself declares, in declaration order, without its bases' (members(T) lists the bases' first); the same forms as members(T): for constexpr, ownMembers(T)[i], ownMembers(T).size, m.name, m.offset, object.[m] (a private member too) and ownMembers(T)[i].type written as a type; a class template's instance's; a class with no members of its own lists none
+// design.md 8.3 (kovarex, 2026-11-25: the prototype explorer's rows from each class's own members, its base's rows coming from the base's own)
+class Base
+{
+public:
+  i32 baseValue = 1;
+  static i32 counted;
+};
+
+class Derived : public Base
+{
+public:
+  f64 weight = 2.5;
+  i32 sum() const { return this.hidden + i32(this.weight); }
+private:
+  i32 hidden = 7;
+};
+
+class Empty : public Base
+{
+};
+
+template<typename T>
+class Box : public Base
+{
+public:
+  T value{};
+};
+
+class Reader
+{
+public:
+  template<typename T>
+  static void list(const T& object)
+  {
+    for constexpr (auto m : ownMembers(T))
+      std::println(m.name, " = ", object.[m]);
+    std::println(ownMembers(T).size, " own of ", members(T).size);
+  }
+};
+
+int main()
+{
+  Derived d;
+  Reader::list(d);
+  Reader::list(Empty());
+  Box<i32> box;
+  box.value = 3;
+  Reader::list(box);
+  std::println(ownMembers(Derived)[1].name, " ", ownMembers(Derived)[0].offset == members(Derived)[1].offset);
+  ownMembers(Derived)[0].type w = 1.25;
+  std::println(w, " ", d.sum());
+  return 0;
+}

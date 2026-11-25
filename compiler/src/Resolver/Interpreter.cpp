@@ -9866,6 +9866,8 @@ auto GlobalScope::Impl::reflectionListNamed(std::string_view name) -> std::optio
     return ReflectionList::Alternatives;
   if (name == "methods")
     return ReflectionList::Methods;
+  if (name == "ownMembers")
+    return ReflectionList::OwnMembers;
   return std::nullopt;
 }
 
@@ -9947,7 +9949,7 @@ auto GlobalScope::Impl::reflectedElementsOf(const Ty* cls, ReflectionList list, 
   ClassDecl* def = classDefinition(cls);
   if (!def)
     return false;
-  if (!def->bases.empty())
+  if (!def->bases.empty() && list == ReflectionList::Members) // (ownMembers(T): the class's own alone, design.md 8.3)
   {
     ClassDecl* own = nullptr;
     for (const Ty* b : classBasesOf(cls, own, depth))

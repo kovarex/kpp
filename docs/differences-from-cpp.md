@@ -1077,7 +1077,8 @@ static_assert(twice(4) == 8);
 - **C++:** recursion over packs, macros, or C++26's reflection.
 - **kpp:** `for constexpr` over `types<A, B>`, a list of constants, `members(T)` or `alternatives(U)`,
   with `m.name`, `m.type`, `m.offset`, `m.initializer` (the member's default value alone, no object made), `m.hasInitializer` (whether it has a default member initializer) and
-  `object.[m]`; `members(T)[i]` (the i-th descriptor anywhere, not only in a loop) and `members(T).size`; `methods(T)`, the
+  `object.[m]`; `members(T)[i]` (the i-th descriptor anywhere, not only in a loop) and `members(T).size`; `ownMembers(T)`, T's own members without
+  its bases', in the same forms; `object.[m]` reads a private or protected member too (the descriptor is the permission); `methods(T)`, the
   public member functions declared in T, with `f.name`, `f.pointer` (the pointer to it, a constant usable as a template
   argument), `f.isNoDiscard` and `f.parameterNames` (its parameters' names, for a binding's error messages), in the same forms; `nameof(x)`; `qualifiednameof(T)`, a type as source names it (a template's instance by its alias closest to the global scope, `EntityID`). C++26 has
   `has_default_member_initializer` but no way to read the value, and C++ has no portable type name. Inside functions today, not yet at
