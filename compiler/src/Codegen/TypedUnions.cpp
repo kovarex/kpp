@@ -956,12 +956,136 @@ auto codegen::Emitter::alternativeTags(ClassDecl* c) -> std::vector<int64_t>
   return tags;
 }
 
+auto codegen::Emitter::plainKeyBits(const Ty* t, bool order, Node* at, int depth) -> unsigned
+{
+  // The bits of t when its == (order: and its <=>) is the built-in comparison of one integer it holds, unsigned for an
+  // order: an integer or a character; an enumeration over one; a class (no typed union, no base, no virtual function)
+  // whose one data member is such and fills it, compared by a defaulted == and <=> (an implicit == too). 0: another.
+  t = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  if (!t || depth > 8)
+    return 0;
+  if (t->kind == TyKind::Int || t->kind == TyKind::Char)
+    return order && !t->isUnsigned ? 0 : t->bits;
+  if (t->kind == TyKind::Enum)
+  {
+    const Ty* u = enumUnderlying(t);
+    return u ? plainKeyBits(u, order, at, depth + 1) : 0;
+  }
+  if (!isClass(t) || typedUnionOf(t, at))
+    return 0;
+  ClassDecl* def = classDef(t->decl, at);
+  if (!def || !def->bases.empty())
+    return 0; // (a vtable pointer makes it larger than its member: the size test below)
+  std::vector<const Ty*> argTypes{types.lref(types.qualified(t, true, false))};
+  const Ty* foundIn = nullptr;
+  FunctionDecl* equal = findMemberFunction(t, "operator==", argTypes, t, at, &foundIn);
+  FunctionDecl* threeWay = findMemberFunction(t, "operator<=>", argTypes, t, at, &foundIn, true);
+  bool defaultedEqual = equal ? (equal->flags & DF_Default) != 0 : (threeWay && (threeWay->flags & DF_Default)) || global.hasImplicitEquality(t);
+  if (!defaultedEqual || (order && !(threeWay && (threeWay->flags & DF_Default))))
+    return 0;
+  if (!equal && global.findFreeOperator(uint32_t(P::EqEq), argTypes[0], argTypes[0], currentFunction))
+    return 0;
+  for (const char* other : {"operator<", "operator>", "operator<=", "operator>="})
+    if (findMemberFunction(t, other, argTypes, t, at, &foundIn))
+      return 0; // (an order of its own beside the defaulted <=>)
+  TemplateArgs classArgs = global.classArgsOf(t);
+  const Ty* only = nullptr;
+  for (Decl* d : def->members)
+  {
+    if (d->kind != NodeKind::VariableDecl || (d->flags & (DF_Static | DF_Typedef)))
+      continue;
+    if (only || static_cast<VariableDecl*>(d)->bitfield)
+      return 0;
+    only = global.typeOfDeclIn(d, classArgs);
+    if (!only || !only->isKnown())
+      return 0;
+  }
+  unsigned bits = only ? plainKeyBits(only, order, at, depth + 1) : 0;
+  return bits && sizeOf(t, at) * 8 == bits ? bits : 0;
+}
+
+auto codegen::Emitter::typedUnionKey(ClassDecl* c, const std::string& obj, const Ty* t, bool order, Node* at) -> std::optional<Value>
+{
+  // A typed union whose alternatives are all void or plainKeyBits ones, W bits the widest, none on the heap: the
+  // alternative held and its value as one i64, ((tag + 1) << W) | value, a narrower one's value its own bits of the
+  // storage (little-endian: the low ones), a void alternative's value 0 and a
+  // valueless union's key 0, so that == and <=> of two of them are one integer comparison, in the order the
+  // alternative-then-value rule gives (design.md 8.5; kovarex, 2026-11-25, for the game's SignalIDBase).
+  unsigned width = 0;
+  std::optional<size_t> stored;
+  std::vector<size_t> voids;
+  std::vector<unsigned> widths(c->alternatives.size(), 0);
+  for (size_t k = 0; k < c->alternatives.size(); ++k)
+  {
+    if (static_cast<VariableDecl*>(c->alternatives[k])->voidAlternative)
+    {
+      voids.push_back(k);
+      continue;
+    }
+    if (boxedAlternative(c, t, k, at))
+      return std::nullopt;
+    unsigned bits = plainKeyBits(alternativeType(c, t, k, at), order, at, 0);
+    if (!bits)
+      return std::nullopt;
+    widths[k] = bits;
+    if (bits > width)
+      width = bits, stored = k;
+  }
+  const Ty* underlying = enumUnderlying(c->tagEnum);
+  unsigned tagBits = 1;
+  while (tagBits < 63 && (uint64_t(1) << tagBits) <= c->alternatives.size() + 1)
+    ++tagBits;
+  if (!stored || !underlying || width + tagBits > 64)
+    return std::nullopt;
+  std::vector<int64_t> tags = alternativeTags(c);
+  for (int64_t tag : tags)
+    if (tag < 0 || uint64_t(tag) >= c->alternatives.size())
+      return std::nullopt; // (the tags are 0 .. N-1: valueless is N)
+  Value tag = convert(Value{loadTag(c, t, obj, at), tagType(c), false}, underlying, at, true);
+  std::string tagType64 = newTemp(), value = newTemp(), wide = newTemp(), shifted = newTemp(), key = newTemp(), held = newTemp(), plusOne = newTemp();
+  std::string tagLL = llType(underlying, at);
+  fn += "  " + tagType64 + " = zext " + tagLL + " " + tag.text + " to i64\n";
+  fn += "  " + value + " = load i" + std::to_string(width) + ", ptr " + alternativeSlot(c, t, obj, *stored, at) + "\n";
+  fn += "  " + wide + " = zext i" + std::to_string(width) + " " + value + " to i64\n";
+  std::string payload = wide;
+  for (size_t k = 0; k < c->alternatives.size(); ++k)
+    if (widths[k] && widths[k] < width)
+    {
+      std::string isIt = newTemp(), own = newTemp(), chosen = newTemp();
+      fn += "  " + isIt + " = icmp eq i64 " + tagType64 + ", " + std::to_string(tags[k]) + "\n";
+      fn += "  " + own + " = and i64 " + payload + ", " + std::to_string((uint64_t(1) << widths[k]) - 1) + "\n";
+      fn += "  " + chosen + " = select i1 " + isIt + ", i64 " + own + ", i64 " + payload + "\n";
+      payload = chosen;
+    }
+  for (size_t k : voids)
+  {
+    std::string isVoid = newTemp(), cleared = newTemp();
+    fn += "  " + isVoid + " = icmp eq i64 " + tagType64 + ", " + std::to_string(tags[k]) + "\n";
+    fn += "  " + cleared + " = select i1 " + isVoid + ", i64 0, i64 " + payload + "\n";
+    payload = cleared;
+  }
+  fn += "  " + plusOne + " = add i64 " + tagType64 + ", 1\n";
+  fn += "  " + shifted + " = shl i64 " + plusOne + ", " + std::to_string(width) + "\n";
+  fn += "  " + key + " = or i64 " + shifted + ", " + payload + "\n";
+  std::string valueless = newTemp();
+  fn += "  " + valueless + " = icmp eq i64 " + tagType64 + ", " + std::to_string(c->alternatives.size()) + "\n";
+  fn += "  " + held + " = select i1 " + valueless + ", i64 0, i64 " + key + "\n";
+  return Value{held, types.intType(64, true), false};
+}
+
 auto codegen::Emitter::typedUnionEqual(ClassDecl* c, const std::string& a, const std::string& b, const Ty* t, Node* at) -> Value
 {
   // (std::variant's comparison is of the alternative alone; a union with members of its own would compare
   // without them, a silent wrong answer: its own operator decides, design.md 8.5.)
   if (!ownMembers(c, t, at).empty())
     fail(at, "the typed union " + qualifiedName(c) + " has data members of its own, which the built-in == would leave out: declare its operator== (design.md 8.5)");
+  if (std::optional<Value> ka = typedUnionKey(c, a, t, false, at))
+  {
+    std::optional<Value> kb = typedUnionKey(c, b, t, false, at);
+    std::string same = newTemp();
+    fn += "  " + same + " = icmp eq i64 " + ka->text + ", " + kb->text + "\n";
+    return {same, types.boolType(), false};
+  }
   const Ty* underlying = enumUnderlying(c->tagEnum);
   Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
   Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
@@ -990,6 +1114,16 @@ auto codegen::Emitter::typedUnionOrder(ClassDecl* c, const std::string& a, const
   // without them, a silent wrong answer: its own operator decides, design.md 8.5.)
   if (!ownMembers(c, t, at).empty())
     fail(at, "the typed union " + qualifiedName(c) + " has data members of its own, which the built-in <=> would leave out: declare its operator<=> (design.md 8.5)");
+  if (std::optional<Value> ka = typedUnionKey(c, a, t, true, at))
+  {
+    std::optional<Value> kb = typedUnionKey(c, b, t, true, at);
+    std::string less = newTemp(), greater = newTemp(), sign = newTemp(), order = newTemp();
+    fn += "  " + less + " = icmp ult i64 " + ka->text + ", " + kb->text + "\n";
+    fn += "  " + greater + " = icmp ugt i64 " + ka->text + ", " + kb->text + "\n";
+    fn += "  " + sign + " = select i1 " + greater + ", i8 1, i8 0\n";
+    fn += "  " + order + " = select i1 " + less + ", i8 -1, i8 " + sign + "\n";
+    return {order, types.intType(8), false};
+  }
   const Ty* underlying = enumUnderlying(c->tagEnum);
   Value ta = convert(Value{loadTag(c, t, a, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)
   Value tb = convert(Value{loadTag(c, t, b, at), tagType(c), false}, underlying, at, true); // (the tag's own: an enum class's too)

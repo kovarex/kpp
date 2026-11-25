@@ -1124,7 +1124,13 @@ are std::variant's. `a == b` holds when both hold the same alternative and its v
 (`!=` is its negation); `a < b`, `>`, `<=`, `>=` and `<=>` order by the alternative held, in
 declaration order, then by the values of it (their `<=>`, or their `==` and `<`). A union's own
 operator takes precedence; a class whose defaulted `==` or `<=>` has a typed union member compares
-it so. `VariantAlternative<I, U>` is the type of the I-th alternative (a built-in of the
+it so. A union whose alternatives are each void or one integer compared by value (an integer, an enumeration over one, a
+class with no base whose one data member is such and fills it, compared by a defaulted `==` and, for an order, a
+defaulted `<=>` and unsigned), none kept on the heap, compares as one integer, `((tag + 1) << W) | value` with W the
+widest alternative's bits, a narrower one's value its own low bits of the storage (the game's QualityID is a u8 beside
+u16 IDs), a void alternative's value 0 and a valueless union's key 0: the same answers, no branch (kovarex, 2026-11-25, so that
+the game's SignalIDBase, a hand-packed u32 of a type and an ID index, can be a union enum without a slower `<=>`; spec
+kpp/typed_union_plain_alternatives_compare_as_one_integer). `VariantAlternative<I, U>` is the type of the I-th alternative (a built-in of the
 compiler's, as std::variant_alternative_t). Spec snippets: kpp/typed_union_comparisons,
 kpp/typed_union_variant_alternative.
 
