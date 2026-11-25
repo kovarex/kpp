@@ -1,4 +1,4 @@
-// spec: a read of a volatile object happens each time it is written, in an optimized build too ([intro.abstract] 6): through its name, a pointer, a reference, a member of a volatile object, an element, a volatile member. Each loop ends when the other thread's write is seen; a read moved out of the loop runs it to the limit. Each write waits until its loop has started (and 50 ms more), so a read moved out of the loop always reads 0 (2026-11-08: written all at once, the writes could come before the loops, and such reads see them)
+// spec: a read of a volatile object happens each time it is written, in an optimized build too ([intro.abstract] 6): through its name, a pointer, a reference, a member of a volatile object, an element, a volatile member. Each loop waits, without a limit, for the other thread's write, which comes once its loop has started (and 50 ms more), so a read moved out of the loop reads 0 for ever; a watchdog then ends the program after 60 s with `timeout` (2026-11-08: written all at once, the writes could come before the loops, and such reads see them; 2026-11-25: the loops' limit of 2,000,000,000 rounds ran out before a slow CI runner's writer thread got to write, a flake)
 // kpp: --release
 extern "C" int printf(const char* format, ...);
 class Box
@@ -19,7 +19,7 @@ volatile Box box;
 volatile int elements[3];
 HasVolatile holder;
 volatile int stage = 0;
-const long long limit = 2000000000ll;
+std::Atomic<bool> done = false;
 void awaitLoop(int loop)
 {
   while (stage < loop)
@@ -31,6 +31,17 @@ int main()
 {
   volatile int* pointer = &pointed;
   volatile int& reference = referred;
+  // A read moved out of its loop never sees the write: the program would never end.
+  std::Thread watchdog([]() {
+    for (int tenths = 0; tenths < 600 && !done.load(); ++tenths)
+      std::thisThread::sleepFor(std::Milliseconds(100));
+    if (!done.load())
+    {
+      printf("timeout: a loop did not see its write (stage %d)\n", int(stage));
+      fflush(nullptr);
+      _Exit(1);
+    }
+  });
   std::Thread writer([]() {
     awaitLoop(1);
     named = 1;
@@ -45,36 +56,38 @@ int main()
     awaitLoop(6);
     holder.n = 1;
   });
-  long long i = 0;
   stage = 1;
-  while (i < limit && named == 0)
-    ++i;
-  printf("%d\n", (int)(i < limit));
-  i = 0;
+  while (named == 0)
+  {
+  }
+  printf("named\n");
   stage = 2;
-  while (i < limit && *pointer == 0)
-    ++i;
-  printf("%d\n", (int)(i < limit));
-  i = 0;
+  while (*pointer == 0)
+  {
+  }
+  printf("pointer\n");
   stage = 3;
-  while (i < limit && reference == 0)
-    ++i;
-  printf("%d\n", (int)(i < limit));
-  i = 0;
+  while (reference == 0)
+  {
+  }
+  printf("reference\n");
   stage = 4;
-  while (i < limit && box.n == 0)
-    ++i;
-  printf("%d\n", (int)(i < limit));
-  i = 0;
+  while (box.n == 0)
+  {
+  }
+  printf("member of a volatile object\n");
   stage = 5;
-  while (i < limit && elements[2] == 0)
-    ++i;
-  printf("%d\n", (int)(i < limit));
-  i = 0;
+  while (elements[2] == 0)
+  {
+  }
+  printf("element\n");
   stage = 6;
-  while (i < limit && holder.n == 0)
-    ++i;
-  printf("%d\n", (int)(i < limit));
+  while (holder.n == 0)
+  {
+  }
+  printf("volatile member\n");
+  done.store(true);
   writer.join();
+  watchdog.join();
   return 0;
 }
