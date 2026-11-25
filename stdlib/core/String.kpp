@@ -30,7 +30,7 @@ public:
   using pointer = char*;
   using const_pointer = const char*;
 
-  String() { this.becomeEmpty(); }
+  String() noexcept { this.becomeEmpty(); }
   implicit String(const char* text) { this.initialize(text, checkedSize(strlen(text), "string too long")); }
   implicit String(StringView text) { this.initialize(text.data(), text.size()); }
   String(const char* text, ContainerSize count) { this.initialize(text, count); }
@@ -110,7 +110,7 @@ public:
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
   static const ContainerSize npos = ContainerSize(-1);
 
-  bool isLarge() const
+  bool isLarge() const noexcept
   {
     if consteval
     {
@@ -119,16 +119,16 @@ public:
     return (u8)this.smallChars[String::markIndex] == String::largeMark;
   }
 
-  ContainerSize size() const { return this.isLarge() ? this.heapLength : ContainerSize((u8)this.smallChars[String::markIndex]); }
-  ContainerSize length() const { return this.size(); }
+  ContainerSize size() const noexcept { return this.isLarge() ? this.heapLength : ContainerSize((u8)this.smallChars[String::markIndex]); }
+  ContainerSize length() const noexcept { return this.size(); }
   // Characters that fit without allocating.
-  ContainerSize capacity() const { return this.isLarge() ? this.heapCapacity : String::smallCapacity; }
-  bool empty() const { return this.size() == 0; }
-  const char* c_str() const { return this.data(); }
+  ContainerSize capacity() const noexcept { return this.isLarge() ? this.heapCapacity : String::smallCapacity; }
+  bool empty() const noexcept { return this.size() == 0; }
+  const char* c_str() const noexcept { return this.data(); }
   // Its text, appended (design.md 14: the conversion every type has).
   void appendTo(String& out) const { out.append(this.data(), this.size()); }
-  char* data() { return this.isLarge() ? this.heapChars : this.smallChars; }
-  const char* data() const { return this.isLarge() ? this.heapChars : this.smallChars; }
+  char* data() noexcept { return this.isLarge() ? this.heapChars : this.smallChars; }
+  const char* data() const noexcept { return this.isLarge() ? this.heapChars : this.smallChars; }
 
   // A reference, as std::string's: `&s[i]` of a const String; s[s.size()] is the terminator, as C++'s.
   const char& operator[](ContainerSize index) const
@@ -158,8 +158,8 @@ public:
     return this.data()[index];
   }
 
-  char* begin() { return this.data(); }
-  char* end() { return this.data() + this.size(); }
+  char* begin() noexcept { return this.data(); }
+  char* end() noexcept { return this.data() + this.size(); }
   // The bytes from the last to the first (ZipPackage's `*path.string().rbegin() == '/'`).
   ReverseIterator<char*> rbegin() { return ReverseIterator<char*>(this.end()); }
   ReverseIterator<char*> rend() { return ReverseIterator<char*>(this.begin()); }
@@ -167,10 +167,10 @@ public:
   ReverseIterator<const char*> rend() const { return ReverseIterator<const char*>(this.begin()); }
   ReverseIterator<const char*> crbegin() const { return this.rbegin(); }
   ReverseIterator<const char*> crend() const { return this.rend(); }
-  const char* begin() const { return this.data(); }
-  const char* end() const { return this.data() + this.size(); }
-  const char* cbegin() const { return this.data(); }
-  const char* cend() const { return this.data() + this.size(); }
+  const char* begin() const noexcept { return this.data(); }
+  const char* end() const noexcept { return this.data() + this.size(); }
+  const char* cbegin() const noexcept { return this.data(); }
+  const char* cend() const noexcept { return this.data() + this.size(); }
 
   char& back()
   {
@@ -628,7 +628,7 @@ public:
   bool ends_with(StringView suffix) const { return StringView(this).endsWith(suffix); }
   bool ends_with(char c) const { return !this.empty() && this.back() == c; }
 
-  bool operator==(const String& other) const
+  bool operator==(const String& other) const noexcept
   {
     ContainerSize length = this.size();
     return length == other.size() && memcmp(this.data(), other.data(), length) == 0;
@@ -851,7 +851,7 @@ private:
     return this;
   }
 
-  void becomeEmpty()
+  void becomeEmpty() noexcept
   {
     if consteval
     {

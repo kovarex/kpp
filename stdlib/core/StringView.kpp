@@ -17,17 +17,17 @@ public:
   // search result compares with sizes as in C++ (`min(s.find(x), s.size())`).
   static const ContainerSize npos = ContainerSize(-1);
 
-  StringView() {}
+  StringView() noexcept {}
   implicit StringView(const char* text) : chars(text), byteCount(text ? checkedSize(strlen(text), "string too long") : 0) {}
   StringView(const char* text, ContainerSize count) : chars(text), byteCount(count) {}
-  implicit StringView(const String& text) : chars(text.data()), byteCount(text.size()) {}
+  implicit StringView(const String& text) noexcept : chars(text.data()), byteCount(text.size()) {}
 
-  ContainerSize size() const { return this.byteCount; }
-  ContainerSize length() const { return this.byteCount; }
-  const char* data() const { return this.chars; }
+  ContainerSize size() const noexcept { return this.byteCount; }
+  ContainerSize length() const noexcept { return this.byteCount; }
+  const char* data() const noexcept { return this.chars; }
   // Its text, appended (design.md 14: the conversion every type has).
   void appendTo(String& out) const { out.append(this.chars, this.byteCount); }
-  bool empty() const { return this.byteCount == 0; }
+  bool empty() const noexcept { return this.byteCount == 0; }
 
   const char& operator[](ContainerSize index) const
   {
@@ -35,10 +35,10 @@ public:
     return this.chars[index];
   }
 
-  const char* begin() const { return this.chars; }
-  const char* end() const { return this.chars + this.byteCount; }
-  const char* cbegin() const { return this.begin(); }
-  const char* cend() const { return this.end(); }
+  const char* begin() const noexcept { return this.chars; }
+  const char* end() const noexcept { return this.chars + this.byteCount; }
+  const char* cbegin() const noexcept { return this.begin(); }
+  const char* cend() const noexcept { return this.end(); }
   ReverseIterator<const char*> rbegin() const { return ReverseIterator<const char*>(this.end()); }
   ReverseIterator<const char*> rend() const { return ReverseIterator<const char*>(this.begin()); }
   ReverseIterator<const char*> crbegin() const { return this.rbegin(); }
@@ -56,7 +56,7 @@ public:
     return this.chars[this.byteCount - 1];
   }
 
-  ContainerSize max_size() const { return maxContainerSize; }
+  ContainerSize max_size() const noexcept { return maxContainerSize; }
 
   // Throws OutOfRange for an index outside [0, size()).
   const char& at(ContainerSize index) const
@@ -261,7 +261,7 @@ public:
     return this.substr(pos, count).compare(StringView(other, otherCount));
   }
 
-  bool operator==(StringView other) const
+  bool operator==(StringView other) const noexcept
   {
     return this.byteCount == other.byteCount && (this.byteCount == 0 || memcmp(this.chars, other.chars, this.byteCount) == 0);
   }

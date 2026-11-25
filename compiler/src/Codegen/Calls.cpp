@@ -1565,7 +1565,7 @@ auto codegen::Emitter::objectsEqual(const std::string& a, const std::string& b, 
     if (canonicalClass(t, at) != foundIn)
       baseAddress(t, foundIn, a, thisArg, at);
     std::string r = newTemp();
-    emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + b + ")");
+    emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + b + ")", callMayThrow(op, args, false));
     if (s.returnType == "i1")
       return {r, types.boolType(), false};
     return convert(Value{r, types.intType(32), false}, types.boolType(), at);

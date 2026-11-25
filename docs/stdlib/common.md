@@ -163,6 +163,18 @@ answer as C++'s (`noexcept(T(move(x)))` is T's move constructor's answer):
   implementation (MSVC's STL allocates in a list's, a map's and a deque's move constructor).
 - A Tuple's move assignment when each element's does (a reference element's: the assignment of what
   it refers to, a copy for an lvalue reference).
+- Accessors and empty states (2026-11-25, the calls the game makes most): String's and WString's default
+  constructor, size, length, capacity, empty, c_str, data and begin/end (String's cbegin/cend, operator==
+  of two Strings too); StringView's default constructor and the one from a String, size, length, data,
+  empty, begin/end, cbegin/cend, max_size and operator==; UniquePtr's default, nullptr and pointer
+  constructors, get, operator->, operator bool, release and reset (DefaultDelete's constructors);
+  Optional's default and nullopt constructors, hasValue/has_value, operator bool and reset; Function's
+  default and nullptr constructors and operator bool; Vector's default constructor, size, capacity,
+  data, empty, begin/end and clear; Limits' max, min, lowest, epsilon, round_error and denorm_min;
+  TypeInfo's name and hashCode; filesystem::path's default constructor. A call of one takes no part in
+  its caller's unwinding. Not those whose precondition an assert checks, though std's are noexcept or
+  not: operator[], front, back, Optional's operator* and operator-> (a failed assert throws inside a
+  test, and leaving a noexcept function would end the test run, stdlib-conformance.md).
 
 ## Type traits
 

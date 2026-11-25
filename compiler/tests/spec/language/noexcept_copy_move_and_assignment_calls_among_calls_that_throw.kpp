@@ -1,0 +1,120 @@
+// spec: kpp's own calls of a copy constructor, a move constructor, a copy or move assignment and an == declared noexcept (a member's in a member-wise copy, move, assignment or comparison, a by-value argument, a returned local) take no part in their caller's unwinding, as a call written in the program does (d55ff8e62), and the calls around them that throw still destroy exactly what was built before them; an exception that would leave a noexcept copy constructor still ends the program
+// factorio: these calls were invokes in the game's tests (factorio-test debug, 2026-11-24): String's noexcept move constructor 2,069 times, its move assignment 572, UniquePtr's move constructor 189 and its move assignment 100
+class Boom : public std::Exception { public: Boom() : Exception("boom") {} };
+int live = 0;
+// (a value the compiler cannot know)
+int opaque(int n) { return std::getenv("KPP_SPEC_NEVER_SET") ? 0 : n; }
+struct Noisy
+{
+  int id;
+  Noisy(int id) : id(id) { live += 1; }
+  Noisy(const Noisy& other) : id(other.id + 10) { live += 1; }
+  ~Noisy()
+  {
+    live -= 1;
+    std::print("~", this.id, " ");
+  }
+};
+struct Quiet
+{
+  int value = 0;
+  Quiet(int v) noexcept : value(v) {}
+  Quiet(const Quiet& other) noexcept : value(opaque(other.value)) {}
+  Quiet(Quiet&& other) noexcept : value(other.value) { other.value = 0; }
+  Quiet& operator=(const Quiet& other) noexcept
+  {
+    this.value = opaque(other.value);
+    return this;
+  }
+  Quiet& operator=(Quiet&& other) noexcept
+  {
+    this.value = other.value;
+    other.value = 0;
+    return this;
+  }
+  bool operator==(const Quiet& other) const noexcept { return this.value == other.value; }
+};
+// Copied, moved, assigned and compared member by member: each Quiet member's through its noexcept function, a Noisy
+// member's through its copy constructor, which may throw (here it does not).
+struct Holder
+{
+  Noisy first;
+  Quiet quiet;
+  Noisy second;
+  bool operator==(const Holder& other) const = default;
+};
+bool operator==(const Noisy& a, const Noisy& b) { return a.id == b.id; }
+int loud(int n)
+{
+  if (opaque(n) == 3)
+    throw Boom();
+  return n;
+}
+int byValue(Quiet q) { return loud(q.value); }
+Quiet made(int n)
+{
+  Quiet q(n);
+  return q;
+}
+int mix(int n)
+{
+  Holder h{Noisy(1), Quiet(n), Noisy(2)};
+  Holder copy = h;
+  int x = byValue(copy.quiet);
+  Noisy c(3);
+  Holder moved = std::move(copy);
+  h = moved;
+  moved = std::move(h);
+  Quiet q = made(loud(x + 1));
+  return x + q.value + (moved == copy ? 100 : 0);
+}
+struct Thrower
+{
+  int value;
+  Thrower(int v) : value(v) {}
+  Thrower(const Thrower& other) noexcept : value(loud(other.value)) {}
+};
+struct HoldsThrower
+{
+  Noisy n;
+  Thrower t;
+};
+void run(const char* name, int n, int (*f)(int))
+{
+  try
+  {
+    int result = f(n);
+    std::print("-> ", result, " ");
+  }
+  catch (const Boom&)
+  {
+    std::print("-> caught ");
+  }
+  std::println("| ", name, " ", n, " live ", live);
+}
+void onTerminate()
+{
+  std::println("| terminate, live ", live);
+  fflush(nullptr);
+  exit(0);
+}
+int main()
+{
+  std::setTerminate(onTerminate);
+  run("mix", 0, mix);
+  run("mix", 2, mix);
+  run("mix", 3, mix);
+  // A copy constructor declared noexcept whose body throws: the program ends in it, its caller's objects are not
+  // destroyed and its handler is not entered.
+  try
+  {
+    HoldsThrower a{Noisy(7), Thrower(3)};
+    HoldsThrower b = a;
+    std::println("copied: not reached ", b.t.value);
+  }
+  catch (const Boom&)
+  {
+    std::println("caught: not reached");
+  }
+  return 0;
+}

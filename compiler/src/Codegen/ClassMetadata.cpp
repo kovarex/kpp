@@ -2911,7 +2911,7 @@ auto codegen::Emitter::moveConstruct(const std::string& dst, const std::string& 
   }
   if (move && !(move->flags & DF_Delete))
   {
-    emitCall("", "void " + useFunction(move, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
+    emitCall("", "void " + useFunction(move, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")", callMayThrow(move, args, false));
     return;
   }
   if (!move && !defaultedMove && !implicitCopyOrMoveTakes(c, t, types.rref(types.unqualified(t)), at))
@@ -2935,7 +2935,8 @@ auto codegen::Emitter::moveConstruct(const std::string& dst, const std::string& 
         pt = pt->args.size() == 1 ? pt->args[0] : nullptr;
       if (pt && pt->kind == TyKind::RRef && isClass(pt->inner) && classKey(pt->inner) == classKey(t))
       {
-        emitCall("", "void " + useFunction(chosen, ctorArgs, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
+        emitCall("", "void " + useFunction(chosen, ctorArgs, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")",
+                 callMayThrow(chosen, ctorArgs, false));
         return;
       }
     }
@@ -3010,7 +3011,7 @@ auto codegen::Emitter::copyConstruct(const std::string& dst, const std::string& 
     fail(at, "copying " + types.toString(types.unqualified(t), &symbols) + ", which has a move constructor but no copy constructor");
   if (copy)
   {
-    emitCall("", "void " + useFunction(copy, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")");
+    emitCall("", "void " + useFunction(copy, args, canonicalClass(t, at)) + "(ptr " + dst + ", ptr " + src + ")", callMayThrow(copy, args, false));
     return;
   }
   // A destructor of its own leaves the class its implicit copy constructor (C++ only deprecates
@@ -3348,10 +3349,11 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
       ArgsScope scope(*this, &args);
       s = signatureOf(op);
     }
+    bool mayThrow = callMayThrow(op, global.classArgsOf(foundIn), false);
     if (s.returnType == "void")
-      emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + src + ")");
+      emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + src + ")", mayThrow);
     else
-      emitCall(newTemp() + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + src + ")");
+      emitCall(newTemp() + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + src + ")", mayThrow);
     return;
   }
   if (!needsDestruction(t, at) && assignsBitwise(t, at))

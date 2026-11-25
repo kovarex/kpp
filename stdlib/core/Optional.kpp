@@ -168,11 +168,11 @@ void optionalAssign(O& target, bool present, V&& value)
 template<typename T>
 struct Optional : OptionalValue<T>
 {
-  T* slot() { return &this.storage.value; }
-  const T* slot() const { return &this.storage.value; }
+  T* slot() noexcept { return &this.storage.value; }
+  const T* slot() const noexcept { return &this.storage.value; }
 
-  Optional() {}
-  implicit Optional(NullOpt) {}
+  Optional() noexcept {}
+  implicit Optional(NullOpt) noexcept {}
 
   implicit Optional(const T& v)
   {
@@ -337,9 +337,9 @@ struct Optional : OptionalValue<T>
     return this.present ? strong_ordering::greater : other.present ? strong_ordering::less : strong_ordering::equal;
   }
 
-  bool hasValue() const { return this.present; }
-  bool has_value() const { return this.present; }
-  operator bool() const { return this.present; }
+  bool hasValue() const noexcept { return this.present; }
+  bool has_value() const noexcept { return this.present; }
+  operator bool() const noexcept { return this.present; }
   bool operator!() const { return !this.present; }
 
   T& value()
@@ -395,7 +395,7 @@ struct Optional : OptionalValue<T>
   }
 
   // Gives the value up: it is destroyed at once.
-  void reset()
+  void reset() noexcept
   {
     if (this.present)
     {

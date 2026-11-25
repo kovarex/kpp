@@ -37,6 +37,13 @@ standard's is, called by the exception runtime through `kpp_terminate_handler`. 
 with MSVC that a program links still uses the UCRT's handler (set_terminate, per thread), which
 kpp's setTerminate does not install.
 
+**std's noexcept functions not all noexcept yet** (2026-11-25): common.md's "What throws nothing" lists
+the ones that are; std's others (Map's, List's and Deque's begin, end, size and empty, String's find and
+compare of a String, starts_with ...) are not marked yet, so `noexcept(...)` of a call answers false where
+C++'s answers true, and a call of one has an unwind edge. Optional's operator* and operator-> stay unmarked
+on purpose: they assert that a value is there, a failed assert throws inside a test, and an exception
+leaving a noexcept function would end the test run.
+
 **A path is wide text on every target** (core/Filesystem.kpp, 2026-11-04): off Windows std's
 `filesystem::path::value_type` is char and its native string the path's bytes; kpp's stays wchar_t
 (UTF-32 there), converted to UTF-8 at each system call. A name's bytes that are not UTF-8 are kept

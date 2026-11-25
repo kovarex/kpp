@@ -29,7 +29,7 @@ namespace filesystem
     using const_iterator = pathIterator;
     static const wchar_t preferred_separator = config::platform == Platform::Windows ? L'\\' : L'/';
 
-    path() {}
+    path() noexcept {}
     implicit path(const WString& source) : text(source) {}
     implicit path(WString&& source) : text(move(source)) {}
     implicit path(const wchar_t* source) : text(source) {}

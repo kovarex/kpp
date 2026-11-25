@@ -1,0 +1,4 @@
+~22 ~21 ~3 ~12 ~11 ~22 ~21 -> 1 | mix 0 live 0
+~22 ~21 ~3 ~12 ~11 ~22 ~21 -> caught | mix 2 live 0
+~12 ~11 ~2 ~1 -> caught | mix 3 live 0
+| terminate, live 2

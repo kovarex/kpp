@@ -437,7 +437,7 @@ struct Limits
   static constexpr i32 max_exponent10 = isFloatingPoint<T> ? (sizeof(T) == 4 ? 38 : 308) : 0;
 
   // The greatest value.
-  static constexpr T max()
+  static constexpr T max() noexcept
   {
     if constexpr (isSame<T, bool>)
       return true;
@@ -457,7 +457,7 @@ struct Limits
   }
 
   // The least value of an integer type; the least positive normal value of a floating-point one.
-  static constexpr T min()
+  static constexpr T min() noexcept
   {
     if constexpr (isFloatingPoint<T>)
     {
@@ -473,7 +473,7 @@ struct Limits
   }
 
   // The least value (for floating point, -max()).
-  static constexpr T lowest()
+  static constexpr T lowest() noexcept
   {
     if constexpr (isFloatingPoint<T>)
       return -Limits::max();
@@ -482,7 +482,7 @@ struct Limits
   }
 
   // The difference between 1 and the next greater value.
-  static constexpr T epsilon()
+  static constexpr T epsilon() noexcept
   {
     if constexpr (isFloatingPoint<T>)
     {
@@ -495,7 +495,7 @@ struct Limits
       return T();
   }
 
-  static constexpr T round_error()
+  static constexpr T round_error() noexcept
   {
     if constexpr (isFloatingPoint<T>)
       return (T)0.5;
@@ -504,7 +504,7 @@ struct Limits
   }
 
   // The least positive (subnormal) value.
-  static constexpr T denorm_min()
+  static constexpr T denorm_min() noexcept
   {
     if constexpr (isFloatingPoint<T>)
     {

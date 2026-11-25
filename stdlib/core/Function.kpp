@@ -21,8 +21,8 @@ struct FunctionImpl
   void (*destroy)(void*) noexcept = nullptr;              // deletes it
   void* (*clone)(void*) = nullptr;               // copies it
 
-  FunctionImpl() {}
-  implicit FunctionImpl(nullptr_t) {}
+  FunctionImpl() noexcept {}
+  implicit FunctionImpl(nullptr_t) noexcept {}
 
   // From a callable, never from what cannot be called with Args (a number, a pointer to an object
   // such as a string literal, a String), so that another overload takes those, as std::function's
@@ -93,7 +93,7 @@ struct FunctionImpl
     return this;
   }
 
-  operator bool() const { return this.target != nullptr; }
+  operator bool() const noexcept { return this.target != nullptr; }
   bool operator!() const { return this.target == nullptr; }
   bool operator==(nullptr_t) const { return this.target == nullptr; }
 

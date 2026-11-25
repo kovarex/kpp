@@ -19,7 +19,7 @@ public:
   using pointer = wchar_t*;
   using const_pointer = const wchar_t*;
 
-  WString() {}
+  WString() noexcept {}
   implicit WString(const wchar_t* text) { this.append(text, WString::lengthOf(text)); }
   WString(const wchar_t* text, ContainerSize count) { this.append(text, count); }
   WString(const wchar_t* first, const wchar_t* last) { this.append(first, checkedSize(last - first, "string too long")); }
@@ -71,7 +71,7 @@ public:
   }
 
   // The terminator of a WString that never held anything, writable as std's data()[size()] is.
-  static wchar_t* noChars()
+  static wchar_t* noChars() noexcept
   {
     static wchar_t terminator = 0;
     return &terminator;
@@ -85,12 +85,12 @@ public:
     return checkedSize(n, "string too long");
   }
 
-  ContainerSize size() const { return this.unitCount; }
+  ContainerSize size() const noexcept { return this.unitCount; }
   ContainerSize length() const { return this.unitCount; }
-  bool empty() const { return this.unitCount == 0; }
-  const wchar_t* c_str() const { return this.chars ? this.chars : L""; }
-  wchar_t* data() { return this.chars ? this.chars : WString::noChars(); }
-  const wchar_t* data() const { return this.c_str(); }
+  bool empty() const noexcept { return this.unitCount == 0; }
+  const wchar_t* c_str() const noexcept { return this.chars ? this.chars : L""; }
+  wchar_t* data() noexcept { return this.chars ? this.chars : WString::noChars(); }
+  const wchar_t* data() const noexcept { return this.c_str(); }
   wchar_t& operator[](ContainerSize index) { return this.data()[index]; }
   const wchar_t& operator[](ContainerSize index) const { return this.c_str()[index]; }
 

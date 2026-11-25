@@ -19,7 +19,7 @@ public:
   using pointer = T*;
   using const_pointer = const T*;
 
-  Vector() {}
+  Vector() noexcept {}
 
   // count default-constructed elements.
   Vector(ContainerSize count) : Vector()
@@ -99,11 +99,11 @@ public:
     return this;
   }
 
-  ContainerSize size() const { return this.length; }
-  ContainerSize capacity() const { return this.allocated; }
-  T* data() { return this.items; }
-  const T* data() const { return this.items; }
-  bool empty() const { return this.length == 0; }
+  ContainerSize size() const noexcept { return this.length; }
+  ContainerSize capacity() const noexcept { return this.allocated; }
+  T* data() noexcept { return this.items; }
+  const T* data() const noexcept { return this.items; }
+  bool empty() const noexcept { return this.length == 0; }
 
   T& operator[](ContainerSize index)
   {
@@ -143,10 +143,10 @@ public:
     return this.items[this.length - 1];
   }
 
-  T* begin() { return this.items; }
-  T* end() { return this.items + this.length; }
-  const T* begin() const { return this.items; }
-  const T* end() const { return this.items + this.length; }
+  T* begin() noexcept { return this.items; }
+  T* end() noexcept { return this.items + this.length; }
+  const T* begin() const noexcept { return this.items; }
+  const T* end() const noexcept { return this.items + this.length; }
   const T* cbegin() const { return this.items; }
   const T* cend() const { return this.items + this.length; }
   ReverseIterator<T*> rbegin() { return ReverseIterator<T*>(this.items + this.length); }
@@ -587,7 +587,7 @@ public:
     this.items[this.length].~T();
   }
 
-  void clear() { this.truncate(0); }
+  void clear() noexcept { this.truncate(0); }
 
   // (Any integer type, as insert's index.)
   template<typename I> requires (isIntegral<I>)
@@ -626,7 +626,7 @@ public:
 
 private:
   // Destroys the elements from newLength on.
-  void truncate(ContainerSize newLength)
+  void truncate(ContainerSize newLength) noexcept
   {
     for (ContainerSize i = newLength; i < this.length; ++i)
       this.items[i].~T();

@@ -10,7 +10,7 @@ struct TypeInfo
   TypeInfo() {}
   TypeInfo(const char* typeName) : typeName(typeName) {}
 
-  const char* name() const { return this.typeName; }
+  const char* name() const noexcept { return this.typeName; }
 
   bool operator==(const TypeInfo& other) const
   {
@@ -20,5 +20,5 @@ struct TypeInfo
     return n == strlen(other.typeName) && memcmp(this.typeName, other.typeName, n) == 0;
   }
 
-  usize hashCode() const { return hashOf(StringView(this.typeName)); }
+  usize hashCode() const noexcept { return hashOf(StringView(this.typeName)); }
 };
