@@ -1,0 +1,9 @@
+// spec: docs/differences-from-cpp.md, "A base's padding holds nothing of a derived class": a derived class's member starts after its base's whole size
+struct alignas(16) B16 { char x; };
+struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
+
+int main()
+{
+  std::println(sizeof(S1));
+  return 0;
+}

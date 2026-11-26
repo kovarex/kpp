@@ -6,8 +6,9 @@ where one helps, the reason and where it is decided or tested.
 
 Each entry has a status:
 
-- **built**: works today. Every built entry was tried on kpp at 7c4a7e0a (2026-11-06), or has a
-  passing snippet in `compiler/tests/spec/`.
+- **built**: works today. Every built entry has a passing snippet in `compiler/tests/spec/` or was
+  tried on kpp (the whole page on 0.2.1804, 2026-11-26), and every example here is built and run by the
+  specification suite: a snippet of `compiler/tests/spec/docs/` holds its lines as this page writes them.
 - **this stage**: planned for the stage that ends with kpp integrated into Factorio's code.
 - **later**: decided, for the stage after that.
 - **undecided**: proposed or under consideration, with no decision yet.
@@ -19,7 +20,9 @@ Not here: bugs and missing C++ features, unless the refusal is deliberate; platf
 match what a C++ compiler does on that target. Where the standard library falls short of its own
 specification is [stdlib-conformance.md](stdlib-conformance.md). A spec named below is a file under
 `compiler/tests/spec/`. A change that adds or removes a deliberate difference from C++ updates this
-page in the same commit, with its status.
+page in the same commit, with its status; an example added or changed here goes into its snippet in
+`compiler/tests/spec/docs/` with it (`python compiler\tests\spec\run_spec.py --check-doc` names a line that
+is in none, and CI fails on one).
 
 - [Programs and files](#programs-and-files)
 - [Configurations instead of macros](#configurations-instead-of-macros)
@@ -42,9 +45,11 @@ page in the same commit, with its status.
 - **C++:** a name must be declared before its use, through headers and forward declarations.
 - **kpp:** the program is a set of files, and every top-level name is visible in every file, in any
   order. A forward declaration is allowed and never needed. A class declared and never defined is
-  opaque: pointers to it work, an object of it is an error.
+  opaque: pointers to it work, an object of it is an error. An enumerator's value may name a later
+  enumerator of its enumeration (`enum class E { X = K, K = 3 };`).
 - **Why:** it is what lets one multithreaded compiler parse each file once.
-- **See:** [design 2][d2]; spec `classes/pointer_to_declared_only_class_is_opaque`.
+- **See:** [design 2][d2]; specs `classes/pointer_to_declared_only_class_is_opaque`,
+  `kpp/enumerator_names_a_later_enumerator`.
 
 ```cpp
 int main() { Late late; return later(late); }
@@ -140,7 +145,7 @@ int helper(int) { return 2; }
 
 ```cpp
 extern "C" import "math.h";
-int main() { println(sqrt(2.0)); return 0; }
+int main() { std::println(sqrt(2.0)); return 0; }
 ```
 
 ## Configurations instead of macros
@@ -189,8 +194,10 @@ template<class T> std::Optional<std::String> structToCode(const T& value)
 {
   if constexpr (!std::isStruct<T>)
     return {};
-  // not instantiated for an i32
-  for constexpr (auto m : members(T)) ...
+  std::String code; // from here on not instantiated for an i32
+  for constexpr (auto m : members(T))
+    code << m.name << " = " << value.[m] << "; ";
+  return code;
 }
 ```
 
@@ -215,14 +222,14 @@ when (config::timeMeasuring) TimeMeasurer timer("buildPhase");
   `std::source_location`.
 - **kpp:** `assert(e);` and `release_assert(e);` are statements, and take a message as Text pieces after
   the condition, made only when it fails (`assert(n > 0, "n = ", n);`, 2026-11-17). A `conditional(constant)` function's
-  calls compile to nothing when it is false, arguments unevaluated. `CallerLocation here = caller` as a
+  calls compile to nothing when it is false, arguments unevaluated. `std::CallerLocation here = caller` as a
   parameter is filled at the call site, and `caller.line()` (`file_name()`, `column()`, `function_name()`) in a default
   argument is the call site's, what clang's `__builtin_LINE()` defaults convert to (2026-11-23).
 - **Why:** these were the macros no function could replace.
 - **See:** [design 7][d7]; specs `kpp/asserts_and_config`, `kpp/assert_message_pieces`.
 
 ```cpp
-conditional(config::debug) void trace(Text text);
+conditional(config::debug) void trace(std::Text text);
 trace("cost ", expensive());   // nothing is evaluated in a release build
 ```
 
@@ -233,6 +240,22 @@ trace("cost ", expensive());   // nothing is evaluated in a release build
   end of the scope.
 - **Why:** it replaces macros that made a unique name for a scope guard.
 - **See:** [design 7][d7]; spec `kpp/underscore_locals`.
+
+### `[[noinline]]` and `[[forceinline]]` (built)
+
+- **C++:** each compiler's own spelling (`__forceinline`, `__declspec(noinline)`, `[[gnu::always_inline]]`),
+  usually behind a macro.
+- **kpp:** the attributes `[[noinline]]` and `[[forceinline]]` on a function, the same on every target.
+  `[[vectorcall]]`, `[[optimize]]` and `[[no_sanitize]]` are accepted and do nothing yet.
+- **See:** [design 7][d7], item 8; spec `kpp/attributes_inline`.
+
+### The build's number and commit are constants (built)
+
+- **C++:** a header a script writes before the build, or `-D` definitions.
+- **kpp:** a program whose `build.kpp` asks for them (its executable's `buildInfo()`) has `buildInfo::number`,
+  `buildInfo::revision` and the texts it names (`buildInfo::version` from a file) as constants: kpp reads git
+  itself, and no script runs before a build.
+- **See:** [build.md](build.md), "Build information".
 
 ## Grammar
 
@@ -288,7 +311,7 @@ int main()
 
 - **C++:** the comparison of `a` with `b >> c`, unless `a` is a template.
 - **kpp:** an error naming both readings: `x < (y >> 2)` or `x<y> > 2`. `>>` still closes nested
-  template arguments, as in `Vector<Vector<int>>`.
+  template arguments, as in `std::Vector<std::Vector<int>>`.
 - **Why:** without knowing what `a` is, either reading is a guess. This one silently broke a mipmap loop.
 - **See:** [design 22][d22]; spec `language/less_than_then_shift_needs_parentheses`.
 
@@ -355,13 +378,14 @@ Container::value_type first(const Container& container) { return container[0]; }
 - **Why:** a reader expects text, and the program gets the wrong address silently.
 - **See:** [design 14][d14]; spec `language/string_literal_plus_integer_is_error`.
 
-### `T^` is `UniquePtr<T>` (built)
+### `T^` is `std::UniquePtr<T>` (built)
 
 - **C++:** `std::unique_ptr<T>`.
 - **kpp:** `T^` is sugar for the library's class, one type with it. `^` is a declarator beside `*`, `&`
   and `&&` where what follows cannot start an operand; `x ^ 3` stays exclusive or. Errors, hover and
-  the debugger print it back as `T^`.
-- **Why:** `Vector<Item^>` reads better, and a library class keeps every library pointer first-class.
+  the debugger print it back as `T^`. `const T^` is a unique pointer to a const T, as `const T*` is a pointer
+  to one.
+- **Why:** `std::Vector<Item^>` reads better, and a library class keeps every library pointer first-class.
 - **See:** [design 20][d20]; specs `language/unique_pointer_caret`,
   `language/unique_pointer_caret_printed_in_errors`.
 
@@ -480,7 +504,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **kpp:** a class with a virtual function, its own or a base's, always has a virtual destructor, written
   or not (kovarex, 2026-11-07). `virtual ~X()` is allowed and redundant, and so is `~X() override` over a
   base whose destructor is virtual by the rule. Such a destructor is not trivial, as no virtual one is:
-  `isTriviallyDestructible<Shape>` is false where C++ answers true. A derived class's destructor that may
+  `std::isTriviallyDestructible<Shape>` is false where C++ answers true. A derived class's destructor that may
   throw needs the base's to say `noexcept(false)`, as C++ requires of a virtual one.
 - **Status:** built 2026-11-09 ([design 23b](design.md)); 942 classes of the game change (counted 2026-11-07), 48 gaining
   the slot (an implicit destructor's after the class's own virtual functions, a declared one's where it is
@@ -491,7 +515,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **See:** specs `classes/polymorphic_class_destructor_is_virtual`, `classes/polymorphic_class_destructor_is_not_trivial`,
   `interop/c_object_with_a_foreign_vtable_keeps_its_slots`.
 
-### Required `this.` and `This` (this stage, rules decided)
+### Required `this.` and `This` (built)
 
 - **C++:** a member is named bare; a class names itself by its name and arguments.
 - **kpp:** an instance's member is written `this.x`, so adding a local or a global never changes an
@@ -505,7 +529,8 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   something `This` must rename it; the game and our kpp have no such name. A bare name is a local, a parameter or a global, never a
   member: `void setX(i32 x) { this.x = x; }`. The member a member initializer names stays bare
   (`: speed(speed)`), as do `using` declarations and declared types. All kpp code follows it, the
-  stdlib and libraries too; imported headers are exempt. Today members are named bare, as in C++.
+  stdlib and libraries too; imported headers are exempt. A member function is called `this.update()`, a
+  static one `This::create()`.
 - **Status:** built, the only meaning (2026-11-10): in every kpp file, the stdlib's too; `--this-pointer` gives a program's own files C++'s meaning for `--this-warnings`, which lists each bare member with its fix ([design 23c](design.md)).
 - **See:** [design 6][d6]; the readme's Planned.
 
@@ -517,7 +542,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
   class's `operator*`, an error when it has none; `&this` is the pointer (`foo(&this)`, `delete &this`);
   `this == other` compares the objects; `[&this]` captures it by reference and `[copy = this]` copies it,
   while `[this]` and `[*this]` are errors, and `[=]` never captures it; `this` is never null, so
-  `if (this)` is an error. Today it is a pointer, except in an enum's methods, where it is the value.
+  `if (this)` is an error. In an enum's methods it is the value.
 - **Status:** built, the only meaning (2026-11-10), in every kpp file, the standard library's too; C++
   read by the converter and C headers keep C++'s pointer. `--this-pointer` gives a program's own files the
   pointer back, for `--this-reference-warnings`, which lists each use that changes (convert.cmd's way); the game has 185,189 lines of `this->`, 5,097 of `*this` and 8,707 using its address
@@ -533,7 +558,7 @@ Pinned make() { Pinned p; return p; }   // compiles: an error in C++
 - **kpp:** it converts implicitly only when marked `implicit`, and `explicit` is gone: plain `explicit`
   is an error, and `explicit(cond)` is written `implicit(cond)`. A function argument's braces name their
   type: `draw(Color{1, 0, 0})`, not `draw({1, 0, 0})`, unless the parameter is an InitializerList
-  (`max({a, b, c})`); nested braces never need one. In `return {x, y};` and `Color c = {1, 0, 0};` a list
+  (`std::max({a, b, c})`); nested braces never need one. In `return {x, y};` and `Color c = {1, 0, 0};` a list
   of two or more values takes any constructor, and `{a}` needs `implicit`. A default
   constructor is never a conversion; `if (x)` takes an unmarked `operator bool`, a `switch` a marked
   conversion; `Box b = 5;` deduces from marked constructors only.
@@ -556,7 +581,7 @@ struct Celsius { implicit Celsius(double degrees); };
 - **kpp:** other constructors leave it. It is gone only when the class declares its own `T()` (or one whose
   parameters all have defaults) or deletes it with `T() = delete;`, and, as in C++, when a part cannot be
   default-initialized (a reference or const scalar member without an initializer, a member or base without
-  one). `isConstructible<T>` and the other traits answer by it. Where a class has none, `T x;` and `new T` are
+  one). `std::isConstructible<T>` and the other traits answer by it. Where a class has none, `T x;` and `new T` are
   the checker's error naming why. A kpp enum with constructors keeps its implicit default the same way, which
   makes the zero value (2026-11-21, the game's RailLayer).
 - **Why:** kovarex (2026-11-17), after removing a `RemoteViewSurfaceData() = default;` from the game: the same
@@ -586,7 +611,7 @@ struct Handle
   loading constructor writes the member-wise one back by hand.
 - **kpp:** a struct's members take values in order (`S(a, b)`, `S{a, b}`, `return {a, b};`, `new S(a, b)`), a value for
   each, wherever no constructor it declares takes them; designated names (`S{.b = x}`) may leave members out. A declared constructor that takes them is chosen first, a deleted one
-  turns the member-wise construction off for its arguments, and `isConstructible` answers by both. A class keeps C++'s
+  turns the member-wise construction off for its arguments, and `std::isConstructible` answers by both. A class keeps C++'s
   rule.
 - **Why:** kovarex (2026-11-18): hand-written constructors that only store their parameters, 356 of them in the game,
   are "pretty dumb"; a struct is a public value type, so nothing it hides is bypassed.
@@ -627,8 +652,8 @@ bool same = Pos{1, 2} == Pos{1, 2}; // true: C++ needs `bool operator==(const Po
   arguments, and each argument after them goes to the one defaulted parameter of its type (exact, else the one it
   converts to); the rest take their defaults. Two parameters an argument fits alike, a parameter given twice and two
   candidates taking it so are errors. A struct's member-wise construction goes by type too, and so do arguments
-  forwarded through a pack (`makeUnique<T>(...)`, a creator). Every call C++ accepts keeps its meaning;
-  `isConstructible` and requirements answer by it too.
+  forwarded through a pack (`std::makeUnique<T>(...)`, a creator). Every call C++ accepts keeps its meaning;
+  `std::isConstructible` and requirements answer by it too.
 - **Why:** kovarex (2026-11-22), from the original proposal's "Type based parameter resolution": the game's
   BuildParameters took its options by a `loadArg` fold, about 86 instances for 1,046 calls.
 - **See:** [design 32][d32]; specs `language/arguments_matched_by_type`, `language/arguments_matched_by_type_memberwise`,
@@ -656,8 +681,8 @@ Build b(position, BuildMode::Forced); // direction takes its default: C++ has no
 ```cpp
 using ItemStackIndex = explicit u16;
 using InventoryIndex = explicit u16;
-void select(ItemStackIndex index);
-select(InventoryIndex(3)); // error: a value of type InventoryIndex does not convert to the explicit type ItemStackIndex
+ItemStackIndex stack = ItemStackIndex(3);
+InventoryIndex slot = stack; // error: a value of type ItemStackIndex does not convert to the explicit type InventoryIndex without a cast
 ```
 
 ### One definition for const and non-const (later, details not decided)
@@ -795,10 +820,10 @@ enum class Direction : u8
 ```cpp
 union enum Property : u8
 {
-  { {Integer, int}, {Double, double}, {Text, String} }
+  { {Integer, int}, {Double, double}, {Text, std::String} }
 };
 Property p = 5;
-p[Property::Text] = String("hello");
+p[Property::Text] = std::String("hello");
 ```
 
 ### A union enum class makes its creators, and your own of one signature replaces just that one (built)
@@ -872,6 +897,25 @@ union enum class UpgradeID : u8
   void save(Serialiser& output) const { output << this.tag(); this[].save(output); }
 };
 ```
+
+### A typed union's own members, constructors and storage (built)
+
+- **C++:** a `std::variant` holds its alternatives and nothing else: data that every alternative shares goes in
+  a class around it, and an alternative too large to keep in place is a `unique_ptr` by hand.
+- **kpp:** a typed union may declare data members after its alternatives (`bool reloadController = false;`),
+  built by their initializers and copied, moved and destroyed with the alternative held; a union that has
+  them declares its own `==`, since the built-in comparison would leave them out. It may declare
+  constructors (the first alternative is built before the body, which may set another: `this[Item] = ...`);
+  its copy and move constructors, assignments and destructor are the compiler's, and declaring one is an
+  error. `union enum Action : u16 inline(112)` keeps an alternative of at most 112 bytes in the union and a
+  larger one on the heap, read as any other (`u[Big]` is the value). `union enum class alignas(8) U` is
+  aligned as a struct written so.
+- **Why:** the game's InputAction and GameViewAction have this shape (kovarex, 2026-11-16: "without the
+  inline, everything is directly in the object, the inline creates the limit").
+- **See:** [design 8.5][d8]; specs `kpp/typed_union_data_members`,
+  `kpp/typed_union_data_members_compared_is_error`, `kpp/typed_union_own_constructor`,
+  `kpp/typed_union_own_copy_constructor_is_error`, `kpp/typed_union_inline_boxes_larger_alternatives`,
+  `kpp/typed_union_alignas`.
 
 ## Expressions
 
@@ -958,10 +1002,12 @@ union enum class UpgradeID : u8
 - **kpp:** `a?->b?->foo()` calls `foo` only when `a` and `a->b` are set: the rest of the postfix chain is
   skipped as one piece, its arguments not evaluated. When it is skipped, a pointer result (raw, or a class
   with `operator->` and a bool conversion: UniquePtr, `T^`, SharedPtr) is null and a bool result false;
-  any other result makes the expression `Optional<T>` (kovarex, 2026-11-07): `i32 s = t?->engine->power;`
+  any other result makes the expression `std::Optional<T>` (kovarex, 2026-11-07): `i32 s = t?->engine->power;`
   is an error, `i32 s = t?->engine->power ?: -1;` works, as `?:` on an Optional gives its value or the
-  right side. `a ?: b` is `a ? a : b` with `a` evaluated once.
-- **See:** design 23a.
+  right side. As a statement, its value unused (`a?->f();`), it builds no Optional and copies nothing: `f`
+  runs when `a` is set (2026-11-26). `a ?: b` is `a ? a : b` with `a` evaluated once.
+- **See:** design 23a; specs `language/safe_navigation_gives_an_optional`,
+  `language/safe_navigation_statement_copies_nothing`, `language/elvis`.
 
 ### Three-way comparison has one result type (built)
 
@@ -990,12 +1036,12 @@ union enum class UpgradeID : u8
   does not there.
 - **See:** [design 4][d4]; spec `kpp/operator_not_equal_returning_bool_is_error`.
 
-### `move` of a const object is a warning (built)
+### `std::move` of a const object is a warning (built)
 
 - **C++:** `std::move(x)` of a const `x` compiles silently: the result is a const rvalue, which the copy
   constructor takes, so `x` is copied. Only a linter says so (clang-tidy's performance-move-const-arg).
 - **kpp:** the same meaning, and a warning at the call. Not in a template's instance, whose argument may be
-  what made the object const, and not for `forward` or `asConst`.
+  what made the object const, and not for `std::forward` or `std::asConst`.
 - **Why:** the code says move and does a copy (kovarex, 2026-11-09). The game had ten.
 - **See:** spec `kpp/move_of_a_const_object_is_a_warning`.
 
@@ -1019,7 +1065,7 @@ static_assert(twice(4) == 8);
 
 - **C++:** a candidate whose substitution fails is dropped, and `enable_if` and `void_t` lean on it.
 - **kpp:** the same, kept for C++ compatibility: imported C++ libraries rely on it. kpp's own code
-  constrains with `requires`; `EnableIf` and `VoidT` stay in the library for imported or unconverted
+  constrains with `requires`; `std::EnableIf` and `std::VoidT` stay in the library for imported or unconverted
   code.
 - **Why:** imported C++ libraries rely on SFINAE (kovarex, 2026-11-07, F's question); `requires`
   states the condition that SFINAE hides in a type.
@@ -1052,7 +1098,7 @@ static_assert(twice(4) == 8);
 ### `std::isInstanceOf<T, Template>` asks whether T is an instance of a class template (built)
 
 - **C++:** no trait (std::is_specialization_of is a proposal); code asks by overloads or partial
-  specializations matched by template (`void load(Vector<T>&)`), whose order beside an `if constexpr`
+  specializations matched by template (`void load(std::Vector<T>&)`), whose order beside an `if constexpr`
   chain is the reader's to work out.
 - **kpp:** `if constexpr (std::isInstanceOf<T, std::Vector>)`, through const and a reference, an
   instance of a partial or explicit specialization counting as its primary template's; the template
@@ -1084,16 +1130,19 @@ static_assert(twice(4) == 8);
   `e.name` and `e.value`, in the same forms (C++26's `enumerators_of`); `nameof(x)`; `qualifiednameof(T)`, a type as source names it (a template's instance by its alias closest to the global scope, `EntityID`). C++26 has
   `has_default_member_initializer` but no way to read the value, and C++ has no portable type name. Inside functions today, not yet at
   namespace or class scope.
+  In a switch's body a `for constexpr` writes a case per element: `case a.tag:` over `alternatives(U)`,
+  `case e.value:` over `enumerators(E)`, `case T::kind:` over `types<A, B>`.
 - **Why:** save, load and display are written once per class, without X-macros; methods(T) lets a binding (the game's
   LuaBinder) register a class's functions from the functions themselves; enumerators(E) makes an enum's name strings
   (std::snakeName, std::kebabName) at compile time instead of a hand-written switch per enum.
 - **See:** [design 8][d8]; specs `kpp/for_constexpr_types`, `kpp/reflection_members`, `kpp/nameof`,
   `kpp/reflection_member_initializer`, `kpp/reflection_member_index`, `kpp/reflection_methods`, `kpp/reflection_enumerators`,
-  `kpp/qualifiednameof`, `kpp/qualifiednameof_alias`.
+  `kpp/qualifiednameof`, `kpp/qualifiednameof_alias`, `kpp/for_constexpr_switch`,
+  `kpp/typed_union_switch_over_alternatives`.
 
 ```cpp
 for constexpr (auto m : members(T))
-  result << format("{}={} ", StringView(m.name), object.[m]);
+  result << std::format("{}={} ", std::StringView(m.name), object.[m]);
 ```
 
 ### Structured bindings: two simplifications (built)
@@ -1121,7 +1170,7 @@ for constexpr (auto m : members(T))
 ### An uncaught exception reports itself (built)
 
 - **C++:** `terminate` calls the handler alone, and the default handler says what it likes.
-- **kpp:** kpp prints the type and message on stderr, then calls the handler `setTerminate` installed.
+- **kpp:** kpp prints the type and message on stderr, then calls the handler `std::setTerminate` installed.
   The search ends the program before anything unwinds, with the throw site on the stack.
 - **Why:** a crash report needs them.
 - **See:** [stdlib-conformance.md](stdlib-conformance.md); spec
@@ -1187,24 +1236,29 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 
 ## Text and the standard library
 
-### No `std`: a library of kpp's own (built)
+### A standard library of kpp's own (built)
 
-- **C++:** the standard library, in `std`, with allocator and traits parameters.
-- **kpp:** `String`, `Vector`, `Map`, `HashMap`, `Optional` and the rest are in the global scope, with no
-  allocator, traits or char-type template parameters. Each keeps the guarantees of the std type it
-  replaces (invalidation, complexity, return values), and a faster type that breaks one has its own
-  name (`FastMap`). `String` is UTF-8.
-- **Why:** converted code relies on the guarantees, and the names are claimed once for every program.
-- **See:** [design 4][d4]; [stdlib/](stdlib/).
+- **C++:** the standard library, with allocator and traits parameters and snake_case names.
+- **kpp:** `std::String`, `std::Vector`, `std::Map`, `std::HashMap` (std::unordered_map), `std::Optional`,
+  `std::UniquePtr` and the rest, in the library `std` ([above](#the-standard-library-is-the-library-std-built)),
+  with no allocator, traits or char-type template parameters. A type's name is C++'s in UpperCamelCase and a
+  free function's in lowerCamelCase (`std::makeUnique`, `std::toString`); member functions keep C++'s names
+  (`push_back`, `emplace_back`, `find`, `size`), and an algorithm takes iterators (`std::sort(v.begin(),
+  v.end())`). Each type keeps the guarantees of the std type it replaces (invalidation, complexity, return
+  values), and a faster type that breaks one has its own name (`std::FastMap`). `std::String` is UTF-8, and
+  sizes are `u64`.
+- **Why:** converted code relies on the guarantees.
+- **See:** [design 4][d4], [design 16][d16]; [stdlib/](stdlib/).
 
 ### Printing takes arguments in sequence (built)
 
 - **C++:** `printf` format strings, streams with `<<` and state, or `std::format`.
-- **kpp:** `println("x = ", x)`, nothing parsed. A function takes text as a `Text` parameter, valid
-  during the call only, and storing one is an error. `format` exists only with a literal format,
-  checked against its arguments at compile time. The library has no `printf` or `cout`: C's `printf` is
-  there only when imported. A bool prints as `true`, an enum as its name, and a pointer only through
-  `address(p)`, but a char pointer, which prints its C text as C++'s `<<` does (a null one stops,
+- **kpp:** `std::println("x = ", x)`, nothing parsed. A function takes text as a `std::Text` parameter
+  (`void log(std::Text text)`, called as `log("x = ", x)`), valid during the call only, and storing one is an
+  error. `std::format` exists only with a literal format, checked against its arguments at compile time. The
+  library has no `printf` or `cout`: C's `printf` is there only when imported. A bool prints as `true`, an enum
+  as its name, a `u8` or `i8` as its number (a character comes only from a `char`), and a pointer only through
+  `std::address(p)`, but a char pointer, which prints its C text as C++'s `<<` does (a null one stops,
   where C++'s is undefined; 2026-11-16).
 - **Why:** a text that is not a literal can contain `%` or `{}`.
 - **See:** [design 14][d14]; specs `language/text_parameter_takes_arguments`,
@@ -1213,8 +1267,8 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 ### A type becomes text through `appendTo` (built)
 
 - **C++:** `operator<<` for streams, `std::formatter` or `to_string`.
-- **kpp:** `void appendTo(String& out) const`, one member, which `print`, `toString`, `<<`, `+` and
-  `Text` all use. Printing a type without it is a compile error, and a free `appendTo` is an error.
+- **kpp:** `void appendTo(std::String& out) const`, one member, which `std::print`, `std::toString`, `<<`, `+`
+  and `std::Text` all use. Printing a type without it is a compile error, and a free `appendTo` is an error.
 - **Why:** one method writes a deep hierarchy in one buffer, and templates need no special case.
 - **See:** [design 14][d14]; spec `language/append_to_on_built_in_types`.
 
@@ -1243,7 +1297,7 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 ### `<<` is String's only append (built)
 
 - **C++:** `s += 65` appends a character.
-- **kpp:** `String` has no `+=`. `s << 65` appends the text "65", and a character comes only from a
+- **kpp:** `std::String` has no `+=`. `s << 65` appends the text "65", and a character comes only from a
   `char`. A `<<` chain into a String mixed with `&`, `|` or `^` without parentheses is an error.
 - **Why:** `s += 65` can be read two ways.
 - **See:** [design 14][d14]; spec `language/shift_chain_with_bitwise_operator_is_error`.
@@ -1251,8 +1305,8 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 ### A float prints its shortest exact text (built)
 
 - **C++:** `to_string(0.1)` is `0.100000`.
-- **kpp:** `toString(0.1)` is `0.1`, the shortest text that reads back to the same value, and `0.1 + 0.2`
-  is `0.30000000000000004`. `fixed(x, 6)` chooses decimals.
+- **kpp:** `std::toString(0.1)` is `0.1`, the shortest text that reads back to the same value, and `0.1 + 0.2`
+  is `0.30000000000000004`. `std::fixed(x, 6)` chooses decimals.
 - **Why:** kovarex: "by default, it should always print all the information".
 - **See:** [design 14][d14]; spec `library/to_string_shortest_round_trip`.
 
@@ -1265,7 +1319,7 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
 ### File streams have no text mode (built)
 
 - **C++:** on Windows a text stream writes `\n` as CRLF.
-- **kpp:** every file stream is binary, and `getline` drops a `\r` before the newline on every platform.
+- **kpp:** every file stream is binary, and `std::getline` drops a `\r` before the newline on every platform.
 - **Why:** kovarex: CRLF is to be eliminated.
 - **See:** [Open questions][dopen]; spec `library/file_streams_have_no_text_mode`.
 
@@ -1276,11 +1330,15 @@ struct S1 : B16 { int y; };   // 32 bytes; 16 with MSVC's layout
   UTF-8 is not given back as the same bytes.
 - **HashMap and HashSet iterators survive growth** for dereferencing, which `unordered_map`'s need not
   (`library/hash_map_iterator_after_growth`).
-- **A container holds at most `maxContainerSize`**, for every element type, where `max_size()` depends
+- **A container holds at most `std::maxContainerSize`**, for every element type, where `max_size()` depends
   on it.
-- **Not in the library:** `<regex>`, and `<chrono>`'s calendars and time zones (`CivilTime` is the
-  calendar). A duration is `Milliseconds(10)`, with no literals.
-- **See:** [stdlib-conformance.md](stdlib-conformance.md).
+- **A debug build checks the containers** (kovarex, 2026-11-11): `operator[]` past the end of a Vector, Array,
+  Span, String, StringView or Deque, `front()`, `back()` and the pops of an empty one, and `*` of an empty
+  Optional are assertion failures where C++ leaves them undefined; a release build checks none of it
+  (`library/container_index_out_of_range_asserts_in_debug`).
+- **Not in the library:** `<regex>`, and `<chrono>`'s calendars and time zones (`std::CivilTime` is the
+  calendar). A duration is `std::Milliseconds(10)`, with no literals.
+- **See:** [stdlib-conformance.md](stdlib-conformance.md); [stdlib/common.md](stdlib/common.md).
 
 ## Tests
 

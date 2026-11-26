@@ -1,0 +1,22 @@
+// spec: docs/differences-from-cpp.md, "Arguments matched by type": an argument that fits no position goes to the defaulted parameter of its type
+struct MapPosition { int x = 0; int y = 0; };
+enum class Direction : u8 { North, East, South, West };
+enum class BuildMode : u8 { Normal, Forced };
+
+struct Build
+{
+  Build(MapPosition position, Direction direction = Direction::North, BuildMode mode = BuildMode::Normal);
+  MapPosition position;
+  Direction direction;
+  BuildMode mode;
+};
+
+Build::Build(MapPosition position, Direction direction, BuildMode mode) : position(position), direction(direction), mode(mode) {}
+
+int main()
+{
+  MapPosition position{3, 4};
+  Build b(position, BuildMode::Forced); // direction takes its default: C++ has no such call
+  std::println(b.position.x, " ", b.direction, " ", b.mode);
+  return 0;
+}

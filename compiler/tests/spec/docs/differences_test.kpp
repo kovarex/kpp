@@ -1,0 +1,8 @@
+// spec: docs/differences-from-cpp.md, "Tests are in the language": a test declaration with a check, run by kpp --test
+// test:
+int square(int x) { return x * x; }
+
+test square
+{
+  check(square(3) == 9);
+}

@@ -1,0 +1,21 @@
+// spec: docs/differences-from-cpp.md, "when: a declaration that exists under a condition": a local declared by when lives in the enclosing scope, and not at all when the condition is false
+config bool timeMeasuring = false;
+config bool phaseMeasuring = true;
+
+class TimeMeasurer
+{
+public:
+  TimeMeasurer(const char* name) : name(name) { std::println("start ", this.name); }
+  ~TimeMeasurer() { std::println("end ", this.name); }
+
+private:
+  const char* name;
+};
+
+int main()
+{
+  when (config::timeMeasuring) TimeMeasurer timer("buildPhase");
+  when (config::phaseMeasuring) TimeMeasurer phase("phase");
+  std::println("building");
+  return 0;
+}

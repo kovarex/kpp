@@ -1,0 +1,13 @@
+// spec: docs/differences-from-cpp.md, "Enums with methods": the values in an inner block, then methods, in which this is the value
+enum class Direction : u8
+{
+  { North, East, South, West }
+  bool isVertical() const { return this == North || this == South; }
+};
+
+int main()
+{
+  for (Direction direction : Direction::values)
+    std::println(direction, " ", direction.isVertical());
+  return 0;
+}

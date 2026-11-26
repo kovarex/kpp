@@ -1,0 +1,8 @@
+// spec: docs/differences-from-cpp.md, "private makes a name local to its file": two files each have a private helper
+private int helper() { return 1; }   // another file may have its own helper
+
+int main()
+{
+  std::println(helper(), " ", otherHelper());
+  return 0;
+}

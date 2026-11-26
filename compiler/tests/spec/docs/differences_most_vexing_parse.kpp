@@ -1,0 +1,14 @@
+// spec: docs/differences-from-cpp.md, "The most vexing parse goes by scope": T x(); in a body is a variable, and a namespace-scope variable takes braces
+struct Widget
+{
+  int width = 0;
+  int height = 0;
+};
+
+Widget global{1, 2};   // namespace scope: braces or =
+int main()
+{
+  Widget local();      // a variable
+  std::println(global.width + global.height + local.width);
+  return 0;
+}

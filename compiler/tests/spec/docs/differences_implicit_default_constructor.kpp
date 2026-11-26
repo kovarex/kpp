@@ -1,0 +1,21 @@
+// spec: docs/differences-from-cpp.md, "A class keeps its implicit default constructor beside its other constructors": a struct with a constructor is still default-constructed, one with a deleted default constructor is built from a value
+struct View
+{
+  View(int surface) : surface(surface) {}
+  int surface;
+  int zoom = 3;
+};
+View v;               // surface 0, zoom 3: the implicit constructor, which C++ would have dropped
+struct Handle
+{
+  Handle() = delete;  // must be built from a value
+  Handle(int id) : id(id) {}
+  int id;
+};
+
+int main()
+{
+  Handle handle(4);
+  std::println(v.surface, " ", v.zoom, " ", handle.id);
+  return 0;
+}

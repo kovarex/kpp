@@ -1,0 +1,16 @@
+// spec: docs/differences-from-cpp.md, "An alternative may be an anonymous struct written in place": its creator takes the members, those with initializers left out
+enum class Browsing : u8 { No, Yes };
+enum class Sound : u8 { Off, On };
+
+union enum class Action : u8
+{
+  { {Close, struct { Browsing browsing; Sound sound = Sound::Off; }}, {Stop, void} }
+};
+Action a = Action::Close(Browsing::Yes), b = Action::Close(Browsing::No, Sound::On);
+
+int main()
+{
+  const auto& data = b[Action::Tag::Close];
+  std::println(a[Action::Tag::Close].browsing, " ", a[Action::Tag::Close].sound, " ", data.browsing, " ", data.sound);
+  return 0;
+}

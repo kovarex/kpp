@@ -1,0 +1,22 @@
+// spec: docs/differences-from-cpp.md, "The rest after an if constexpr that leaves is its implicit else": the statements after an early return are not instantiated for a type that returns early
+struct Settings
+{
+  int width = 640;
+  bool fullscreen = false;
+};
+
+template<class T> std::Optional<std::String> structToCode(const T& value)
+{
+  if constexpr (!std::isStruct<T>)
+    return {};
+  std::String code; // from here on not instantiated for an i32
+  for constexpr (auto m : members(T))
+    code << m.name << " = " << value.[m] << "; ";
+  return code;
+}
+
+int main()
+{
+  std::println(structToCode(5).hasValue(), " ", *structToCode(Settings{}));
+  return 0;
+}

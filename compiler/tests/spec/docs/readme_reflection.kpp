@@ -1,0 +1,21 @@
+// spec: readme.md, "Reflection": for constexpr over members(T) writes code once for every member
+struct Settings
+{
+  int width = 640;
+  bool fullscreen = false;
+};
+
+template<typename T>
+std::String describe(const T& object)
+{
+  std::String result;
+  for constexpr (auto m : members(T))
+    result << std::format("{}={} ", std::StringView(m.name), object.[m]);
+  return result;
+}
+
+int main()
+{
+  std::println(describe(Settings()));  // width=640 fullscreen=false
+  return 0;
+}

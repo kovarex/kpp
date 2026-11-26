@@ -1,0 +1,5 @@
+North true South
+East false West
+South true North
+West false East
+4 true

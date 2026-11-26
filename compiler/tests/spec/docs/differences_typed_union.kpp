@@ -1,0 +1,14 @@
+// spec: docs/differences-from-cpp.md, "Typed unions": a union enum built from a value and set through p[Name]
+union enum Property : u8
+{
+  { {Integer, int}, {Double, double}, {Text, std::String} }
+};
+
+int main()
+{
+  Property p = 5;
+  std::println(p == Property::Integer, " ", p[Property::Integer]);
+  p[Property::Text] = std::String("hello");
+  std::println(p == Property::Text, " ", p[Property::Text]);
+  return 0;
+}

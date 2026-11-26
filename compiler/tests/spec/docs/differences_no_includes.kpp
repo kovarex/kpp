@@ -1,0 +1,4 @@
+// spec: docs/differences-from-cpp.md, "No includes, and order does not matter": a name is used before its declaration
+int main() { Late late; return later(late); }
+int later(Late& late) { return late.x; }
+struct Late { int x = 0; };

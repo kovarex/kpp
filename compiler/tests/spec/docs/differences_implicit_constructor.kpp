@@ -1,0 +1,12 @@
+// spec: docs/differences-from-cpp.md, "Explicit by default": a constructor marked implicit converts its argument
+struct Celsius { implicit Celsius(double degrees); };
+
+Celsius::Celsius(double degrees) { std::println(degrees); }
+
+void show(Celsius) {}
+
+int main()
+{
+  show(21.5);
+  return 0;
+}

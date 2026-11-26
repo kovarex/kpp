@@ -1,0 +1,39 @@
+// spec: docs/differences-from-cpp.md, "u[]: a statement once per alternative": this[].save(output) saves whichever alternative is held
+class Serialiser
+{
+public:
+  template<class T> Serialiser& operator<<(const T& value)
+  {
+    this.text << value << " ";
+    return this;
+  }
+
+  std::String text;
+};
+
+struct EntityID
+{
+  u16 id = 0;
+  void save(Serialiser& output) const { output << "entity" << this.id; }
+};
+
+struct ItemID
+{
+  u16 id = 0;
+  void save(Serialiser& output) const { output << "item" << this.id; }
+};
+
+union enum class UpgradeID : u8
+{
+  { {Entity, EntityID}, {Item, ItemID} }
+  void save(Serialiser& output) const { output << this.tag(); this[].save(output); }
+};
+
+int main()
+{
+  Serialiser output;
+  UpgradeID::Item(ItemID{7}).save(output);
+  UpgradeID::Entity(EntityID{3}).save(output);
+  std::println(output.text);
+  return 0;
+}

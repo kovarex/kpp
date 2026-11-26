@@ -1,0 +1,9 @@
+// spec: docs/differences-from-cpp.md, "Any function can run at compile time": a function without constexpr in a static_assert
+int twice(int x) { return x * 2; }
+static_assert(twice(4) == 8);
+
+int main()
+{
+  std::println(twice(21));
+  return 0;
+}

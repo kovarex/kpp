@@ -1,0 +1,5 @@
+// spec: docs/differences-from-cpp.md, "One global scope: a name clash is an error": two files' const of one name are one name declared twice
+// error: top-level names are global, rename one of them
+const int limit = 1;
+
+int main() { return limit; }

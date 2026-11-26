@@ -1,0 +1,2 @@
+// The second file of differences_one_global_scope_is_error.kpp.
+const int limit = 2;   // error: top-level names are global

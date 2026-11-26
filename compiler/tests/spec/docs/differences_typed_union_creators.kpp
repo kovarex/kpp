@@ -1,0 +1,15 @@
+// spec: docs/differences-from-cpp.md, "A union enum class makes its creators": a creator per alternative, and a member of another signature beside one
+union enum class Action : u8
+{
+  { {Move, int}, {Stop, void} }
+
+  // Beside the creator Move(int): both exist.
+  static Action Move(int left, int right) { return Action::Move(left - right); }
+};
+Action a = Action::Move(3), b = Action::Move(10, 4), c = Action::Stop();
+
+int main()
+{
+  std::println(a[Action::Tag::Move], " ", b[Action::Tag::Move], " ", c == Action::Tag::Stop);
+  return 0;
+}

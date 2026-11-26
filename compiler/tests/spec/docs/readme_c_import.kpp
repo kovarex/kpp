@@ -1,0 +1,8 @@
+// spec: readme.md, "C libraries": extern "C" import brings a C header's functions into the program
+extern "C" import "math.h";
+
+int main()
+{
+  std::println(sqrt(2.0));
+  return 0;
+}

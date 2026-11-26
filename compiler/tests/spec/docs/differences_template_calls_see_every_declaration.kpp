@@ -1,0 +1,10 @@
+// spec: docs/differences-from-cpp.md, "A template's calls see every declaration": a call in a template finds an overload declared after it
+int helper(double) { return 1; }
+template<class T> int call(T) { return helper(1); }
+int helper(int) { return 2; }
+// call(0) is 2; in C++ it is 1
+int main()
+{
+  std::println(call(0));
+  return 0;
+}

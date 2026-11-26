@@ -1,0 +1,11 @@
+// spec: docs/differences-from-cpp.md, "Returning a local is guaranteed to build it in place": a class that can be neither copied nor moved is returned by name
+struct Pinned { Pinned() {} Pinned(const Pinned&) = delete; Pinned(Pinned&&) = delete; };
+Pinned make() { Pinned p; return p; }   // compiles: an error in C++
+
+int main()
+{
+  Pinned pinned = make();
+  (void)pinned;
+  std::println("made");
+  return 0;
+}

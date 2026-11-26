@@ -1,0 +1,15 @@
+// spec: readme.md, "Tests in the language": a test beside the code it tests, run by kpp --test
+// test:
+int square(int x) { return x * x; }
+
+test square
+{
+  check(square(3) == 9);
+  check(square(-2) == 4);
+}
+
+int main()
+{
+  std::println(square(4));
+  return 0;
+}

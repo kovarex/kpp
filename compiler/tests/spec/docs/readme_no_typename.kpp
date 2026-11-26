@@ -1,0 +1,11 @@
+// spec: readme.md, "No typename or template disambiguators": a dependent type is named without typename
+template<typename Container>
+Container::value_type first(const Container& container) { return container[0]; }
+
+int main()
+{
+  std::Vector<int> numbers;
+  numbers.push_back(7);
+  std::println(first(numbers));  // 7
+  return 0;
+}

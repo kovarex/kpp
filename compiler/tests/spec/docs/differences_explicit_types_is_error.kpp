@@ -1,0 +1,8 @@
+// spec: docs/differences-from-cpp.md, "Explicit types": two explicit types of one underlying type do not convert to each other
+// error: a value of type ItemStackIndex does not convert to the explicit type InventoryIndex without a cast
+using ItemStackIndex = explicit u16;
+using InventoryIndex = explicit u16;
+ItemStackIndex stack = ItemStackIndex(3);
+InventoryIndex slot = stack; // error: a value of type ItemStackIndex does not convert to the explicit type InventoryIndex without a cast
+
+int main() { return int(u16(slot)); }

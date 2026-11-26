@@ -68,17 +68,18 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **Exhaustive `switch` on an enum.** A `switch` without `default` must name every value, or it does
   not compile; a value outside them (a corrupted byte, a bad cast) aborts at run time instead of
   falling out of the switch.
-- **No format strings.** `println("x = ", x)` prints its arguments in sequence; a type becomes text
+- **No format strings.** `std::println("x = ", x)` prints its arguments in sequence; a type becomes text
   through its `appendTo`, C text (a `const char*`) as its text, and any other pointer only through
-  `address(p)`. A function takes the same pieces as a trailing `Text` parameter (`log("x = ", x)`), and
-  so do `assert(cond, "x = ", x)` and `release_assert`, their message made only when `cond` fails.
+  `std::address(p)`. A function takes the same pieces as a trailing `std::Text` parameter
+  (`log("x = ", x)`), and so do `assert(cond, "x = ", x)` and `release_assert`, their message made only
+  when `cond` fails.
 - **Strings join with `+`.** `"names." + kind.str()` is a String when both sides are C text (string
   literals, char arrays, `const char*`) or one side is a String or StringView, so it never matters
   whether a part came from `c_str()`. C++ adds no two pointers; a string literal plus an integer, C++'s
   pointer arithmetic, is an error.
 - **Safe navigation `?->` and the Elvis `?:`.** `a?->b?->foo()` calls `foo` only when `a` and
   `a->b` are set. When one is not, a pointer result is null and a bool false, and any other result is an
-  `Optional`, which `?:` unwraps: `i32 power = train?->engine->power ?: -1;`. `a ?: b` is `a ? a : b`
+  `std::Optional`, which `?:` unwraps: `i32 power = train?->engine->power ?: -1;`. `a ?: b` is `a ? a : b`
   with `a` evaluated once.
 - **Explicit by default.** A constructor or conversion operator converts implicitly only when marked
   `implicit` (`implicit Celsius(double degrees)`), and the keyword `explicit` is gone. A function
@@ -99,9 +100,27 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
 - **Required `override`** on every function that overrides a virtual one (or says `final`).
 - **`this` is a reference** everywhere: `this.x`, `return this;`, `&this` for the pointer. (Inside an
   enum's methods `this` is the value.)
+- **Unused names and likely slips are errors**, not warnings: a local, parameter, lambda capture or
+  private field nothing uses; `if (x = f())` without parentheses of its own; `if (x);`; an integer
+  division stored in a `f64`; a function whose end can be reached without returning its value. A
+  local without an initializer is zero, and reading it before anything is assigned is an error.
+- **Explicit types.** `using ItemStackIndex = explicit u16;` is a type of its own with a u16's
+  representation: it mixes with no other type without a cast, so an inventory index is never passed
+  for a stack index, and `using PlaySound = explicit bool;` is a bool with a name at every call.
+- **Number types say their size**: `i8` to `i64`, `u8` to `u64`, `f32`, `f64`. `nullptr` is the only
+  null pointer: a literal `0` is not one.
 
 ### Less boilerplate
 
+- **Structs build and compare themselves.** A struct's members take values in order
+  (`Position(1, 2)`), also beside the constructors it declares, and a struct has `==` without writing
+  it (unless a member is a pointer or a reference). A class keeps its default constructor beside its
+  other constructors, and `!=` is never written: it is `!(a == b)`.
+- **Flags.** `flags Usage : u8 { Damaged, Marked, Frozen };` is a set of named bits with `|`, `&`,
+  `has`, `hasAny`, `set` and `clear`, which prints and shows in the debugger as its names
+  (`Damaged | Frozen`): no enum of `1 << n` masks, and no integer converts to it by accident.
+- **`super`** is a class's first base, with no `using super = Base;` in each class, and a declaration
+  that exists in one configuration is `when (config::debug) Timer timer("update");`.
 - **Enums with methods.** The values go in an inner block; the enum also has `count`,
   `values` (for iteration), `str()` and `fromStr()`, generated, or written by hand to replace them.
 
@@ -246,6 +265,9 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   }
   ```
   `kpp --test` builds and runs them (`--filter TEXT`, `--list`, `--report FILE`).
+
+The examples on this page and in [docs/differences-from-cpp.md](docs/differences-from-cpp.md) are built and
+run by the specification suite (`compiler/tests/spec/docs/`), so they are what the compiler takes today.
 
 ### Existing code
 

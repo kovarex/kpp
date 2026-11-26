@@ -1,0 +1,37 @@
+// spec: docs/differences-from-cpp.md, "A struct keeps its member-wise construction beside its constructors": a struct with a loading constructor is also built from a value for each member
+struct TrainsGuiParameters { int tab = 0; };
+using PlaySound = explicit bool;
+
+class Deserialiser
+{
+public:
+  Deserialiser& operator>>(TrainsGuiParameters& value)
+  {
+    value.tab = 9;
+    return this;
+  }
+
+  Deserialiser& operator>>(PlaySound& value)
+  {
+    value = PlaySound::True;
+    return this;
+  }
+};
+
+struct OpenTrainsGuiData
+{
+  OpenTrainsGuiData(Deserialiser& input) { input >> this.trainsGuiParameters >> this.playSound; }
+  TrainsGuiParameters trainsGuiParameters;
+  PlaySound playSound;
+};
+
+int main()
+{
+  TrainsGuiParameters parameters{2};
+  PlaySound playSound = PlaySound::False;
+  OpenTrainsGuiData data(parameters, playSound); // member-wise: C++ needs a constructor written for it
+  Deserialiser input;
+  OpenTrainsGuiData loaded(input);
+  std::println(data.trainsGuiParameters.tab, " ", data.playSound, " ", loaded.trainsGuiParameters.tab, " ", loaded.playSound);
+  return 0;
+}

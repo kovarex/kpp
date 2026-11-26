@@ -38,6 +38,12 @@ none), pass, or pending with what its `// pending:` line says. Nothing is built 
     python compiler\\tests\\spec\\run_spec.py --doc          writes it
     python compiler\\tests\\spec\\run_spec.py --check-doc    says where it is not what the headers give (exit code 1)
 
+--check-doc also says where an example of readme.md or docs/differences-from-cpp.md is not the suite's: every code
+line of those pages' fenced kpp blocks is, as written, a line of a snippet of compiler/tests/spec/docs (or of its
+.files), which holds the example with what it needs around it, so that an example the compiler no longer takes
+fails the suite, and one edited on the page without its snippet fails this check (kovarex, 2026-11-26: "make check
+that all the example ... is up to date").
+
 A whole run on Windows writes it too, and the first part of Windows' debug run (--shard 1/N, CI's)
 checks it and fails when it is stale: a change that adds a snippet, renames one or edits a header
 commits the file with it. (Until 2026-11-25 only a whole run wrote it, with that run's time, its
@@ -265,6 +271,7 @@ AREA_TITLES = {
   "library": "Standard library (what std:: converts to)",
   "kpp": "kpp's own features (design.md sections 7 and 8)",
   "interop": "C interop",
+  "docs": "The examples of readme.md and docs/differences-from-cpp.md, as the pages write them",
 }
 
 
@@ -726,6 +733,39 @@ def doc_differences():
 
 DOC_HOW = "python compiler\\tests\\spec\\run_spec.py --doc writes it from the snippets' headers, building nothing: commit it with the change"
 
+# The pages whose examples are the suite's (example_differences), and the area that holds them.
+EXAMPLE_PAGES = ["readme.md", "docs/differences-from-cpp.md"]
+EXAMPLES_AREA = "docs"
+EXAMPLES_HOW = "put the line, as the page writes it, in the example's snippet in compiler/tests/spec/docs, which the suite builds and runs"
+
+
+def example_line(line):
+    """A line of an example as it is compared: without its trailing comment, its spaces single."""
+    return re.sub(r"\s+", " ", re.sub(r"(^|\s)//.*$", "", line)).strip()
+
+
+def example_differences():
+    """Where an example of EXAMPLE_PAGES is not the suite's: a line for each code line of a page's fenced
+    kpp block (```cpp or ```kpp) that is no line of a snippet of the docs area or of its .files."""
+    area = os.path.join(HERE, EXAMPLES_AREA)
+    have = set()
+    for folder, _, names in os.walk(area):
+        for name in names:
+            if name.endswith(".kpp"):
+                with open(os.path.join(folder, name), encoding="utf-8") as f:
+                    have.update(example_line(line) for line in f)
+    differences = []
+    for page in EXAMPLE_PAGES:
+        inside = False
+        with open(os.path.join(ROOT, page), encoding="utf-8") as f:
+            for number, line in enumerate(f, 1):
+                fence = re.match(r"\s*```(\w*)", line)
+                if fence:
+                    inside = not inside and fence.group(1) in ("cpp", "kpp")
+                elif inside and example_line(line) and example_line(line) not in have:
+                    differences.append(f"{page}:{number}: `{line.strip()}` is a line of no snippet of the suite")
+    return differences
+
 
 def apply_known_freebsd(results, whole, path=KNOWN_FREEBSD, bundle=True):
     """FreeBSD's known failures (macOS's too, path): a known build failure becomes "known", a known one
@@ -800,7 +840,15 @@ def main():
                 print(f"docs/spec-status.md: and {len(differences) - 20} more")
             print(f"spec: FAILED: docs/spec-status.md is not what the snippets' headers give ({DOC_HOW})")
             return 1
-        print("spec: docs/spec-status.md is what the snippets' headers give")
+        examples = example_differences()
+        for difference in examples[:20]:
+            print(difference)
+        if examples:
+            if len(examples) > 20:
+                print(f"and {len(examples) - 20} more")
+            print(f"spec: FAILED: {len(examples)} example line(s) of {' and '.join(EXAMPLE_PAGES)} that the suite does not build ({EXAMPLES_HOW})")
+            return 1
+        print(f"spec: docs/spec-status.md is what the snippets' headers give, and the examples of {' and '.join(EXAMPLE_PAGES)} are the suite's")
         return 0
     # Windows' own debug run of the suite's snippets: the run docs/spec-status.md is about (below).
     windows_debug = HOST_WINDOWS and not (args.target or args.release or args.debug_info or args.via_cpp or args.snippets)
@@ -959,16 +1007,24 @@ def main():
     # writes it; with --no-doc, and in the first of a run's parts (CI's), it is checked instead, and a
     # stale one fails the run.
     doc_bad = []
+    examples_bad = []
     if windows_debug and not args.filter and not only:
         if not shard and not args.no_doc:
             write_doc()
             print("wrote", os.path.relpath(DOC, ROOT))
         elif not shard or shard.group(1) == "1":
             doc_bad = doc_differences()
+        # (the pages' examples, with the run that builds their snippets: the whole one, or the first of its parts)
+        if not shard or shard.group(1) == "1":
+            examples_bad = example_differences()
     for difference in doc_bad[:20]:
         print(f"FAIL    docs/spec-status.md  -- {difference}")
     if doc_bad:
         print(f"        ({'and ' + str(len(doc_bad) - 20) + ' more; ' if len(doc_bad) > 20 else ''}{DOC_HOW})")
+    for difference in examples_bad[:20]:
+        print(f"FAIL    {difference}")
+    if examples_bad:
+        print(f"        ({'and ' + str(len(examples_bad) - 20) + ' more; ' if len(examples_bad) > 20 else ''}{EXAMPLES_HOW})")
     for difference in skips_bad:
         print(f"FAIL    run_spec.py  -- {difference} (windows_runs and build_and_run's skips must agree)")
     # The one line that says whether everything passed (a pending snippet passing is a failure: its
@@ -981,7 +1037,8 @@ def main():
     bad = [f"{r['area']}/{r['name']}" for r in results if r["status"] == "FAIL"] + \
           [f"fixed {r['area']}/{r['name']}" for r in results if r["status"] == "fixed"] + \
           [f"stale {entry}" for entry in stale] + \
-          (["docs/spec-status.md"] if doc_bad else []) + (["run_spec.py's windows_runs"] if skips_bad else [])
+          (["docs/spec-status.md"] if doc_bad else []) + (["the pages' examples"] if examples_bad else []) + \
+          (["run_spec.py's windows_runs"] if skips_bad else [])
     if bad:
         shown = ", ".join(bad[:10]) + (f", and {len(bad) - 10} more" if len(bad) > 10 else "")
         print(f"spec: {len(bad)} FAILED: {shown} ({summary}, {counts['FAIL']} failing, {counts['fixed']} fixed)")

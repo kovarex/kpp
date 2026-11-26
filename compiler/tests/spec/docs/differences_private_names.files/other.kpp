@@ -1,0 +1,4 @@
+// The second file of differences_private_names.kpp, with a helper of its own.
+private int helper() { return 2; }
+
+int otherHelper() { return helper(); }

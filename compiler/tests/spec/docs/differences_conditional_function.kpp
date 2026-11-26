@@ -1,0 +1,23 @@
+// spec: docs/differences-from-cpp.md, "assert, conditional and CallerLocation": a conditional function's call evaluates nothing when its condition is false, an assert takes its message as pieces, a CallerLocation parameter is the call's place
+int evaluated = 0;
+int traced = 0;
+
+int expensive()
+{
+  ++evaluated;
+  return 7;
+}
+
+conditional(config::debug) void trace(std::Text text);
+conditional(config::debug) void trace(std::Text text) { traced += int(std::toString(text).size()); }
+
+int where(std::CallerLocation here = caller) { return int(here.line()); }
+
+int main()
+{
+  int n = 3;
+  assert(n > 0, "n = ", n);
+  trace("cost ", expensive());   // nothing is evaluated in a release build
+  std::println(evaluated == (config::debug ? 1 : 0), " ", traced == (config::debug ? 6 : 0), " ", where());
+  return 0;
+}

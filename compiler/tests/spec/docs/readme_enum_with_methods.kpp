@@ -1,0 +1,24 @@
+// spec: readme.md, "Enums with methods": the values in an inner block, methods, count, values, str() and fromStr()
+enum class Direction : u8
+{
+  { North, East, South, West }
+  bool isVertical() const { return this == North || this == South; }
+  Direction opposite() const
+  {
+    switch (this) // no default
+    {
+      case North: return South;
+      case East: return West;
+      case South: return North;
+      case West: return East;
+    }
+  }
+};
+
+int main()
+{
+  for (Direction d : Direction::values)  // North true South, East false West, ...
+    std::println(d, " ", d.isVertical(), " ", d.opposite());
+  std::println(Direction::count, " ", Direction::fromStr("West").has_value());  // 4 true
+  return 0;
+}

@@ -1,0 +1,15 @@
+// spec: docs/differences-from-cpp.md, "if constexpr at every scope": a member that exists in a debug build alone
+struct Line
+{
+  int length = 0;
+  if constexpr (config::debug) { int checks = 0; }
+};
+
+int main()
+{
+  Line line;
+  if constexpr (config::debug)
+    ++line.checks;
+  std::println(line.length);
+  return 0;
+}

@@ -2543,6 +2543,46 @@ runs the command above, which builds nothing, and commits the file with it.
 | `interop/sse_vector_values.kpp` | SSE vectors (__m128, __m128i) are values with intrin.h imported: locals, parameters, results and class members hold them, the _mm_ operations take and give them, and a wrapper class converts from and to them | pass |  |  |
 | `interop/stdout_is_file_pointer.kpp` | stdin, stdout and stderr are FILE*, as in C: stdout passes to a FILE* parameter (a stream class built from it) and to the C functions that take FILE* | pass | StdoutWriteStream's `: FileWriteStream(stdout)` through the protected `FileWriteStream(FILE* fp)`: the library's stdout was a void*, no constructor took it, and the first run of the converted game stopped at the stub of StdoutWriteStream's constructor (built at startup for `StdoutWriteStream::instance`) |  |
 
+## The examples of readme.md and docs/differences-from-cpp.md, as the pages write them
+
+| Snippet | Construct | Status | Factorio | Note |
+|---|---|---|---|---|
+| `docs/differences_any_function_at_compile_time.kpp` | docs/differences-from-cpp.md, "Any function can run at compile time": a function without constexpr in a static_assert | pass |  |  |
+| `docs/differences_arguments_by_type.kpp` | docs/differences-from-cpp.md, "Arguments matched by type": an argument that fits no position goes to the defaulted parameter of its type | pass |  |  |
+| `docs/differences_base_padding.kpp` | docs/differences-from-cpp.md, "A base's padding holds nothing of a derived class": a derived class's member starts after its base's whole size | pass |  |  |
+| `docs/differences_c_import.kpp` | docs/differences-from-cpp.md, "C is the only foreign language": an imported C header's function is called | pass |  |  |
+| `docs/differences_conditional_function.kpp` | docs/differences-from-cpp.md, "assert, conditional and CallerLocation": a conditional function's call evaluates nothing when its condition is false, an assert takes its message as pieces, a CallerLocation parameter is the call's place | pass |  |  |
+| `docs/differences_empty_bases.kpp` | docs/differences-from-cpp.md, "Every empty base takes no storage, on Windows too": a class with two empty bases is as large as its member | pass |  |  |
+| `docs/differences_enum_with_methods.kpp` | docs/differences-from-cpp.md, "Enums with methods": the values in an inner block, then methods, in which this is the value | pass |  |  |
+| `docs/differences_explicit_types_is_error.kpp` | docs/differences-from-cpp.md, "Explicit types": two explicit types of one underlying type do not convert to each other | pass |  |  |
+| `docs/differences_if_constexpr_implicit_else.kpp` | docs/differences-from-cpp.md, "The rest after an if constexpr that leaves is its implicit else": the statements after an early return are not instantiated for a type that returns early | pass |  |  |
+| `docs/differences_if_constexpr_in_a_class.kpp` | docs/differences-from-cpp.md, "if constexpr at every scope": a member that exists in a debug build alone | pass |  |  |
+| `docs/differences_implicit_constructor.kpp` | docs/differences-from-cpp.md, "Explicit by default": a constructor marked implicit converts its argument | pass |  |  |
+| `docs/differences_implicit_default_constructor.kpp` | docs/differences-from-cpp.md, "A class keeps its implicit default constructor beside its other constructors": a struct with a constructor is still default-constructed, one with a deleted default constructor is built from a value | pass |  |  |
+| `docs/differences_most_vexing_parse.kpp` | docs/differences-from-cpp.md, "The most vexing parse goes by scope": T x(); in a body is a variable, and a namespace-scope variable takes braces | pass |  |  |
+| `docs/differences_named_return.kpp` | docs/differences-from-cpp.md, "Returning a local is guaranteed to build it in place": a class that can be neither copied nor moved is returned by name | pass |  |  |
+| `docs/differences_no_includes.kpp` | docs/differences-from-cpp.md, "No includes, and order does not matter": a name is used before its declaration | pass |  |  |
+| `docs/differences_no_typename.kpp` | docs/differences-from-cpp.md, "typename and template are not needed": a dependent type is named without typename | pass |  |  |
+| `docs/differences_one_global_scope_is_error.kpp` | docs/differences-from-cpp.md, "One global scope: a name clash is an error": two files' const of one name are one name declared twice | pass |  |  |
+| `docs/differences_private_names.kpp` | docs/differences-from-cpp.md, "private makes a name local to its file": two files each have a private helper | pass |  |  |
+| `docs/differences_reflection.kpp` | docs/differences-from-cpp.md, "Compile-time loops and reflection": for constexpr over members(T) with m.name and object.[m] | pass |  |  |
+| `docs/differences_struct_implicit_equality.kpp` | docs/differences-from-cpp.md, "A struct has an implicit ==": a struct that declares no == compares its members | pass |  |  |
+| `docs/differences_struct_memberwise.kpp` | docs/differences-from-cpp.md, "A struct keeps its member-wise construction beside its constructors": a struct with a loading constructor is also built from a value for each member | pass |  |  |
+| `docs/differences_template_calls_see_every_declaration.kpp` | docs/differences-from-cpp.md, "A template's calls see every declaration": a call in a template finds an overload declared after it | pass |  |  |
+| `docs/differences_test.kpp` | docs/differences-from-cpp.md, "Tests are in the language": a test declaration with a check, run by kpp --test | pass |  |  |
+| `docs/differences_typed_union.kpp` | docs/differences-from-cpp.md, "Typed unions": a union enum built from a value and set through p[Name] | pass |  |  |
+| `docs/differences_typed_union_anonymous_struct.kpp` | docs/differences-from-cpp.md, "An alternative may be an anonymous struct written in place": its creator takes the members, those with initializers left out | pass |  |  |
+| `docs/differences_typed_union_creators.kpp` | docs/differences-from-cpp.md, "A union enum class makes its creators": a creator per alternative, and a member of another signature beside one | pass |  |  |
+| `docs/differences_typed_union_every_alternative.kpp` | docs/differences-from-cpp.md, "u[]: a statement once per alternative": this[].save(output) saves whichever alternative is held | pass |  |  |
+| `docs/differences_when.kpp` | docs/differences-from-cpp.md, "when: a declaration that exists under a condition": a local declared by when lives in the enclosing scope, and not at all when the condition is false | pass |  |  |
+| `docs/readme_c_import.kpp` | readme.md, "C libraries": extern "C" import brings a C header's functions into the program | pass |  |  |
+| `docs/readme_enum_with_methods.kpp` | readme.md, "Enums with methods": the values in an inner block, methods, count, values, str() and fromStr() | pass |  |  |
+| `docs/readme_no_typename.kpp` | readme.md, "No typename or template disambiguators": a dependent type is named without typename | pass |  |  |
+| `docs/readme_reflection.kpp` | readme.md, "Reflection": for constexpr over members(T) writes code once for every member | pass |  |  |
+| `docs/readme_tests.kpp` | readme.md, "Tests in the language": a test beside the code it tests, run by kpp --test | pass |  |  |
+| `docs/readme_typed_union.kpp` | readme.md, "Typed unions": a union enum built from a value, read with p[Name] and switched on | pass |  |  |
+| `docs/readme_typed_union_creators.kpp` | readme.md, "Typed unions": a union enum class makes a creator per alternative, and one written beside them is an overload | pass |  |  |
+
 ## expressions
 
 | Snippet | Construct | Status | Factorio | Note |

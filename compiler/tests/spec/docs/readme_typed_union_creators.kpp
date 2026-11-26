@@ -1,0 +1,17 @@
+// spec: readme.md, "Typed unions": a union enum class makes a creator per alternative, and one written beside them is an overload
+union enum class Action : u8
+{
+  { {Stop, void}, {Move, int} }
+
+  static Action Move(int left, int right) { return Action::Move(left - right); }  // an overload
+};
+
+Action stop = Action::Stop();         // the creators kpp makes
+Action move = Action::Move(3);
+Action turn = Action::Move(10, 4);    // yours, beside them
+
+int main()
+{
+  std::println(stop == Action::Tag::Stop, " ", move[Action::Tag::Move], " ", turn[Action::Tag::Move]);
+  return 0;
+}

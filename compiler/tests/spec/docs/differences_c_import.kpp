@@ -1,0 +1,3 @@
+// spec: docs/differences-from-cpp.md, "C is the only foreign language": an imported C header's function is called
+extern "C" import "math.h";
+int main() { std::println(sqrt(2.0)); return 0; }

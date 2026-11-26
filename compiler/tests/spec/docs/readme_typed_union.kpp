@@ -1,0 +1,24 @@
+// spec: readme.md, "Typed unions": a union enum built from a value, read with p[Name] and switched on
+union enum Property : u8
+{
+  { {Integer, int}, {Double, double}, {Text, std::String} }
+};
+
+std::String describe(const Property& p)
+{
+  switch (p)
+  {
+    case Property::Integer: return std::format("int {}", p[Property::Integer]);
+    case Property::Double: return std::format("double {}", p[Property::Double]);
+    case Property::Text: return std::format("text {}", p[Property::Text]);
+  }
+}
+
+int main()
+{
+  Property p = 5;                       // the alternative of an int: Integer
+  std::println(describe(p));                 // int 5
+  p[Property::Text] = std::String("hello");  // destroys the int, holds a String
+  std::println(describe(p));                 // text hello
+  return 0;
+}

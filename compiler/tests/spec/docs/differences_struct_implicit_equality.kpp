@@ -1,0 +1,9 @@
+// spec: docs/differences-from-cpp.md, "A struct has an implicit ==": a struct that declares no == compares its members
+struct Pos { i32 x; i32 y; };
+bool same = Pos{1, 2} == Pos{1, 2}; // true: C++ needs `bool operator==(const Pos&) const = default;`
+
+int main()
+{
+  std::println(same, " ", Pos{1, 2} != Pos{2, 1});
+  return 0;
+}

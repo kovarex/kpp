@@ -1,0 +1,9 @@
+// spec: docs/differences-from-cpp.md, "Every empty base takes no storage, on Windows too": a class with two empty bases is as large as its member
+struct E1 {}; struct E2 {};
+struct T : E1, E2 { char c; };   // 1 byte; 2 with MSVC's layout
+
+int main()
+{
+  std::println(sizeof(T));
+  return 0;
+}

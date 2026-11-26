@@ -26,8 +26,8 @@ A function whose body fits on its line is a one-liner, and one-liners follow one
 empty line between them:
 
 ```kpp
-i32 getX() const { return this->x; }
-i32 getY() const { return this->y; }
+i32 getX() const { return this.x; }
+i32 getY() const { return this.y; }
 ```
 
 A function written over several lines (its body's braces on lines of their own) is expanded, and
@@ -37,12 +37,12 @@ block (kovarex, 2026-11-05):
 ```kpp
 i32 getX() const
 {
-  return this->x;
+  return this.x;
 }
 
 i32 getY() const
 {
-  return this->y;
+  return this.y;
 }
 ```
 
@@ -54,7 +54,7 @@ way.
 ## Braces
 
 - A brace goes on a line of its own (no "egyptian" braces), for functions, classes, control
-  statements and initializer lists alike, except in a one-liner (`{ return this->x; }`).
+  statements and initializer lists alike, except in a one-liner (`{ return this.x; }`).
 - No braces around a single statement:
 
   ```kpp
@@ -127,9 +127,9 @@ The same for `?` and `:` of a conditional expression.
   member is public instead. They are written when one of the two must not exist, or when a change
   needs more than the assignment.
 - One class to a file, the file named after it.
-- Members come in this order: `using super = Base;` (private, and only when it is used) and other
-  usings; constructors; the destructor; member functions; static functions and variables; data
-  members, last (kovarex: Factorio's layout).
+- Members come in this order: usings; constructors; the destructor; member functions; static
+  functions and variables; data members, last (kovarex: Factorio's layout). `super` is built in (the
+  first base): `using super = Base;` is not written.
 - A default value is given at the member (`i32 x = 0;`), not repeated in each constructor's
   initializer list.
 - An initializer list longer than a couple of plain members goes one member to a line:
@@ -147,19 +147,21 @@ The same for `?` and `:` of a conditional expression.
 - A function that overrides a virtual one says both `virtual` and `override`.
 - `super::` calls the base's version of a virtual function (in save, update...), not its
   constructor.
-- `==` that compares every member is defaulted (`bool operator==(const Position& other) const =
-  default;`).
+- `==` that compares every member is not written for a struct, which has it (design.md 31); a class's
+  is defaulted (`bool operator==(const Position& other) const = default;`). `!=` is never written.
+- A constructor that only stores its parameters is not written for a struct: it is built member by
+  member (`Position(1, 2)`, design.md 30).
 - Every enum is an `enum class`.
 
 ## Inside functions
 
-- A member is always named through `this->`: `this->count`, `this->update()`. A static member or a
-  class's constant through its class: `Inserter::MAX_STACK_SIZE`.
+- A member is always named through `this.`: `this.count`, `this.update()` (the compiler requires it).
+  A static member or a class's constant through `This::` or its class: `Inserter::MAX_STACK_SIZE`.
 - A parameter that allocates or is bigger than two pointers is passed by const reference.
 - A pointer that cannot be null is a reference, as a parameter and as a result.
 - `auto` where the type is noise (iterators, generic lambdas), not where it hides a type the reader
   needs.
-- Structured bindings name a pair's parts: `for (const auto& [entityID, count] : this->counts)`.
+- Structured bindings name a pair's parts: `for (const auto& [entityID, count] : this.counts)`.
 - Text is built with `<<` (`out << "count: " << count`), not `.append(` or `+` chains, and SQL and
   messages as Text pieces (design.md 14).
 
