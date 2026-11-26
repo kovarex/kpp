@@ -1,0 +1,23 @@
+// spec: `X::missing` of a plain class X that has no such member, in its bases neither, is the checker's "X has no member 'missing'": as a template's argument `&X::missing`, a local's initializer, a value; a member through a base is found
+// 2026-11-26: `take(&X::missing)` for a template's parameter said only codegen's "template arguments could not be deduced", `auto p = &X::missing;` its "a local of unknown type", `X::missing` its "an unresolved name"
+// error: qualified_member_a_class_does_not_have_is_error.kpp:19: error: X has no member 'missing'
+// error: qualified_member_a_class_does_not_have_is_error.kpp:20: error: X has no member 'other'
+// error: qualified_member_a_class_does_not_have_is_error.kpp:21: error: X has no member 'none'
+struct Base
+{
+  i32 inherited = 2;
+  static constexpr i32 limit = 3;
+};
+struct X : Base
+{
+  i32 value = 1;
+};
+template<class M>
+i32 take(M member) { X x; return x.*member; }
+i32 main()
+{
+  i32 a = take(&X::missing);
+  auto p = &X::other;
+  i32 b = X::none;
+  return a + b + take(&X::value) + take(&X::inherited) + X::limit + (p ? 1 : 0);
+}

@@ -1,0 +1,18 @@
+// spec: an array of references is an error where it is declared ([dcl.array] 1): a parameter's (whose decay was taken as a pointer to references, an error only at a call), a template's parameter's, a local's; an array of pointers and a reference to an array are fine
+// 2026-11-26: `void f(std::Vector<T*>& lists[N])` in the game's line cuts was accepted until the call
+// error: array_of_references_is_error.kpp:6: error: an array of references is not allowed: write an array of pointers, or a reference to the array (`T (&a)[N]`)
+// error: array_of_references_is_error.kpp:8: error: an array of references is not allowed: write an array of pointers, or a reference to the array (`T (&a)[N]`)
+// error: array_of_references_is_error.kpp:14: error: an array of references is not allowed: write an array of pointers, or a reference to the array (`T (&a)[N]`)
+i32 sum(i32& values[2]) { return values[0] + values[1]; }
+template<class T, i32 N>
+i32 count(std::Vector<T*>& lists[N]) { (void)lists; return N; }
+i32 first(i32* values[2]) { return *values[0]; }
+i32 whole(i32 (&values)[2]) { return values[0]; }
+i32 main()
+{
+  i32 a = 1;
+  i32& r[1] = {a};
+  i32 pair[2] = {1, 2};
+  i32* pointers[2] = {&a, &a};
+  return first(pointers) + whole(pair) + r[0];
+}

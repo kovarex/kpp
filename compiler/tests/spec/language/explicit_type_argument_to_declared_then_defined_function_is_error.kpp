@@ -1,0 +1,12 @@
+// spec: a function declared and defined later is one candidate: an argument of another explicit type is the explicit type's own error, as for a function declared once, not "no overload of select takes (InventoryIndex)" (design.md 33)
+// 2026-11-26: the game's `void select(ItemStackIndex index);` called with an InventoryIndex in the line cuts
+// error: explicit_type_argument_to_declared_then_defined_function_is_error.kpp:9: error: a value of type InventoryIndex does not convert to the explicit type ItemStackIndex without a cast
+using ItemStackIndex = explicit u16;
+using InventoryIndex = explicit u8;
+void select(ItemStackIndex index);
+i32 main()
+{
+  select(InventoryIndex(3));
+  return 0;
+}
+void select(ItemStackIndex index) { std::println(u16(index)); }

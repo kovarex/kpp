@@ -1,0 +1,18 @@
+// spec: in a template's for constexpr, a Text whose pieces after a dependent one are all known (a cast last, a literal, the element's name alone) is packed by the element's own walk: the body's walk before its elements are bound packs nothing (its println(FILE*, Text) for `println(e.name)` packed an empty Text, "a brace list is no piece of a Text")
+// 2026-11-26: `std::println(e.name, " = ", E::UnderlyingType(e.value));` in a template failed, with the cast first or outside a template it did not
+enum class Mode : u8 { Off, On, Auto };
+template<class E>
+void listNames()
+{
+  for constexpr (auto e : enumerators(E))
+  {
+    std::println(e.name, " = ", E::UnderlyingType(e.value));
+    std::println(e.name, " = ", 5);
+    std::println(e.name);
+  }
+}
+i32 main()
+{
+  listNames<Mode>();
+  return 0;
+}

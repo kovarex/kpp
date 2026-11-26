@@ -558,6 +558,24 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
     // enumerator's rename said nothing until codegen's "a case label that is not a constant").
     bool enumeration = q.found != Found::No && q.decl && q.decl->kind == NodeKind::EnumDecl && static_cast<EnumDecl*>(q.decl)->isDefinition &&
                        !q.ambiguousWith;
+    // A qualifier that is a plain class, neither a template nor in one: the member lookup judges, through its bases, and
+    // says "X has no member 'missing'" (2026-11-26: `take(&X::missing)` for a template's parameter said only codegen's
+    // "template arguments could not be deduced", `auto p = &X::missing;` its "a local of unknown type").
+    if (q.found != Found::No && q.decl && q.decl->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(q.decl)->isDefinition && !q.ambiguousWith &&
+        !(inGenericTemplate() && !activeSubst) && !name.parts[name.parts.size() - 1].hasTemplateArgs)
+    {
+      bool plain = true;
+      for (Decl* d = q.decl; d && plain; d = d->parent)
+        plain = d->templateParams.empty() && !(d->flags & DF_Specialization) &&
+                (d->kind != NodeKind::ClassDecl || static_cast<ClassDecl*>(d)->instanceParams.empty());
+      if (plain)
+      {
+        const Ty* cls = types.classType(q.decl, {});
+        if (cls && cls->isKnown() && !types.isDependent(cls))
+          (void)memberOf(cls, name.parts[name.parts.size() - 1].symbol, nullptr, token);
+      }
+      return;
+    }
     if (!enumeration && (q.found == Found::No || !q.decl || q.decl->kind != NodeKind::NamespaceDecl || q.ambiguousWith))
       return;
     std::string spelledName;
@@ -5261,11 +5279,16 @@ auto GlobalScope::Impl::Walker::onlyPlainCandidate(Decl* d, const std::vector<En
 {
   if (!d || d->kind != NodeKind::FunctionDecl || !d->templateParams.empty())
     return false;
-  size_t functions = 0;
+  // Each function once: `void select(ItemStackIndex index);` and its definition later are one candidate, whose own error
+  // (an explicit type's conversion, design.md 33) says more than "no overload of select takes (InventoryIndex)".
+  std::vector<FunctionDecl*> functions;
   if (overloads)
     for (const Entry& e : *overloads)
-      functions += e.decl->kind == NodeKind::FunctionDecl;
-  return functions <= 1;
+      if (e.decl->kind == NodeKind::FunctionDecl &&
+          std::none_of(functions.begin(), functions.end(), [&](FunctionDecl* f) { return impl.sameFunction(f, static_cast<FunctionDecl*>(e.decl)); }))
+        if (functions.emplace_back(static_cast<FunctionDecl*>(e.decl)); functions.size() > 1)
+          return false;
+  return true;
 }
 
 auto GlobalScope::Impl::Walker::namesFunctionsWithoutTarget(Expr* e) -> bool
@@ -7979,6 +8002,13 @@ auto GlobalScope::Impl::Walker::packTextAt(Span<Expr*>& args, size_t k, uint32_t
   if (args.size() == k + 1 && args[k] &&
       ((args[k]->kind == NodeKind::BraceInitExpr && static_cast<BraceInitExpr*>(args[k])->text) || (args[k]->ty && impl.isText(args[k]->ty))))
     return;
+  // An argument before the Text of no known type yet: the overload, and so where its Text starts, is not decided. A for
+  // constexpr's body walked before its elements are bound chose println(FILE*, Text) for `println(e.name)`, packing the
+  // Text of nothing after e.name, which each element's walk then took for a piece (2026-11-26: "a brace list is no
+  // piece of a Text").
+  for (size_t i = 0; i < k && i < args.size(); ++i)
+    if (args[i] && (!args[i]->ty || !args[i]->ty->isKnown()))
+      return;
   bool known = true;
   auto check = [&](Expr* a, const Ty* t)
   {
@@ -12008,11 +12038,21 @@ auto GlobalScope::Impl::Walker::walkType(Type* t) -> void
       break;
     }
     case NodeKind::ArrayType:
+    {
+      // `T& a[N]`: C++ has no array of references ([dcl.array] 1), and a parameter's took the decay of it, a pointer to
+      // references, checked only at a call (2026-11-26). The written element, in a template's own walk too (its instances
+      // stay quiet: one error); one through an alias or a template parameter is not seen here.
+      Type* element = static_cast<ArrayType*>(t)->element;
+      while (element && element->kind == NodeKind::ConstType)
+        element = static_cast<ConstType*>(element)->inner;
+      if (element && (element->kind == NodeKind::LRefType || element->kind == NodeKind::RRefType) && !probing && !activeSubst && file && !file->isImported)
+        impl.reportCheckerError(file, t->token, "an array of references is not allowed: write an array of pointers, or a reference to the array (`T (&a)[N]`)");
       walkType(static_cast<ArrayType*>(t)->element);
       walkExpr(static_cast<ArrayType*>(t)->size);
       if (plainEnumWarningsOn() && file && !file->isImported && !probing)
         notePlainEnumUse(static_cast<ArrayType*>(t)->size, "an array's size");
       break;
+    }
     case NodeKind::FunctionType:
     {
       auto* f = static_cast<FunctionType*>(t);

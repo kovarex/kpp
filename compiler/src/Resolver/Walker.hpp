@@ -733,7 +733,7 @@
 
     // Whether d is the only function of its name there (overloads: the entries found with it)
     // and no template.
-    static bool onlyPlainCandidate(Decl* d, const std::vector<Entry>* overloads);
+    bool onlyPlainCandidate(Decl* d, const std::vector<Entry>* overloads);
 
     // Whether e, walked (under parentheses and a `&`), names a function template without template
     // arguments, or several functions: with no target type to choose one by, C++ has no expression
