@@ -564,6 +564,9 @@ auto GlobalScope::Impl::Walker::reportUndeclared(const QualifiedName& name, uint
     if (q.found != Found::No && q.decl && q.decl->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(q.decl)->isDefinition && !q.ambiguousWith &&
         !(inGenericTemplate() && !activeSubst) && !name.parts[name.parts.size() - 1].hasTemplateArgs)
     {
+      // (A requirement's `X::missing` is one not met, never an error: `requires { SoundPriority::count; }` is false.)
+      if (replayingRequirements)
+        return;
       bool plain = true;
       for (Decl* d = q.decl; d && plain; d = d->parent)
         plain = d->templateParams.empty() && !(d->flags & DF_Specialization) &&
@@ -14764,8 +14767,10 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
       if (probe.undeclaredSink)
         for (Expr* n : r->nested)
           probe.walkExpr(copier.expression(n));
+      replayingRequirements = true;
       for (const UndeclaredSeen& u : undeclared)
         reportUndeclared(u.name, u.token, nullptr, u.dependentCall);
+      replayingRequirements = false;
       r->satisfied = satisfied;
       return record(e, types.boolType());
     }

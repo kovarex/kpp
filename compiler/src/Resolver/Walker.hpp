@@ -89,6 +89,9 @@
     bool probing = false;
     // An expression statement's expression, whose value nothing uses: a `?->` there gives nothing (design.md 23a).
     const Expr* unusedValue = nullptr;
+    // Reporting the names a requires-expression's requirements did not find (reportUndeclared): a class's member it has
+    // not is a requirement not met there, no error.
+    bool replayingRequirements = false;
     // Walking a parameter's default argument: an immediate (consteval) call in it is evaluated at each call that
     // uses it, where `caller` has a site (C++'s [expr.const] 16: not where it is written).
     bool inDefaultArgument = false;
