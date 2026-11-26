@@ -87,6 +87,8 @@
     // conversion of a class to a type that is no class (`bool(instance)`) is typed only when
     // the class has an operator for it, since a requirement holds exactly when it is valid.
     bool probing = false;
+    // An expression statement's expression, whose value nothing uses: a `?->` there gives nothing (design.md 23a).
+    const Expr* unusedValue = nullptr;
     // Walking a parameter's default argument: an immediate (consteval) call in it is evaluated at each call that
     // uses it, where `caller` has a site (C++'s [expr.const] 16: not where it is written).
     bool inDefaultArgument = false;

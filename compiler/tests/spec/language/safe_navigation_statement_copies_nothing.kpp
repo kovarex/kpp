@@ -1,0 +1,54 @@
+// spec: `a?->f(...);` as a statement, its value unused, runs f when a is set and gives nothing: no Optional is built, a result that is a reference is not copied, a class that cannot be copied is no error; so for each `?->` after it in the chain, in a template's instance and a lambda too (design.md 23a)
+// factorio: SurfaceEditor::generatePlanets and CustomGuiElement::setEnabled as `p?->f();` (2026-11-26): a reference result was copied into an Optional, silently, and a Pinned one was codegen's "deleted copy constructor"
+struct Name
+{
+  Name() = default;
+  Name(const char* text) : text(text) {}
+  Name(const Name& other) : text(other.text) { std::println("copied"); }
+  ~Name() { std::println("gone ", this.text); }
+  std::String text;
+};
+struct Pinned
+{
+  Pinned() = default;
+  Pinned(const Pinned&) = delete;
+  int uses = 0;
+};
+struct Engine
+{
+  Engine() { this.label.text = "label"; }
+  const Name& name() const { std::println("name"); return this.label; }
+  Pinned& pinned() { this.pin.uses += 1; return this.pin; }
+  Name made() { std::println("made"); return Name("made"); }
+  Engine* self() { std::println("self"); return &this; }
+  int count() { return this.pin.uses; }
+  Name label;
+  Pinned pin;
+};
+template<class T>
+void touch(T* p)
+{
+  p?->pinned();
+  p?->name();
+}
+int main()
+{
+  Engine engine;
+  Engine* set = &engine;
+  Engine* none = nullptr;
+  set?->name();
+  set?->pinned();
+  set?->self()?->pinned();
+  set?->made();
+  std::println("-");
+  none?->name();
+  none?->pinned();
+  none?->self()?->pinned();
+  none?->made();
+  touch(set);
+  touch(none);
+  auto lambda = [&]() { set?->pinned(); none?->pinned(); };
+  lambda();
+  std::println(engine.pin.uses, " ", set?->count() ?: -1, " ", none?->count() ?: -1);
+  return 0;
+}

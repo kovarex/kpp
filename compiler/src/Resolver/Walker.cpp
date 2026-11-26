@@ -13355,9 +13355,14 @@ auto GlobalScope::Impl::Walker::walkStmt(Stmt* s) -> void
       break;
     }
     case NodeKind::ExprStmt:
+    {
+      const Expr* outer = unusedValue;
+      unusedValue = static_cast<ExprStmt*>(s)->expr;
       walkExpr(static_cast<ExprStmt*>(s)->expr);
+      unusedValue = outer;
       checkDiscarded(static_cast<ExprStmt*>(s)->expr);
       break;
+    }
     case NodeKind::AssertStmt:
       // Where config::debug is false an assert compiles to nothing (design.md 7): its expression is
       // discarded code, not checked (a `when (config::debug)` member it names, design.md 19).
@@ -14011,9 +14016,21 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
     case NodeKind::ConditionalExpr:
     {
       auto* c = static_cast<ConditionalExpr*>(e);
+      bool safeNavigation = c->else_ && c->else_->kind == NodeKind::DefaultValueExpr;
+      // `p?->f();` as a statement: f runs when p is set and its result is dropped, never copied into an Optional; so
+      // the `?->`s after it in the chain (`p?->q()?->f();`), which are its then (2026-11-26: a reference to an
+      // object that cannot be copied was codegen's deleted copy constructor, one that can a silent copy).
+      bool unused = safeNavigation && unusedValue == e;
+      unusedValue = unused ? c->then : nullptr;
       const Ty* cond = walkExpr(c->cond);
       const Ty* then = walkExpr(c->then);
-      if (c->else_ && c->else_->kind == NodeKind::DefaultValueExpr)
+      unusedValue = nullptr;
+      if (unused)
+      {
+        record(c->else_, types.voidType());
+        return record(e, types.voidType());
+      }
+      if (safeNavigation)
       {
         // `a?->b`: a value of b's type (a reference gives a copy). When a is not set, a pointer is null, a
         // class with operator-> and a bool conversion (UniquePtr, T^) empty and a bool false; any other

@@ -652,6 +652,10 @@ auto GlobalScope::Impl::listInitRank(const Ty* list, const Ty* p, int depth) -> 
         return 4;
     }
   }
+  // `{}` for a class that declares constructors but no default one: its implicit default constructor, which kpp keeps
+  // beside the others (design.md 29; `Vector<Mapping>({ {1, 2}, {}, {3, 4} })` took no InitializerList constructor).
+  if (constructors && elems.empty() && defaultConstructible(p) == std::optional<bool>(true))
+    return 4;
   if (constructors)
     return NotViable;
   // An aggregate: its bases, then its data members, each from the next element.

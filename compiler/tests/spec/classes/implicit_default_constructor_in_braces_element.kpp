@@ -1,0 +1,19 @@
+// spec: `{}` for a class that declares constructors but no default one takes the implicit default constructor kpp keeps beside them (design.md 29), as an element of a list given to an InitializerList constructor
+// factorio: UpgradeMapping without its `UpgradeMapping() = default;` in TestUpgradeItemGui's `UpgradeData::Mappings({ {a, b}, {}, {c, d} })` (2026-11-26): "the braces of a function argument name their type"
+class Mapping
+{
+public:
+  Mapping(i32 source, i32 destination) : source(source), destination(destination) {}
+  bool operator==(const Mapping& other) const = default;
+  i32 source = 5;
+  i32 destination = 0;
+};
+i32 main()
+{
+  std::Vector<Mapping> list({ {1, 2}, {}, {3, 4} });
+  std::println(list.size(), " ", list[1].source, " ", list[1].destination, " ", list[2].destination);
+  std::println(list == std::Vector<Mapping>({ {1, 2}, {}, {3, 4} }));
+  std::Vector<Mapping> empties({ {}, {7, 8}, {} });
+  std::println(empties.size(), " ", empties[0].source + empties[1].source + empties[2].source);
+  return 0;
+}

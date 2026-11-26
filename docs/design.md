@@ -3128,6 +3128,9 @@ new shape ("the rest should be optional").
 - **The result is always a value** (Q2), of the unqualified type, never an lvalue: `a?->x = 3;` is an
   error, and a function giving `T&` gives a T, copied (inside the Optional too). `void` is fine as a
   statement. A type that cannot be copied is an error at the `?->`.
+- **As a statement** (2026-11-26), its value unused, `a?->f(...);` gives nothing: f runs when a is set, no
+  Optional is built and nothing is copied (a reference result was copied silently, and one that cannot be
+  copied was an error); so each `?->` after it in the chain (`a?->b()?->f();`).
 - **Left of `?->`**: a pointer, or a class with `operator->` and a bool conversion (`T^`, Optional).
 - **`a ?: b`** is `a ? a : b` with a evaluated once, typed as that conditional is, so an lvalue when both
   are lvalues of one type. `c ?::x : y` is C++'s conditional.
@@ -3140,7 +3143,7 @@ new shape ("the rest should be optional").
   operator= too. Both are constants when
   their operands are. kpp's own sources only: the converter's C++ and C keep the nodes they had.
 
-Specs: language/safe_navigation* (safe_navigation_gives_an_optional for Q1), language/elvis.
+Specs: language/safe_navigation* (safe_navigation_gives_an_optional for Q1, safe_navigation_statement_copies_nothing), language/elvis.
 
 ### 23b. Required `override` (an error since 2026-11-07, rules decided 2026-11-07)
 Every function that overrides a virtual one says so. It landed in three steps: a warning under a flag,
