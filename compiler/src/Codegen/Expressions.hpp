@@ -78,6 +78,12 @@
     // one ([expr.delete] 10; as clang's sized deallocation).
     std::string globalFreeCall(const std::string& block, const std::string& size, bool array, Node* at);
     void ensureMalloc();
+    // An object aligned to more than malloc's 16 bytes (`struct alignas(64) Big`) is allocated on a block of its own
+    // alignment (_aligned_malloc on Windows, aligned_alloc elsewhere) and given back by the matching call (_aligned_free,
+    // free): C++17's aligned allocation, for a new-expression of no operator new of the program's.
+    bool heapOverAligned(const Ty* t, Node* at);
+    std::string alignedAllocCall(const Ty* t, Node* at);
+    std::string alignedFreeCall(const std::string& block);
     // A new-expression that cannot have its block, as C++'s throws std::bad_alloc (or its
     // bad_array_new_length, [expr.new] 8): BadAlloc thrown (the library's throwBadAlloc), and
     // without the library the program stopped saying `stop`. Ends the current block.

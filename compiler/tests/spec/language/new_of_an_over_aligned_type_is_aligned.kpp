@@ -1,0 +1,54 @@
+// spec: new of a type aligned to more than malloc's 16 bytes (`struct alignas(64) Big`, a class alignas(128) made through a base with a virtual destructor, one whose constructor throws, std::makeUnique) gives a block of its alignment, and delete (through the base too) and the unwinding give it back as it was allocated: C++17's aligned allocation; clang prints the same (`~Derived`, `true true 5 true`)
+// found by thread UE (2026-11-25, building kovarex's answer for Unreal's std::align_val_t): new took malloc's block as it came, 16-aligned, silently; the game's alignas(64) TransportLineManager is made by new in Map.kpp
+struct alignas(64) Big
+{
+  int x = 1;
+};
+
+class Base
+{
+public:
+  virtual ~Base() {}
+  int b = 2;
+};
+
+class alignas(128) Derived : public Base
+{
+public:
+  int d = 3;
+  ~Derived() override { std::println("~Derived"); }
+};
+
+struct alignas(32) Throws
+{
+  int t = 0;
+  Throws(int value) : t(value)
+  {
+    if (value > 0)
+      throw value;
+  }
+};
+
+int main()
+{
+  Big* big = new Big();
+  bool bigAligned = u64(big) % 64 == 0;
+  delete big;
+  Base* base = new Derived();
+  bool derivedAligned = u64(base) % 128 == 0;
+  delete base;
+  int caught = 0;
+  try
+  {
+    Throws* t = new Throws(5);
+    delete t;
+  }
+  catch (int value)
+  {
+    caught = value;
+  }
+  std::UniquePtr<Big> owned = std::makeUnique<Big>();
+  bool ownedAligned = u64(owned.get()) % 64 == 0;
+  std::println(bigAligned, " ", derivedAligned, " ", caught, " ", ownedAligned);
+  return 0;
+}

@@ -1316,6 +1316,12 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         const Ty* in = global.owningClass(n->allocator) ? declaringClass(t, n->allocator, e) : nullptr;
         if (global.owningClass(n->allocator) && !in)
           unsupported(e, "the operator new chosen for a class that does not declare it");
+        // (the program's global operator new(size) for an over-aligned type: C++17 would call the library's aligned
+        // operator new and the matching delete, which kpp has not built; a class's own or a placement form gives its
+        // own block, as C++'s fallback does)
+        if (!global.owningClass(n->allocator) && n->placement.empty() && heapOverAligned(t, e))
+          unsupported(e, "new of " + types.toString(t, &symbols) + ", aligned to " + std::to_string(alignOf(t, e)) +
+                           " bytes, in a program with its own operator new (std::align_val_t's aligned operator new)");
         r = callFunction(n->allocator, in ? global.classArgsOf(in) : TemplateArgs{}, in, "", "", n->placement, e, "", {"i64 " + std::to_string(sizeOf(t, e))}, &placed).text;
       }
       else if (n->placement.size() == 1)
@@ -1325,6 +1331,14 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
       }
       else if (!n->placement.empty())
         unsupported(e, "placement new with several arguments");
+      else if (heapOverAligned(t, e))
+      {
+        // (malloc's block is aligned to 16: until 2026-11-27 an object aligned to more, the game's alignas(64)
+        // TransportLineManager, was built at a place of the wrong alignment, silently)
+        r = newTemp();
+        emitCall(r + " = ", alignedAllocCall(t, e), false);
+        checkAllocation(r, e);
+      }
       else
       {
         ensureMalloc();
@@ -1348,6 +1362,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation && n->placement.empty() ? std::to_string(sizeOf(t, e)) : "", t, r, placed, e);
         else if (programAllocationFunctions())
           allocation.freeCall = globalFreeCall(r, std::to_string(sizeOf(t, e)), false, e);
+        else if (heapOverAligned(t, e))
+          allocation.freeCall = alignedFreeCall(r);
         statementTemps.push_back(allocation);
         size_t at = statementTemps.size() - 1;
         if (enumConstructor)
@@ -1456,6 +1472,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           return {"", types.voidType()};
         }
         emitCall("", d->deallocator ? deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, block, {}, e)
+                    : !programAllocationFunctions() && heapOverAligned(p.ty->inner, e) ? alignedFreeCall(block)
                                     : globalFreeCall(block, std::to_string(sizeOf(p.ty->inner, e)), false, e),
                  false);
         emitBranch(endL);
@@ -1471,7 +1488,7 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         blockTerminated = true;
         startBlock(objectL);
         destroy(p.text, p.ty->inner, e);
-        emitCall("", "void @free(ptr " + p.text + ")", false);
+        emitCall("", heapOverAligned(p.ty->inner, e) ? alignedFreeCall(p.text) : "void @free(ptr " + p.text + ")", false);
         emitBranch(endL);
         startBlock(endL);
         return {"", types.voidType()};
@@ -1503,7 +1520,8 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         startBlock(endL);
         return {"", types.voidType()};
       }
-      emitCall("", "void @free(ptr " + p.text + ")", false); // free(null) does nothing
+      // (free(null) and _aligned_free(null) do nothing)
+      emitCall("", heapOverAligned(p.ty->inner, e) ? alignedFreeCall(p.text) : "void @free(ptr " + p.text + ")", false);
       return {"", types.voidType()};
     }
     default:
@@ -1578,11 +1596,14 @@ auto codegen::Emitter::deleterFor(const Ty* key, const std::string& irName, std:
   const Ty* owner = nullptr;
   bool sized = false;
   FunctionDecl* f = classDeallocation(key, owner, sized, at);
-  if (!f && !programAllocationFunctions())
+  // (an over-aligned class's own, its block given back as it was allocated: a delete through a base reads it)
+  bool aligned = !f && !programAllocationFunctions() && heapOverAligned(key, at);
+  if (!f && !programAllocationFunctions() && !aligned)
     return "null";
   std::string name = "@\"delete." + irName + "\"";
-  std::string call = f ? deallocationCall(f, sized ? std::to_string(sizeOf(key, at)) : "", owner, "%block", {}, at)
-                       : globalFreeCall("%block", std::to_string(sizeOf(key, at)), false, at);
+  std::string call = f         ? deallocationCall(f, sized ? std::to_string(sizeOf(key, at)) : "", owner, "%block", {}, at)
+                   : aligned ? alignedFreeCall("%block")
+                             : globalFreeCall("%block", std::to_string(sizeOf(key, at)), false, at);
   definitions += "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr void " + name + "(ptr %block) comdat {\nentry:\n  call " + call + "\n  ret void\n}\n";
   return name;
 }
@@ -1621,6 +1642,39 @@ auto codegen::Emitter::programAllocationFunctions() -> bool
   if (programAllocates < 0)
     programAllocates = global.programAllocationFunctions() ? 1 : 0;
   return programAllocates == 1;
+}
+
+auto codegen::Emitter::heapOverAligned(const Ty* t, Node* at) -> bool
+{
+  const Ty* u = t ? types.unqualified(types.stripRef(t)) : nullptr;
+  return u && u->isKnown() && u->kind != TyKind::Void && u->kind != TyKind::Function && alignOf(u, at) > 16;
+}
+
+auto codegen::Emitter::alignedAllocCall(const Ty* t, Node* at) -> std::string
+{
+  uint64_t align = alignOf(t, at), size = std::max<uint64_t>(sizeOf(t, at), 1);
+  if (sh.target.windows())
+  {
+    if (declaredNames.claim("@_aligned_malloc"))
+      decls += "declare ptr @_aligned_malloc(i64, i64)\n";
+    return "ptr @_aligned_malloc(i64 " + std::to_string(size) + ", i64 " + std::to_string(align) + ")";
+  }
+  if (declaredNames.claim("@aligned_alloc"))
+    decls += "declare ptr @aligned_alloc(i64, i64)\n";
+  uint64_t rounded = (size + align - 1) / align * align; // (C11's aligned_alloc: a size its alignment divides)
+  return "ptr @aligned_alloc(i64 " + std::to_string(align) + ", i64 " + std::to_string(rounded) + ")";
+}
+
+auto codegen::Emitter::alignedFreeCall(const std::string& block) -> std::string
+{
+  if (!sh.target.windows())
+  {
+    ensureMalloc();
+    return "void @free(ptr " + block + ")";
+  }
+  if (declaredNames.claim("@_aligned_free"))
+    decls += "declare void @_aligned_free(ptr)\n";
+  return "void @_aligned_free(ptr " + block + ")";
 }
 
 auto codegen::Emitter::globalFreeCall(const std::string& block, const std::string& size, bool array, Node* at) -> std::string

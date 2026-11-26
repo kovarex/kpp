@@ -4556,7 +4556,10 @@ as the emitted code does, and never takes the erroring path.
   alignment sizeof and alignof give; an object of such a class, and a variable with its own alignas,
   gets an explicit `align` (its alloca, its global). A union's storage is integers of its alignment
   up to i128, so a member aligned to more makes the union over-aligned the same way. The heap is
-  malloc's 16 bytes: `new` of a type aligned to more is not handled yet. Until the layout file
+  malloc's 16 bytes; `new` of a type aligned to more (2026-11-27, C++17's aligned allocation) takes a block of its
+  alignment, _aligned_malloc on Windows and aligned_alloc elsewhere, and delete, a delete through a virtual destructor
+  (the class's deleter) and the unwinding of a throwing constructor give it back by _aligned_free or free; new[] of
+  one, and one in a program with its own global operator new (std::align_val_t's form, not built yet), is an error. Until the layout file
   exists the checker's sizes (resolver.cpp, constSizeOf and constAlignOf, for template arguments
   like `AlignedBytes<sizeof(T), alignof(T)>`) mirror these rules.
 - Constant data: a constexpr global or static member whose value evaluates is emitted as constant
