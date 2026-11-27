@@ -1,0 +1,12 @@
+optional: sum 2, live 0
+typed union: sum 56, live 0
+held 5, live 1
+weighed, moved from is null true, live 0
+struct: sum 66, live 0
+closure called, live 0
+closure: sum 72, live 0
+counted 2, after 1
+shared 2 2, live 1
+shared: live 0
+pinned member argument where it was built true
+pinned member result where it is true 9

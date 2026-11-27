@@ -1,0 +1,106 @@
+// spec: classes that own something, passed by value and returned (which kpp may do in registers, their bits moved), hand it over whole: an Optional of a UniquePtr, a typed union holding one, a struct holding one beside an int, a closure that captured one, a SharedPtr's count; and a struct holding a class that knows its own address keeps it
+int live = 0;
+int sum = 0;
+
+struct Thing
+{
+  Thing(int id) : id(id) { ++live; }
+  ~Thing() { --live; }
+
+  int id = 0;
+};
+
+struct Holder
+{
+  std::UniquePtr<Thing> thing;
+  int count = 0;
+};
+
+union enum class Cargo : u8
+{
+  { {Empty, void}, {Boxed, std::UniquePtr<Thing>}, {Number, int} }
+};
+
+struct Pinned
+{
+  Pinned() : self(&this) {}
+  Pinned(Pinned&& other) : self(&this), value(other.value) {}
+  bool here() const { return this.self == &this; }
+
+  Pinned* self = nullptr;
+  int value = 0;
+};
+
+struct PinnedHolder
+{
+  Pinned pinned;
+  int extra = 0;
+};
+
+std::Optional<std::UniquePtr<Thing>> maybe(int id)
+{
+  if (id < 0)
+    return std::nullopt;
+  return std::makeUnique<Thing>(id);
+}
+int open(std::Optional<std::UniquePtr<Thing>> o) { return o ? (*o)->id : -1; }
+Cargo pack(int id) { return id ? Cargo::Boxed(std::makeUnique<Thing>(id)) : Cargo::Empty(); }
+int unpack(Cargo c)
+{
+  if (c == Cargo::Tag::Boxed)
+    return c[Cargo::Tag::Boxed]->id;
+  if (c == Cargo::Tag::Number)
+    return c[Cargo::Tag::Number];
+  return 0;
+}
+Holder hold(int id) { return Holder(std::makeUnique<Thing>(id), 2); }
+int weigh(Holder h) { return h.thing->id * h.count; }
+template<typename F>
+int callIt(F f) { return f(); }
+int owners(std::SharedPtr<Thing> p) { return p.use_count(); }
+std::SharedPtr<Thing> share(std::SharedPtr<Thing> p) { return p; }
+bool pinnedHere(PinnedHolder h) { return h.pinned.here(); }
+PinnedHolder makePinned(int v)
+{
+  PinnedHolder h;
+  h.pinned.value = v;
+  return h;
+}
+
+int main()
+{
+  sum += open(maybe(3));
+  sum += open(maybe(-1));
+  std::println("optional: sum ", sum, ", live ", live);
+  sum += unpack(pack(4));
+  sum += unpack(pack(0));
+  sum += unpack(Cargo::Number(50));
+  std::println("typed union: sum ", sum, ", live ", live);
+  {
+    Holder h = hold(5);
+    std::println("held ", h.thing->id, ", live ", live);
+    sum += weigh(std::move(h));
+    std::println("weighed, moved from is null ", h.thing == nullptr, ", live ", live);
+  }
+  std::println("struct: sum ", sum, ", live ", live);
+  {
+    std::UniquePtr<Thing> t = std::makeUnique<Thing>(6);
+    auto get = [t = std::move(t)]() { return t->id; };
+    sum += callIt(std::move(get));
+    std::println("closure called, live ", live);
+  }
+  std::println("closure: sum ", sum, ", live ", live);
+  {
+    std::SharedPtr<Thing> a = std::makeShared<Thing>(7);
+    std::println("counted ", owners(a), ", after ", a.use_count());
+    std::SharedPtr<Thing> b = share(a);
+    std::println("shared ", a.use_count(), " ", b.use_count(), ", live ", live);
+  }
+  std::println("shared: live ", live);
+  PinnedHolder h;
+  h.pinned.value = 8;
+  std::println("pinned member argument where it was built ", pinnedHere(std::move(h)));
+  PinnedHolder r = makePinned(9);
+  std::println("pinned member result where it is ", r.pinned.here(), " ", r.pinned.value);
+  return 0;
+}
