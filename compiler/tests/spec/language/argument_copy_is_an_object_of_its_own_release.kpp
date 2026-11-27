@@ -1,0 +1,25 @@
+// spec: a class argument by value is a copy of its own: the function's writes to the original through a pointer do not reach its parameter, and its writes to the parameter do not reach the original (release: the copy is noalias)
+// kpp: --release
+struct Pair
+{
+  i32 a = 0;
+  i32 b = 0;
+};
+
+Pair* original = nullptr;
+
+[[noinline]] i32 readAfterWrite(Pair copy)
+{
+  original->a = 100;
+  copy.b = 7;
+  return copy.a * 10 + original->b;
+}
+
+int main()
+{
+  Pair p(1, 2);
+  original = &p;
+  i32 r = readAfterWrite(p);
+  std::println(r, " ", p.a, " ", p.b);
+  return 0;
+}

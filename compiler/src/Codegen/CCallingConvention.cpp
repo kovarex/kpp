@@ -418,6 +418,23 @@ auto codegen::Emitter::emitReturnVoid() -> void
   fn += "  ret " + type + " " + value + "\n";
 }
 
+auto codegen::Emitter::objectParameterAttributes(const Ty* t, bool copy, Node* at) -> std::string
+{
+  if (!t || t->isReference())
+    return "";
+  t = types.unqualified(t);
+  if (!t->isKnown() || types.isDependent(t) || !isAggregate(t))
+    return "";
+  // Only for a trivially copyable class (no destructor, no copy or move constructor of its own: relocatesBitwise), as
+  // clang's -fpass-by-value-is-noalias: one whose copy or move constructor keeps `this` somewhere (IDConnector hands it
+  // to its resolver, which writes through it) may be reached another way during the call.
+  if (needsDestruction(t, at) || !relocatesBitwise(t, at))
+    return "";
+  uint64_t size = sizeOf(t, at), align = std::max<uint64_t>(1, alignOf(t, at));
+  return std::string(" noalias") + (copy ? " nocapture" : "") + (size ? " dereferenceable(" + std::to_string(size) + ")" : std::string()) + " align " +
+         std::to_string(align);
+}
+
 auto codegen::Emitter::refuseCAddress(FunctionDecl* f, Node* at) -> void
 {
   (void)f, (void)at;
@@ -632,6 +649,8 @@ auto codegen::Emitter::signatureOf(FunctionDecl* f) -> Signature
     s.paramTys.push_back(pt);
   }
   s.variadic = ft->variadic;
+  if (!isCFunction(f) && !global.isExternC(f))
+    withObjectAttributes(s, ret, f); // (a kpp function's result slot and argument copies: objectParameterAttributes)
   return s;
 }
 

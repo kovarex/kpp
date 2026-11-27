@@ -48,6 +48,15 @@
       std::vector<const Ty*> paramTys; // null for this/sret
       bool hasThis = false, hasSret = false, variadic = false;
       const char* resultExtension = ""; // " signext" or " zeroext" for a narrow result (narrowExtension)
+      // A definition's parameter attributes, one text per paramTypes entry or none at all (objectParameterAttributes:
+      // the result slot and a class argument's copy of a kpp function), which its header and every declaration of it
+      // (declarationText, the declare lines its header gives) carry alike.
+      std::vector<std::string> attributes;
+      const std::string& attributesOf(size_t i) const
+      {
+        static const std::string none;
+        return i < attributes.size() ? attributes[i] : none;
+      }
     };
 
     // A lambda's call operator's signature, as emitLambda writes its header and a caller declares it
@@ -57,6 +66,9 @@
 
     // `declare RET NAME(TYPES)`, as declareFromHeader reads it from the header of the definition.
     static std::string declarationText(const Signature& s, const std::string& name);
+    // s's attributes (Signature::attributes) of a kpp function's definition of result type ret: the result slot's
+    // and each class argument copy's (objectParameterAttributes).
+    void withObjectAttributes(Signature& s, const Ty* ret, Node* at);
     // A C function's symbol on the target: its name, or the one macOS's headers give it (stat$INODE64 on
     // x86-64, fopen$DARWIN_EXTSN).
     std::string cSymbol(const std::string& name);

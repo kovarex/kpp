@@ -355,7 +355,7 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
   else
   {
     for (size_t i = 0; i < s.paramTypes.size(); ++i)
-      params += (i ? ", " : "") + s.paramTypes[i];
+      params += (i ? ", " : "") + s.paramTypes[i] + s.attributesOf(i); // (as its definition's header has them)
     if (s.variadic)
       params += params.empty() ? "..." : ", ...";
   }

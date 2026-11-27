@@ -103,6 +103,17 @@
     // function's struct result in registers (cReturnParts) its parts loaded from the slot, returned.
     void emitReturnVoid();
 
+    // The parameter attributes of a kpp function's parameter that is an object no one else reaches during the call: its
+    // result slot (an object being initialized: a new variable's, a temporary, the caller's own slot) and the copy a
+    // class argument by value is made into (argumentText: a copy, a moved temporary or the temporary the argument built).
+    // `noalias`: nothing but the parameter reads or writes it during the call, so LLVM may keep its fields in registers
+    // across the callee's other stores, drop the result's dead zeroing, and in full LTO promote the argument to values
+    // (ArgumentPromotion: until then a callee that wrote its result before reading its arguments read them from memory,
+    // the result's stores assumed to change them). A copy is also `nocapture`, as the callee destroys it at its end.
+    // Both are `dereferenceable` and aligned as their class. Only for a trivially copyable class (no destructor, no
+    // copy or move constructor of its own); empty for any other class and any other parameter (t null).
+    std::string objectParameterAttributes(const Ty* t, bool copy, Node* at);
+
     // The address of a C function the program declares (extern "C": defined in kpp, or in a C
     // library) that takes or returns a struct by value other than as kpp passes one: refused until
     // 2026-11-05, since a call through a function pointer passed the struct as kpp does. Its type is
