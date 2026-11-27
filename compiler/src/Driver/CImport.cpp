@@ -1222,10 +1222,11 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     wrapper += "unsigned short __popcnt16(unsigned short);\nunsigned int __popcnt(unsigned int);\nunsigned __int64 __popcnt64(unsigned __int64);\n"
                "unsigned char _rotl8(unsigned char, unsigned char);\nunsigned char _rotr8(unsigned char, unsigned char);\n"
                "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n"
-               "void __debugbreak(void);\nvoid* _ReturnAddress(void);\n"
-               // (MSVC's interlocked operations: clang's intrin.h declares some, leaving the others to its builtins; Unreal's
-               // WindowsPlatformAtomics calls them all)
-               "char _InterlockedExchangeAdd8(char volatile*, char);\nchar _InterlockedExchange8(char volatile*, char);\n"
+               "void __debugbreak(void);\nvoid* _ReturnAddress(void);\n";
+  // MSVC's interlocked operations: clang's intrin.h declares some, leaving the others to its builtins (Unreal's
+  // WindowsPlatformAtomics calls them all). MinGW-w64's intrin.h has them itself, some as macros.
+  if (options.target.msvc() && std::find(headers.begin(), headers.end(), "intrin.h") != headers.end())
+    wrapper += "char _InterlockedExchangeAdd8(char volatile*, char);\nchar _InterlockedExchange8(char volatile*, char);\n"
                "char _InterlockedAnd8(char volatile*, char);\nchar _InterlockedOr8(char volatile*, char);\n"
                "char _InterlockedXor8(char volatile*, char);\nchar _InterlockedCompareExchange8(char volatile*, char, char);\n"
                "short _InterlockedExchangeAdd16(short volatile*, short);\n"

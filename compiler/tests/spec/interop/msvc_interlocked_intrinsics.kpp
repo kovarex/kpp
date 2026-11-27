@@ -1,6 +1,6 @@
 // spec: MSVC's interlocked intrinsics (_InterlockedExchangeAdd, _InterlockedExchange, _InterlockedCompareExchange, _InterlockedIncrement, _InterlockedDecrement, _InterlockedAnd, _InterlockedOr, _InterlockedXor, each in 8, 16, 32 (long) and 64 bits, the Pointer forms of Exchange and CompareExchange) and _ReadWriteBarrier are each an instruction, as MSVC and clang-cl give them, not a call of a function no library has; and _tzcnt_u64 and _tzcnt_u32, clang's `#define _tzcnt_u64 __tzcnt_u64` of a function declared after an attribute, are declared
 // for Unreal Engine's WindowsPlatformAtomics and lz4hc.c; the expected output is MSVC's and clang-cl's for the same program written in C++
-// target: windows (MSVC's intrinsics)
+// target: windows-msvc (MSVC's intrinsics: MinGW-w64's intrin.h has its own, some as macros)
 extern "C" import "intrin.h";
 int main()
 {
