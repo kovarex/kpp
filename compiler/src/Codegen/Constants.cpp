@@ -1034,9 +1034,16 @@ auto codegen::Emitter::declareFromHeader(const std::string& text) -> std::string
   size_t at = text.find(" @");
   size_t nameEnd = text[at + 2] == '"' ? text.find('"', at + 3) + 1 : text.find('(', at);
   size_t open = text.find('(', nameEnd);
-  size_t close = text.find(") ", open);
-  if (close == std::string::npos || text.find('{', open) < close)
-    close = text.find(")", open);
+  // The parameter list's own `)`: a parameter's attributes have parentheses of their own (`dereferenceable(16)`, a
+  // kpp function's result slot and argument copies), and a quoted name may hold any.
+  size_t close = open + 1;
+  for (int depth = 1; close < text.size(); ++close)
+    if (text[close] == '"')
+      close = std::min(text.find('"', close + 1), text.size() - 1);
+    else if (text[close] == '(')
+      ++depth;
+    else if (text[close] == ')' && --depth == 0)
+      break;
   std::string params;
   size_t p = open + 1;
   while (p < close)
