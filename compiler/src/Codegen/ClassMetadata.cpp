@@ -3347,16 +3347,29 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
       baseAddress(t, foundIn, dst, thisArg, at);
     std::string name = useFunction(op, global.classArgsOf(foundIn), foundIn);
     Signature s;
+    std::string source = src;
     {
       TemplateArgs args = global.classArgsOf(foundIn);
       ArgsScope scope(*this, &args);
       s = signatureOf(op);
+      // `T& operator=(T other)` (copy and swap): its parameter is an object of its own, a copy (or for a move, a
+      // move) of the source, which the callee destroys; never the source itself (until 2026-11-27 the source member
+      // was passed, and the operator swapped into it and destroyed it).
+      const Ty* pt = s.paramTys.size() > 1 ? s.paramTys.back() : nullptr;
+      if (pt && !pt->isReference() && isClass(pt) && isClass(t) && classKey(pt) == classKey(t))
+      {
+        source = newObjectSlot(types.unqualified(pt), at);
+        if (move)
+          moveConstruct(source, src, types.unqualified(pt), at);
+        else
+          copyConstruct(source, src, types.unqualified(pt), at);
+      }
     }
     bool mayThrow = callMayThrow(op, global.classArgsOf(foundIn), false);
     if (s.returnType == "void")
-      emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + src + ")", mayThrow);
+      emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + source + ")", mayThrow);
     else
-      emitCall(newTemp() + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + src + ")", mayThrow);
+      emitCall(newTemp() + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + source + ")", mayThrow);
     return;
   }
   if (!needsDestruction(t, at) && assignsBitwise(t, at))

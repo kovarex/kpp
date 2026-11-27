@@ -1120,11 +1120,13 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
     s.paramTypes.push_back("ptr");
   }
   size_t position = 0;
+  std::vector<std::string> passed; // (handOverArguments)
   auto addArgument = [&](Expr* arg)
   {
     const Ty* pt = position < ft->args.size() ? ft->args[position] : nullptr;
     // (a char, short or bool extended: the callee may be C's, which reads the whole register)
-    std::string text = withNarrowExtension(pt, argumentText(pt, arg, c));
+    passed.push_back(argumentText(pt, arg, c));
+    std::string text = withNarrowExtension(pt, passed.back());
     args += (args.empty() ? "" : ", ") + text;
     ++position;
   };
@@ -1141,6 +1143,7 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
   for (const Ty* pt : ft->args)
     s.paramTypes.push_back(parameterType(pt, c));
   s.variadic = ft->variadic;
+  handOverArguments(passed);
   std::string sig = signatureText(s);
   if (s.returnType == "void")
   {

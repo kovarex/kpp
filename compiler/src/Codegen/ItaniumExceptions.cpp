@@ -323,6 +323,7 @@ auto codegen::Emitter::emitThrow(ThrowExpr* t) -> void
       blockTerminated = true;
       startBlock(okL);
     }
+    argumentsNeverPassed();
     destroyTemps();
     emitCall("", "void @kpp_eh_rethrow(ptr " + slot + ")");
   }
@@ -365,6 +366,7 @@ auto codegen::Emitter::emitThrow(ThrowExpr* t) -> void
     else
       store(convert(rvalue(t->operand), ty, t), obj, ty, t);
     std::string ti = typeinfoFor(ty, t), dtor = destructorThunk(ty, t);
+    argumentsNeverPassed();
     destroyTemps();
     emitCall("", "void @kpp_throw(ptr " + obj + ", ptr " + ti + ", ptr " + dtor + ")");
   }

@@ -1,0 +1,38 @@
+// spec: a class assigned member by member (its implicit copy or move assignment) whose member's class assigns through an operator= taking that class by value (copy and swap) gives the operator a copy of the source's member, which the operator destroys; the source keeps its own
+int destroyed = 0;
+struct Box
+{
+  Box() {}
+  Box(const Box& other) : value(other.value) {}
+  ~Box() { ++destroyed; }
+  Box& operator=(Box other)
+  {
+    int kept = this.value;
+    this.value = other.value;
+    other.value = kept;
+    return this;
+  }
+
+  int value = 0;
+};
+struct Pair
+{
+  Box first;
+  int second = 0;
+};
+int main()
+{
+  {
+    Pair a;
+    a.first.value = 1;
+    a.second = 2;
+    Pair b;
+    b.first.value = 3;
+    b.second = 4;
+    std::println("before: destroyed ", destroyed);
+    a = b;
+    std::println("assigned ", a.first.value, " ", a.second, ", source ", b.first.value, " ", b.second, ", destroyed ", destroyed);
+  }
+  std::println("after: destroyed ", destroyed);
+  return 0;
+}

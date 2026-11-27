@@ -220,6 +220,10 @@
     std::unordered_map<uint32_t, LabelPlace> labelPlaces;
     std::unordered_map<uint32_t, std::vector<PendingGoto>> pendingGotos;
     std::vector<Object> statementTemps;       // Temporaries of the current full-expression.
+    // The parameter objects argumentText built for calls being emitted (a class argument by value): the caller's
+    // until the call, so each is in statementTemps, destroyed only by an exception (unwindOnly), until the call that
+    // takes it hands it over (handOverArguments), the callee destroying its parameters from then on.
+    std::vector<std::string> argumentObjects;
     Node* checkedCall = nullptr;              // The call a check statement tests, and its arguments.
     std::vector<CheckedArgument> checkedArguments;
     // While a variable is initialised with braces (`Holder h{T(1)}`, `= {...}`, `auto h = Holder{...}`,

@@ -264,6 +264,14 @@
 
     // One call argument as "<type> <operand>", converted to the parameter type (null: variadic).
     std::string argumentText(const Ty* pt, Expr* arg, Node* at);
+    // The call about to be emitted takes these arguments (argumentText's texts): the parameter objects argumentText built
+    // for them (argumentObjects) are the callee's from here, no longer destroyed by an exception in the caller. Every
+    // call of a kpp function whose arguments argumentText made calls it right before its call instruction.
+    void handOverArguments(const std::vector<std::string>& texts);
+    // A throw-expression among a call's arguments (`f(Owned(1), ok ? 0 : throw 7)`) destroys the statement's temporaries
+    // itself before it throws (emitThrow's destroyTemps): the parameter objects built so far are among them then, as
+    // the call they were built for never happens.
+    void argumentsNeverPassed();
 
     // What a local reference to a scalar binds to: the value itself, or, for a const or rvalue
     // reference given a value of another type, a temporary of the referenced type holding the

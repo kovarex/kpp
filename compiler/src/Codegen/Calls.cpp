@@ -1211,6 +1211,9 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   }
   if (isCheckedCall(callArgs, at))
     keepCheckedArguments(argList, leading.size(), at);
+  std::vector<std::string> passed; // (as argumentText gave them, before a C call's lowering: handOverArguments)
+  for (auto& [t, text] : argList)
+    passed.push_back(text);
   if (cFunction)
     lowerCArguments(argList, s.hasSret && cResult.inMemory, at);
   for (auto& [t, text] : argList)
@@ -1226,9 +1229,11 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
       const Ty* pt = position < s.paramTys.size() ? s.paramTys[position] : nullptr;
       std::string text = defaultArgument(i, pt);
       argText += std::string(argText.empty() ? "" : ", ") + text;
+      passed.push_back(text);
       ++position;
     }
   }
+  handOverArguments(passed);
   std::string sig = (s.variadic || !indirect.empty()) ? signatureText(s) + " " : s.returnType + " ";
   if (cFunction)
   {
@@ -1626,6 +1631,39 @@ auto codegen::Emitter::nullPointerConstant(Expr* e) -> bool
   return isZeroLiteral(text);
 }
 
+auto codegen::Emitter::handOverArguments(const std::vector<std::string>& texts) -> void
+{
+  for (const std::string& text : texts)
+  {
+    if (argumentObjects.empty())
+      return;
+    if (text.compare(0, 4, "ptr ") != 0)
+      continue;
+    std::string addr = text.substr(4);
+    auto it = std::find(argumentObjects.begin(), argumentObjects.end(), addr);
+    if (it == argumentObjects.end())
+      continue;
+    argumentObjects.erase(it);
+    for (size_t i = statementTemps.size(); i-- > 0;)
+      if (statementTemps[i].addr == addr && statementTemps[i].unwindOnly)
+      {
+        statementTemps.erase(statementTemps.begin() + i);
+        break;
+      }
+  }
+}
+
+auto codegen::Emitter::argumentsNeverPassed() -> void
+{
+  for (const std::string& addr : argumentObjects)
+    for (size_t i = statementTemps.size(); i-- > 0;)
+      if (statementTemps[i].addr == addr && statementTemps[i].unwindOnly)
+      {
+        statementTemps[i].unwindOnly = false;
+        break;
+      }
+}
+
 auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::string
 {
   if (pt && types.unqualified(pt)->kind == TyKind::Void)
@@ -1804,6 +1842,38 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
   }
   if (pt && isAggregate(pt))
   {
+    // The parameter object built here is the caller's until the call takes it: until then an exception (a later
+    // argument's evaluation that throws) destroys it, as C++ destroys the parameter objects of a call that does
+    // not happen; the call hands it over (handOverArguments), and the callee destroys its parameters from then on.
+    // (Until 2026-11-27 nothing destroyed it then: `f(Owned(1), boom())` left Owned alive.)
+    auto parameter = [&](const std::string& addr) -> std::string
+    {
+      if (needsDestruction(pt, at))
+      {
+        Object o{addr, types.unqualified(pt)};
+        o.unwindOnly = true;
+        statementTemps.push_back(o);
+        argumentObjects.push_back(addr);
+      }
+      return "ptr " + addr;
+    };
+    // A temporary that is the parameter: its entry among the statement's temporaries becomes the parameter's.
+    auto temporaryParameter = [&](const std::string& addr) -> std::string
+    {
+      for (size_t i = statementTemps.size(); i-- > 0;)
+        if (statementTemps[i].addr == addr)
+        {
+          if (needsDestruction(pt, at))
+          {
+            statementTemps[i].unwindOnly = true;
+            argumentObjects.push_back(addr);
+          }
+          else
+            statementTemps.erase(statementTemps.begin() + i);
+          break;
+        }
+      return "ptr " + addr;
+    };
     if (arg->kind == NodeKind::BraceInitExpr && isInitializerListType(pt))
       return "ptr " + initializerListTemporary(pt, static_cast<BraceInitExpr*>(arg), at); // `max({a, b, c})`
     if (arg->kind == NodeKind::BraceInitExpr && isClass(pt))
@@ -1813,7 +1883,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
       std::string copy = newObjectSlot(pt, at);
       Expr* one = arg;
       constructInto(copy, pt, Span<Expr*>{&one, 1}, at);
-      return "ptr " + copy;
+      return parameter(copy);
     }
     const Ty* argTy = arg->ty && arg->ty->isKnown() && !types.isDependent(arg->ty) ? types.stripRef(arg->ty) : nullptr;
     if (argTy && isClass(pt) && (!isClass(argTy) || (classKey(argTy) != classKey(pt) &&
@@ -1828,7 +1898,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
         initializeFrom(copy, pt, arg, at);
       else
         constructInto(copy, pt, Span<Expr*>{&one, 1}, at, false, true); // (an argument copy-initializes its parameter)
-      return "ptr " + copy;
+      return parameter(copy);
     }
     Value v = rvalue(arg);
     if (!isAggregate(v.ty))
@@ -1843,7 +1913,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
       {
         std::string copy = newObjectSlot(pt, at);
         constructFromVector(copy, pt, v, true, at);
-        return "ptr " + copy;
+        return parameter(copy);
       }
       unsupported(at, "passing a non-class to a class parameter");
     }
@@ -1852,16 +1922,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     if (isLambda(pt))
       requireSameClosure(v.ty, pt, false, at); // (`take(l2)` with `take(decltype(l1))`: an error, never l2's bytes as l1's)
     if (isLambda(pt) && v.isTemporary)
-    {
-      // The closure the lambda expression built is the parameter (the callee destroys it).
-      for (size_t i = statementTemps.size(); i-- > 0;)
-        if (statementTemps[i].addr == v.text)
-        {
-          statementTemps.erase(statementTemps.begin() + i);
-          break;
-        }
-      return "ptr " + v.text;
-    }
+      return temporaryParameter(v.text); // the closure the lambda expression built is the parameter (the callee destroys it)
     std::string copy = newObjectSlot(pt, at);
     if (isLambda(pt))
       copyClosure(copy, v.text, pt, at, movable(arg));
@@ -1869,13 +1930,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
     {
       // `byValue(Tracker(5))`, `f(makeT())`: the temporary is the parameter, not moved (C++17
       // builds the prvalue in the parameter); the callee destroys it.
-      for (size_t i = statementTemps.size(); i-- > 0;)
-        if (statementTemps[i].addr == v.text)
-        {
-          statementTemps.erase(statementTemps.begin() + i);
-          break;
-        }
-      return "ptr " + v.text;
+      return temporaryParameter(v.text);
     }
     else if (v.isTemporary)
       moveTemporary(copy, v, pt, at);
@@ -1883,7 +1938,7 @@ auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::s
       moveConstruct(copy, v.text, pt, at); // `f(move(ptr))` with `f(UniquePtr<T> ptr)`
     else
       copyConstruct(copy, v.text, pt, at);
-    return "ptr " + copy;
+    return parameter(copy);
   }
   if (arg->kind == NodeKind::BraceInitExpr && pt)
   {

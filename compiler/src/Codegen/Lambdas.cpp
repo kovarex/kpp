@@ -1285,6 +1285,12 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
     argText += ", ptr " + resultAddr;
   }
   std::string sig = (hasSret ? "void" : ret->isReference() ? "ptr" : llType(ret, at)) + std::string(" (ptr") + (hasSret ? ", ptr" : "");
+  std::vector<std::string> passed; // (handOverArguments)
+  auto argument = [&](const Ty* pt, Expr* e, Node* where)
+  {
+    passed.push_back(argumentText(pt, e, where));
+    argText += ", " + passed.back();
+  };
   size_t position = 0;
   for (Expr* arg : callArgs)
   {
@@ -1297,7 +1303,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
         if (!pt)
           unsupported(at, "too many arguments to a lambda");
         sig += ", " + parameterType(pt, at);
-        argText += ", " + argumentText(pt, pattern, at);
+        argument(pt, pattern, at);
         ++position;
       });
       continue;
@@ -1306,7 +1312,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
     if (!pt)
       unsupported(at, "too many arguments to a lambda");
     sig += ", " + parameterType(pt, at);
-    argText += ", " + argumentText(pt, arg, at);
+    argument(pt, arg, at);
     ++position;
   }
   // Parameters the call left out take their default arguments: GuiTargetItemBase's loader calls
@@ -1325,7 +1331,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
     if (pd->defaultValue->kind == NodeKind::CallerExpr)
       argText += ", ptr " + callerLocation(pt, at); // `CallerLocation here = caller`: this call's location, as for a function
     else
-      argText += ", " + argumentText(pt, pd->defaultValue, pd->defaultValue);
+      argument(pt, pd->defaultValue, pd->defaultValue);
   }
   sig += ")";
   // The instantiation's operator is emitted after the arguments: a lambda argument's closure
@@ -1342,6 +1348,7 @@ auto codegen::Emitter::callClosure(Value closure, Span<Expr*> callArgs, const st
     NameHome home(*this, functionName);
     emitLambda(genericBody, t, callTy, functionName, &instanceArgs);
   }
+  handOverArguments(passed);
   if (hasSret || ret->kind == TyKind::Void)
   {
     emitCall("", sig + " " + functionName + "(" + argText + ")");

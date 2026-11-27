@@ -1,0 +1,85 @@
+// spec: a class argument by value that the caller has built is destroyed when a later argument's evaluation throws before the call (the callee, which destroys its parameters, is never reached): once, by the caller, as C++ destroys a parameter object whose function is not called; through a function, a pointer to one, a lambda, a constructor, a default argument and a throw-expression; a call that happens hands it to the callee, which destroys it once
+int live = 0;
+struct Owned
+{
+  Owned(int value) : value(value) { ++live; }
+  ~Owned() { --live; }
+
+  int value = 0;
+};
+int boom() { throw 7; }
+int sum = 0;
+void two(Owned a, int b) { sum += a.value + b; }
+void three(Owned a, Owned b, int c) { sum += a.value + b.value + c; }
+void withDefault(Owned a, int b = boom()) { sum += a.value + b; }
+struct Holder
+{
+  Holder(Owned a, int b) : total(a.value + b) {}
+
+  int total = 0;
+};
+int main()
+{
+  try
+  {
+    two(Owned(1), boom());
+  }
+  catch (int e)
+  {
+    std::println("function: caught ", e, ", live ", live);
+  }
+  try
+  {
+    three(Owned(2), Owned(3), boom());
+  }
+  catch (int e)
+  {
+    std::println("two built: caught ", e, ", live ", live);
+  }
+  try
+  {
+    void (*pointer)(Owned, int) = two;
+    pointer(Owned(4), boom());
+  }
+  catch (int e)
+  {
+    std::println("pointer: caught ", e, ", live ", live);
+  }
+  try
+  {
+    auto lambda = [](Owned a, int b) { sum += a.value + b; };
+    lambda(Owned(5), boom());
+  }
+  catch (int e)
+  {
+    std::println("lambda: caught ", e, ", live ", live);
+  }
+  try
+  {
+    Holder h(Owned(6), boom());
+    std::println("not reached ", h.total);
+  }
+  catch (int e)
+  {
+    std::println("constructor: caught ", e, ", live ", live);
+  }
+  try
+  {
+    withDefault(Owned(7));
+  }
+  catch (int e)
+  {
+    std::println("default argument: caught ", e, ", live ", live);
+  }
+  try
+  {
+    two(Owned(8), live > 100 ? 0 : throw 9);
+  }
+  catch (int e)
+  {
+    std::println("throw-expression: caught ", e, ", live ", live);
+  }
+  two(Owned(10), 5);
+  std::println("called, live ", live, ", sum ", sum);
+  return 0;
+}

@@ -1,0 +1,8 @@
+function: caught 7, live 0
+two built: caught 7, live 0
+pointer: caught 7, live 0
+lambda: caught 7, live 0
+constructor: caught 7, live 0
+default argument: caught 7, live 0
+throw-expression: caught 9, live 0
+called, live 0, sum 15

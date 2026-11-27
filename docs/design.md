@@ -3116,6 +3116,17 @@ costs, and whether it runs a constructor, does not depend on the optimizer or th
   v's place in the callee, which ends at the return: a read through it, or a comparison of it, is
   then no constant, as C++'s constant evaluation rejects a pointer to an ended object, never an
   answer other than the program's, where that address is the result's.
+- **A class argument by value** (thread "Pass unique_ptr and small types in registers in kpp", 2026-11-27): the
+  caller builds the parameter object (a temporary argument is it), and it is the caller's until the call: an
+  exception before the call (a later argument's evaluation, a default argument, a throw-expression among the
+  arguments) destroys it there, as C++ destroys the parameter objects of a call that does not happen. From the
+  call it is the callee's, which destroys it at its end or when an exception leaves it (MSVC's rule, kpp's on every
+  target). Codegen: argumentText keeps each one in the statement's temporaries as destroyed only by an exception
+  (unwindOnly), and the call hands them over (handOverArguments) right before its call instruction. Until then a
+  later argument that threw left it alive (`f(Owned(1), boom())`). A member assigned through an `operator=` that
+  takes its class by value (copy and swap) gets a copy of the source's member, never the member itself (it was
+  passed, swapped into and destroyed). Specs language/class_argument_built_before_a_later_argument_throws_is_destroyed,
+  member_assigned_by_an_operator_taking_its_class_by_value.
 
 ### 23a. Safe navigation `?->` and the Elvis `?:` (built 2026-11-06; Q1 to Q4 decided and built 2026-11-07)
 The readme's rule, with what it left open answered by kovarex on 2026-11-07: Q2 to Q4 as built, Q1 in a

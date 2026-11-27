@@ -478,6 +478,10 @@ auto codegen::Emitter::callIndirectC(const std::string& fnText, const Ty* ft, Sp
       addArgument(arg);
   }
   bool slot = s.hasSret && cResult.inMemory;
+  std::vector<std::string> passed; // (handOverArguments: before the lowering)
+  for (auto& [t, text] : argList)
+    passed.push_back(text);
+  handOverArguments(passed);
   lowerCArguments(argList, slot, c);
   for (auto& [t, text] : argList) // (a char, short or bool extended, as the C callee reads it)
     if (t && !isAggregate(t))
