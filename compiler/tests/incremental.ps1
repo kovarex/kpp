@@ -289,7 +289,7 @@ $fast = $ours | Where-Object { $_ -match 'incremental: 1 file\(s\) changed \(0 w
 # the signature edits, the layout edit (Shape's: what used its layout, or Frame's and Tagged<Shape>'s
 # holding it, emitted again; holders.kpp is not walked again), a global's constructor (its
 # initializer reads an edited function), and the edits instances read
-# (viaScale<double> and viaLambda's operator for the overload added and removed, scaled<int> dropped
+# (viaScale<double> and viaLambda's operator for the overload added and removed, scaled<int> checked again
 # for Panel::base: every instance of their templates emitted again).
 $rebuilt = $ours | Where-Object { $_ -match 'codegen: [0-9]+ module\(s\) assembled again' }
 if (@($rebuilt).Count -lt 13) { "FAIL incremental: codegen rebuilt from its kept session $(@($rebuilt).Count) times, expected at least 13 (the server's log)"; $failed++ }
@@ -301,7 +301,7 @@ if ($keptAcross.Count -lt 2) { "FAIL incremental: codegen kept its session acros
 else { "ok   incremental codegen kept its session across errors ($($keptAcross.Count))" }
 $whole = $ours | Where-Object { $_ -match 'with whole functions' -and $_ -notmatch '\(0 with whole functions\)' }
 # Instances checked again because they read a change: the overload added and removed (viaScale<double>
-# and viaLambda's generic lambda read scale) and the edit of Panel::base (scaled<int>, made by codegen: dropped and made anew),
+# and viaLambda's generic lambda read scale) and the edit of Panel::base (scaled<int>, the checker's instance),
 # through each of two servers; not readTwice<Meter> for the edit of Gauge::reading (lookups in a
 # class are recorded with the class).
 $instances = @($ours | Where-Object { $_ -match 'instance\(s\) that read a change checked again' })
@@ -324,8 +324,8 @@ else { "ok   incremental body edits not in full for a global that read only a fr
 $dropped = @($ours | Where-Object { $_ -match 'made by codegen dropped' })
 # (and positions.kpp's edits that walk it again, makeHelper's instance for viaHelper's closure among what codegen made: the
 # helperBase and viaHelper edits and back, through the executable's server; three of them through the other)
-if ($dropped.Count -ne 11) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 11 expected (Panel::base and Step::operator+ through each server, positions.kpp's helperBase and viaHelper edits)"; $failed++ }
-else { "ok   incremental instances codegen made dropped and made anew (11)" }
+if ($dropped.Count -ne 9) { "FAIL incremental: $($dropped.Count) builds dropped instances codegen made, 9 expected (Step::operator+ through each server, positions.kpp's helperBase and viaHelper edits)"; $failed++ }
+else { "ok   incremental instances codegen made dropped and made anew (9)" }
 # (12: the signature edits, the overload added and removed and unitDepth's return type edit (read by an
 # auto local), through each of two servers; the overload steps change what an instance,
 # viaScale<double>, calls: it is checked again, not built from scratch)

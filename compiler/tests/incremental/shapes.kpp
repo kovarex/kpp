@@ -41,8 +41,9 @@ struct Meter { int reading() const { return 4; } };
 template<typename T>
 int readTwice(const T& t) { int r = t.reading(); return r + r; }
 
-// A member template defined out of line and called with explicit arguments: codegen makes its
-// instance (scaled<int>). An edit of base() drops that instance, and codegen makes it anew.
+// A member template defined out of line and called with explicit arguments: the checker makes its
+// instance (scaled<int>), the one codegen emits (until 2026-11-27 codegen made it: the checker checked
+// none). An edit of base() checks that instance again.
 struct Panel
 {
   int base() const { return 2; }
