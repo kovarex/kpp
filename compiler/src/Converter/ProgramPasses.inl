@@ -79,7 +79,14 @@ static void collectBraceableClasses(Span<Decl*> decls, GlobalScope& global, cons
 // Single `&` and `|` count only between parenthesized terms (`(x != o.x) | (y != o.y)`), never a type's `&`.
 static std::string withNotEqualsDropped(const std::string& text, Counts& counts, std::vector<std::string>& review)
 {
-  if (text.find("operator!=") == std::string::npos)
+  // (also written `operator !=`: Unreal's FIoChunkId and FObjectThumbnail, until 2026-11-27 their files never read)
+  bool any = false;
+  for (size_t at = text.find("operator"); at != std::string::npos && !any; at = text.find("operator", at + 8))
+  {
+    size_t next = text.find_first_not_of(" \t\r\n", at + 8);
+    any = next != std::string::npos && text.compare(next, 2, "!=") == 0;
+  }
+  if (!any)
     return text;
   SymbolTable symbols;
   LexResult lexed = lex(text, symbols);
@@ -828,6 +835,60 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
       counts.add("operator!= made the == it negates: no == of its parameters");
       decided[keyOf(n)] = 'm';
       continue;
+    }
+    {
+      // The =='s expression negated by De Morgan's laws, its operands in either order (Unreal's TRangeBound: `(Type !=
+      // Other.Type) || (!IsOpen() && (Value != Other.Value))` beside `(Type == Other.Type) && (IsOpen() || (Value ==
+      // Other.Value))`; FMD5Hash's the same with the validity first): kept for review until 2026-11-27
+      uint32_t ef = 0, et = 0;
+      Node ee;
+      std::function<bool(const Node&, const Node&)> same, negation;
+      auto pairOf = [&](const Node& x, FunctionDecl* fx)
+      {
+        std::string a = joinedOf(x.kids[0].from, x.kids[0].to, fx), b = joinedOf(x.kids[1].from, x.kids[1].to, fx);
+        return a < b ? std::make_pair(a, b) : std::make_pair(b, a);
+      };
+      // (x of the !=, y of the ==)
+      same = [&](const Node& x, const Node& y) -> bool
+      {
+        if (x.kind != y.kind)
+          return false;
+        switch (x.kind)
+        {
+          case 'a':
+            return joinedOf(x.from, x.to, f) == joinedOf(y.from, y.to, eq->f);
+          case '=':
+          case 'n':
+            return pairOf(x, f) == pairOf(y, eq->f);
+          case '!':
+            return same(x.kids[0], y.kids[0]);
+          default:
+            return toks[x.op].is(P::OrOr) == toks[y.op].is(P::OrOr) && toks[x.op].is(P::AndAnd) == toks[y.op].is(P::AndAnd) &&
+                   ((same(x.kids[0], y.kids[0]) && same(x.kids[1], y.kids[1])) || (same(x.kids[0], y.kids[1]) && same(x.kids[1], y.kids[0])));
+        }
+      };
+      negation = [&](const Node& x, const Node& y) -> bool
+      {
+        if (x.kind == '!' && same(x.kids[0], y))
+          return true;
+        if (y.kind == '!' && same(x, y.kids[0]))
+          return true;
+        if ((x.kind == 'n' && y.kind == '=') || (x.kind == '=' && y.kind == 'n'))
+          return pairOf(x, f) == pairOf(y, eq->f);
+        // (|| against &&, never the bitwise | and &: their operands are not bools)
+        if (((x.kind == '|' && y.kind == '&') || (x.kind == '&' && y.kind == '|')) && toks[x.op].is(x.kind == '|' ? P::OrOr : P::AndAnd) &&
+            toks[y.op].is(y.kind == '|' ? P::OrOr : P::AndAnd))
+          return (negation(x.kids[0], y.kids[0]) && negation(x.kids[1], y.kids[1])) ||
+                 (negation(x.kids[0], y.kids[1]) && negation(x.kids[1], y.kids[0]));
+        return false;
+      };
+      if (eq && eq->f->body && eq->f->params.size() == f->params.size() && onlyReturn(eq->f, ef, et) && parse(ef, et, ee) && negation(e, ee))
+      {
+        removeDeclaration(f);
+        decided[keyOf(n)] = 'd';
+        counts.add("operator!= dropped: the negation of =='s expression");
+        continue;
+      }
     }
     keep(n, "a body of another form");
   }

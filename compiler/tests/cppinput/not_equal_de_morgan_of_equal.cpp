@@ -1,0 +1,31 @@
+// cppinput: an operator!= whose expression is its operator=='s negated by De Morgan's laws (Unreal's TRangeBound:
+// `(Type != Other.Type) || (!IsOpen() && (Value != Other.Value))` beside `(Type == Other.Type) && (IsOpen() || (Value ==
+// Other.Value))`; FMD5Hash's friend the same with its validity first) is dropped, a != b being !(a == b); the converter kept
+// it for review ("a body of another form"), an error in kpp
+class Bound
+{
+public:
+  Bound(int InType, int InValue) : Type(InType), Value(InValue) {}
+  bool IsOpen() const { return Type == 0; }
+  bool operator==(const Bound& Other) const { return ((Type == Other.Type) && (IsOpen() || (Value == Other.Value))); }
+  bool operator!=(const Bound& Other) const { return ((Type != Other.Type) || (!IsOpen() && (Value != Other.Value))); }
+
+private:
+  int Type;
+  int Value;
+};
+
+struct Hash
+{
+  bool bIsValid = false;
+  int Bytes = 0;
+  friend bool operator==(const Hash& LHS, const Hash& RHS) { return LHS.bIsValid == RHS.bIsValid && (!LHS.bIsValid || LHS.Bytes == RHS.Bytes); }
+  friend bool operator!=(const Hash& LHS, const Hash& RHS) { return LHS.bIsValid != RHS.bIsValid || (LHS.bIsValid && LHS.Bytes != RHS.Bytes); }
+};
+
+int main()
+{
+  Bound open(0, 1), open2(0, 2), closed(1, 1), closed2(1, 2);
+  Hash a{true, 1}, b{true, 2}, none{false, 3}, none2{false, 4};
+  return open == open2 && closed != closed2 && !(closed != closed) && a != b && none == none2 && !(a != a) ? 0 : 1;
+}
