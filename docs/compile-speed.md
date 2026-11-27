@@ -2043,6 +2043,71 @@ builds: 2.1 to 2.7 s before (kpp 1.2 to 1.6 s, link 0.7 to 1.1 s), 1.6 to 2.0 s 
 changes of the day, the whole build as Visual Studio runs it: a body edit 1.4 to 2.0 s (the first edit of a file 5.0 s,
 its piece made), a test added or removed 2.6 to 2.7 s (10.6 to 15.1 s before 35345c734).
 
+### Classes added or removed whole: fixture tests (2026-11-27)
+
+kovarex (2026-11-27): a fixture test (`test Name : Fixture`) added, renamed or removed built the game's tests from scratch,
+10 to 15 s. The parser declares a class for each (`class __kpp_fixture_S : public Fixture { ... void __kpp_body() BODY };`,
+parseTest), and a class added or removed was "a change outside whole functions and data members". 1,054 of the game's
+8,886 tests are fixture tests (319 of them GameViewFixtureWithAudio's).
+
+A class of a namespace (the file's top level, a namespace's, a suite's) now comes and goes whole (BodyGraft's
+functionsOnly):
+- A kept class is one whose head (its first token to its `{`) and end (its `}` to its `;`) have places, side by side, at a
+  new class's; its members are paired as before. A class not paired is removed or added with all of its tokens, its
+  members with it, when it is a plain class (plainClass): written `class X ... { ... };` alone; no template, union, typed
+  union, explicit type, file-private, friend or `when`; no nested type, static or deprecated member; every member
+  function defined in the class (no out-of-line definition to attach) with no template, `auto` or `decltype`; its name
+  declared nowhere else in its namespace (a forward declaration, a clash); not a scoped library's top-level class.
+- The resolver takes it out (unindexClass: its entry, its scope and its member functions' local types' scopes in the
+  index's counts, the walks of the class and of its members, their declared types' records, its scopes in the relations'
+  list) and indexes the new one (indexClasses).
+- What read its name (by symbol) is walked again and declared types that read it are followed, as for a function's name;
+  a data member's or a global's declared type that read the same name anywhere (a class `Pair` beside std::Pair) makes it
+  a build from scratch. Its member functions are added and removed functions for codegen; its layout goes as a dropped
+  class instance's does.
+- The instances that only the removed declarations' walks and declared types asked for go (GlobalScope::instancesUsedBy,
+  with what the file's old walks asked for, to dropUnusedInstances): a removed fixture test's `__kppRunFixture<its class>`.
+  A plain function removed left them in the index until then, counted in the report.
+
+Three more things a fixture test's class needed:
+- The diff (tokenMap) took a test added before another for the other's first token (`class`, or `void` for a plain test:
+  the common prefix), so the other was taken out and added again. The runs of added and removed tokens now slide along the
+  equal tokens around them to where declarations begin and end, and to meet a neighbouring run (alignToDeclarations): a
+  friend function added before its class's `}` is that function now, not a changed class.
+- Every fixture body is `void __kpp_body()`: one header, so its lambdas' tag (the parser's beginNumbering) was the first
+  free one in the file's order, and a fixture test added above another renamed the other's lambdas ("a lambda or a local
+  type was renumbered", codegen in full). A function's tag now takes in the names of the classes and namespaces it is in.
+- A polymorphic class's type descriptor named its name through a string literal of the shared declarations, and the
+  vtable of a class that declares no destructor names its destructor helper (`@kpp.dtor.X`, implicitDestructor), a shared
+  function: either one new was "first use(s) added to the shared declarations", codegen in full. The descriptor's name is
+  a constant of its own in the descriptor's entry (`@"typeinfo.X.name"`), and a destructor helper a rebuild writes first
+  goes to its home module as a build from scratch's end puts it (weak_odr, declared by the modules that name it). A dropped
+  layout's helper goes with it: a removed fixture class's, and its base's once nothing else destroys one.
+
+Measured on factorio-test debug (kpp-factorio d9282947c45, the compiler of a0e29c729), quiet as Visual Studio builds, in
+tests/TestAudioMusic.kpp, whose tests are all GameViewFixtureWithAudio's and have lambdas: a fixture test added between
+the first two, its body edited, it renamed and removed, one added at the suite's end and removed, each build through one
+server with --verify-incremental "the same as from scratch", none of them "not incremental", "codegen in full" or
+declined. The same edits through a server without the check, three rounds each:
+
+| edit | before (from scratch) | now |
+|---|---|---|
+| a fixture test added | 10 to 15 s | 2.44 to 2.45 s (4.09 s the first time: the file's edit piece made) |
+| renamed | 10 to 15 s | 3.24 to 3.31 s |
+| removed | 10 to 15 s | 2.90 to 2.95 s |
+| a fixture test's body edited | | 1.66 to 1.70 s |
+| nothing changed | | 0.22 s |
+
+The server's own part ("walks and checks again" in its log): 0.2 s for an addition, 0.51 to 0.66 s for a rename or a
+removal, which also drops the instances only the removed test asked for (dropUnusedInstances, a pass over every unit's
+recorded uses; not timed apart); codegen assembled 27 to 47 modules. The game's tests on the last build: 9,586
+tests, 5 failed, each needing what the data it ran with (C:\Factorio's, e66c75eaf3d of 2026-11-17, older than the
+branch's tests) does not have: test-rotated-animation (three LuaRendering tests), car-with-deconstruction-alternative,
+and core's prototype-info.lua for the new RotatedAnimationPrototype (LuaPrototypeInfo_CoversAllPrototypeTypes).
+
+Specs: kpp/server_class_added_removed_renamed and kpp/server_fixture_tests_added_removed_renamed, whose header
+`// steps: incremental` fails a step the server did not build from the program it kept; incremental.ps1's class steps.
+
 ### Design: codegen's results, home modules and module assembly (codegen thread, for review, 2026-10-30)
 
 One structure for 3c and for the codegen items above (the destructor helpers copied into every
