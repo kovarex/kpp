@@ -132,8 +132,10 @@ Copy-Item "$repository\LICENSE" "$kpp\LICENSE.txt"
 Copy-Item "$repository\tools\vs\vsix\Images\kpp-file.ico" "$kpp\kpp-file.ico"
 
 # The bundled toolchain, at its paths in llvm-mingw so clang finds the rest relative to its bin\ and
-# kpp finds bin\ next to itself: clang (which also compiles a project's C and C++ sources), lld,
-# llvm-ar, llvm-rc, llvm-dlltool and their DLLs; MinGW-w64's and libc++'s headers; clang's headers
+# kpp finds bin\ next to itself: clang (which also compiles a project's C and C++ sources), lld (LLVM's
+# own 19.1.7 release's ld.lld.exe, which llvm-mingw.ps1 puts in place of llvm-mingw's: docs/build.md,
+# "The bundled toolchain's lld"), llvm-ar, llvm-rc, llvm-dlltool and their DLLs; MinGW-w64's and
+# libc++'s headers; clang's headers
 # and builtins; the x86_64 import libraries and runtime. Not the i686, armv7 and aarch64 trees,
 # python, lldb, clangd or clang-tidy.
 $llvmMingw = & "$repository\tools\sysroot\llvm-mingw.ps1" | Select-Object -Last 1
@@ -171,7 +173,10 @@ CopyTree "$llvmMingw\x86_64-w64-mingw32\share\mingw32" "$kpp\x86_64-w64-mingw32\
 Copy-Item "$llvmMingw\LICENSE.TXT" "$kpp\LICENSE-llvm-mingw.txt"
 @"
 The bundled toolchain (bin\, include\, lib\, x86_64-w64-mingw32\) is llvm-mingw 20250114
-(https://github.com/mstorsjo/llvm-mingw), unchanged. Its parts keep their own licences:
+(https://github.com/mstorsjo/llvm-mingw), unchanged but for bin\ld.lld.exe and bin\ld64.lld.exe, which
+are lld from LLVM 19.1.7's own Windows release
+(https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7, clang+llvm-19.1.7-x86_64-pc-windows-msvc),
+unchanged. Its parts keep their own licences:
 - LLVM (clang, lld, the LLVM tools, libc++, libunwind, compiler-rt): Apache-2.0 WITH LLVM-exception,
   as kpp; LICENSE-llvm-mingw.txt.
 - MinGW-w64's headers and runtime: public domain or ZPL 2.1; the DirectX headers taken from Wine are

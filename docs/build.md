@@ -1314,7 +1314,8 @@ kovarex's goal (2026-10-31): clone a project such as factorio-in-kpp, install a 
   `kpp --help`, and so is one missing its value. It is never passed on or ignored. A project's
   command line passes kpp's options on to each cell's build with their values (the table
   `compileOptions` in main.cpp, which kpp's own parsing must match).
-- **The bundled toolchain in a release** is llvm-mingw's x86-64 part at its own relative paths, so
+- **The bundled toolchain in a release** is llvm-mingw's x86-64 part at its own relative paths, its
+  ld.lld.exe LLVM's own ("The bundled toolchain's lld" below), so
   clang finds the rest from its `bin\`: `bin\` (clang.exe, clang-19.exe, ld.lld.exe, llvm-ar.exe,
   llvm-rc.exe, llvm-dlltool.exe, libLLVM-19.dll, libclang-cpp.dll, libc++.dll, libunwind.dll and the
   two .cfg files; and ld.lld.exe again as ld64.lld.exe, the name clang's Darwin driver runs for
@@ -1429,6 +1430,21 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   programs (KPP_CLANG=ROOT/bin/clang; design.md, stage 5). Licences: LLVM's Apache-2.0 WITH
   LLVM-exception, MinGW-w64's headers and libraries public domain or ZPL (the DirectX headers from
   Wine LGPL-2.1+), llvm-mingw's own scripts ISC.
+- **The bundled toolchain's lld** is LLVM's own, not llvm-mingw's (kovarex, 2026-11-27): llvm-mingw.ps1
+  puts the `bin\ld.lld.exe` of LLVM 19.1.7's Windows release (the clang+llvm archive compiler\llvm.ps1
+  pins, its SHA-256 and the file's checked; the archive deleted once the file is out) in place of
+  llvm-mingw's, so the tests and the package link with it. LLVM's Windows release allocates with
+  rpmalloc; llvm-mingw's build of LLVM, which cannot have it (rpmalloc replaces the static MSVC C
+  runtime's malloc), allocates from the Windows heap, and a ThinLTO link's 32 threads waited on it. The
+  game's release build (kpp 0.2.1808, kpp-factorio f28a83e, one clean build each in the exclusive slot,
+  2026-11-27): 175.2 s with llvm-mingw's lld (link 159.5 s, 10.5 cores busy on average), 69.1 s with
+  the same objects linked by an rpmalloc lld (Visual Studio's 19.1.5: link 53.5 s, 24.7 cores), 63.0 s
+  with Visual Studio's whole toolchain; per module the back ends took 2.7 times as long (code generation
+  5.1 times), and 16 link threads were faster than 32 (114.4 s). LLVM's own measurement of the same
+  ([LLVM #91862](https://lists.llvm.org/pipermail/llvm-commits/Week-of-Mon-20240506/1359300.html)):
+  a ThinLTO link of clang on a 16-core Ryzen 5950X, 10 min 38 s with the Windows heap, 4 min 11 s with
+  rpmalloc. The study: [Why kpp release builds are slower than C++](https://claude.ai/artifact/6n3G8zgYQTp2cRPWxg58dt).
+  One file is every lld: ld.lld (the GNU and MinGW drivers), lld-link, and ld64.lld under that name.
 - **Windows' GNU dialect** (`--target windows-gnu`, the bundled toolchain's own): the same ABI, data
   layout and SEH exceptions as MSVC's, MinGW-w64's headers in the C import (their `__attribute__`,
   `__extension__` and `__restrict__` taken as MSVC's are), lld's GNU driver (`--gc-sections`,
@@ -1468,8 +1484,9 @@ on a Windows with no Visual Studio, Build Tools or Windows SDK.
   game prefers `--toolchain msvc,bundled` (factorio-in-kpp's build.kpp): Visual Studio's, with
   `--incremental-link`, where it is here, else the bundled one, with which it builds, links Factorio's
   Visual Studio-built C++ libraries, imports only Windows' DLLs and passes its 9,501 tests and the 45
-  menu maps' checksums (release) as with Visual Studio's (2026-11-10). The release link (ThinLTO) is the same with lld 19.1.5 and 19.1.7: 52.9 to
-  66.6 against 53.6 to 74.9 s on a busy machine, the executable 44.0 MB both.
+  menu maps' checksums (release) as with Visual Studio's (2026-11-10). The release link (ThinLTO) is the same with Visual Studio's lld-link 19.1.5
+  and LLVM's own 19.1.7 release's (2026-11-02, both built with rpmalloc): 52.9 to 66.6 against 53.6 to 74.9 s on a busy machine, the
+  executable 44.0 MB both. llvm-mingw's lld took 2.5 times as long ("The bundled toolchain's lld" above).
 - **A symbol kept in the link** whatever the toolchain: `--keep-symbol NAME` links in what defines
   NAME although nothing names it, a C library's object that registers itself at startup (kpp-native's
   crash report, `kpp_crash_report_install`): link.exe's and lld-link's `/INCLUDE:NAME`, the GNU
@@ -1699,7 +1716,8 @@ Triggers (kovarex, 2026-10-31, chosen from the costs below):
     256 MB, for the back end inside kpp), keyed on the release's SHA-256, which the build job reads
     from llvm.ps1; without it every run downloads the 845 MB archive.
   - **llvm-mingw** (build\llvm-mingw, for run_tests and the package), keyed on
-    tools/sysroot/llvm-mingw.ps1, which pins the release and its SHA-256 and checks it.
+    tools/sysroot/llvm-mingw.ps1, which pins the release and its SHA-256 and checks it, and LLVM's own
+    ld.lld.exe in it (a miss downloads the 845 MB clang+llvm archive for that one file).
   - **The SDL3 zip and headers**, keyed on `SDL_SHA256`.
   - **Debian 11's Linux sysroot** (compiler\build\sysroots\linux-x86_64, for targets.ps1), keyed on
     tools/sysroot/linux.ps1, which pins its packages' SHA-256.
