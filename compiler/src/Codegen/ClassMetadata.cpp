@@ -2,6 +2,8 @@
 // declarations in ClassMetadata.hpp, part of the struct's body in Codegen/Emitter.hpp. A
 // translation unit of its own since 2026-11-05 (codegen.cpp split, stage 2), moved without a
 // change.
+#include <cstdlib>
+#include <cstring>
 #include "Emitter.hpp"
 
 auto codegen::Emitter::constructorFor(const Ty* classTy, Span<Expr*> args, Node* at, bool implicitOnly) -> FunctionDecl*
@@ -3997,6 +3999,23 @@ auto codegen::Emitter::relocatesInRegisters(const Ty* t, Node* at, int depth) ->
   }
   registerRelocation[key] = relocates;
   return relocates;
+}
+
+auto codegen::Emitter::relocatedInRegisters(const Ty* t, uint64_t size, Node* at) -> bool
+{
+  static const uint64_t limit = []
+  {
+    const char* v = getenv("KPP_REGISTER_RELOCATABLE");
+    if (!v || !*v || !strcmp(v, "on"))
+      return uint64_t(16);
+    if (!strcmp(v, "off"))
+      return uint64_t(0);
+    if (!strcmp(v, "32"))
+      return uint64_t(32);
+    fprintf(stderr, "kpp: KPP_REGISTER_RELOCATABLE is on, off or 32, not %s\n", v);
+    exit(2);
+  }();
+  return size <= limit && relocatesInRegisters(t, at);
 }
 
 auto codegen::Emitter::assignsBitwise(const Ty* t, Node* at, int depth) -> bool

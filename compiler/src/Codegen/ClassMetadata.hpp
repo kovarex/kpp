@@ -612,6 +612,12 @@
     // constructor of its own (it may keep its own address: IDConnector, Targeter).
     std::unordered_map<const Ty*, bool> registerRelocation; // this emitter's answers
     bool relocatesInRegisters(const Ty* t, Node* at, int depth = 0);
+    // The register convention (registerPassingOf) for a class with a destructor or a copy or move constructor of
+    // its own, of size bytes: in registers when it relocates (relocatesInRegisters) and is 16 bytes or less, unless
+    // KPP_REGISTER_RELOCATABLE says otherwise: off (such classes through memory, as before), 32 (up to 32 bytes as a
+    // parameter: a String in four registers; a result stays at 16). A prototype's switch (thread "Pass unique_ptr and
+    // small types in registers in kpp"), on when unset on its branch.
+    bool relocatedInRegisters(const Ty* t, uint64_t size, Node* at);
 
     // Whether objects of type t are assigned bitwise: no copy or move assignment of its own (written,
     // not defaulted) in the class, its bases or its members (GenericTargetable's `operator=` keeps

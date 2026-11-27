@@ -754,7 +754,7 @@ auto codegen::Emitter::registerPassingOf(const Ty* t, bool result, Node* at) -> 
     if (info.polymorphic || info.packed)
       return none;
   }
-  if (needsDestruction(t, at) || !relocatesBitwise(t, at))
+  if ((needsDestruction(t, at) || !relocatesBitwise(t, at)) && !relocatedInRegisters(t, size, at))
     return none;
   std::vector<std::pair<uint64_t, const Ty*>> scalars;
   cScalars(t, 0, scalars, at);
