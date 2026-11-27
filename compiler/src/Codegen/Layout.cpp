@@ -1649,6 +1649,26 @@ auto codegen::Emitter::slotKeyed(const StructInfo& info, const std::string& key)
   return -1;
 }
 
+auto codegen::Emitter::virtualCallee(const std::string& addr, const Ty* classTy, int slot, Node* at) -> std::string
+{
+  const Ty* key = canonicalClass(classTy, at);
+  if (slot >= 0 && key && key->decl && key->decl->kind == NodeKind::ClassDecl && !global.hasForeignVtable(key))
+  {
+    const StructInfo& info = structFor(key, at);
+    if (!info.vtables.empty() && slot < int(info.vtables[0].slots.size()))
+    {
+      VtableSlot s = info.vtables[0].slots[slot];
+      bool finalClass = static_cast<ClassDecl*>(key->decl)->isFinal;
+      // (only where the vtable holds the function itself: its class starts the object, so `this` is not moved, and
+      // a covariant result is not moved either; elsewhere the slot holds a thunk, and the call stays one through it)
+      if (s.function && !(s.function->flags & (DF_Pure | DF_Delete | DF_Destructor)) && (finalClass || (s.function->flags & DF_Final)) &&
+          samePlace(s.ownerPath, {}) && !covariantMove(s, at).bytes)
+        return useFunction(s.function, global.classArgsOf(s.owner), s.owner);
+    }
+  }
+  return loadSlot(addr, slot);
+}
+
 auto codegen::Emitter::loadSlot(const std::string& addr, int slot) -> std::string
 {
   std::string vptr = newTemp();

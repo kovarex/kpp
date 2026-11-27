@@ -599,6 +599,8 @@ public:
   // t's destructor is virtual: written so, a base's, or a class's with a virtual function, its own or a base's
   // (kovarex's rule, design.md 23b), unless t is marked [[foreign_vtable]], its own or a base's.
   bool hasVirtualDestructor(const Ty* t);
+  // t or a base of it is marked [[foreign_vtable]]: an outside ABI (COM) may make its objects and their vtables.
+  bool hasForeignVtable(const Ty* t);
   // The initializer of v (a data member's default initializer, a static member's or a variable
   // template's) for one instantiation: a copy typed under args once and kept, as instanceBody's
   // copies of function bodies are; v's own initializer when args is empty. Thread-safe.

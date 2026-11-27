@@ -63,6 +63,7 @@ Add 'via C++' (PsCheck 'tests\viacpp.ps1') -seconds 12 -skip @{ 3 = 'via C++ (no
 Add 'verifier' (PsCheck 'tests\verifier.ps1') -seconds 17
 Add 'stubs' (PsCheck 'tests\stubs.ps1') -seconds 7
 Add 'static constants' (PsCheck 'tests\staticconstants.ps1') -seconds 1
+Add 'final calls' (PsCheck 'tests\finalcalls.ps1') -seconds 1
 # C++ the converter reads beside Factorio's (tests\cppinput.ps1): each tests\cppinput\*.cpp converts with no
 # parse error to its .expected.kpp, which builds and runs.
 Add 'cppinput' (PsCheck 'tests\cppinput.ps1') -seconds 3

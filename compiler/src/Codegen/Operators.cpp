@@ -379,7 +379,7 @@ auto codegen::Emitter::memberCall(Value object, FunctionDecl* f, const Ty* found
   std::string indirect;
   if (isClass(foundIn) && f->templateParams.empty() && structFor(foundIn, at).polymorphic)
     if (int slot = slotOf(foundIn, f, at); slot >= 0)
-      indirect = loadSlot(thisArg, slot); // `*a == *b` on images: the dynamic type's operator==, through the declaring class's vtable pointer
+      indirect = virtualCallee(thisArg, foundIn, slot, at); // `*a == *b` on images: the dynamic type's operator==, through the declaring class's vtable pointer
   return callFunction(f, fnArgs, foundIn, thisArg, sret, args, at, indirect);
 }
 
@@ -712,7 +712,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
       std::string indirect;
       if (classTy && isClass(classTy) && n->name.parts.size() == 1 && !thisArg.empty())
         if (int slot = slotOf(classTy, f, c); slot >= 0)
-          indirect = loadSlot(thisArg, slot);
+          indirect = virtualCallee(thisArg, classTy, slot, c);
       if (!classTy && (f->flags & DF_Static) && n->name.parts.size() == 1 && currentClassTy && isClass(currentClassTy))
         if (Decl* owner = global.owningClass(f); owner && owner->kind == NodeKind::ClassDecl)
         {
@@ -1022,7 +1022,7 @@ auto codegen::Emitter::callValue(CallExpr* c, const std::string& sret) -> Value
       std::string indirect;
       if (objectTy && isClass(objectTy) && !thisArg.empty() && m->member.parts.size() == 1)
         if (int slot = slotOf(objectTy, f, c); slot >= 0)
-          indirect = loadSlot(thisArg, slot);
+          indirect = virtualCallee(thisArg, objectTy, slot, c);
       return callFunction(f, calleeArgs(f, objectTy, c, c), objectTy, thisArg, sret, c->args, c, indirect);
     }
   }

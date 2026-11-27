@@ -2241,6 +2241,11 @@ bool GlobalScope::hasVirtualDestructor(const Ty* t)
   return impl->hasVirtualDestructor(t);
 }
 
+bool GlobalScope::hasForeignVtable(const Ty* t)
+{
+  return impl->foreignVtableClass(t) != nullptr;
+}
+
 Expr* GlobalScope::instanceInitializer(VariableDecl* v, const TemplateArgs& args)
 {
   if (args.empty() || !v->init || !v->file || !v->file->tokens)

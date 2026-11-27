@@ -116,7 +116,7 @@ auto codegen::Emitter::callConversion(FunctionDecl* op, const Ty* objectTy, cons
   std::string indirect;
   if (op->templateParams.empty() && isClass(owner) && structFor(owner, at).polymorphic)
     if (int slot = slotOf(owner, op, at); slot >= 0)
-      indirect = loadSlot(self, slot);
+      indirect = virtualCallee(self, owner, slot, at);
   Value result = callFunction(op, opArgs && !op->templateParams.empty() ? *opArgs : global.classArgsOf(owner), owner, self, sret, {}, at, indirect);
   return keepReference ? result : callRvalue(result, at); // (keepReference: a reference's address, for a reference to bind)
 }
