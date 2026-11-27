@@ -29,8 +29,48 @@
     // A part of a struct passed in registers, read from (or written to) its place at addr + offset,
     // where bytes of the struct are left: a part wider than that (AAPCS64's `i64` or `[2 x i64]`) is
     // read as the bytes there and widened, written narrowed, never past the struct.
-    std::string loadCPart(const std::string& addr, uint64_t offset, const std::string& type, uint64_t bytes);
-    void storeCPart(const std::string& addr, uint64_t offset, const std::string& type, const std::string& value, uint64_t bytes, bool gepAtZero = false);
+    // (align: the access's alignment, written when not 0: the register convention's parts)
+    std::string loadCPart(const std::string& addr, uint64_t offset, const std::string& type, uint64_t bytes, uint64_t align = 0);
+    void storeCPart(const std::string& addr, uint64_t offset, const std::string& type, const std::string& value, uint64_t bytes, bool gepAtZero = false,
+                    uint64_t align = 0);
+
+    // --- kpp's register convention (a prototype, docs/register-abi.md; KPP_REGISTER_ABI) ---
+    // Off (KPP_REGISTER_ABI=off; the default except on the prototype's branch, where CI runs everything with
+    // it on): kpp passes every class by value as a pointer to a copy and returns one through a result slot.
+    // With KPP_REGISTER_ABI=sysv (or =c), a kpp function (not a C one, not variadic, not a
+    // closure's call operator) that takes or returns a small trivially copyable class (no destructor,
+    // no copy or move constructor of its own, no virtual function; up to 32 bytes as a parameter, 16 as
+    // a result) passes it as its eightbytes in registers (SysV's classes: an integer part, a float, a
+    // `<2 x float>`, a double, a 16-byte vector), and returns it in registers. With =sysv such a
+    // function on Windows x64 also takes LLVM's x86_64_sysvcc (6 integer and 8 vector registers, results
+    // in RAX:RDX and XMM0:XMM1), MS x64's 4 positional registers being too few. A function that passes
+    // no such class keeps the target's C convention: C may call it through a pointer (a function type
+    // that passes no class by value is one type for both conventions).
+    enum class RegisterAbi : uint8_t { Off, Sysv, C };
+    static RegisterAbi registerAbi();
+    // How the register convention passes (result: returns) an object of type t: in registers (its
+    // parts), or not (a pointer to a copy, a result slot).
+    RegisterParts registerPassing(const Ty* t, bool result, Node* at);
+    std::unordered_map<const Ty*, RegisterParts> registerPassingCache[2]; // this emitter's answers, [result]
+    RegisterParts registerPassingOf(const Ty* t, bool result, Node* at); // (registerPassing's, uncached)
+    // s (a kpp function's, ret its result type) with the register convention's lowering, when it is on
+    // and s passes or returns a class in registers.
+    void withRegisters(Signature& s, const Ty* ret, Node* at);
+    // A call of a kpp function of signature s: args one per s.paramTypes entry as kpp passes them
+    // ("ptr THIS", "ptr SLOT", a class as "ptr COPY", "i32 5"), lowered where s.registers says (a class
+    // in registers loaded from its copy, a result in registers stored into the slot after the call).
+    // typed: the call names the function's type (a call through a pointer, a variadic one). Returns the
+    // result's value, or "" (void, or the result in the slot).
+    std::string emitKppCall(const Signature& s, const std::string& fnText, const std::vector<std::string>& args, bool mayThrow, bool typed);
+    // The signature of a kpp function of function type ft (no `this`), as a call through a pointer of
+    // that type passes its arguments (with the register convention's lowering when it has it).
+    Signature functionTypeSignature(const Ty* ft, Node* at);
+    // The alignment of part k of p in its object (p.align, less where the part's offset says so).
+    static uint64_t partAlign(const RegisterParts& p, size_t k)
+    {
+      uint64_t offset = p.offsets[k];
+      return offset ? std::min<uint64_t>(p.align, offset & (~offset + 1)) : p.align;
+    }
 
     // The scalars a C struct holds, with their offsets: the members of its members, the elements of
     // its arrays, the storage of its bit fields, every member of a union at its start.

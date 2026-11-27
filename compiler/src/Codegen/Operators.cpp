@@ -1103,10 +1103,14 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
   else
     s.returnType = ret->isReference() ? "ptr" : llType(ret, c);
   std::string args, resultAddr;
+  std::vector<std::string> all; // (each argument as kpp passes it, for the register convention: emitKppCall)
   if (!thisArg.empty())
   {
     args = "ptr " + thisArg;
+    all.push_back(args);
     s.paramTypes.push_back("ptr");
+    s.paramTys.push_back(nullptr);
+    s.hasThis = true;
   }
   // A result returned in memory into a slot of its own is a temporary the statement owns, destroyed with its others,
   // as callFunction's is (until 2026-11-23 never: `sink((obj->*pmf)())`, `fp();` and `sink(fp())` leaked the result,
@@ -1117,7 +1121,9 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
     resultTemp = sret.empty();
     resultAddr = resultTemp ? newObjectSlot(ret, c) : sret;
     args += (args.empty() ? "" : ", ") + std::string("ptr ") + resultAddr;
+    all.push_back("ptr " + resultAddr);
     s.paramTypes.push_back("ptr");
+    s.paramTys.push_back(nullptr);
   }
   size_t position = 0;
   std::vector<std::string> passed; // (handOverArguments)
@@ -1128,6 +1134,7 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
     passed.push_back(argumentText(pt, arg, c));
     std::string text = withNarrowExtension(pt, passed.back());
     args += (args.empty() ? "" : ", ") + text;
+    all.push_back(text);
     ++position;
   };
   for (Expr* arg : callArgs)
@@ -1141,9 +1148,27 @@ auto codegen::Emitter::callIndirect(const std::string& fnText, const Ty* ft, con
       addArgument(arg);
   }
   for (const Ty* pt : ft->args)
+  {
     s.paramTypes.push_back(parameterType(pt, c));
+    s.paramTys.push_back(pt);
+  }
   s.variadic = ft->variadic;
   handOverArguments(passed);
+  withRegisters(s, ret, c);
+  if (s.registers)
+  {
+    // kpp's register convention (withRegisters): the callee is a kpp function of this type.
+    std::string r = emitKppCall(s, fnText, all, true, true);
+    if (s.hasSret)
+    {
+      if (resultTemp)
+        statementTemps.push_back({resultAddr, ret});
+      return {resultAddr, ret, sret.empty()};
+    }
+    if (r.empty())
+      return {"", types.voidType()};
+    return {r, ret, false};
+  }
   std::string sig = signatureText(s);
   if (s.returnType == "void")
   {

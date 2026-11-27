@@ -1451,25 +1451,28 @@ auto codegen::Emitter::adjustingThunk(const std::string& name, const std::string
   if (s.variadic)
     unsupported(at, "the variadic virtual function " + qualifiedName(slot.function) + " reached through another base of " +
                         types.toString(slot.owner, &symbols) + " (its thunk cannot pass the arguments on)");
+  // (under the register convention, its lowered parameters and result passed on as they are)
+  std::vector<std::string> lowered = llvmParams(s);
+  std::string returnType = llvmReturn(s), cc = ccText(s);
   std::string params, args;
-  for (size_t i = 1; i < s.paramTypes.size(); ++i)
+  for (size_t i = 1; i < lowered.size(); ++i)
   {
-    params += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
-    args += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
+    params += ", " + lowered[i] + " %p" + std::to_string(i);
+    args += ", " + lowered[i] + " %p" + std::to_string(i);
   }
   std::string body = "  %to = ptrtoint ptr " + to + " to i64\n  %from = ptrtoint ptr " + from + " to i64\n  %d = sub i64 %to, %from\n"
                      "  %this1 = getelementptr i8, ptr %this, i64 %d\n";
-  if (s.returnType == "void")
-    body += "  tail call void " + target + "(ptr %this1" + args + ")\n  ret void\n";
+  if (returnType == "void")
+    body += "  tail call" + cc + " void " + target + "(ptr %this1" + args + ")\n  ret void\n";
   else if (!move.bytes)
-    body += "  %r = tail call " + s.returnType + " " + target + "(ptr %this1" + args + ")\n  ret " + s.returnType + " %r\n";
+    body += "  %r = tail call" + cc + " " + returnType + " " + target + "(ptr %this1" + args + ")\n  ret " + returnType + " %r\n";
   else
   {
     // The override's result moved to the base its callers here expect; a null pointer stays null.
-    body += "  %r = call ptr " + target + "(ptr %this1" + args + ")\n  %moved = getelementptr i8, ptr %r, i64 " + std::to_string(move.bytes) + "\n";
+    body += "  %r = call" + cc + " ptr " + target + "(ptr %this1" + args + ")\n  %moved = getelementptr i8, ptr %r, i64 " + std::to_string(move.bytes) + "\n";
     body += move.pointer ? "  %null = icmp eq ptr %r, null\n  %result = select i1 %null, ptr null, ptr %moved\n  ret ptr %result\n" : "  ret ptr %moved\n";
   }
-  return "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr " + s.returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
+  return "$" + name.substr(1) + " = comdat any\ndefine linkonce_odr" + cc + " " + returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
 }
 
 auto codegen::Emitter::memberFunctionThunk(const Ty* cls, const Ty* owner, const std::vector<std::pair<std::string, uint32_t>>& path, FunctionDecl* f, int slot, Node* at) -> std::string

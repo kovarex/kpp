@@ -298,6 +298,43 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
         paramNames.push_back(copy);
       }
     }
+    else if (s.registers && !isCFunction(original))
+    {
+      // kpp's register convention (withRegisters): a class passed in registers is stored into a slot
+      // of its own, which the body has as kpp's pointer to a copy; a result in registers is built in a
+      // slot of its own and returned from there (emitReturnVoid), as a C-callable function's.
+      unsigned next = 0;
+      auto parameter = [&](const std::string& type)
+      {
+        std::string pn = "%p" + std::to_string(next++);
+        params += (params.empty() ? "" : ", ") + type + " " + pn;
+        return pn;
+      };
+      size_t resultSlot = s.hasThis ? 1 : 0;
+      for (size_t i = 0; i < s.paramTypes.size(); ++i)
+      {
+        if (s.hasSret && i == resultSlot && s.result.inRegisters)
+        {
+          paramNames.push_back(newObjectSlot(currentReturn, f));
+          cReturnParts = s.result.parts;
+          cReturnOffsets = s.result.offsets;
+          cReturnSize = s.result.size;
+          cReturnAlign = s.result.align;
+          continue;
+        }
+        if (i < s.lowered.size() && s.lowered[i].inRegisters)
+        {
+          const RegisterParts& p = s.lowered[i];
+          std::string copy = newObjectSlot(s.paramTys[i], f);
+          for (size_t k = 0; k < p.parts.size(); ++k)
+            storeCPart(copy, p.offsets[k], p.parts[k], parameter(p.parts[k]), p.size - p.offsets[k], false, partAlign(p, k));
+          paramNames.push_back(copy);
+          continue;
+        }
+        paramNames.push_back(parameter(s.paramTypes[i]));
+      }
+      returnType = llvmReturn(s);
+    }
     else
       for (size_t i = 0; i < s.paramTypes.size(); ++i)
       {
@@ -315,7 +352,8 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
     bool headerInline = original->file && original->file->isImported;
     // (a narrow result extended by the callee, as a C caller of it reads it: narrowExtension)
     const char* resultExtension = s.resultExtension; // (signatureOf's, as its declarations have it)
-    std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + (*resultExtension ? resultExtension + 1 + std::string(" ") : "") +
+    std::string header = std::string("define ") + (headerInline ? "weak_odr " : "") + (s.cc.empty() ? "" : s.cc + " ") +
+                         (*resultExtension ? resultExtension + 1 + std::string(" ") : "") +
                          returnType + " " + name + "(" + params + ") " +
                          attributeText(f) + "{\nentry:\n";
     pushScope();
@@ -404,7 +442,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
         // A class result (a defaulted operator<=>'s strong_ordering): into the result slot.
         if (!sretAddr.empty() && r.ty && isClass(r.ty))
           fn += "  store i8 " + orderOf(r, f).text + ", ptr " + gep(structFor(currentReturn, f).name, sretAddr, 0) + "\n";
-        fn += "  ret void\n";
+        emitReturnVoid(); // (the register convention's result: from the slot)
       }
       else if (currentReturn->kind == TyKind::Void)
         fn += "  ret void\n";

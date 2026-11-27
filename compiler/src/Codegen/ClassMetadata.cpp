@@ -3366,7 +3366,16 @@ auto codegen::Emitter::assignObject(const std::string& dst, const std::string& s
       }
     }
     bool mayThrow = callMayThrow(op, global.classArgsOf(foundIn), false);
-    if (s.returnType == "void")
+    if (s.registers)
+    {
+      // kpp's register convention (an operator= taking its class by value, or returning one): lowered.
+      std::vector<std::string> args{"ptr " + thisArg};
+      if (s.hasSret)
+        args.push_back("ptr " + newObjectSlot(declType(op)->inner, at));
+      args.push_back("ptr " + source);
+      emitKppCall(s, name, args, mayThrow, false);
+    }
+    else if (s.returnType == "void")
       emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + source + ")", mayThrow);
     else
       emitCall(newTemp() + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + source + ")", mayThrow);

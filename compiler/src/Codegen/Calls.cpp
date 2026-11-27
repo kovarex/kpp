@@ -349,19 +349,20 @@ auto codegen::Emitter::useFunctionOnce(FunctionDecl* f, const TemplateArgs& args
   }
   ArgsScope scope(*this, &args);
   Signature s = signatureOf(f);
-  std::string params, returnType = s.returnType;
+  std::string params, returnType = llvmReturn(s);
   if (isCFunction(f))
     std::tie(returnType, params) = cDeclaration(f, s); // (its structs by value as the target's C passes them)
   else
   {
-    for (size_t i = 0; i < s.paramTypes.size(); ++i)
-      params += (i ? ", " : "") + s.paramTypes[i];
+    std::vector<std::string> lowered = llvmParams(s); // (the register convention's parts, when s has it)
+    for (size_t i = 0; i < lowered.size(); ++i)
+      params += (i ? ", " : "") + lowered[i];
     if (s.variadic)
       params += params.empty() ? "..." : ", ...";
   }
   // (a narrow result extended by the callee, a C function's as the target's C says and every kpp
   // definition's: narrowExtension; the declaration as the definition has it)
-  decls += "declare" + std::string(s.resultExtension) + " " + returnType + " " + name + "(" + params + ")\n";
+  decls += "declare" + ccText(s) + std::string(s.resultExtension) + " " + returnType + " " + name + "(" + params + ")\n";
   return name;
 }
 
@@ -1219,6 +1220,7 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
   for (auto& [t, text] : argList)
     argText += std::string(argText.empty() ? "" : ", ") + text;
   size_t provided = position - slot; // argument values emitted (pack expansions counted element by element)
+  std::vector<std::string> defaultTexts;
   if (provided < f->params.size())
   {
     // Parameters the call left out take their default arguments (defaultArgument).
@@ -1230,10 +1232,34 @@ auto codegen::Emitter::callFunction(FunctionDecl* f, const TemplateArgs& args, c
       std::string text = defaultArgument(i, pt);
       argText += std::string(argText.empty() ? "" : ", ") + text;
       passed.push_back(text);
+      defaultTexts.push_back(text);
       ++position;
     }
   }
   handOverArguments(passed);
+  if (!cFunction && s.registers)
+  {
+    // kpp's register convention (withRegisters): the arguments as kpp passes them, lowered by emitKppCall.
+    std::vector<std::string> all;
+    if (s.hasThis)
+      all.push_back("ptr " + thisArg);
+    if (s.hasSret)
+      all.push_back("ptr " + resultAddr);
+    for (auto& [t, text] : argList)
+      all.push_back(text);
+    all.insert(all.end(), defaultTexts.begin(), defaultTexts.end());
+    noteTestCall(f, args, at);
+    std::string r = emitKppCall(s, name, all, callMayThrow(f, args, !indirect.empty()), s.variadic || !indirect.empty());
+    if (s.hasSret)
+    {
+      if (resultTemp)
+        statementTemps.push_back({resultAddr, ret}); // not before: a call that throws built no result to destroy
+      return {resultAddr, ret, sret.empty()};
+    }
+    if (r.empty())
+      return {"", types.voidType(), false};
+    return {r, ret, false};
+  }
   std::string sig = (s.variadic || !indirect.empty()) ? signatureText(s) + " " : s.returnType + " ";
   if (cFunction)
   {
@@ -1569,8 +1595,8 @@ auto codegen::Emitter::objectsEqual(const std::string& a, const std::string& b, 
     std::string thisArg = a;
     if (canonicalClass(t, at) != foundIn)
       baseAddress(t, foundIn, a, thisArg, at);
-    std::string r = newTemp();
-    emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + b + ")", callMayThrow(op, args, false));
+    // (lowered when the operator has the register convention: its class taken by value)
+    std::string r = emitKppCall(s, name, {"ptr " + thisArg, "ptr " + b}, callMayThrow(op, args, false), false);
     if (s.returnType == "i1")
       return {r, types.boolType(), false};
     return convert(Value{r, types.intType(32), false}, types.boolType(), at);

@@ -2301,25 +2301,22 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
           s = signatureOf(pf);
           ret = declType(pf)->inner;
         }
-        std::string argText = "ptr " + thisArg;
+        std::vector<std::string> args{"ptr " + thisArg};
         std::string resultAddr;
         if (s.hasSret)
         {
           resultAddr = newObjectSlot(ret, u);
-          argText += ", ptr " + resultAddr;
+          args.push_back("ptr " + resultAddr);
         }
-        argText += ", i32 0";
-        std::string sig = s.returnType + " ";
+        args.push_back("i32 0");
         bool mayThrow = callMayThrow(pf, fnArgs, false);
-        if (s.returnType == "void")
+        std::string r = emitKppCall(s, fname, args, mayThrow, false); // (lowered when s has the register convention)
+        if (r.empty())
         {
-          emitCall("", sig + fname + "(" + argText + ")", mayThrow);
           if (s.hasSret)
             statementTemps.push_back({resultAddr, ret}); // not before: a call that throws built no result to destroy
           return s.hasSret ? callRvalue({resultAddr, ret, true}, u) : Value{"", types.voidType(), false};
         }
-        std::string r = newTemp();
-        emitCall(r + " = ", sig + fname + "(" + argText + ")", mayThrow);
         return callRvalue({r, ret, false}, u);
       }
       return callRvalue(operatorCall(o, opName, {}, u, true), u);
@@ -2349,23 +2346,23 @@ auto codegen::Emitter::unary(UnaryExpr* u) -> Value
         std::string fname = useFunction(chosen, none, nullptr, u);
         Signature s = signatureOf(chosen);
         const Ty* ret = ft->inner;
-        std::string argText, resultAddr;
+        std::vector<std::string> args;
+        std::string resultAddr;
         if (s.hasSret)
         {
           resultAddr = newObjectSlot(ret, u);
-          argText = "ptr " + resultAddr + ", ";
+          args.push_back("ptr " + resultAddr);
         }
-        argText += "ptr " + lvalue(u->operand) + ", " + llType(ft->args[1], u) + " 0";
+        args.push_back("ptr " + lvalue(u->operand));
+        args.push_back(llType(ft->args[1], u) + " 0");
         bool mayThrow = callMayThrow(chosen, none, false);
-        if (s.returnType == "void")
+        std::string r = emitKppCall(s, fname, args, mayThrow, false); // (lowered when s has the register convention)
+        if (r.empty())
         {
-          emitCall("", s.returnType + " " + fname + "(" + argText + ")", mayThrow);
           if (s.hasSret)
             statementTemps.push_back({resultAddr, ret}); // (after the call: one that throws built no result)
           return s.hasSret ? callRvalue({resultAddr, ret, true}, u) : Value{"", types.voidType(), false};
         }
-        std::string r = newTemp();
-        emitCall(r + " = ", s.returnType + " " + fname + "(" + argText + ")", mayThrow);
         return callRvalue({r, ret, false}, u);
       }
     }
@@ -3100,11 +3097,10 @@ auto codegen::Emitter::orderOfObjects(const std::string& a, const std::string& b
     if (!ot)
       unsupported(at, "operator<=> returning an object without the library's strong_ordering");
     std::string tmp = newObjectSlot(ot, at); // the result object: this, sret, other
-    emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + tmp + ", ptr " + b + ")", callMayThrow(op, args, false));
+    emitKppCall(s, name, {"ptr " + thisArg, "ptr " + tmp, "ptr " + b}, callMayThrow(op, args, false), false); // (lowered when s has the register convention)
     return orderOf(Value{tmp, ot, true}, at);
   }
-  std::string r = newTemp();
-  emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + b + ")", callMayThrow(op, args, false));
+  std::string r = emitKppCall(s, name, {"ptr " + thisArg, "ptr " + b}, callMayThrow(op, args, false), false);
   return convert(Value{r, types.intType(32), false}, types.intType(8), at);
 }
 

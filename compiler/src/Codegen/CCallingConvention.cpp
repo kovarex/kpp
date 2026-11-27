@@ -233,8 +233,20 @@ auto codegen::Emitter::lowerCArguments(std::vector<std::pair<const Ty*, std::str
   }
 }
 
-auto codegen::Emitter::loadCPart(const std::string& addr, uint64_t offset, const std::string& type, uint64_t bytes) -> std::string
+auto codegen::Emitter::loadCPart(const std::string& addr, uint64_t offset, const std::string& type, uint64_t bytes, uint64_t align) -> std::string
 {
+  if (align)
+  {
+    std::string from = addr;
+    if (offset)
+    {
+      from = newTemp();
+      fn += "  " + from + " = getelementptr inbounds i8, ptr " + addr + ", i64 " + std::to_string(offset) + "\n";
+    }
+    std::string v = newTemp();
+    fn += "  " + v + " = load " + type + ", ptr " + from + ", align " + std::to_string(align) + "\n";
+    return v;
+  }
   if (type == "[2 x i64]" && bytes < 16)
   {
     std::string low = loadCPart(addr, offset, "i64", 8), high = loadCPart(addr, offset + 8, "i64", bytes - 8);
@@ -261,8 +273,20 @@ auto codegen::Emitter::loadCPart(const std::string& addr, uint64_t offset, const
   return v;
 }
 
-auto codegen::Emitter::storeCPart(const std::string& addr, uint64_t offset, const std::string& type, const std::string& value, uint64_t bytes, bool gepAtZero) -> void
+auto codegen::Emitter::storeCPart(const std::string& addr, uint64_t offset, const std::string& type, const std::string& value, uint64_t bytes, bool gepAtZero,
+                                  uint64_t align) -> void
 {
+  if (align)
+  {
+    std::string to = addr;
+    if (offset)
+    {
+      to = newTemp();
+      fn += "  " + to + " = getelementptr inbounds i8, ptr " + addr + ", i64 " + std::to_string(offset) + "\n";
+    }
+    fn += "  store " + type + " " + value + ", ptr " + to + ", align " + std::to_string(align) + "\n";
+    return;
+  }
   if (type == "[2 x i64]" && bytes < 16)
   {
     std::string low = newTemp(), high = newTemp();
@@ -405,7 +429,9 @@ auto codegen::Emitter::emitReturnVoid() -> void
   std::string type = cReturnType(p), value = "undef";
   for (size_t i = 0; i < cReturnParts.size(); ++i)
   {
-    std::string part = loadCPart(sretAddr, cReturnOffsets[i], cReturnParts[i], cReturnSize - cReturnOffsets[i]);
+    uint64_t offset = cReturnOffsets[i];
+    uint64_t align = cReturnAlign && offset ? std::min<uint64_t>(cReturnAlign, offset & (~offset + 1)) : cReturnAlign;
+    std::string part = loadCPart(sretAddr, offset, cReturnParts[i], cReturnSize - offset, align);
     if (cReturnParts.size() == 1)
     {
       value = part;
@@ -532,11 +558,14 @@ auto codegen::Emitter::sharedThunk(const std::string& name, const Signature& s, 
   if (emittedShared[name])
     return name;
   emittedShared[name] = true;
+  // (under the register convention, its lowered parameters and result passed on as they are)
+  std::vector<std::string> lowered = llvmParams(s);
+  std::string returnType = llvmReturn(s), cc = ccText(s);
   std::string params, args;
-  for (size_t i = 1; i < s.paramTypes.size(); ++i)
+  for (size_t i = 1; i < lowered.size(); ++i)
   {
-    params += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
-    args += ", " + s.paramTypes[i] + " %p" + std::to_string(i);
+    params += ", " + lowered[i] + " %p" + std::to_string(i);
+    args += ", " + lowered[i] + " %p" + std::to_string(i);
   }
   std::string body = "  %off = ptrtoint ptr " + at + " to i64\n  %self = getelementptr i8, ptr %this, i64 %off\n";
   std::string target = callee;
@@ -545,11 +574,11 @@ auto codegen::Emitter::sharedThunk(const std::string& name, const Signature& s, 
     body += "  %vt = load ptr, ptr %self" + vptrAccess(sh.sanitizeThread) + "\n  %sp = getelementptr inbounds ptr, ptr %vt, i64 " + std::to_string(slot) + "\n  %fp = load ptr, ptr %sp\n";
     target = "%fp";
   }
-  if (s.returnType == "void")
-    body += "  tail call void " + target + "(ptr %self" + args + ")\n  ret void\n";
+  if (returnType == "void")
+    body += "  tail call" + cc + " void " + target + "(ptr %self" + args + ")\n  ret void\n";
   else
-    body += "  %r = tail call " + s.returnType + " " + target + "(ptr %self" + args + ")\n  ret " + s.returnType + " %r\n";
-  shared += sharedComdat(name) + "define linkonce_odr " + s.returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
+    body += "  %r = tail call" + cc + " " + returnType + " " + target + "(ptr %self" + args + ")\n  ret " + returnType + " %r\n";
+  shared += sharedComdat(name) + "define linkonce_odr" + cc + " " + returnType + " " + name + "(ptr %this" + params + ") comdat {\nentry:\n" + body + "}\n";
   return name;
 }
 
@@ -581,6 +610,32 @@ auto codegen::Emitter::methodSignature(const Ty* ft, Node* at) -> Signature
     s.paramTys.push_back(pt);
   }
   s.variadic = ft->variadic;
+  if (!ft->isCConvention())
+    withRegisters(s, ret, at);
+  return s;
+}
+
+auto codegen::Emitter::functionTypeSignature(const Ty* ft, Node* at) -> Signature
+{
+  Signature s;
+  const Ty* ret = ft->inner;
+  if (returnsInMemory(ret))
+  {
+    s.hasSret = true;
+    s.returnType = "void";
+    s.paramTypes.push_back("ptr");
+    s.paramTys.push_back(nullptr);
+  }
+  else
+    s.returnType = !ret || !ret->isKnown() || ret->isReference() ? "ptr" : llType(ret, at);
+  for (const Ty* pt : ft->args)
+  {
+    s.paramTypes.push_back(parameterType(pt, at));
+    s.paramTys.push_back(pt);
+  }
+  s.variadic = ft->variadic;
+  if (!ft->isCConvention())
+    withRegisters(s, ret, at);
   return s;
 }
 
@@ -632,16 +687,217 @@ auto codegen::Emitter::signatureOf(FunctionDecl* f) -> Signature
     s.paramTys.push_back(pt);
   }
   s.variadic = ft->variadic;
+  if (!isCFunction(f) && !global.isExternC(f) && !global.closureOfCallOperator(f))
+    withRegisters(s, ret, f);
   return s;
 }
 
 auto codegen::Emitter::signatureText(const Signature& s) -> std::string
 {
-  std::string t = s.returnType + " (";
-  for (size_t i = 0; i < s.paramTypes.size(); ++i)
-    t += (i ? ", " : "") + s.paramTypes[i];
+  std::vector<std::string> params = llvmParams(s);
+  std::string t = llvmReturn(s) + " (";
+  for (size_t i = 0; i < params.size(); ++i)
+    t += (i ? ", " : "") + params[i];
   if (s.variadic)
-    t += s.paramTypes.empty() ? "..." : ", ...";
+    t += params.empty() ? "..." : ", ...";
   t += ")";
   return t;
+}
+
+auto codegen::Emitter::registerAbi() -> RegisterAbi
+{
+  static const RegisterAbi mode = []
+  {
+    // PROTOTYPE BRANCH: on (sysv) when unset, so that CI runs every suite with it; KPP_REGISTER_ABI=off is kpp
+    // as on master. Off by default before anything of it lands.
+    const char* v = getenv("KPP_REGISTER_ABI");
+    if (!v || !*v)
+      return RegisterAbi::Sysv;
+    if (!strcmp(v, "off"))
+      return RegisterAbi::Off;
+    if (!strcmp(v, "sysv"))
+      return RegisterAbi::Sysv;
+    if (!strcmp(v, "c"))
+      return RegisterAbi::C;
+    fprintf(stderr, "kpp: KPP_REGISTER_ABI is off, sysv or c, not %s\n", v);
+    exit(2);
+  }();
+  return mode;
+}
+
+auto codegen::Emitter::registerPassing(const Ty* t, bool result, Node* at) -> RegisterParts
+{
+  RegisterParts none;
+  t = types.unqualified(t);
+  if (!isClass(t) || !t->isKnown())
+    return none;
+  auto& cache = registerPassingCache[result ? 1 : 0];
+  if (auto it = cache.find(t); it != cache.end())
+    return it->second;
+  RegisterParts p = registerPassingOf(t, result, at);
+  cache.emplace(t, p);
+  return p;
+}
+
+auto codegen::Emitter::registerPassingOf(const Ty* t, bool result, Node* at) -> RegisterParts
+{
+  RegisterParts none;
+  classSizeAndAlign(t, at); // (laid out, the fields' sizes known)
+  uint64_t size = sizeOf(t, at);
+  if (size > (result ? 16u : 32u))
+    return none;
+  {
+    auto lock = sharedLock();
+    StructInfo& info = structFor(t, at);
+    if (info.polymorphic || info.packed)
+      return none;
+  }
+  if (needsDestruction(t, at) || !relocatesBitwise(t, at))
+    return none;
+  std::vector<std::pair<uint64_t, const Ty*>> scalars;
+  cScalars(t, 0, scalars, at);
+  // Each eightbyte's class, as SysV's: INTEGER where an integer or pointer lies, SSE where only floats
+  // do (a float, two, a double), a 16-byte vector two eightbytes of its own; padding alone none.
+  enum Kind : uint8_t { None, Integer, Sse, VectorStart, VectorRest };
+  size_t words = size_t((size + 7) / 8);
+  std::vector<Kind> kind(words, None);
+  std::vector<std::string> vectorType(words);
+  std::vector<bool> isDouble(words, false), upperFloat(words, false);
+  for (auto& [offset, s] : scalars)
+  {
+    const Ty* u = types.unqualified(s);
+    uint64_t ssize = sizeOf(u, at);
+    if (ssize == 0)
+      continue;
+    size_t w = size_t(offset / 8);
+    if (u->kind == TyKind::Vector)
+    {
+      if ((ssize != 8 && ssize != 16) || offset % ssize != 0 || kind[w] != None || (ssize == 16 && kind[w + 1] != None))
+        return none;
+      kind[w] = VectorStart;
+      if (ssize == 16)
+        kind[w + 1] = VectorRest;
+      vectorType[w] = llType(u, at);
+      continue;
+    }
+    if (offset % 8 + ssize > 8 || offset % std::max<uint64_t>(1, alignOf(u, at)) != 0 || kind[w] == VectorStart || kind[w] == VectorRest)
+      return none; // (unaligned; a union of a vector and something else)
+    bool fp = u->kind == TyKind::Float;
+    if (fp && ssize != 4 && ssize != 8)
+      return none; // (a half, x87's long double)
+    if (!fp)
+      kind[w] = Integer;
+    else if (kind[w] != Integer)
+    {
+      kind[w] = Sse;
+      isDouble[w] = isDouble[w] || ssize == 8;
+      upperFloat[w] = upperFloat[w] || (ssize == 4 && offset % 8 >= 4);
+    }
+  }
+  RegisterParts p;
+  for (size_t w = 0; w < words; ++w)
+  {
+    std::string part;
+    switch (kind[w])
+    {
+      case None:
+      case VectorRest:
+        continue;
+      case VectorStart:
+        part = vectorType[w];
+        break;
+      case Sse:
+        part = isDouble[w] ? "double" : upperFloat[w] ? "<2 x float>" : "float";
+        break;
+      case Integer:
+        part = "i" + std::to_string(std::min<uint64_t>(8, size - w * 8) * 8);
+        break;
+    }
+    p.parts.push_back(part);
+    p.offsets.push_back(w * 8);
+  }
+  if (p.parts.size() > (result ? 2u : 4u))
+    return none;
+  p.inRegisters = true;
+  p.size = size;
+  p.align = std::max<uint64_t>(1, alignOf(t, at));
+  return p;
+}
+
+auto codegen::Emitter::withRegisters(Signature& s, const Ty* ret, Node* at) -> void
+{
+  RegisterAbi mode = registerAbi();
+  if (mode == RegisterAbi::Off || s.variadic || sh.target.cpp)
+    return;
+  std::vector<RegisterParts> lowered(s.paramTypes.size());
+  bool any = false;
+  for (size_t i = 0; i < s.paramTypes.size(); ++i)
+    if (const Ty* pt = s.paramTys[i]; pt && !pt->isReference() && isClass(types.unqualified(pt)))
+    {
+      lowered[i] = registerPassing(pt, false, at);
+      any = any || lowered[i].inRegisters;
+    }
+  RegisterParts result;
+  if (s.hasSret && ret && !ret->isReference() && isClass(types.unqualified(ret)))
+    result = registerPassing(ret, true, at);
+  if (!any && !result.inRegisters)
+    return;
+  s.registers = true;
+  s.lowered = std::move(lowered);
+  s.result = std::move(result);
+  if (mode == RegisterAbi::Sysv && sh.target.windows() && !sh.target.arm64())
+    s.cc = "x86_64_sysvcc";
+}
+
+auto codegen::Emitter::emitKppCall(const Signature& s, const std::string& fnText, const std::vector<std::string>& args, bool mayThrow, bool typed) -> std::string
+{
+  std::string argText, slotAddr;
+  size_t slot = s.hasThis ? 1 : 0;
+  for (size_t i = 0; i < args.size(); ++i)
+  {
+    const std::string& a = args[i];
+    if (s.registers && s.hasSret && i == slot)
+    {
+      slotAddr = a.substr(a.find(' ') + 1);
+      if (s.result.inRegisters)
+        continue;
+    }
+    if (s.registers && i < s.lowered.size() && s.lowered[i].inRegisters)
+    {
+      if (a.compare(0, 4, "ptr ") != 0)
+        unsupported(currentFunction, "a class argument of the register convention that is no copy in memory (" + a + ")");
+      std::string addr = a.substr(4);
+      const RegisterParts& p = s.lowered[i];
+      for (size_t k = 0; k < p.parts.size(); ++k)
+      {
+        std::string v = loadCPart(addr, p.offsets[k], p.parts[k], p.size - p.offsets[k], partAlign(p, k));
+        argText += (argText.empty() ? "" : ", ") + p.parts[k] + " " + v;
+      }
+      continue;
+    }
+    argText += (argText.empty() ? "" : ", ") + a;
+  }
+  std::string ret = llvmReturn(s);
+  std::string callee = (s.cc.empty() ? std::string() : s.cc + " ") + (typed ? signatureText(s) : ret) + " " + fnText + "(" + argText + ")";
+  if (ret == "void")
+  {
+    emitCall("", callee, mayThrow);
+    return "";
+  }
+  std::string r = newTemp();
+  emitCall(r + " = ", callee, mayThrow);
+  if (!s.registers || !s.result.inRegisters)
+    return r;
+  const RegisterParts& p = s.result;
+  for (size_t k = 0; k < p.parts.size(); ++k)
+  {
+    std::string part = r;
+    if (p.parts.size() > 1)
+    {
+      part = newTemp();
+      fn += "  " + part + " = extractvalue " + ret + " " + r + ", " + std::to_string(k) + "\n";
+    }
+    storeCPart(slotAddr, p.offsets[k], p.parts[k], part, p.size - p.offsets[k], false, partAlign(p, k));
+  }
+  return "";
 }

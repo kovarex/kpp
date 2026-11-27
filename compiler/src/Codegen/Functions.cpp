@@ -262,12 +262,45 @@ auto codegen::Emitter::lambdaSignatureOf(const Ty* callTy, Node* at) -> Signatur
 
 auto codegen::Emitter::declarationText(const Signature& s, const std::string& name) -> std::string
 {
-  std::string text = "declare" + std::string(s.resultExtension) + " " + s.returnType + " " + name + "(";
-  for (size_t i = 0; i < s.paramTypes.size(); ++i)
-    text += (i ? ", " : "") + s.paramTypes[i];
+  std::vector<std::string> params = llvmParams(s);
+  std::string text = "declare" + ccText(s) + std::string(s.resultExtension) + " " + llvmReturn(s) + " " + name + "(";
+  for (size_t i = 0; i < params.size(); ++i)
+    text += (i ? ", " : "") + params[i];
   if (s.variadic)
-    text += s.paramTypes.empty() ? "..." : ", ...";
+    text += params.empty() ? "..." : ", ...";
   return text + ")";
+}
+
+auto codegen::Emitter::llvmParams(const Signature& s) -> std::vector<std::string>
+{
+  if (!s.registers)
+    return s.paramTypes;
+  std::vector<std::string> out;
+  size_t slot = s.hasThis ? 1 : 0;
+  for (size_t i = 0; i < s.paramTypes.size(); ++i)
+  {
+    if (s.hasSret && i == slot && s.result.inRegisters)
+      continue; // (the result comes back in registers: no slot)
+    if (i < s.lowered.size() && s.lowered[i].inRegisters)
+      out.insert(out.end(), s.lowered[i].parts.begin(), s.lowered[i].parts.end());
+    else
+      out.push_back(s.paramTypes[i]);
+  }
+  return out;
+}
+
+auto codegen::Emitter::llvmReturn(const Signature& s) -> std::string
+{
+  if (!s.registers || !s.result.inRegisters)
+    return s.returnType;
+  if (s.result.parts.empty())
+    return "void";
+  if (s.result.parts.size() == 1)
+    return s.result.parts[0];
+  std::string t = "{ ";
+  for (size_t i = 0; i < s.result.parts.size(); ++i)
+    t += (i ? ", " : "") + s.result.parts[i];
+  return t + " }";
 }
 
 auto codegen::Emitter::recordRequestDeclaration(const std::string& name, std::string declaration) -> void

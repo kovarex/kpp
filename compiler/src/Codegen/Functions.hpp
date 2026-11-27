@@ -41,6 +41,17 @@
     // structure, with the program's own spelling instead of the IR's.
     std::string displayFunctionName(FunctionDecl* f, const TemplateArgs& args, const Ty* classTy);
 
+    // How kpp's register convention (a prototype behind KPP_REGISTER_ABI, withRegisters) passes one
+    // entry of a signature: a small trivially copyable class in registers, as these parts.
+    struct RegisterParts
+    {
+      bool inRegisters = false;       // else as the entry's kpp type says (a pointer to a copy)
+      std::vector<std::string> parts; // each part's LLVM type, in order (none: an empty class)
+      std::vector<uint64_t> offsets;  // where each starts in the object
+      uint64_t size = 0;              // the object's
+      uint64_t align = 1;             // and its alignment (the parts' loads and stores say it)
+    };
+
     struct Signature
     {
       std::string returnType;
@@ -48,6 +59,13 @@
       std::vector<const Ty*> paramTys; // null for this/sret
       bool hasThis = false, hasSret = false, variadic = false;
       const char* resultExtension = ""; // " signext" or " zeroext" for a narrow result (narrowExtension)
+      // kpp's register convention (withRegisters): set when an entry or the result is passed in
+      // registers. cc is the LLVM calling convention it is called with ("" for the target's C one);
+      // lowered has one entry per paramTypes entry; a result in registers drops the slot entry.
+      bool registers = false;
+      std::string cc;
+      std::vector<RegisterParts> lowered;
+      RegisterParts result;
     };
 
     // A lambda's call operator's signature, as emitLambda writes its header and a caller declares it
@@ -57,6 +75,13 @@
 
     // `declare RET NAME(TYPES)`, as declareFromHeader reads it from the header of the definition.
     static std::string declarationText(const Signature& s, const std::string& name);
+    // The LLVM parameter types and result type of a function of signature s: s's own, or under the
+    // register convention (s.registers) each class in registers as its parts, and no result slot for
+    // a result in registers.
+    static std::vector<std::string> llvmParams(const Signature& s);
+    static std::string llvmReturn(const Signature& s);
+    // " CC" for a function called with the register convention's calling convention, else "".
+    static std::string ccText(const Signature& s) { return s.cc.empty() ? std::string() : " " + s.cc; }
     // A C function's symbol on the target: its name, or the one macOS's headers give it (stat$INODE64 on
     // x86-64, fopen$DARWIN_EXTSN).
     std::string cSymbol(const std::string& name);

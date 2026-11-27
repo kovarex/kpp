@@ -1197,6 +1197,91 @@ auto codegen::Emitter::lambdaThunk(const Ty* t, const Ty* fnTy, Node* at) -> std
   }
   bool hasSret = returnsInMemory(ret);
   std::string retType = hasSret ? "void" : (!ret || !ret->isKnown()) ? "ptr" : ret->isReference() ? "ptr" : llType(ret, at);
+  if (Signature fs = functionTypeSignature(fnTy, at); fs.registers)
+  {
+    // A pointer of kpp's register convention (withRegisters): the classes it passes in registers stored
+    // into slots of their own for the call operator (kpp's pointers to copies), a result in registers
+    // built in a slot of its own and returned from there.
+    std::string params, args = "ptr null", body;
+    unsigned n = 0;
+    auto local = [&] { return "%t" + std::to_string(n++); };
+    auto access = [&](const std::string& op, const std::string& base, const RegisterParts& p, size_t k, const std::string& value)
+    {
+      std::string where = base;
+      if (p.offsets[k])
+      {
+        where = local();
+        body += "  " + where + " = getelementptr inbounds i8, ptr " + base + ", i64 " + std::to_string(p.offsets[k]) + "\n";
+      }
+      std::string align = ", align " + std::to_string(partAlign(p, k));
+      if (op == "store")
+        body += "  store " + p.parts[k] + " " + value + ", ptr " + where + align + "\n";
+      else
+        body += "  " + value + " = load " + p.parts[k] + ", ptr " + where + align + "\n";
+    };
+    std::string resultSlot;
+    for (size_t i = 0; i < fs.paramTypes.size(); ++i)
+    {
+      if (fs.hasSret && i == 0)
+      {
+        resultSlot = local();
+        if (fs.result.inRegisters)
+          body += "  " + resultSlot + " = alloca " + llType(ret, at) + ", align " + std::to_string(fs.result.align) + "\n";
+        else
+          params += (params.empty() ? "" : ", ") + std::string("ptr ") + resultSlot;
+        args += ", ptr " + resultSlot;
+        continue;
+      }
+      if (fs.lowered[i].inRegisters)
+      {
+        const RegisterParts& p = fs.lowered[i];
+        std::string slot = local();
+        body += "  " + slot + " = alloca " + llType(fs.paramTys[i], at) + ", align " + std::to_string(p.align) + "\n";
+        for (size_t k = 0; k < p.parts.size(); ++k)
+        {
+          std::string v = local();
+          params += (params.empty() ? "" : ", ") + p.parts[k] + " " + v;
+          access("store", slot, p, k, v);
+        }
+        args += ", ptr " + slot;
+        continue;
+      }
+      std::string v = local();
+      params += (params.empty() ? "" : ", ") + fs.paramTypes[i] + " " + v;
+      args += ", " + fs.paramTypes[i] + " " + v;
+    }
+    std::string returnType = llvmReturn(fs);
+    if (hasSret || ret->kind == TyKind::Void)
+      body += "  call void " + functionName + "(" + args + ")\n";
+    else
+      body += "  %r = call " + retType + " " + functionName + "(" + args + ")\n";
+    if (hasSret && fs.result.inRegisters && !fs.result.parts.empty())
+    {
+      std::string value = "undef";
+      for (size_t k = 0; k < fs.result.parts.size(); ++k)
+      {
+        std::string v = local();
+        access("load", resultSlot, fs.result, k, v);
+        if (fs.result.parts.size() == 1)
+        {
+          value = v;
+          break;
+        }
+        std::string whole = local();
+        body += "  " + whole + " = insertvalue " + returnType + " " + value + ", " + fs.result.parts[k] + " " + v + ", " + std::to_string(k) + "\n";
+        value = whole;
+      }
+      body += "  ret " + returnType + " " + value + "\n";
+    }
+    else if (returnType == "void")
+      body += "  ret void\n";
+    else
+      body += "  ret " + retType + " %r\n";
+    std::string text = "define" + ccText(fs) + " " + returnType + " " + name + "(" + params + ") {\nentry:\n" + body + "}\n\n";
+    NameHome home(*this, name);
+    addFunction(name, text, true);
+    return name;
+  }
   std::string params, args = "ptr null";
   if (hasSret)
   {

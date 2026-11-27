@@ -1563,8 +1563,8 @@ auto codegen::Emitter::iteratorLoop(RangeForStmt* f, Value begin, Value end) -> 
     else
       endArg = compareSig.paramTypes[1] + " " + convert(end, pt, f).text;
   }
-  std::string cond = newTemp();
-  emitCall(cond + " = ", compareSig.returnType + " " + compareName + "(ptr " + thisArg + ", " + endArg + ")", callMayThrow(compare, compareArgs, false));
+  // (lowered when the comparison has the register convention: an iterator it takes by value)
+  std::string cond = emitKppCall(compareSig, compareName, {"ptr " + thisArg, endArg}, callMayThrow(compare, compareArgs, false), false);
   if (compareSig.returnType != "i1")
     cond = convert(Value{cond, types.intType(32)}, types.boolType(), f).text;
   if (negate)
