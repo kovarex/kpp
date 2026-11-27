@@ -1,0 +1,176 @@
+// spec: a class by value with a destructor, passed as an argument or returned as a result, is built once and destroyed once whichever way it goes (in registers or through memory): the callee destroys an argument, the caller a result; through a temporary, a moved local, a named and an unnamed result, a parameter returned, a pointer to a function, a virtual function, a pointer to a member function, a throw from the callee and one after the result is built; std::UniquePtr the same; and a class that knows its own address (a move constructor of its own) is never moved by passing it
+int live = 0;
+int destroyed = 0;
+int sum = 0;
+
+// A destructor and no copy or move constructor of its own: its bits are all of it.
+struct Owned
+{
+  Owned(int value) : value(value) { ++live; }
+  ~Owned()
+  {
+    --live;
+    ++destroyed;
+  }
+
+  int value = 0;
+};
+
+struct Thing
+{
+  Thing(int id) : id(id) { ++live; }
+  ~Thing()
+  {
+    --live;
+    ++destroyed;
+  }
+
+  int id = 0;
+};
+
+// Keeps its own address: its move constructor fixes it. Passing it must never move its bits.
+struct Pinned
+{
+  Pinned() : self(&this) {}
+  Pinned(Pinned&& other) : self(&this), value(other.value) {}
+  bool here() const { return this.self == &this; }
+
+  Pinned* self = nullptr;
+  int value = 0;
+};
+
+void take(Owned o) { sum += o.value; }
+Owned make(int v)
+{
+  Owned o(v);
+  o.value += 100;
+  return o;
+}
+Owned makeUnnamed(int v) { return Owned(v); }
+Owned passOn(Owned o) { return o; }
+void takeAndThrow(Owned o) { throw o.value; }
+Owned makeAndThrow(bool fail)
+{
+  Owned o(9);
+  if (fail)
+    throw 9;
+  return o;
+}
+void sink(std::UniquePtr<Thing> p) { sum += p->id; }
+std::UniquePtr<Thing> makeThing(int id) { return std::makeUnique<Thing>(id); }
+std::UniquePtr<Thing> passThing(std::UniquePtr<Thing> p) { return p; }
+bool pinnedHere(Pinned p) { return p.here(); }
+Pinned makePinned(int v)
+{
+  Pinned p;
+  p.value = v;
+  return p;
+}
+
+class Eater
+{
+public:
+  virtual void eat(Owned o) { sum += o.value; }
+  void nibble(Owned o) { sum += 1000 * o.value; }
+};
+
+class BigEater : public Eater
+{
+public:
+  virtual void eat(Owned o) override { sum += 10 * o.value; }
+};
+
+void check(const char* what)
+{
+  std::println(what, ": live ", live, ", destroyed ", destroyed, ", sum ", sum);
+}
+
+int main()
+{
+  take(Owned(1));
+  check("temporary argument");
+  {
+    Owned a(2);
+    take(std::move(a));
+    check("moved argument");
+  }
+  check("moved local's scope ended");
+  {
+    Owned r = make(3);
+    std::println("named result ", r.value);
+    check("named result alive");
+  }
+  check("named result's scope ended");
+  {
+    Owned r = makeUnnamed(4);
+    std::println("unnamed result ", r.value);
+    check("unnamed result alive");
+  }
+  check("unnamed result's scope ended");
+  {
+    Owned r = passOn(Owned(5));
+    std::println("passed on ", r.value);
+    check("parameter returned");
+  }
+  check("passed-on result's scope ended");
+  make(6);
+  check("discarded result");
+  {
+    const Owned& kept = make(7);
+    std::println("kept ", kept.value);
+  }
+  check("result bound to a reference");
+  take(make(8));
+  check("result as an argument");
+  try
+  {
+    takeAndThrow(Owned(10));
+  }
+  catch (int e)
+  {
+    std::println("caught ", e);
+  }
+  check("callee threw");
+  try
+  {
+    Owned never = makeAndThrow(true);
+    std::println("not reached ", never.value);
+  }
+  catch (int e)
+  {
+    std::println("caught ", e);
+  }
+  check("thrown after the result was built");
+  {
+    Owned fine = makeAndThrow(false);
+    std::println("not thrown ", fine.value);
+    check("not thrown");
+  }
+  check("not thrown, scope ended");
+  void (*pointer)(Owned) = take;
+  pointer(Owned(11));
+  check("through a pointer to a function");
+  BigEater big;
+  Eater& eater = big;
+  eater.eat(Owned(12));
+  check("virtual function");
+  void (Eater::*member)(Owned) = &Eater::nibble;
+  (big.*member)(Owned(13));
+  check("pointer to a member function");
+  sink(makeThing(14));
+  check("UniquePtr made and sunk");
+  {
+    std::UniquePtr<Thing> p = makeThing(15);
+    std::UniquePtr<Thing> q = passThing(std::move(p));
+    std::println("moved from is null ", p == nullptr, ", passed on ", q->id);
+    sink(std::move(q));
+    std::println("sunk is null ", q == nullptr);
+  }
+  check("UniquePtr moved through");
+  Pinned pinned;
+  pinned.value = 16;
+  std::println("pinned argument where it was built ", pinnedHere(std::move(pinned)));
+  Pinned result = makePinned(17);
+  std::println("pinned result where it is ", result.here(), " ", result.value);
+  return 0;
+}

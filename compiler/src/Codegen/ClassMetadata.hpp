@@ -602,6 +602,17 @@
     std::unordered_map<const Ty*, bool> bitwiseRelocation; // this emitter's answers
     bool relocatesBitwise(const Ty* t, Node* at, int depth = 0);
 
+    // Whether an object of type t may change its address by its bits alone, the old place never destroyed: what
+    // passing it in registers does to an argument (the caller's copy, the callee's slot) and to a result (the
+    // callee's slot, the caller's). Of the classes relocatesBitwise refuses, a typed union whose alternatives are
+    // (its copies and moves are the compiler's), and the library's owning pointers and the bases of Optional
+    // whose members are (their moves only hand over what they own: the stand-in, until kovarex decides how a
+    // class says so, for an attribute such as [[relocatable]]). Never a class that can be neither moved nor
+    // copied (it stays where it was built, C++17's prvalue in its object), nor one with a copy or move
+    // constructor of its own (it may keep its own address: IDConnector, Targeter).
+    std::unordered_map<const Ty*, bool> registerRelocation; // this emitter's answers
+    bool relocatesInRegisters(const Ty* t, Node* at, int depth = 0);
+
     // Whether objects of type t are assigned bitwise: no copy or move assignment of its own (written,
     // not defaulted) in the class, its bases or its members (GenericTargetable's `operator=` keeps
     // the object's own targeters).

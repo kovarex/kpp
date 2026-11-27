@@ -3921,6 +3921,84 @@ auto codegen::Emitter::relocatesBitwise(const Ty* t, Node* at, int depth) -> boo
   return bitwise;
 }
 
+auto codegen::Emitter::relocatesInRegisters(const Ty* t, Node* at, int depth) -> bool
+{
+  if (t->isReference())
+    return true; // (a reference member is an address)
+  t = types.unqualified(t);
+  while (t->kind == TyKind::Array && t->inner)
+    t = types.unqualified(t->inner);
+  if (isLambda(t) && depth <= 32)
+  {
+    for (auto& [index, ft] : closureValueFields(t, at))
+      if (!relocatesInRegisters(ft, at, depth + 1))
+        return false;
+    return true;
+  }
+  if (!isClass(t) || depth > maxClassNesting)
+    return true;
+  const Ty* key = canonicalClass(t, at);
+  noteLayout(key);
+  if (auto it = registerRelocation.find(key); it != registerRelocation.end())
+    return it->second;
+  registerRelocation[key] = true; // (a member pointing back at its class is no member by value)
+  ClassDecl* c = classDef(key->decl, at);
+  bool relocates = true;
+  TemplateArgs args = global.classArgsOf(key);
+  if (c->isTypedUnion)
+  {
+    for (size_t i = 0; i < c->alternatives.size() && relocates; ++i)
+      if (!boxedAlternative(c, key, i, at)) // (a boxed one is an address)
+        relocates = relocatesInRegisters(alternativeType(c, key, i, at), at, depth + 1);
+    registerRelocation[key] = relocates;
+    return relocates;
+  }
+  bool owning = false;
+  for (const char* name : {"UniquePtr", "SharedPtr", "WeakPtr", "UniqueArray", "OptionalCopiedValue", "OptionalOwnedValue"})
+    owning = owning || global.isLibraryClass(key, name);
+  if (!owning)
+  {
+    ArgsScope scope(*this, &args);
+    bool declared = false, usable = false;
+    for (Decl* m : c->members)
+    {
+      if (m->kind != NodeKind::FunctionDecl || !(m->flags & DF_Constructor) || !m->templateParams.empty() ||
+          static_cast<FunctionDecl*>(m)->params.size() != 1)
+        continue;
+      const Ty* pt = declType(static_cast<FunctionDecl*>(m)->params[0]);
+      if (!pt || !pt->isReference() || !isClass(pt->inner) || classKey(pt->inner) != classKey(key))
+        continue;
+      declared = true;
+      usable = usable || !(m->flags & DF_Delete);
+      if (!(m->flags & (DF_Default | DF_Delete)))
+        relocates = false; // `IDConnector(IDConnector&& other)`, `T(const T&)` of its own
+    }
+    if (declared && !usable)
+      relocates = false; // neither movable nor copyable: it stays where it was built
+  }
+  if (relocates)
+  {
+    std::vector<const Ty*> fields;
+    std::vector<Decl*> unionMembers;
+    {
+      auto lock = sharedLock();
+      const StructInfo& info = structFor(key, at);
+      fields = info.fieldTypes;
+      if (info.isUnion)
+        unionMembers = info.fieldDecls; // (its storage is integers to the layout: its members are what it holds)
+    }
+    for (Decl* m : unionMembers)
+      if (!relocatesInRegisters(unionMemberType(key, m, at), at, depth + 1))
+        relocates = false;
+    if (unionMembers.empty())
+      for (const Ty* f : fields)
+        if (!relocatesInRegisters(f, at, depth + 1))
+          relocates = false;
+  }
+  registerRelocation[key] = relocates;
+  return relocates;
+}
+
 auto codegen::Emitter::assignsBitwise(const Ty* t, Node* at, int depth) -> bool
 {
   t = types.unqualified(types.stripRef(t));

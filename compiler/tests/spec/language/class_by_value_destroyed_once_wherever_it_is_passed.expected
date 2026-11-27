@@ -1,0 +1,32 @@
+temporary argument: live 0, destroyed 1, sum 1
+moved argument: live 0, destroyed 2, sum 3
+moved local's scope ended: live -1, destroyed 3, sum 3
+named result 103
+named result alive: live 0, destroyed 3, sum 3
+named result's scope ended: live -1, destroyed 4, sum 3
+unnamed result 4
+unnamed result alive: live 0, destroyed 4, sum 3
+unnamed result's scope ended: live -1, destroyed 5, sum 3
+passed on 5
+parameter returned: live -1, destroyed 6, sum 3
+passed-on result's scope ended: live -2, destroyed 7, sum 3
+discarded result: live -2, destroyed 8, sum 3
+kept 107
+result bound to a reference: live -2, destroyed 9, sum 3
+result as an argument: live -2, destroyed 10, sum 111
+caught 10
+callee threw: live -2, destroyed 11, sum 111
+caught 9
+thrown after the result was built: live -2, destroyed 12, sum 111
+not thrown 9
+not thrown: live -1, destroyed 12, sum 111
+not thrown, scope ended: live -2, destroyed 13, sum 111
+through a pointer to a function: live -2, destroyed 14, sum 122
+virtual function: live -2, destroyed 15, sum 242
+pointer to a member function: live -2, destroyed 16, sum 13242
+UniquePtr made and sunk: live -2, destroyed 17, sum 13256
+moved from is null true, passed on 15
+sunk is null true
+UniquePtr moved through: live -2, destroyed 18, sum 13271
+pinned argument where it was built true
+pinned result where it is true 17
