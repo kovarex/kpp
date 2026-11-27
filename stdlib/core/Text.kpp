@@ -56,6 +56,17 @@ void appendCPointerPiece(const void* object, String& out)
   out.append(text);
 }
 
+// An array of wide chars: wide C text (UTF-16 on Windows, UTF-32 elsewhere), to its first zero, written as UTF-8, as a
+// wide char pointer's (2026-11-27).
+void appendWideCTextPiece(const void* object, String& out)
+{
+  const wchar_t* text = static_cast<const wchar_t*>(object);
+  i32 length = 0;
+  while (text[length] != 0)
+    ++length;
+  out.append(platform::narrowWide(text, length));
+}
+
 // A wide char pointer: wide C text (UTF-16 on Windows, UTF-32 elsewhere), to its first zero, written as UTF-8, as a char
 // pointer's (2026-11-22). A null one is no text: it stops.
 void appendWideCPointerPiece(const void* object, String& out)

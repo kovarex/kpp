@@ -1093,6 +1093,10 @@ auto GlobalScope::Impl::textPieceOf(const Expr* e, const Ty* given) -> TextPiece
   // A string literal or an array of chars: C's text, to its first zero (as C++'s `out << text`).
   if ((e && stringLiteralArray(e, given, types)) || (t->kind == TyKind::Array && isNarrowChar(t->inner)))
     return thunk("appendCTextPiece");
+  // An array of wide chars (Unreal's `TCHAR Buffer[1024]`): wide C text, to its first zero, written as UTF-8, as a wide
+  // char pointer's (2026-11-27; until then "is no piece of a Text")
+  if (t->kind == TyKind::Array && isWideChar(t->inner))
+    return thunk("appendWideCTextPiece");
   if (t->kind == TyKind::Pointer || t->kind == TyKind::Nullptr)
   {
     // A char pointer: C text, to its first zero, a null one stopping (kovarex, 2026-11-16: "the most basic

@@ -1287,7 +1287,7 @@
           return false;
         }
         if (!strchr("diuxXocsfegp", c.conversion) || c.flags.find(' ') != std::string::npos || c.flags.find('\'') != std::string::npos ||
-            (c.length == "L") || (c.length == "l" && (c.conversion == 's' || c.conversion == 'c')))
+            (c.length == "L") || (c.length == "l" && c.conversion == 'c'))
         {
           unsupported = std::string("%") + c.flags + (c.length) + c.conversion;
           return false;
@@ -1350,6 +1350,24 @@
       if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
         return exactIntegerName(static_cast<VariableDecl*>(d)->type, depth + 1);
       return {};
+    }
+    // wchar_t, also by a typedef or alias of it (Unreal's TCHAR)
+    bool isWideChar(Type* type, int depth = 0)
+    {
+      while (type && type->kind == NodeKind::ConstType)
+        type = static_cast<ConstType*>(type)->inner;
+      if (!type || depth > 8)
+        return false;
+      if (type->kind == NodeKind::BuiltinType)
+        return static_cast<BuiltinType*>(type)->keyword == Kw::wchar_t_;
+      if (type->kind != NodeKind::NamedType)
+        return false;
+      Decl* d = static_cast<NamedType*>(type)->resolved;
+      if (d && d->kind == NodeKind::UsingAliasDecl)
+        return isWideChar(static_cast<UsingAliasDecl*>(d)->type, depth + 1);
+      if (d && d->kind == NodeKind::VariableDecl && (d->flags & DF_Typedef))
+        return isWideChar(static_cast<VariableDecl*>(d)->type, depth + 1);
+      return false;
     }
     // `%s` of the game's `toCStr(x)`, which convertTokens wrote `toStr(x).c_str()`: the String is
     // the piece, `toStr(x)`, and x itself where its type prints what toStr writes (an integer's
@@ -1475,6 +1493,9 @@
             valueOpen = "std::counted(", valueClose = ", " + c.precisionText + ")";
             break;
           }
+          // (`%ls`, wide C text: a wchar_t pointer is a piece itself, as a char pointer is; another type fails to compile)
+          if (c.length == "l")
+            break;
           if (plain && plain->kind == NodeKind::LiteralExpr && static_cast<LiteralExpr*>(plain)->literalKind == TokenKind::String)
             break;
           if (toCStrPiece(plain, argEnd))
@@ -1507,8 +1528,9 @@
               Type* pointee = static_cast<PointerType*>(type)->pointee;
               while (pointee && pointee->kind == NodeKind::ConstType)
                 pointee = static_cast<ConstType*>(pointee)->inner;
-              charPointer = pointee && pointee->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(pointee)->keyword == Kw::char_ &&
-                            !static_cast<BuiltinType*>(pointee)->isUnsigned && !static_cast<BuiltinType*>(pointee)->isSigned;
+              charPointer = (pointee && pointee->kind == NodeKind::BuiltinType && static_cast<BuiltinType*>(pointee)->keyword == Kw::char_ &&
+                             !static_cast<BuiltinType*>(pointee)->isUnsigned && !static_cast<BuiltinType*>(pointee)->isSigned) ||
+                            isWideChar(pointee); // (a wchar_t pointer is wide C text, a piece too: `(const char*)` of it printed its first character)
             }
             // (`x.c_str()` and `e.what()` are C text whatever x's class: a wide one fails to compile)
             bool cText = plain && plain->kind == NodeKind::CallExpr && static_cast<CallExpr*>(plain)->callee->kind == NodeKind::MemberExpr &&

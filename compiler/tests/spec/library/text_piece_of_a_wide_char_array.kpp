@@ -1,0 +1,10 @@
+// spec: an array of wchar_t in a text (`std::println("path: ", buffer)` with `wchar_t buffer[260]`, Unreal's `TCHAR Buffer[N]` given to `%s`) is wide C text, to its first zero, written as UTF-8, as a char array is (design.md 14)
+// found by thread UE (2026-11-27): it was "wchar_t[1024] is no piece of a Text" (20 errors in converted Core once its `%s` were wide)
+int main()
+{
+  wchar_t buffer[8] = {L'G', L'r', L'ü', 0, L'x'};
+  const wchar_t fixed[] = L"ab";
+  std::String text = std::toString("[", buffer, "|", fixed, "]");
+  std::println("path: ", buffer, " ", text, " ", text.size());
+  return 0;
+}
