@@ -508,7 +508,8 @@ namespace
         setNumber(d, numberingFunction && insideFunction() ? (unitTypes++ | NumberInFunction) : numberedTypes++);
     }
     // A function at file or class level whose body is parsed now: its lambdas and the classes and enumerations numbered in its
-    // body count in it, named by its tag, a hash of its file's tag and its header's tokens (the first free one: two functions
+    // body count in it, named by its tag, a hash of its file's tag, its header's tokens and the names of the classes and
+    // namespaces it is in (the first free one: two functions
     // of one header, or a hash that is another's), so that a lambda or a class added to one function renumbers no other's: a
     // compile server keeps their code (until 2026-11-10 they counted in their file, and one added above them generated the
     // program in full: "a lambda or a local type was renumbered", 6.3 s for a lambda added to ElectricNetworkValues.kpp).
@@ -527,6 +528,16 @@ namespace
       mix(fileText);
       for (uint32_t t = f->token; t < bodyStart && t < toks.size(); ++t)
         mix(spelling(toks[t]));
+      // (and the names of the classes and namespaces around it, which a header in a class does not write: every fixture test's
+      // body is `void __kpp_body()` in a class of its own (parseTest), which took the first free tag in the file's order, so that
+      // a fixture test added above another renumbered the other's lambdas, its code generated in full; until 2026-11-27)
+      for (Decl* p = f->parent; p; p = p->parent)
+        if (p->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(p)->name.empty())
+          mix(symbols.name(static_cast<ClassDecl*>(p)->name.last().symbol));
+        else if (p->kind == NodeKind::EnumDecl && !static_cast<EnumDecl*>(p)->name.empty())
+          mix(symbols.name(static_cast<EnumDecl*>(p)->name.last().symbol));
+        else if (p->kind == NodeKind::NamespaceDecl && static_cast<NamespaceDecl*>(p)->name != UINT32_MAX)
+          mix(symbols.name(static_cast<NamespaceDecl*>(p)->name));
       while (h == 0 || h == file || !numberingTags.insert(h).second)
         h = (h ^ 0x9e3779b9u) * 16777619u;
       f->numberingTag = h;

@@ -23,12 +23,12 @@ function game::Square::sideBy
   member of game::Square
   parameter this const game::Square*
   parameter k int
-  local grow game::Square::sideBy::__lambda_c...
-  local copied game::Square::sideBy::__lambda_c...
-function game::Square::sideBy::__lambda_c41d59db_0::operator()(int32)
+  local grow game::Square::sideBy::__lambda_8...
+  local copied game::Square::sideBy::__lambda_8...
+function game::Square::sideBy::__lambda_87e716fc_0::operator()(int32)
   parameter by int
   local this const game::Square*
-function game::Square::sideBy::__lambda_c41d59db_1::operator()(int32)
+function game::Square::sideBy::__lambda_87e716fc_1::operator()(int32)
   parameter by int
   local held game::Square
 function inspect(const game::Point&, int32, game::Mode, std::StringView)

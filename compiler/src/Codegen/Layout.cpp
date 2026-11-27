@@ -1543,11 +1543,25 @@ auto codegen::Emitter::descriptorFor(const Ty* cls, Node* at) -> std::string
     if (!info.typeInfoName.empty())
       return info.typeInfoName;
   }
-  std::string name = "@\"typeinfo." + classIrName(key, info) + "\"";
-  bool savedShared = emittingShared;
-  emittingShared = true; // the descriptor goes into every module that uses it
-  std::string nameConstant = cStringConstant(types.toString(key, &symbols));
-  emittingShared = savedShared;
+  std::string irName = classIrName(key, info);
+  std::string name = "@\"typeinfo." + irName + "\"";
+  // Its name's text is a constant of its own after it, in its entry: the descriptor goes into every module that uses it, the
+  // name with it (until 2026-11-27 a string literal of the shared declarations, so that a compile server's build that made a
+  // class's first descriptor, a fixture test's class added, generated the program in full: "first use(s) added to the shared
+  // declarations").
+  std::string nameConstant = "@\"typeinfo." + irName + ".name\"";
+  std::string printed = types.toString(key, &symbols);
+  printed += '\0';
+  std::string escaped;
+  for (unsigned char c : printed)
+    if (c >= 0x20 && c < 0x7f && c != '"' && c != '\\')
+      escaped += char(c);
+    else
+    {
+      char hex[8];
+      snprintf(hex, sizeof hex, "\\%02X", c);
+      escaped += hex;
+    }
   std::string structName = info.name, list;
   for (size_t i = 0; i < info.bases.size(); ++i)
   {
@@ -1564,7 +1578,9 @@ auto codegen::Emitter::descriptorFor(const Ty* cls, Node* at) -> std::string
   std::string arrayType = "[" + std::to_string(info.bases.size()) + " x { ptr, i64, i64 }]";
   std::string text = "$" + name.substr(1) + " = comdat any\n" + name + " = linkonce_odr constant { ptr, i64, i64, " + arrayType + " } { ptr " +
                      nameConstant + ", i64 " + std::to_string(info.bases.size()) + ", i64 " + (plain ? "1" : "0") + ", " + arrayType + " " +
-                     (info.bases.empty() ? std::string("zeroinitializer") : "[" + list + "]") + " }, comdat\n";
+                     (info.bases.empty() ? std::string("zeroinitializer") : "[" + list + "]") + " }, comdat\n" + "$" + nameConstant.substr(1) +
+                     " = comdat any\n" + nameConstant + " = linkonce_odr unnamed_addr constant [" + std::to_string(printed.size()) + " x i8] c\"" +
+                     escaped + "\", comdat\n";
   std::unique_lock lock(sh.descriptorsMutex, std::defer_lock);
   if (!own)
     lock.lock();

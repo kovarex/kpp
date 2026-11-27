@@ -1,0 +1,299 @@
+// spec: a compile server builds fixture tests (`test Name : Fixture`, whose class the parser declares beside the test's function) added, renamed and removed from the program it kept, and what it builds is what a build from scratch gives: each fixture's class added or removed whole, its test function and its registration with it; a fixture class's destructor helper (`@kpp.dtor.`, its vtable's destructor or its destruction of more than eight calls) placed and dropped with it; a test added above another leaves the other's lambda its name (kovarex, 2026-11-27: until then a fixture test added built the game's tests from scratch, 10 to 15 s)
+// kpp: --tests
+// steps: incremental
+//--- step: the program
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  class SceneFixture
+  {
+  public:
+    virtual ~SceneFixture() { std::println("scene ", this.name, " closed"); }
+    virtual int items() const { return 2; }
+
+  protected:
+    std::String name = "belts";
+  };
+
+  struct Inventory
+  {
+    std::String a = "a", b = "b", c = "c", d = "d", e = "e", f = "f", g = "g", h = "h", i = "i", j = "j";
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Lists : SceneFixture { std::println("Belts.Lists ", this.items()); }
+  test Stops : BeltFixture(0)
+  {
+    auto twice = [](int v) { return v * 2 + 1; };
+    std::println("Belts.Stops ", twice(this.speed));
+  }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Lists 2
+// expect: scene belts closed
+// expect: Belts.Stops 1
+// expect: 3 tests, 0 failed
+//--- step: fixture tests added above a test with a lambda: one with a local struct, one destroyed through its helper, one of a polymorphic fixture
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  class SceneFixture
+  {
+  public:
+    virtual ~SceneFixture() { std::println("scene ", this.name, " closed"); }
+    virtual int items() const { return 2; }
+
+  protected:
+    std::String name = "belts";
+  };
+
+  struct Inventory
+  {
+    std::String a = "a", b = "b", c = "c", d = "d", e = "e", f = "f", g = "g", h = "h", i = "i", j = "j";
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Lists : SceneFixture { std::println("Belts.Lists ", this.items()); }
+  test Turns : BeltFixture(30)
+  {
+    struct Turn
+    {
+      int degrees = 90;
+      int twice() const { return this.degrees * 2; }
+    };
+    std::println("Belts.Turns ", this.speed, " ", Turn{}.twice());
+  }
+  test Counts : Inventory { std::println("Belts.Counts ", this.a, this.j); }
+  test Shows : SceneFixture { std::println("Belts.Shows ", this.items() + 1); }
+  test Stops : BeltFixture(0)
+  {
+    auto twice = [](int v) { return v * 2 + 1; };
+    std::println("Belts.Stops ", twice(this.speed));
+  }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Lists 2
+// expect: scene belts closed
+// expect: Belts.Turns 30 180
+// expect: Belts.Counts aj
+// expect: Belts.Shows 3
+// expect: scene belts closed
+// expect: Belts.Stops 1
+// expect: 6 tests, 0 failed
+//--- step: a fixture test's body edited
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  class SceneFixture
+  {
+  public:
+    virtual ~SceneFixture() { std::println("scene ", this.name, " closed"); }
+    virtual int items() const { return 2; }
+
+  protected:
+    std::String name = "belts";
+  };
+
+  struct Inventory
+  {
+    std::String a = "a", b = "b", c = "c", d = "d", e = "e", f = "f", g = "g", h = "h", i = "i", j = "j";
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Lists : SceneFixture { std::println("Belts.Lists ", this.items()); }
+  test Turns : BeltFixture(30)
+  {
+    struct Turn
+    {
+      int degrees = 90;
+      int twice() const { return this.degrees * 2; }
+    };
+    std::println("Belts.Turns ", this.speed, " ", Turn{}.twice());
+  }
+  test Counts : Inventory { std::println("Belts.Counts ", this.a, this.j); }
+  test Shows : SceneFixture { std::println("Belts.Shows ", this.items() + 1); }
+  test Stops : BeltFixture(0)
+  {
+    auto twice = [](int v) { return v * 2 + 3; };
+    std::println("Belts.Stops ", twice(this.speed));
+  }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Lists 2
+// expect: scene belts closed
+// expect: Belts.Turns 30 180
+// expect: Belts.Counts aj
+// expect: Belts.Shows 3
+// expect: scene belts closed
+// expect: Belts.Stops 3
+// expect: 6 tests, 0 failed
+//--- step: the added tests renamed, one fixture's argument changed
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  class SceneFixture
+  {
+  public:
+    virtual ~SceneFixture() { std::println("scene ", this.name, " closed"); }
+    virtual int items() const { return 2; }
+
+  protected:
+    std::String name = "belts";
+  };
+
+  struct Inventory
+  {
+    std::String a = "a", b = "b", c = "c", d = "d", e = "e", f = "f", g = "g", h = "h", i = "i", j = "j";
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Lists : SceneFixture { std::println("Belts.Lists ", this.items()); }
+  test Bends : BeltFixture(45)
+  {
+    struct Turn
+    {
+      int degrees = 90;
+      int twice() const { return this.degrees * 2; }
+    };
+    std::println("Belts.Bends ", this.speed, " ", Turn{}.twice());
+  }
+  test Tallies : Inventory { std::println("Belts.Tallies ", this.a, this.j); }
+  test Displays : SceneFixture { std::println("Belts.Displays ", this.items() + 1); }
+  test Stops : BeltFixture(0)
+  {
+    auto twice = [](int v) { return v * 2 + 3; };
+    std::println("Belts.Stops ", twice(this.speed));
+  }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Lists 2
+// expect: scene belts closed
+// expect: Belts.Bends 45 180
+// expect: Belts.Tallies aj
+// expect: Belts.Displays 3
+// expect: scene belts closed
+// expect: Belts.Stops 3
+// expect: 6 tests, 0 failed
+//--- step: those tests removed
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  class SceneFixture
+  {
+  public:
+    virtual ~SceneFixture() { std::println("scene ", this.name, " closed"); }
+    virtual int items() const { return 2; }
+
+  protected:
+    std::String name = "belts";
+  };
+
+  struct Inventory
+  {
+    std::String a = "a", b = "b", c = "c", d = "d", e = "e", f = "f", g = "g", h = "h", i = "i", j = "j";
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Lists : SceneFixture { std::println("Belts.Lists ", this.items()); }
+  test Stops : BeltFixture(0)
+  {
+    auto twice = [](int v) { return v * 2 + 3; };
+    std::println("Belts.Stops ", twice(this.speed));
+  }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Lists 2
+// expect: scene belts closed
+// expect: Belts.Stops 3
+// expect: 3 tests, 0 failed
+//--- step: two of them added again under the names they had first (their helpers written again)
+suite Belts
+{
+  class BeltFixture
+  {
+  public:
+    BeltFixture(int speed) : speed(speed) {}
+    virtual ~BeltFixture() = default;
+
+  protected:
+    int speed;
+  };
+
+  class SceneFixture
+  {
+  public:
+    virtual ~SceneFixture() { std::println("scene ", this.name, " closed"); }
+    virtual int items() const { return 2; }
+
+  protected:
+    std::String name = "belts";
+  };
+
+  struct Inventory
+  {
+    std::String a = "a", b = "b", c = "c", d = "d", e = "e", f = "f", g = "g", h = "h", i = "i", j = "j";
+  };
+
+  test Moves : BeltFixture(15) { std::println("Belts.Moves ", this.speed); }
+  test Lists : SceneFixture { std::println("Belts.Lists ", this.items()); }
+  test Counts : Inventory { std::println("Belts.Counts ", this.a, this.j); }
+  test Shows : SceneFixture { std::println("Belts.Shows ", this.items() + 1); }
+  test Stops : BeltFixture(0)
+  {
+    auto twice = [](int v) { return v * 2 + 3; };
+    std::println("Belts.Stops ", twice(this.speed));
+  }
+}
+// expect: Belts.Moves 15
+// expect: Belts.Lists 2
+// expect: scene belts closed
+// expect: Belts.Counts aj
+// expect: Belts.Shows 3
+// expect: scene belts closed
+// expect: Belts.Stops 3
+// expect: 5 tests, 0 failed

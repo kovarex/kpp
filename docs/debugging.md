@@ -19,8 +19,10 @@ with `/DEBUG` already, for the crash report's function names).
   (`inspect::__lambda_ec11f6bb_0::operator()(int32)`), elsewhere its file's tag and its number in
   the file. The file's tag is a hash of the file's path under its root (`std/...` for the standard
   library's, the root directory's name and the path under it for the program's), a function's a hash
-  of its file's tag and its header's tokens, so the name is the same wherever the sources are and
-  whatever files come before it, and a lambda added to one function renames none of another's. A file's private entities (design.md 15) carry its name and the
+  of its file's tag, its header's tokens and the names of the classes and namespaces it is in (a
+  fixture test's body, `void __kpp_body()` in every fixture's class, by its class), so the name is the
+  same wherever the sources are and whatever files come before it, and a lambda added to one function
+  renames none of another's. A file's private entities (design.md 15) carry its name and the
   same tag (`inflate.kpp@3f0c9a12::helper(int32)`).
 - A test, its fixture and a generator are named as written, the suite their scope (`Machines::WiresMigrate()`, a
   fixture's body `Machines::WiresMigrate::body`, a generator's `Machines::EachSave::generate`), not by the parser's
