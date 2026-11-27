@@ -1,0 +1,26 @@
+// cppinput: an operator!= whose body is its =='s statement by statement, each return negated (Unreal's TRange:
+// `if (IsEmpty() && Other.IsEmpty()) return false; return (Low != Other.Low) || (High != Other.High);` beside an ==
+// returning true there and `(Low == Other.Low) && (High == Other.High)`) is dropped, a != b being !(a == b); the
+// converter kept it for review, an error in kpp
+struct Range
+{
+  i32 Low = 0;
+  i32 High = 0;
+
+  bool IsEmpty() const { return this->High <= this->Low; }
+
+  bool operator==(const Range& Other) const
+  {
+    if (this->IsEmpty() && Other.IsEmpty())
+    {
+      return true;
+    }
+    return (this->Low == Other.Low) && (this->High == Other.High);
+  }
+};
+
+i32 main()
+{
+  Range a{1, 5}, b{1, 5}, c{2, 5}, e{3, 1}, f{4, 2};
+  return a != b || !(a != c) || e != f ? 1 : 0;
+}
