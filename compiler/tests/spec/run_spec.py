@@ -38,7 +38,7 @@ none), pass, or pending with what its `// pending:` line says. Nothing is built 
     python compiler\\tests\\spec\\run_spec.py --doc          writes it
     python compiler\\tests\\spec\\run_spec.py --check-doc    says where it is not what the headers give (exit code 1)
 
---check-doc also says where an example of readme.md or docs/differences-from-cpp.md is not the suite's: every code
+--check-doc also says where an example of readme.md, docs/differences-from-cpp.md or docs/primer.md is not the suite's: every code
 line of those pages' fenced kpp blocks is, as written, a line of a snippet of compiler/tests/spec/docs (or of its
 .files), which holds the example with what it needs around it, so that an example the compiler no longer takes
 fails the suite, and one edited on the page without its snippet fails this check (kovarex, 2026-11-26: "make check
@@ -271,7 +271,7 @@ AREA_TITLES = {
   "library": "Standard library (what std:: converts to)",
   "kpp": "kpp's own features (design.md sections 7 and 8)",
   "interop": "C interop",
-  "docs": "The examples of readme.md and docs/differences-from-cpp.md, as the pages write them",
+  "docs": "The examples of readme.md, docs/differences-from-cpp.md and docs/primer.md, as the pages write them",
 }
 
 
@@ -734,7 +734,8 @@ def doc_differences():
 DOC_HOW = "python compiler\\tests\\spec\\run_spec.py --doc writes it from the snippets' headers, building nothing: commit it with the change"
 
 # The pages whose examples are the suite's (example_differences), and the area that holds them.
-EXAMPLE_PAGES = ["readme.md", "docs/differences-from-cpp.md"]
+EXAMPLE_PAGES = ["readme.md", "docs/differences-from-cpp.md", "docs/primer.md"]
+EXAMPLE_PAGES_NAMED = ", ".join(EXAMPLE_PAGES[:-1]) + " and " + EXAMPLE_PAGES[-1]
 EXAMPLES_AREA = "docs"
 EXAMPLES_HOW = "put the line, as the page writes it, in the example's snippet in compiler/tests/spec/docs, which the suite builds and runs"
 
@@ -846,9 +847,9 @@ def main():
         if examples:
             if len(examples) > 20:
                 print(f"and {len(examples) - 20} more")
-            print(f"spec: FAILED: {len(examples)} example line(s) of {' and '.join(EXAMPLE_PAGES)} that the suite does not build ({EXAMPLES_HOW})")
+            print(f"spec: FAILED: {len(examples)} example line(s) of {EXAMPLE_PAGES_NAMED} that the suite does not build ({EXAMPLES_HOW})")
             return 1
-        print(f"spec: docs/spec-status.md is what the snippets' headers give, and the examples of {' and '.join(EXAMPLE_PAGES)} are the suite's")
+        print(f"spec: docs/spec-status.md is what the snippets' headers give, and the examples of {EXAMPLE_PAGES_NAMED} are the suite's")
         return 0
     # Windows' own debug run of the suite's snippets: the run docs/spec-status.md is about (below).
     windows_debug = HOST_WINDOWS and not (args.target or args.release or args.debug_info or args.via_cpp or args.snippets)

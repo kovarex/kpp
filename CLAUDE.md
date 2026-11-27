@@ -11,6 +11,12 @@ simple templates, own standard library, C-only interop.
   `docs/stdlib/`: the standard library specification (self-contained; changing a rule there is a
   design decision), `docs/stdlib-conformance.md`: where stdlib/ does not meet it yet.
   `docs/code-style.md`: kpp's code style (Factorio's), checked by `tools\style\kppstyle.py`.
+  `docs/primer.md`: what a C++ programmer writes differently in kpp, on one page. It is imported at the end of
+  this file, so every session has it in context (a page headed "kpp for a C++ programmer": if yours has none,
+  read the file before writing kpp): write kpp (a spec snippet, the stdlib, a library, the game) by it. Its
+  examples are snippets of the suite (`compiler/tests/spec/docs/primer_*.kpp`); a language change that makes a
+  line of it wrong changes it in the same commit, and the copy in wube/kpp-factorio (`doc/kpp-primer.md`, for
+  sessions started in the game's repository) by a pull request there.
 - `compiler/`: the compiler. `compiler\build.cmd` builds `compiler\build\kpp.exe` (CMake + Ninja +
   clang-cl from VS 2022). Benchmarks live in `compiler/bench/`, test inputs in `compiler/tests/`.
 - `stdlib/`: the standard library, written in kpp and compiled from source with every program
@@ -131,3 +137,5 @@ then CommonUtil, Agui and Util on their own into programs\factorio\kpp and runs 
 front end. A new gap found in converted code gets a pending snippet in `compiler/tests/spec/`
 before it is fixed. Measure, don't guess: every speed claim comes with the benchmark command and
 numbers.
+
+@docs/primer.md

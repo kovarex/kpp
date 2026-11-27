@@ -1,0 +1,12 @@
+x = {}5
+Idle: rest
+.
+Charging: .
+Working: work
+.
+Moving: work
+.
+Broken: report
+.
+Lost: report
+.

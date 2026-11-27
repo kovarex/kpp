@@ -1,0 +1,35 @@
+// spec: docs/primer.md, section 3: a struct's member-wise construction and ==, a class's default constructor beside another, a static member initialized in the class, an argument matched by type
+enum class Direction : u8 { North, East };
+using PlaySound = explicit bool;
+
+struct Position
+{
+  i32 x = 0;
+  i32 y = 0;
+};
+
+class Account
+{
+public:
+  Account(i64 balance) : balance(balance) {}
+  i64 get() const { return this.balance; }
+
+  static i32 opened = 0;        // a static member is initialized where it is declared
+
+private:
+  i64 balance = 0;
+};
+
+void build(Position at, Direction direction = Direction::North, PlaySound sound = PlaySound::True);
+void build(Position at, Direction direction, PlaySound sound) { std::println(at.x, " ", direction, " ", sound); }
+
+i32 main()
+{
+  Position a(1, 2);               // a struct is built member by member, also beside constructors it declares
+  Position b(1);                  //   (the last members may be left to their initializers)
+  bool same = a == Position{1, 2}; // and has ==, unless a member is a pointer or reference: do not write one
+  Account empty;                  // a class keeps its default constructor beside its other constructors
+  build(a, PlaySound::False);     // an argument that fits no position goes to the default parameter of its type
+  std::println(same, " ", empty.get(), " ", b.x, b.y, " ", Account::opened);
+  return 0;
+}

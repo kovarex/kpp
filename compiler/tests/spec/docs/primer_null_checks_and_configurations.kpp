@@ -1,0 +1,58 @@
+// spec: docs/primer.md, section 6: ?-> and ?:, if constexpr on config::debug, when, the implicit else of an if constexpr that returns, for constexpr over members(T)
+struct Engine { i32 power = 5; };
+
+struct Train
+{
+  Engine* engine = nullptr;
+  void stop() { std::println("stop"); }
+};
+
+struct Label { std::String text; };
+struct Crate { Label* label = nullptr; };
+
+struct Options
+{
+  i32 width = 80;
+  bool verbose = false;
+};
+
+i32 verified = 0;
+
+void verify() { ++verified; }
+
+template<class T> std::String dump(const T& object)
+{
+  std::String out;
+  if constexpr (!std::isStruct<T>)        // after an if constexpr that returns, the rest of the block is its else
+    return std::toString(object);
+  for constexpr (auto m : members(T))     // reflection: m.name, m.type, object.[m]; also enumerators(E) (e.name,
+    out << m.name << "=" << object.[m];   //   e.value), alternatives(U) (a.name, a.type, a.tag), nameof(x)
+  return out;
+}
+
+i32 main()
+{
+  Engine engine;
+  Train real;
+  real.engine = &engine;
+  Train* train = &real;
+  i32 power = train?->engine->power ?: 0;
+  Label glass{"glass"};
+  Crate full{&glass};
+  Crate bare;
+  for (Crate* crate : {&full, &bare, (Crate*)nullptr})
+  {
+    std::String label = crate?->label?->text ?: "none"; // ?-> skips the rest of its chain when the left side is null,
+    std::println(label);
+  }
+  train?->stop();                         //   so use it where C++ tests each pointer; a ?: b is a ? a : b
+  train = nullptr;
+  train?->stop();
+  if constexpr (config::debug)            // instead of #ifdef: at class and namespace scope too, and the branch
+    verify();                             //   not taken is not checked, in any function
+  when (config::debug) i32 checks = 0;    // a variable or member that exists only in that configuration
+  if constexpr (config::debug)
+    ++checks;
+  std::println(power, " ", dump(Options{}), " ", dump(5), " ", nameof(power), " ", verified == (config::debug ? 1 : 0));
+  return 0;
+}

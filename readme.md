@@ -61,7 +61,8 @@ Factorio already has (see [Status](#status)).
 
 kpp is C++ with a few rules changed and a few things added. Everything in this section works today;
 what is decided but not built yet is under [Planned](#planned). Every rule that differs from C++ is in
-[docs/differences-from-cpp.md](docs/differences-from-cpp.md).
+[docs/differences-from-cpp.md](docs/differences-from-cpp.md), and [docs/primer.md](docs/primer.md) is the one page of
+it a C++ programmer, or an AI assistant's context, needs to write kpp.
 
 ### Safer by default
 
@@ -266,8 +267,9 @@ what is decided but not built yet is under [Planned](#planned). Every rule that 
   ```
   `kpp --test` builds and runs them (`--filter TEXT`, `--list`, `--report FILE`).
 
-The examples on this page and in [docs/differences-from-cpp.md](docs/differences-from-cpp.md) are built and
-run by the specification suite (`compiler/tests/spec/docs/`), so they are what the compiler takes today.
+The examples on this page, in [docs/differences-from-cpp.md](docs/differences-from-cpp.md) and in
+[docs/primer.md](docs/primer.md) are built and run by the specification suite (`compiler/tests/spec/docs/`), so
+they are what the compiler takes today.
 
 ### Existing code
 

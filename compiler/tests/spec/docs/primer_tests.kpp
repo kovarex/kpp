@@ -1,0 +1,26 @@
+// spec: docs/primer.md, section 7: a test, a suite and a fixture, run by kpp --test
+// test:
+i32 square(i32 x) { return x * x; }
+
+class Counter
+{
+public:
+  Counter(i32 start = 0) : value(start) {}
+
+protected:
+  i32 value;
+};
+
+test squareOfThree
+{
+  check(square(3) == 9);        // goes on after a failure
+  require(square(0) == 0);      // ends the test
+}
+
+suite Counting                  // its helper functions are seen by its tests only
+{
+  test FromTen : Counter(10)    // a fixture: the body is a member of a class derived from Counter
+  {
+    require(this.value == 10);
+  }
+}

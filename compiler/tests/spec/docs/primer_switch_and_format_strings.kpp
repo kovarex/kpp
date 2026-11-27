@@ -1,0 +1,34 @@
+// spec: docs/primer.md, section 1: a case ends at the next label (an empty one does nothing, a list shares a body, fallthrough runs on), and a format string given to println prints as it is
+enum class Mode : u8 { Idle, Charging, Working, Moving, Broken, Lost };
+void rest() { std::println("rest"); }
+void work() { std::println("work"); }
+void report() { std::println("report"); }
+
+void act(Mode mode)
+{
+  switch (mode)
+  {
+    case Mode::Idle:                  // nothing falls through, and a `break;` that ends a case is an error
+      rest();
+    case Mode::Charging:              // WRONG habit: this case does nothing, it shares no body with the next
+    case Mode::Working, Mode::Moving: // one body for several values is a list
+      work();
+    case Mode::Broken:
+      fallthrough;                    // running into the next case is said, as the last statement
+    case Mode::Lost:
+      report();
+  }                                   // no default: every value of an enum class must be named, or it is an error
+}
+
+i32 main()
+{
+  i32 x = 5;
+  std::println("x = {}", x);          // WRONG habit: prints `x = {}5`. Text is pieces in order (section 4)
+  for (Mode mode : Mode::values)
+  {
+    std::print(mode, ": ");
+    act(mode);
+    std::println(".");
+  }
+  return 0;
+}

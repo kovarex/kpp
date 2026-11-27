@@ -2,7 +2,8 @@
 
 For a reader who knows C++. kpp is C++ with a few rules changed and a few things added: what this
 page does not list is meant to work as in C++. Each entry gives C++'s rule, kpp's rule, an example
-where one helps, the reason and where it is decided or tested.
+where one helps, the reason and where it is decided or tested. [primer.md](primer.md) is the short form:
+what to write differently, on one page.
 
 Each entry has a status:
 

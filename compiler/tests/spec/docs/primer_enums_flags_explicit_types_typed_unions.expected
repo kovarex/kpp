@@ -1,0 +1,8 @@
+4 East true true East 1 false
+North East South West Marked | Frozen 6 Damaged
+3 false true false
+go 7
+wait
+wait
+1 0
+fluid 4 4

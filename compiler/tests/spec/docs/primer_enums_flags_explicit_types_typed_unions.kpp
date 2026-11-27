@@ -1,0 +1,94 @@
+// spec: docs/primer.md, section 5: an enum class with members, flags, explicit types, a union enum class with creators, u[tag], a switch on its tag and u[]
+struct Position
+{
+  i32 x = 0;
+  i32 y = 0;
+};
+
+enum class Direction : u8
+{
+  { North, East, South, West }                 // the values in a block of their own when members follow
+
+  bool isVertical() const { return this == North || this == South; } // this is the value
+};
+
+flags Usage : u8 { Damaged, Marked, Frozen };  // a set of named bits, instead of an enum of masks
+
+using ItemIndex = explicit u16;                // a type of its own: ItemIndex(3), u16(index), and it mixes with
+using PlaySound = explicit bool;               // no other type (index == ItemIndex(0)); PlaySound::True, PlaySound(b)
+
+union enum class Action : u8                   // a tagged union, instead of std::variant
+{
+  { {Move, Position}, {Say, std::String}, {Stop, void} }
+
+  i32 cost() const { return this == Tag::Stop ? 0 : 1; }
+};
+
+struct ItemID
+{
+  u16 id = 0;
+  void save(std::String& output) const { output << "item " << this.id; }
+};
+
+struct FluidID
+{
+  u16 id = 0;
+  void save(std::String& output) const { output << "fluid " << this.id; }
+};
+
+union enum class UpgradeID : u8
+{
+  { {Item, ItemID}, {Fluid, FluidID} }
+
+  void save(std::String& output) const { this[].save(output); }
+  u16 id() const { return this[].id; }
+};
+
+void thaw() { std::println("thaw"); }
+void go(const Position& position) { std::println("go ", position.x); }
+void wait() { std::println("wait"); }
+
+void run(Action action)
+{
+  if (action == Action::Tag::Move)
+    action[Action::Tag::Move].x = 7;             // u[tag] is the value, and asserts that tag is held
+  switch (action.tag())                          // exhaustive, as an enum's
+  {
+    case Action::Tag::Move:
+      go(action[Action::Tag::Move]);
+    case Action::Tag::Say, Action::Tag::Stop:
+      wait();
+  }
+}
+
+i32 main()
+{
+  Direction d = Direction::East;
+  i32 counts[Direction::count];
+  ++counts[d];
+  std::println(Direction::count, " ", d.str(), " ", Direction::fromStr("East").hasValue(), " ", d.isValid(), " ", d, " ", u8(d), " ", d.isVertical());
+  for (Direction each : Direction::values)
+    std::print(each, " ");
+
+  Usage usage = Usage::Damaged | Usage::Frozen;
+  usage.set(Usage::Marked);
+  usage.clear(Usage::Damaged);
+  if (usage.has(Usage::Frozen) && !usage.hasAny(Usage::Damaged | Usage::Marked)) // the integer: usage.bits(), Usage::fromBits(n)
+    thaw();
+  std::println(usage, " ", usage.bits(), " ", Usage::fromBits(1));
+
+  ItemIndex index = ItemIndex(3);
+  bool b = false;
+  std::println(u16(index), " ", index == ItemIndex(0), " ", PlaySound::True, " ", PlaySound(b));
+
+  Action action = Action::Move(Position{3, 4});  // a creator per alternative: Action::Say("hi"), Action::Stop()
+  run(action);
+  run(Action::Say("hi"));
+  run(Action::Stop());
+  std::println(action.cost(), " ", Action::Stop().cost());
+  UpgradeID upgrade = UpgradeID::Fluid(FluidID{4});
+  std::String output;
+  upgrade.save(output);
+  std::println(output, " ", upgrade.id());
+  return 0;
+}

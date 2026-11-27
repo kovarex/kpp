@@ -2548,7 +2548,7 @@ runs the command above, which builds nothing, and commits the file with it.
 | `interop/sse_vector_values.kpp` | SSE vectors (__m128, __m128i) are values with intrin.h imported: locals, parameters, results and class members hold them, the _mm_ operations take and give them, and a wrapper class converts from and to them | pass |  |  |
 | `interop/stdout_is_file_pointer.kpp` | stdin, stdout and stderr are FILE*, as in C: stdout passes to a FILE* parameter (a stream class built from it) and to the C functions that take FILE* | pass | StdoutWriteStream's `: FileWriteStream(stdout)` through the protected `FileWriteStream(FILE* fp)`: the library's stdout was a void*, no constructor took it, and the first run of the converted game stopped at the stub of StdoutWriteStream's constructor (built at startup for `StdoutWriteStream::instance`) |  |
 
-## The examples of readme.md and docs/differences-from-cpp.md, as the pages write them
+## The examples of readme.md, docs/differences-from-cpp.md and docs/primer.md, as the pages write them
 
 | Snippet | Construct | Status | Factorio | Note |
 |---|---|---|---|---|
@@ -2580,6 +2580,12 @@ runs the command above, which builds nothing, and commits the file with it.
 | `docs/differences_typed_union_creators.kpp` | docs/differences-from-cpp.md, "A union enum class makes its creators": a creator per alternative, and a member of another signature beside one | pass |  |  |
 | `docs/differences_typed_union_every_alternative.kpp` | docs/differences-from-cpp.md, "u[]: a statement once per alternative": this[].save(output) saves whichever alternative is held | pass |  |  |
 | `docs/differences_when.kpp` | docs/differences-from-cpp.md, "when: a declaration that exists under a condition": a local declared by when lives in the enclosing scope, and not at all when the condition is false | pass |  |  |
+| `docs/primer_enums_flags_explicit_types_typed_unions.kpp` | docs/primer.md, section 5: an enum class with members, flags, explicit types, a union enum class with creators, u[tag], a switch on its tag and u[] | pass |  |  |
+| `docs/primer_null_checks_and_configurations.kpp` | docs/primer.md, section 6: ?-> and ?:, if constexpr on config::debug, when, the implicit else of an if constexpr that returns, for constexpr over members(T) | pass |  |  |
+| `docs/primer_switch_and_format_strings.kpp` | docs/primer.md, section 1: a case ends at the next label (an empty one does nothing, a list shares a body, fallthrough runs on), and a format string given to println prints as it is | pass |  |  |
+| `docs/primer_tests.kpp` | docs/primer.md, section 7: a test, a suite and a fixture, run by kpp --test | pass |  |  |
+| `docs/primer_text.kpp` | docs/primer.md, section 4: println and toString take pieces, << appends, + joins, a Text parameter, appendTo, assert with a message | pass |  |  |
+| `docs/primer_what_a_class_no_longer_needs.kpp` | docs/primer.md, section 3: a struct's member-wise construction and ==, a class's default constructor beside another, a static member initialized in the class, an argument matched by type | pass |  |  |
 | `docs/readme_c_import.kpp` | readme.md, "C libraries": extern "C" import brings a C header's functions into the program | pass |  |  |
 | `docs/readme_enum_with_methods.kpp` | readme.md, "Enums with methods": the values in an inner block, methods, count, values, str() and fromStr() | pass |  |  |
 | `docs/readme_no_typename.kpp` | readme.md, "No typename or template disambiguators": a dependent type is named without typename | pass |  |  |

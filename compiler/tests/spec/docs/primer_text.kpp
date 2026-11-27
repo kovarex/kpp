@@ -1,0 +1,31 @@
+// spec: docs/primer.md, section 4: println and toString take pieces, << appends, + joins, a Text parameter, appendTo, assert with a message
+void log(std::Text text);                      // a function that takes pieces: log("took ", ms, " ms")
+void log(std::Text text) { std::println("log: ", text); }
+
+struct Position
+{
+  i32 x = 0;
+  i32 y = 0;
+  void appendTo(std::String& out) const { out << this.x << "," << this.y; } // this one member makes a type printable
+};
+
+i32 main()
+{
+  i32 x = 3;
+  i32 id = 7;
+  i32 count = 1;
+  u32 mask = 255;
+  f64 ratio = 0.5;
+  i32 ms = 12;
+  std::String name = "r2";
+  Position position(4, 5);
+  std::println("x = ", x, ", name = ", name);    // the pieces in order: no format string
+  std::String s = std::toString("id ", id);      // the same pieces as a String
+  s << " at " << position << " " << std::hex(mask) << " " << std::fixed(ratio, 2); // << appends; there is no +=
+  std::String t = "robot " + name;               // + makes a new String
+  log("took ", ms, " ms");
+  assert(count > 0, "count = ", count);          // a statement; release_assert stays in a release build
+  release_assert(count > 0);
+  std::println(s, "; ", t);
+  return 0;
+}
