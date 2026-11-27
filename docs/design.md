@@ -2870,6 +2870,10 @@ nothing else installed: no Visual Studio, no Build Tools, no Windows SDK.
   today's incremental link.exe, the release link, release run time (menu maps, unit tests) of the
   MSVC and the GNU dialect, and executable and debug-info sizes. A slower edit loop keeps the
   incremental link.exe as an explicit debug option, never a silent switch.
+- The bundled lld is LLVM's own Windows release's, not llvm-mingw's (kovarex, 2026-11-27, "do the
+  recommended bundling"): LLVM's release allocates with rpmalloc, llvm-mingw's build from the Windows
+  heap, on which a ThinLTO link's threads wait. The game's release build took 175 s with llvm-mingw's lld
+  and 69 s with an rpmalloc one (build.md, "The bundled toolchain's lld"). llvm-mingw's clang stays.
 
 ### 18. Versions (decided 2026-11-02)
 
