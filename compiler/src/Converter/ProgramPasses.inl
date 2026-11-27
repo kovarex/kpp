@@ -237,7 +237,7 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     return true;
   };
   struct Function { FunctionDecl* f; Decl* scope; std::string params; bool isConst; };
-  std::vector<Function> equals, notEquals;
+  std::vector<Function> equals, notEquals, namespaceDefinitions;
   auto paramText = [&](FunctionDecl* f)
   {
     std::string s;
@@ -307,6 +307,8 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
           uint32_t op = f->name.last().opToken;
           if (c != classesByName.end() && c->second && (op == uint32_t(P::NotEq) || op == uint32_t(P::EqEq)))
             (op == uint32_t(P::NotEq) ? notEquals : equals).push_back({f, c->second, paramText(f), bool(f->flags & DF_Const)});
+          else if (c == classesByName.end() && (op == uint32_t(P::NotEq) || op == uint32_t(P::EqEq)))
+            namespaceDefinitions.push_back({f, nullptr, paramText(f), bool(f->flags & DF_Const)}); // (its friend's class: below)
           continue;
         }
         if (f->name.parts.size() != 1 || f->name.last().special != 2)
@@ -318,6 +320,22 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     }
   };
   collect(parsed.decls, nullptr);
+  // A friend declared in a class and defined below it qualified by its namespace (Unreal's FVersePath: `friend bool
+  // operator!=(const FVersePath&, const FVersePath&);` and `bool UE::Core::operator!=(...) { return !(Lhs == Rhs); }`):
+  // the definition is the friend's, of its class, as the converter decides both (until 2026-11-27 the declaration was
+  // kept for review, "no body here")
+  for (Function& d : namespaceDefinitions)
+  {
+    bool notEqual = d.f->name.last().opToken == uint32_t(P::NotEq);
+    for (const Function& x : notEqual ? notEquals : equals)
+      if (!x.f->body && (x.f->flags & DF_Friend) && x.params == d.params && x.isConst == d.isConst && x.scope)
+      {
+        d.scope = x.scope;
+        break;
+      }
+    if (d.scope)
+      (notEqual ? notEquals : equals).push_back(d);
+  }
   if (notEquals.empty())
     return text;
   struct Edit { uint32_t offset, length; std::string text; };

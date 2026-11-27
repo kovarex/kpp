@@ -1,0 +1,23 @@
+// cppinput: an operator!= declared a friend in its class and defined below it, qualified by its namespace (Unreal's
+// FVersePath: `friend bool operator!=(...);` and `bool UE::Core::operator!=(...) { return !(Lhs == Rhs); }`), is
+// dropped with its declaration, a != b being !(a == b); the converter kept the declaration for review ("no body here")
+namespace Paths
+{
+  class Path
+  {
+  public:
+    Path(i32 v) : Value(v) {}
+    friend bool operator==(const Path& Lhs, const Path& Rhs);
+
+  private:
+    i32 Value;
+  };
+}
+
+bool Paths::operator==(const Path& Lhs, const Path& Rhs) { return Lhs.Value == Rhs.Value; }
+
+i32 main()
+{
+  Paths::Path a(1), b(1), c(2);
+  return a != b || !(a != c) ? 1 : 0;
+}
