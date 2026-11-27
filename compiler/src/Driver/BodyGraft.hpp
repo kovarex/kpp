@@ -101,7 +101,36 @@
     std::vector<std::pair<FunctionDecl*, Decl*>> added; // new functions, with the kept declaration they belong to
     std::vector<std::pair<VariableDecl*, ClassDecl*>> removedMembers; // kept data members, with their kept class
     std::vector<std::pair<VariableDecl*, ClassDecl*>> addedMembers;   // new data members, with the kept class they go into
+    std::vector<std::pair<ClassDecl*, Decl*>> removedClasses; // kept classes taken out whole, with the kept namespace they are in (null: the file's top level)
+    std::vector<std::pair<ClassDecl*, Decl*>> addedClasses;   // new classes put in whole, with the kept namespace they go into
   };
+
+
+  // A class a file defines in a namespace (its top level, a namespace's, a suite's), with the namespace (null at the top level).
+  struct DeclaredClass
+  {
+    ClassDecl* c;
+    Decl* container;
+  };
+
+
+  void collectClasses(Span<Decl*> decls, Decl* container, std::vector<DeclaredClass>& out);
+
+
+  // Whether a class can come or go whole with what reads its name found (its name's readers, the declared types that read it,
+  // the instances made for it): one written `class X ... { ... };` in a namespace (a fixture test's, parseTest), no template,
+  // union, typed union or explicit type, not private to its file, no friend, nested type, static or deprecated member, and
+  // every member function defined in it (no out-of-line definition to attach) with no template, deduced type or friend.
+  bool plainClass(const ClassDecl* c, const std::vector<Token>& tokens);
+
+
+  // The diff's insertions and deletions (tokenMap's) slid along the equal tokens around them to where declarations begin and
+  // end: tokenMap's common prefix takes a test added before another for the other's first token (both start `class` or
+  // `void`), which then had no contiguous place, so that the other was taken out and added again with the one added.
+  // starts: per token of each version, whether a declaration of its namespaces or classes starts there (its attributes
+  // included) or one ends just before it (its `;` included).
+  void alignToDeclarations(const std::vector<Token>& a, std::string_view ta, const std::vector<Token>& b, std::string_view tb,
+                           const std::vector<bool>& boundsA, const std::vector<bool>& boundsB, std::vector<uint32_t>& map);
 
 
   // One past a data member's last token, its `;` included (the parser ends the declaration before it).

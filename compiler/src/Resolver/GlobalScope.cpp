@@ -2594,6 +2594,11 @@ GlobalScope::ChangedName GlobalScope::changedNameOf(const VariableDecl* v)
   return out;
 }
 
+GlobalScope::ChangedName GlobalScope::changedNameOf(const ClassDecl* c)
+{
+  return ChangedName{c->name.empty() ? UINT32_MAX : c->name.last().symbol, nullptr};
+}
+
 GlobalScope::ChangedName GlobalScope::changedNameOf(const FunctionDecl* f)
 {
   ChangedName out{impl->functionSymbol(f->name), nullptr};
@@ -3374,6 +3379,149 @@ void GlobalScope::unindexMember(VariableDecl* v)
     }
   }
   impl->forgetUnitsOf(v); // (its initializer's walk)
+}
+
+void GlobalScope::unindexClass(ClassDecl* c)
+{
+  ++impl->indexVersion;
+  // What indexing it counted (the index line's scopes and entries, which a build from scratch counts without it): its name in
+  // its namespace, its scope and the entries in it, and each class or enumeration a member function's body declares, a scope
+  // of its own with the entries in it (indexLocalType: a class's own name in its scope is no counted entry).
+  auto entriesIn = [](Scope* scope)
+  {
+    size_t n = 0;
+    for (uint32_t i = 0; i < scope->shardCount; ++i)
+      for (auto& [symbol, list] : scope->shards[i].map)
+        n += list.size();
+    return n;
+  };
+  size_t scopesGone = 0, entriesGone = 0;
+  std::unordered_set<const Scope*> gone; // (its scope and its local types': out of the relations' list too)
+  if (c->ownScope)
+  {
+    ++scopesGone;
+    entriesGone += entriesIn(c->ownScope);
+    gone.insert(c->ownScope);
+  }
+  forEachNode(c, [&](Node* n)
+  {
+    if (n->kind != NodeKind::DeclStmt)
+      return;
+    for (Decl* d : static_cast<DeclStmt*>(n)->decls)
+      if ((d->kind == NodeKind::ClassDecl || d->kind == NodeKind::EnumDecl) && d->ownScope && d->ownScope->owner == d)
+      {
+        ++scopesGone;
+        size_t in = entriesIn(d->ownScope);
+        bool selfNamed = d->kind == NodeKind::ClassDecl && !static_cast<ClassDecl*>(d)->name.empty();
+        size_t enumerators = 0;
+        if (d->kind == NodeKind::EnumDecl)
+          for (Decl* en : static_cast<EnumDecl*>(d)->enumerators)
+            enumerators += en->kind == NodeKind::EnumeratorDecl;
+        entriesGone += in - std::min(in, size_t(selfNamed) + enumerators);
+        gone.insert(d->ownScope);
+      }
+  });
+  {
+    // (a build from scratch never computes their relations: their reads would make a later edit of a base's name a build from
+    // scratch, invalidateReaders' "a scope's relations read a changed name", and count in the dependency statistics)
+    std::lock_guard lock(impl->relationScopesMutex);
+    std::erase_if(impl->relationScopes, [&](const Scope* s) { return gone.count(s) != 0; });
+  }
+  if (c->name.parts.size() == 1)
+  {
+    uint32_t symbol = c->name.parts[0].symbol;
+    Scope* scope = containerScope(c->parent, impl->root);
+    Scope::Shard& shard = scope->shardFor(symbol);
+    std::lock_guard lock(shard.mutex);
+    if (auto it = shard.map.find(symbol); it != shard.map.end())
+    {
+      size_t before = it->second.size();
+      it->second.erase(std::remove_if(it->second.begin(), it->second.end(), [&](const Entry& e) { return e.decl == c; }), it->second.end());
+      entriesGone += before - it->second.size();
+      if (it->second.empty())
+        shard.map.erase(it);
+    }
+  }
+  impl->entries -= std::min(impl->entries.load(), entriesGone);
+  impl->scopes -= std::min(impl->scopes.load(), scopesGone);
+  // (the walks of the class and of its members, with what they reported and read; and what typing them read: a removed member's
+  // declared type is no one's now, and one that read a name changed with it, its own class's in a pointer to it, would make the
+  // edit a build from scratch, invalidateReaders' "the declared type of a data member ... read a changed function". What they
+  // asked for was taken first: GlobalScope::instancesUsedBy.)
+  auto forgetTyping = [&](const Decl* d)
+  {
+    if (Dependencies* type = d->typeDependencies.load(std::memory_order_acquire))
+    {
+      std::lock_guard l(type->mutex);
+      type->list = DependencyList{};
+      type->tidied = true;
+    }
+  };
+  impl->forgetUnitsOf(c);
+  forgetTyping(c);
+  for (Decl* m : c->members)
+    if (m)
+    {
+      impl->forgetUnitsOf(m);
+      forgetTyping(m);
+    }
+  impl->forgetMergedOverloads();
+}
+
+bool GlobalScope::declaredOnlyBy(const Decl* container, uint32_t symbol, const std::unordered_set<const Decl*>& decls)
+{
+  Scope* scope = containerScope(const_cast<Decl*>(container), impl->root);
+  Scope::Shard& shard = scope->shardFor(symbol);
+  std::lock_guard lock(shard.mutex);
+  auto it = shard.map.find(symbol);
+  if (it == shard.map.end())
+    return true;
+  for (const Entry& e : it->second)
+    if (!decls.count(e.decl))
+      return false;
+  return true;
+}
+
+std::vector<const void*> GlobalScope::instancesUsedBy(const std::vector<const Decl*>& decls)
+{
+  std::vector<const void*> out;
+  auto take = [&](Dependencies& deps)
+  {
+    std::lock_guard l(deps.mutex);
+    for (auto& [kind, what] : deps.list.uses)
+      if (kind == USE_Instance || kind == USE_ClassInstance)
+        out.push_back(what);
+  };
+  for (const Decl* d : decls)
+  {
+    uintptr_t key = reinterpret_cast<uintptr_t>(d) + Impl::UNIT_Walk;
+    Impl::DeclDependencyShard& shard = impl->declDependencies[(key >> 6) % std::size(impl->declDependencies)];
+    {
+      std::lock_guard lock(shard.mutex);
+      if (auto it = shard.map.find(key); it != shard.map.end())
+        take(*it->second);
+    }
+    if (Dependencies* type = d->typeDependencies.load(std::memory_order_acquire))
+      take(*type);
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
+}
+
+bool GlobalScope::indexClasses(const std::vector<ClassDecl*>& added)
+{
+  ++impl->indexVersion;
+  for (ClassDecl* c : added)
+    impl->indexDecl(c, containerScope(c->parent, impl->root));
+  std::vector<FunctionDecl*> attached;
+  impl->attachOutOfLine(attached);
+  bool whole = attached.empty() && impl->objectCandidates.empty() && impl->deferredQualified.empty() && impl->deferredVariables.empty();
+  impl->objectCandidates.clear();
+  std::unordered_set<Scope*> seen;
+  impl->sortEntries(&impl->root, seen); // in declaration order, as finishIndex leaves them
+  impl->forgetMergedOverloads();
+  return whole;
 }
 
 void GlobalScope::indexMembers(const std::vector<VariableDecl*>& added)

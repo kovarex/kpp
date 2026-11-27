@@ -450,6 +450,20 @@ public:
   void indexMembers(const std::vector<VariableDecl*>& added);
   bool membersReadOutsideUnits(const Decl* cls);
   bool indexFunctions(const std::vector<FunctionDecl*>& added);
+  // A class taken out or put in whole (step 4: a plain class of a namespace added, removed or renamed, BodyGraft's plainClass;
+  // a fixture test's class, which the parser declares beside its test function): unindexClass takes its entry out of its
+  // namespace's scope and forgets its scope's entries and its members' walks; indexClasses indexes classes grafted into a kept
+  // file (their parents set), their scopes and their members' as the file's index made them, false when one needs what
+  // only a whole index gives. Both forget the cached overload sets.
+  void unindexClass(ClassDecl* c);
+  bool indexClasses(const std::vector<ClassDecl*>& added);
+  // The instances the walks and the declared types of declarations about to be taken out asked for (unindexFunction,
+  // unindexMember and unindexClass forget what they read): candidates the rewalk's dropUnusedInstances takes out when nothing
+  // else asks for them, as a build from scratch never makes them (a fixture test's __kppRunFixture<its class>).
+  std::vector<const void*> instancesUsedBy(const std::vector<const Decl*>& decls);
+  // Whether every declaration of a name in a namespace (its scope's entries; container null: the global namespace) is one of
+  // those given: a class added or removed whole whose name nothing else there declares (a forward declaration, a clash).
+  bool declaredOnlyBy(const Decl* container, uint32_t symbol, const std::unordered_set<const Decl*>& decls);
   // What read a name (by symbol) or a declaration's declared type: the files of the walks that did
   // (to walk again), the declarations whose declared types did (forgotten here, with what they
   // cached, and followed: what read those types is found too); false when an instance, a class
@@ -474,6 +488,7 @@ public:
   uint32_t functionSymbolOf(const FunctionDecl* f);
   ChangedName changedNameOf(const FunctionDecl* f);
   ChangedName changedNameOf(const VariableDecl* v);
+  ChangedName changedNameOf(const ClassDecl* c); // (a namespace's class: its name, read by every lookup of it)
   // The declarations whose walks read one of the names (nothing forgotten): the callers of an edited
   // function, whose code may hold its body (codegen inlines trivial functions).
   std::vector<const Decl*> walksReading(const std::vector<ChangedName>& changed);

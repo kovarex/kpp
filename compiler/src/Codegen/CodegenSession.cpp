@@ -3361,6 +3361,40 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
   // So do the types made from such a closure (`Holder<closure>`, a std::function's implementation).
   // (A writer emitted again with the body it had keeps its closures' types and what was made of them: its call operators alone
   // go, emitted again by its emission.)
+  // A class's destructor helper (`@kpp.dtor.X`, homed in one module: destructorThunk's, the vtable's destructor of a class that
+  // declares none) goes with its layout, below (a class taken out whole, an instance no one asks for now): a build from scratch
+  // has none, and a later use writes it again (Shared::emittedShared). Its home module is assembled again without it. False when
+  // it is in every module's shared definitions (a build of one module: codegen in full).
+  auto dropDestructorHelper = [&](const std::string& helper)
+  {
+    auto home = sh.definedIn.find(helper);
+    if (home == sh.definedIn.end())
+    {
+      auto emitted = sh.emittedShared.find(helper);
+      return emitted == sh.emittedShared.end() || !emitted->second;
+    }
+    unsigned k = home->second;
+    std::vector<Shared::Definition>& defs = sh.definitions[k];
+    Dropped& was = dropped[k];
+    for (size_t i = 0; i < was.keptDefinitions && i < defs.size(); ++i)
+    {
+      std::string_view text = defs[i].text;
+      size_t at = text.starts_with("define ") ? 0 : text.find("\ndefine ");
+      if (!defs[i].name.empty() || at == std::string_view::npos)
+        continue;
+      std::string_view header = text.substr(at, text.find('\n', at + 1) - at);
+      if (header.find(" " + helper + "(") == std::string_view::npos)
+        continue;
+      was.definitions.insert(std::upper_bound(was.definitions.begin(), was.definitions.end(), defs[i].text), defs[i].text);
+      defs.erase(defs.begin() + ptrdiff_t(i));
+      --was.keptDefinitions;
+      break;
+    }
+    sh.definedIn.erase(home);
+    sh.declareLines.erase(helper);
+    sh.emittedShared.erase(helper);
+    return true;
+  };
   std::unordered_set<const Ty*> droppedTypes;
   for (auto& [t, info] : sh.closures)
     if (auto writer = sh.closureWriters.find(t);
@@ -3419,6 +3453,11 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         it = goneLayouts.count(it->second) ? sh.structsByType.erase(it) : std::next(it);
       for (const Ty* key : goneKeys)
       {
+        if (!dropDestructorHelper("@kpp.dtor." + sh.structs[key].name.substr(std::min<size_t>(8, sh.structs[key].name.size()))))
+        {
+          out.declined = "the destructor helper of " + e.types.toString(key, &e.symbols) + ", which nothing uses now, is in every module's shared definitions";
+          return out;
+        }
         if (sh.structs[key].complete)
           --sh.result.structs;
         sh.structs.erase(key);
@@ -3446,7 +3485,7 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     std::erase_if(sh.lambdaInstances, [&](const std::string& name) { return !sh.definedIn.count(name); });
   }
   sh.functions -= std::min<size_t>(sh.functions, droppedFunctions);
-  size_t sharedBefore = sh.decls.entries.size() + sh.shared.entries.size();
+  size_t sharedBefore = sh.decls.entries.size() + sh.shared.entries.size(), sharedEntriesBefore = sh.shared.entries.size();
   // (the exception runtime is written once, after a build from scratch emitted every function
   // (finishExceptionRuntime): a first throw, or on Windows a first noexcept function whose catchpad
   // names kpp.eh.filter.noexcept, needs it written again, which a rebuild does not do)
@@ -3828,6 +3867,12 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
         it = gone.count(it->second) ? sh.structsByType.erase(it) : std::next(it);
       for (const Ty* t : unusedLayouts)
       {
+        // (and its destructor helper: a base's of a fixture class taken out, which only the fixture class's helper called)
+        if (!dropDestructorHelper("@kpp.dtor." + sh.structs[t].name.substr(std::min<size_t>(8, sh.structs[t].name.size()))))
+        {
+          out.declined = "the destructor helper of " + e.types.toString(t, &e.symbols) + ", which nothing uses now, is in every module's shared definitions";
+          return out;
+        }
         if (sh.structs[t].complete)
           --sh.result.structs;
         sh.structs.erase(t);
@@ -3894,6 +3939,31 @@ static CodegenResult rebuildModules(CodegenSession& session, const std::vector<F
     out.declined = !exceptionsBefore && sh.usesExceptions ? "a first throw: the exception runtime is written again"
                                                          : "a first noexcept function's filter (kpp.eh.filter.noexcept): the exception runtime is written again";
     return out;
+  }
+  // A shared function this build wrote first that a build from scratch homes in one module (above: a destructor helper,
+  // `@kpp.dtor.X`, the vtable's destructor of a class added that declares none, implicitDestructor's; in a debug build each)
+  // goes there as that build puts it, weak_odr, declared by the modules that name it (Shared::declareLines), and its home module
+  // is assembled again with it (until 2026-11-27 the program was generated in full: a fixture test added to the game's tests).
+  if (sh.moduleCount > 1 && sh.shared.entries.size() > sharedEntriesBefore)
+  {
+    std::vector<std::string> left(sh.shared.entries.begin(), sh.shared.entries.begin() + ptrdiff_t(sharedEntriesBefore));
+    for (size_t i = sharedEntriesBefore; i < sh.shared.entries.size(); ++i)
+    {
+      std::string& entry = sh.shared.entries[i];
+      std::string header, name = sharedFunctionIn(entry, header);
+      if (name.empty() || (sh.importableModules != 0 && !name.starts_with("@kpp.dtor.")) || sh.definedIn.count(name))
+      {
+        left.push_back(std::move(entry));
+        continue;
+      }
+      unsigned home = sh.emissionModule(std::hash<std::string>()(name));
+      sh.declareLines[name] = Emitter::sharedDeclarationOf(header);
+      if (size_t at = entry.find("define linkonce_odr "); at != std::string::npos)
+        entry.replace(at, std::string_view("define linkonce_odr").size(), "define weak_odr");
+      sh.definedIn[name] = home;
+      sh.definitions[home].push_back(Shared::definitionOf(std::move(entry)));
+    }
+    sh.shared.entries = std::move(left);
   }
   if (sh.decls.entries.size() + sh.shared.entries.size() != sharedBefore)
   {

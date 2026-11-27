@@ -536,6 +536,7 @@ bool graftBodies(Build& kept, ChangedFile& c, std::string& why)
   file.functionBodies = c.parsed->functionBodies;
   file.droppedTokens = c.parsed->droppedTokens; // (the language server's inactive code, by the new tokens)
   file.testSuites = c.parsed->testSuites;
+  file.structRule = c.parsed->structRule; // (by the new tokens; the walk reports them)
   file.kppWords = c.parsed->kppWords;
   file.hasTestCode = c.parsed->hasTestCode;
   file.programMainOffset = c.parsed->programMainOffset;
@@ -628,6 +629,158 @@ bool plainFunction(const DeclaredFunction& d, const std::vector<Token>& tokens)
   return !localType;
 }
 
+void collectClasses(Span<Decl*> decls, Decl* container, std::vector<DeclaredClass>& out)
+{
+  for (Decl* d : decls)
+    if (d && d->kind == NodeKind::NamespaceDecl)
+      collectClasses(static_cast<NamespaceDecl*>(d)->decls, d, out);
+    else if (d && d->kind == NodeKind::ClassDecl && static_cast<ClassDecl*>(d)->isDefinition)
+      out.push_back({static_cast<ClassDecl*>(d), container});
+}
+
+bool plainClass(const ClassDecl* c, const std::vector<Token>& tokens)
+{
+  if (!c->isDefinition || c->name.parts.size() != 1 || c->name.last().special || c->name.last().hasTemplateArgs || c->isTemplate ||
+      !c->templateParams.empty() || !c->instanceParams.empty() || c->keyword == Kw::union_ || c->isTypedUnion || c->isClosure || c->lambda ||
+      c->filePrivate || !c->flagBits.empty() || !c->absentMembers.empty() || c->when || c->builtin ||
+      (c->flags & (DF_Friend | DF_ExternC | DF_Specialization)) || (c->attributes & (ATTR_Deprecated | ATTR_ForeignVtable)))
+    return false;
+  // (`class X { ... };` alone: no declarator after it, `struct { ... } x;`, which declares an object too)
+  if (c->endToken >= tokens.size() || !tokens[c->endToken].is(P::Semi))
+    return false;
+  for (const Decl* m : c->members)
+  {
+    if (!m || m->when || (m->attributes & ATTR_Deprecated) || m->filePrivate || !m->templateParams.empty() || m->isTemplate)
+      return false;
+    switch (m->kind)
+    {
+      case NodeKind::FunctionDecl:
+      {
+        auto* f = static_cast<const FunctionDecl*>(m);
+        if ((f->flags & (DF_Friend | DF_Static | DF_Constexpr | DF_Consteval | DF_Specialization | DF_ExternC)) || f->name.parts.size() != 1 ||
+            !f->objectArgs.empty() || (!f->body && !(f->flags & (DF_Default | DF_Delete | DF_Pure))))
+          return false;
+        uint32_t end = f->body ? f->body->token : f->endToken;
+        for (uint32_t k = f->token; k < end && k < tokens.size(); ++k)
+          if (tokens[k].is(Kw::auto_) || tokens[k].is(Kw::decltype_))
+            return false;
+        break;
+      }
+      case NodeKind::VariableDecl:
+        if (m->flags & (DF_Static | DF_Typedef | DF_Constexpr | DF_ExternC) || static_cast<const VariableDecl*>(m)->name.parts.size() != 1)
+          return false;
+        break;
+      case NodeKind::UsingAliasDecl:
+        break;
+      default:
+        return false; // (a nested class or enumeration, a friend, a using-declaration, a static_assert)
+    }
+  }
+  return true;
+}
+
+void alignToDeclarations(const std::vector<Token>& a, std::string_view ta, const std::vector<Token>& b, std::string_view tb,
+                         const std::vector<bool>& boundsA, const std::vector<bool>& boundsB, std::vector<uint32_t>& map)
+{
+  const uint32_t none = UINT32_MAX;
+  const size_t n = map.size();
+  std::vector<bool> reached(b.size(), false); // (the new tokens an old one is kept at, as the slides leave them)
+  for (uint32_t m : map)
+    if (m != none)
+      reached[m] = true;
+  // A run's places scored: one that meets another run (the two are then one, a member added with the `}` the diff took for its
+  // class's: a friend function's) above all, then by how many of its two ends are declaration bounds; on a tie the diff's own
+  // place, then the nearest. A place's neighbours outside the tokens the slide moves are as they are now: the one before a run
+  // slid left, the one after a run slid right.
+  struct Place
+  {
+    ptrdiff_t shift = 0;
+    int score = -1;
+  };
+  auto bestPlace = [&](const std::vector<bool>& bounds, size_t s, size_t e, size_t left, size_t right, auto&& apart)
+  {
+    auto score = [&](ptrdiff_t k)
+    {
+      size_t from = size_t(ptrdiff_t(s) + k), to = size_t(ptrdiff_t(e) + k);
+      bool meets = (k <= 0 && from > 0 && apart(from - 1)) || (k >= 0 && apart(to));
+      return 3 * int(meets) + int(from < bounds.size() && bounds[from]) + int(to < bounds.size() && bounds[to]);
+    };
+    Place best{0, score(0)};
+    for (size_t k = 1; k <= std::max(left, right); ++k)
+      for (ptrdiff_t shift : {-ptrdiff_t(k), ptrdiff_t(k)})
+        if ((shift < 0 ? k <= left : k <= right))
+          if (int sc = score(shift); sc > best.score)
+            best = {shift, sc};
+    return best.shift;
+  };
+  for (size_t o = 0; o + 1 < n; ++o)
+  {
+    if (map[o] == none)
+      continue;
+    if (map[o + 1] != none && map[o + 1] > map[o] + 1)
+    {
+      // Added: the new tokens [s, e) between old o and o + 1, which are kept side by side. It slides left by k while each of
+      // the k old tokens before it is kept at the new token before it and that token is the one at the run's end (the old one
+      // then takes that place), right while each of the k after it is kept at the token after it and that token is the one at
+      // the run's start.
+      const size_t s = map[o] + 1, e = map[o + 1];
+      size_t left = 0, right = 0;
+      while (left + 1 <= o + 1 && left + 1 <= s && map[o - left] == s - left - 1 && sameToken(b[s - left - 1], tb, b[e - left - 1], tb))
+        ++left;
+      while (o + 1 + right < n && e + right < b.size() && map[o + 1 + right] == e + right && sameToken(b[s + right], tb, b[e + right], tb))
+        ++right;
+      ptrdiff_t shift = bestPlace(boundsB, s, e, left, right, [&](size_t k) { return k < b.size() && !reached[k]; });
+      for (ptrdiff_t k = 1; k <= -shift; ++k)
+      {
+        map[o + 1 - size_t(k)] = uint32_t(e - size_t(k));
+        reached[s - size_t(k)] = false;
+      }
+      for (ptrdiff_t k = 1; k <= -shift; ++k)
+        reached[e - size_t(k)] = true;
+      for (ptrdiff_t k = 0; k < shift; ++k)
+      {
+        map[o + 1 + size_t(k)] = uint32_t(s + size_t(k));
+        reached[e + size_t(k)] = false;
+      }
+      for (ptrdiff_t k = 0; k < shift; ++k)
+        reached[s + size_t(k)] = true;
+      o += size_t(std::max<ptrdiff_t>(shift, 0)); // (past the old tokens it moved, next to the run's new place)
+      continue;
+    }
+    if (map[o + 1] != none)
+      continue;
+    // Removed: the old tokens [s, e) between o and d, which are kept side by side (else a replacement, left as it is). It slides
+    // left while each old token before it is kept at the place before the last and is the token at the run's end (that one then
+    // takes the place), right while each after it is kept at the next place and is the token at the run's start.
+    size_t d = o + 1;
+    while (d < n && map[d] == none)
+      ++d;
+    if (d >= n || map[d] != map[o] + 1)
+    {
+      o = d - 1;
+      continue;
+    }
+    const size_t s = o + 1, e = d;
+    size_t left = 0, right = 0;
+    while (left + 1 <= s && map[s - left - 1] == map[o] - left && (left == 0 || map[s - left - 1] != none) && sameToken(a[s - left - 1], ta, a[e - left - 1], ta))
+      ++left;
+    while (e + right < n && map[e + right] == map[d] + right && sameToken(a[s + right], ta, a[e + right], ta))
+      ++right;
+    ptrdiff_t shift = bestPlace(boundsA, s, e, left, right, [&](size_t k) { return k < n && map[k] == none; });
+    for (ptrdiff_t k = 1; k <= -shift; ++k)
+    {
+      map[e - size_t(k)] = map[s - size_t(k)];
+      map[s - size_t(k)] = none;
+    }
+    for (ptrdiff_t k = 0; k < shift; ++k)
+    {
+      map[s + size_t(k)] = map[e + size_t(k)];
+      map[e + size_t(k)] = none;
+    }
+    o = e + size_t(std::max<ptrdiff_t>(shift, 0)) - 1;
+  }
+}
+
 bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out, std::string& why)
 {
   const ParsedFile& old = *kept.parsed[i];
@@ -652,19 +805,134 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
     return why = "the new text has errors", false;
   if ((old.droppedWhen || out.parsed->droppedWhen) && !sameDropped(old, oldTokens, oldText, *out.parsed, out.tokens, out.text))
     return why = "a false when's dropped declarations changed (their names are kept in the index)", false;
-  if (!tokenMap(oldTokens, oldText, out.tokens, out.text, out.map))
-    return why = "the two versions differ too much to pair their tokens", false;
   std::vector<DeclaredFunction> oldFunctions, newFunctions;
   std::vector<Decl*> oldContainers, newContainers;
   std::vector<DeclaredMember> oldMembers, newMembers;
   collectFunctions(old.decls, nullptr, false, oldFunctions, oldContainers, &oldMembers);
   collectFunctions(out.parsed->decls, nullptr, false, newFunctions, newContainers, &newMembers);
+  if (!tokenMap(oldTokens, oldText, out.tokens, out.text, out.map))
+    return why = "the two versions differ too much to pair their tokens", false;
+  // (a declaration's bounds in each version: its first token, its attributes included, and the token after its last, its `;`
+  // included, where the diff's runs are slid to)
+  auto boundsOf = [](const std::vector<Token>& tokens, const std::vector<DeclaredFunction>& functions, const std::vector<Decl*>& containers,
+                     const std::vector<DeclaredMember>& members)
+  {
+    std::vector<bool> bounds(tokens.size() + 1, false);
+    auto mark = [&](uint32_t start, uint32_t end)
+    {
+      if (start < bounds.size())
+        bounds[start] = true;
+      if (end < bounds.size())
+        bounds[end] = true;
+    };
+    for (const DeclaredFunction& d : functions)
+      mark(withAttributes(tokens, d.f->token), d.f->endToken);
+    for (const DeclaredMember& d : members)
+      mark(d.v->token, memberEnd(d.v, tokens));
+    for (const Decl* c : containers)
+      mark(withAttributes(tokens, c->token), c->endToken < tokens.size() && tokens[c->endToken].is(P::Semi) ? c->endToken + 1 : c->endToken);
+    return bounds;
+  };
+  alignToDeclarations(oldTokens, oldText, out.tokens, out.text, boundsOf(oldTokens, oldFunctions, oldContainers, oldMembers),
+                      boundsOf(out.tokens, newFunctions, newContainers, newMembers), out.map);
+  std::vector<bool> oldCovered(oldTokens.size(), false), newCovered(out.tokens.size(), false);
+  // Classes of namespaces added or removed whole (plainClass): a fixture test's, which the parser declares beside the test's
+  // function (parseTest), or one written. A kept class is one whose head (its first token, its attributes included, to its `{`)
+  // and whose end (its `}` to its `;`) have places, side by side, at a new class's: its members are paired below, as any kept
+  // class's are. The others are taken out, the new ones not paired put in, each with all of its tokens, and their members with
+  // them, not on their own.
+  std::vector<DeclaredClass> oldClasses, newClasses;
+  collectClasses(old.decls, nullptr, oldClasses);
+  collectClasses(out.parsed->decls, nullptr, newClasses);
+  struct ClassSpan
+  {
+    uint32_t start = 0, open = UINT32_MAX, close = UINT32_MAX, end = 0; // its first token, its `{`, its `}`, one past its `;`
+  };
+  auto spanOf = [](const ClassDecl* c, const std::vector<Token>& tokens)
+  {
+    ClassSpan span;
+    span.start = withAttributes(tokens, c->token);
+    span.end = c->endToken < tokens.size() && tokens[c->endToken].is(P::Semi) ? c->endToken + 1 : c->endToken;
+    int depth = 0;
+    for (uint32_t k = c->token; k < c->endToken && k < tokens.size(); ++k)
+      if (tokens[k].is(P::LParen) || tokens[k].is(P::LBracket))
+        ++depth;
+      else if (tokens[k].is(P::RParen) || tokens[k].is(P::RBracket))
+        --depth;
+      else if (depth == 0 && tokens[k].is(P::LBrace))
+      {
+        span.open = k;
+        break;
+      }
+    int braces = 0;
+    for (uint32_t k = span.open; k < c->endToken && k < tokens.size(); ++k)
+      if (tokens[k].is(P::LBrace))
+        ++braces;
+      else if (tokens[k].is(P::RBrace) && --braces == 0)
+      {
+        span.close = k;
+        break;
+      }
+    return span;
+  };
+  auto contiguous = [&](uint32_t from, uint32_t to)
+  {
+    bool same = from < to && to <= out.map.size() && out.map[from] != UINT32_MAX;
+    for (uint32_t k = from; same && k < to; ++k)
+      same = out.map[k] == out.map[from] + (k - from);
+    return same;
+  };
+  std::unordered_map<uint32_t, std::pair<const DeclaredClass*, ClassSpan>> newClassAt; // a new class's first token -> it
+  for (const DeclaredClass& d : newClasses)
+    newClassAt[withAttributes(out.tokens, d.c->token)] = {&d, spanOf(d.c, out.tokens)};
+  std::unordered_set<const ClassDecl*> pairedNewClasses;
+  std::vector<const DeclaredClass*> removedClasses, addedClasses;
+  for (const DeclaredClass& d : oldClasses)
+  {
+    ClassSpan span = spanOf(d.c, oldTokens);
+    if (span.open != UINT32_MAX && span.close != UINT32_MAX && contiguous(span.start, span.open + 1) && contiguous(span.close, span.end))
+      if (auto it = newClassAt.find(out.map[span.start]); it != newClassAt.end())
+      {
+        const ClassSpan& now = it->second.second;
+        if (now.open != UINT32_MAX && now.close != UINT32_MAX && now.open - now.start == span.open - span.start &&
+            now.end - now.close == span.end - span.close && out.map[span.close] == now.close)
+        {
+          pairedNewClasses.insert(it->second.first->c);
+          continue;
+        }
+      }
+    removedClasses.push_back(&d);
+    for (uint32_t k = span.start; k < span.end && k < oldCovered.size(); ++k)
+      oldCovered[k] = true;
+  }
+  for (const DeclaredClass& d : newClasses)
+    if (!pairedNewClasses.count(d.c))
+    {
+      addedClasses.push_back(&d);
+      ClassSpan span = spanOf(d.c, out.tokens);
+      for (uint32_t k = span.start; k < span.end && k < newCovered.size(); ++k)
+        newCovered[k] = true;
+    }
+  for (const DeclaredClass* d : removedClasses)
+    if (!plainClass(d->c, oldTokens))
+      return why = "a removed or changed class that only a whole index takes (a template, a union, a nested type, a friend, a static or deprecated member, a member defined elsewhere)", false;
+  for (const DeclaredClass* d : addedClasses)
+    if (!plainClass(d->c, out.tokens))
+      return why = "an added or changed class that only a whole index takes (a template, a union, a nested type, a friend, a static or deprecated member, a member defined elsewhere)", false;
+  // (their members come and go with them)
+  std::unordered_set<const Decl*> wholeClasses;
+  for (const auto* list : {&removedClasses, &addedClasses})
+    for (const DeclaredClass* d : *list)
+      wholeClasses.insert(d->c);
+  std::erase_if(oldFunctions, [&](const DeclaredFunction& d) { return wholeClasses.count(d.container) != 0; });
+  std::erase_if(newFunctions, [&](const DeclaredFunction& d) { return wholeClasses.count(d.container) != 0; });
+  std::erase_if(oldMembers, [&](const DeclaredMember& d) { return wholeClasses.count(d.container) != 0; });
+  std::erase_if(newMembers, [&](const DeclaredMember& d) { return wholeClasses.count(d.container) != 0; });
   // A kept function whose tokens all have places, side by side, at a new function's: the same.
   std::unordered_map<uint32_t, const DeclaredFunction*> newByToken;
   for (const DeclaredFunction& d : newFunctions)
     newByToken[d.f->token] = &d;
   std::unordered_set<const FunctionDecl*> pairedNew;
-  std::vector<bool> oldCovered(oldTokens.size(), false), newCovered(out.tokens.size(), false);
   std::vector<const DeclaredFunction*> removed;
   for (const DeclaredFunction& d : oldFunctions)
   {
@@ -736,8 +1004,8 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
       for (uint32_t k = s; k < m.end && k < newCovered.size(); ++k)
         newCovered[k] = true;
     }
-  if (removed.empty() && added.empty() && removedMembers.empty() && addedMembers.empty())
-    return why = "no function or data member changed", false;
+  if (removed.empty() && added.empty() && removedMembers.empty() && addedMembers.empty() && removedClasses.empty() && addedClasses.empty())
+    return why = "no function, data member or class changed", false;
   // Everything else the same: every token gone is a removed function's, every new one an added one's.
   std::vector<bool> reached(out.tokens.size(), false);
   for (size_t k = 0; k < out.map.size(); ++k)
@@ -764,10 +1032,10 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
         return why = "an enumeration changed (its underlying type, an enumerator or a member)", false;
   for (const DeclaredFunction* d : removed)
     if (!plainFunction(*d, oldTokens))
-      return why = "a removed or changed function others may read without its name (a template, virtual, special, constexpr)", false;
+      return why = "a removed or changed function others may read without its name (a template, virtual, special, constexpr, a friend)", false;
   for (const DeclaredFunction* d : added)
     if (!plainFunction(*d, out.tokens))
-      return why = "an added or changed function others may read without its name (a template, virtual, special, constexpr)", false;
+      return why = "an added or changed function others may read without its name (a template, virtual, special, constexpr, a friend)", false;
   // A declaration taken out while its out-of-line definition stays: a build from scratch reports it.
   for (const DeclaredFunction* d : removed)
     if (!d->f->body && d->container && d->container->kind == NodeKind::ClassDecl && d->container->ownScope)
@@ -826,6 +1094,47 @@ bool functionsOnly(Build& kept, size_t i, std::string text, FunctionChange& out,
     for (const DeclaredMember* d : addedMembers)
       if (where == d->v)
         return why = "an added data member has a cast to rewrite", false;
+  if (!removedClasses.empty() || !addedClasses.empty())
+  {
+    // A class's name declared elsewhere in its namespace (a forward declaration, another definition: a clash) is left to a whole
+    // index, and so is a scoped library's top-level class (its namespace is the library's, design.md 16).
+    std::unordered_set<const Decl*> removedSet;
+    for (const DeclaredClass* d : removedClasses)
+      removedSet.insert(d->c);
+    for (const DeclaredClass* d : removedClasses)
+    {
+      if (!d->container && out.parsed->libraryScope != UINT32_MAX)
+        return why = "a removed class is a top-level one of a scoped library", false;
+      if (!kept.global->declaredOnlyBy(d->container, d->c->name.last().symbol, removedSet))
+        return why = "a removed class's name is declared elsewhere in its namespace too", false;
+      out.removedClasses.push_back({d->c, d->container});
+    }
+    std::unordered_set<uint32_t> addedNames;
+    for (const DeclaredClass* d : addedClasses)
+    {
+      if (!d->container && out.parsed->libraryScope != UINT32_MAX)
+        return why = "an added class is a top-level one of a scoped library", false;
+      Decl* keptContainer = nullptr;
+      if (d->container)
+      {
+        auto it = keptContainerAt.find(d->container->token);
+        if (it == keptContainerAt.end() || it->second->kind != d->container->kind)
+          return why = "an added class's namespace is new", false;
+        keptContainer = it->second;
+      }
+      if (!addedNames.insert(d->c->name.last().symbol).second || !kept.global->declaredOnlyBy(keptContainer, d->c->name.last().symbol, removedSet))
+        return why = "an added class's name is declared elsewhere in its namespace too", false;
+      for (Decl* m : d->c->members)
+      {
+        for (auto& [b, where] : out.parsed->castCandidates)
+          if (where == m)
+            return why = "an added class has a cast to rewrite", false;
+        if (std::find(out.parsed->splitDefaults.begin(), out.parsed->splitDefaults.end(), m) != out.parsed->splitDefaults.end())
+          return why = "an added class has a member function with some of its default arguments", false;
+      }
+      out.addedClasses.push_back({d->c, keptContainer});
+    }
+  }
   return true;
 }
 
@@ -864,6 +1173,12 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
     global.unindexMember(v);
     forEachNode(v, [&](Node* n) { dropped.insert(n); });
   }
+  for (auto& [cls, container] : c.removedClasses)
+  {
+    removed.insert(cls);
+    global.unindexClass(cls);
+    forEachNode(cls, [&](Node* n) { dropped.insert(n); });
+  }
   if (!remapKeptFile(kept, file, c.map, dropped, {}, *c.parsed))
     return why = "a kept node's token has no place in the new version", false;
   // The added functions: the kept file's, members of the kept declarations.
@@ -894,10 +1209,20 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
     into[container].push_back(v);
     addedMembers.push_back(v);
   }
+  std::vector<ClassDecl*> addedClasses;
+  for (auto& [cls, container] : c.addedClasses)
+  {
+    ownNodes(cls);
+    cls->parent = container;
+    into[container].push_back(cls);
+    addedClasses.push_back(cls);
+  }
   std::unordered_set<Decl*> touched;
   for (auto& [f, container] : c.removed)
     touched.insert(container);
   for (auto& [v, container] : c.removedMembers)
+    touched.insert(container);
+  for (auto& [cls, container] : c.removedClasses)
     touched.insert(container);
   for (auto& [container, list] : into)
     touched.insert(container);
@@ -923,6 +1248,7 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
   file.functionBodies = c.parsed->functionBodies;
   file.droppedTokens = c.parsed->droppedTokens; // (the language server's inactive code, by the new tokens)
   file.testSuites = c.parsed->testSuites;
+  file.structRule = c.parsed->structRule; // (by the new tokens; the walk reports them)
   file.kppWords = c.parsed->kppWords;
   file.hasTestCode = c.parsed->hasTestCode;
   file.programMainOffset = c.parsed->programMainOffset;
@@ -936,6 +1262,8 @@ bool graftFunctions(Build& kept, FunctionChange& c, std::string& why)
     if (where.file == i)
       return why = "an instance's statistic names a place in the file", false;
   global.indexMembers(addedMembers);
+  if (!addedClasses.empty() && !global.indexClasses(addedClasses))
+    return why = "an added class needs the whole index (an out-of-line definition to attach, an object declaration)", false;
   if (!global.indexFunctions(added))
     return why = "an added function needs the whole index (a definition matching no declaration, an object declaration)", false;
   return true;
@@ -1090,15 +1418,21 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
   std::vector<const Decl*> gone;
   std::vector<const void*> readingInstances; // instances that read a changed name, type or body: checked again
   std::vector<const Decl*> typedByWalk;      // reading walks' declarations whose type the walk gives: compared after it
-  size_t entriesBefore = global.entryCount();
+  size_t entriesBefore = global.entryCount(), scopesBefore = global.scopeCount();
+  // What the walks and declared types of the declarations taken out asked for, by file: with what the file's old walks asked
+  // for, the instances to take out when nothing asks for them now (the instance a removed fixture test's function asked for,
+  // __kppRunFixture<its class>, which until 2026-11-27 stayed in the server's index, counted in its report).
+  std::map<size_t, std::vector<const void*>> removedUses;
   for (FunctionChange& c : functionEdits)
   {
     rewalk.insert(c.index);
+    std::vector<const Decl*> taken;
     for (auto& [f, container] : c.removed)
     {
       names.push_back(global.changedNameOf(f));
       gone.push_back(f);
       kept.removedFunctions.push_back(f);
+      taken.push_back(f);
     }
     for (auto& [f, container] : c.added)
       kept.addedFunctions.push_back(f);
@@ -1109,6 +1443,33 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
       names.push_back(global.changedNameOf(v));
       gone.push_back(v);
       kept.changedLayouts.push_back(cls);
+      taken.push_back(v);
+    }
+    // A class taken out whole: its name and its declared type are what readers read (what names a member reached the class
+    // first, or is an instance made for it, dropped when nothing asks for it); its member functions go as removed ones, its
+    // layout as a dropped class instance's (codegen's names and layouts of it).
+    for (auto& [cls, container] : c.removedClasses)
+    {
+      names.push_back(global.changedNameOf(cls));
+      gone.push_back(cls);
+      taken.push_back(cls);
+      for (Decl* m : cls->members)
+      {
+        taken.push_back(m);
+        if (m->kind == NodeKind::FunctionDecl)
+          kept.removedFunctions.push_back(static_cast<FunctionDecl*>(m));
+      }
+      kept.droppedClasses.push_back(global.types().classType(cls, {}));
+    }
+    for (auto& [cls, container] : c.addedClasses)
+      for (Decl* m : cls->members)
+        if (m->kind == NodeKind::FunctionDecl)
+          kept.addedFunctions.push_back(static_cast<FunctionDecl*>(m));
+    if (!taken.empty())
+    {
+      std::vector<const void*> uses = global.instancesUsedBy(taken);
+      std::vector<const void*>& into = removedUses[c.index];
+      into.insert(into.end(), uses.begin(), uses.end());
     }
     if (!graftFunctions(kept, c, why))
     {
@@ -1123,6 +1484,8 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
       names.push_back(global.changedNameOf(v));
       kept.changedLayouts.push_back(cls);
     }
+    for (auto& [cls, container] : c.addedClasses)
+      names.push_back(global.changedNameOf(cls));
   }
   std::sort(kept.changedLayouts.begin(), kept.changedLayouts.end());
   kept.changedLayouts.erase(std::unique(kept.changedLayouts.begin(), kept.changedLayouts.end()), kept.changedLayouts.end());
@@ -1157,9 +1520,10 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
         kept.changedGlobals.push_back(d); // (its constructor emitted again)
       else if (!removedSet.count(d))
         inFull(initializerOf(d) + " read a changed name");
-    // The index line counts the entries as the index has them now: what the functions added and
-    // took out (scopes none: no function with a class in its body is grafted).
+    // The index line counts the entries and scopes as the index has them now: what the functions and classes added and took
+    // out (a class's scope, and its member functions' local types').
     kept.indexEntries += global.entryCount() - entriesBefore;
+    kept.indexScopes += global.scopeCount() - scopesBefore;
     char line[256];
     snprintf(line, sizeof line, "index:   %.3f s  (+%.3f s for out-of-line class definitions): %zu scopes, %zu entries\n", kept.indexTime,
              kept.finishTime, kept.indexScopes, kept.indexEntries);
@@ -1182,6 +1546,12 @@ bool incrementalBuild(Build& kept, std::vector<SourceFile>& files, const std::ve
   for (size_t n = 0; n < walked.size(); ++n)
   {
     before[n] = global.instancesWalksUse(*kept.parsed[walked[n]]);
+    if (auto it = removedUses.find(walked[n]); it != removedUses.end())
+    {
+      before[n].insert(before[n].end(), it->second.begin(), it->second.end());
+      std::sort(before[n].begin(), before[n].end());
+      before[n].erase(std::unique(before[n].begin(), before[n].end()), before[n].end());
+    }
     global.forgetWalks(*kept.parsed[walked[n]]);
   }
   // A reading walk's declaration typed by that walk (decltype, auto): its type before, compared

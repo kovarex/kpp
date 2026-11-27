@@ -1,0 +1,305 @@
+// spec: a compile server builds a class added to a file, renamed and removed from the program it kept, front end and code alike, and what it builds is what a build from scratch gives: a polymorphic class derived from a kept one (its vtable and its descriptor new, then gone, then new again under the name it had), and a plain one, each with a function that uses it (kovarex, 2026-11-27, for the game's fixture tests: `test Name : Fixture` declares a class, and until then a class added or removed anywhere built the program from scratch, "a change outside whole functions and data members")
+// steps: incremental
+//--- step: the program
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a));
+  return 0;
+}
+// expect: 9
+//--- step: a polymorphic class added, derived from a kept one, and a function using it
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+class Circle : public Shape
+{
+public:
+  Circle(i32 r) : r(r) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.r; ++i)
+      sum += 3 * this.r;
+    return sum;
+  }
+
+private:
+  i32 r = 0;
+};
+i32 roundArea()
+{
+  Circle c(2);
+  return areaOf(c);
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a), " ", roundArea());
+  return 0;
+}
+// expect: 9 12
+//--- step: that class renamed
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+class Disc : public Shape
+{
+public:
+  Disc(i32 r) : r(r) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.r; ++i)
+      sum += 3 * this.r;
+    return sum;
+  }
+
+private:
+  i32 r = 0;
+};
+i32 roundArea()
+{
+  Disc c(2);
+  return areaOf(c);
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a), " ", roundArea());
+  return 0;
+}
+// expect: 9 12
+//--- step: a plain class added beside it, and a function using it
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+class Disc : public Shape
+{
+public:
+  Disc(i32 r) : r(r) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.r; ++i)
+      sum += 3 * this.r;
+    return sum;
+  }
+
+private:
+  i32 r = 0;
+};
+i32 roundArea()
+{
+  Disc c(2);
+  return areaOf(c);
+}
+struct Extent
+{
+  i32 a = 1;
+  i32 b = 2;
+  i32 sum() const
+  {
+    i32 s = 0;
+    for (i32 i = 0; i < 2; ++i)
+      s += i == 0 ? this.a : this.b;
+    return s;
+  }
+};
+i32 extentSum()
+{
+  Extent p;
+  return p.sum();
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a), " ", roundArea(), " ", extentSum());
+  return 0;
+}
+// expect: 9 12 3
+//--- step: the polymorphic class removed
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+struct Extent
+{
+  i32 a = 1;
+  i32 b = 2;
+  i32 sum() const
+  {
+    i32 s = 0;
+    for (i32 i = 0; i < 2; ++i)
+      s += i == 0 ? this.a : this.b;
+    return s;
+  }
+};
+i32 extentSum()
+{
+  Extent p;
+  return p.sum();
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a), " ", extentSum());
+  return 0;
+}
+// expect: 9 3
+//--- step: the plain class removed
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a));
+  return 0;
+}
+// expect: 9
+//--- step: the polymorphic class added again under its first name
+class Shape
+{
+public:
+  virtual ~Shape() {}
+  virtual i32 area() const = 0;
+};
+class Square : public Shape
+{
+public:
+  Square(i32 side) : side(side) {}
+  i32 area() const override { return this.side * this.side; }
+
+private:
+  i32 side = 0;
+};
+i32 areaOf(const Shape& shape)
+{
+  return shape.area();
+}
+class Circle : public Shape
+{
+public:
+  Circle(i32 r) : r(r) {}
+  i32 area() const override
+  {
+    i32 sum = 0;
+    for (i32 i = 0; i < this.r; ++i)
+      sum += 3 * this.r;
+    return sum;
+  }
+
+private:
+  i32 r = 0;
+};
+i32 roundArea()
+{
+  Circle c(2);
+  return areaOf(c);
+}
+int main()
+{
+  Square a(3);
+  std::println(areaOf(a), " ", roundArea());
+  return 0;
+}
+// expect: 9 12

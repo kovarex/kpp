@@ -82,7 +82,10 @@ instead (it must fail). The header above the first step applies to all (`kpp:`, 
 only (the server is). A step's `//--- file: NAME` lines start further files of its program, written into
 a directory beside it (given as a source); each step has all of them, and its expectations come before
 its first file, written into the program's file as empty lines (a step that edits only another file
-leaves that one unchanged).
+leaves that one unchanged). `// steps: incremental` in the header: every step after the first must be
+built from the program the server kept, front end and codegen alike; a line of the server's log saying
+otherwise ("not incremental: ...", "codegen in full: ...", "rebuildLLVM declined ...") fails the step,
+however right its program (a silent build from scratch is right and slow).
 
 --out DIR and --snippets DIR replace build\\spec and compiler\\tests\\spec (tests\\specfiles.ps1 runs the
 runner itself on a snippet that passes and one that fails).
@@ -277,12 +280,12 @@ AREA_TITLES = {
 
 def header(path):
     info = {"spec": os.path.splitext(os.path.basename(path))[0], "factorio": "", "pending": None, "errors": [], "warnings": [], "no-warnings": [], "run": None, "test": None,
-            "exit": None, "kpp": "", "target": None, "arch": None, "this": ""}
+            "exit": None, "kpp": "", "target": None, "arch": None, "this": "", "steps": ""}
     with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("//--- step"):
                 break # (a snippet of steps: each step's own expect and error lines are its own)
-            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kpp|target|arch|this):\s*(.*)", line.strip())
+            m = re.match(r"//\s*(spec|factorio|pending(?: on [\w -]+?)?|error|warning|no-warning|run|test|exit|kpp|target|arch|this|steps):\s*(.*)", line.strip())
             if not m:
                 if line.strip() and not line.startswith("//"):
                     break
@@ -561,6 +564,37 @@ def is_steps(path):
         return any(line.startswith("//--- step") for line in f)
 
 
+def server_log_since(since, last):
+    """The lines a compile server logged since a time (time.time()) for the builds whose last argument is `last` (the
+    server's log names a build by it; other snippets' servers log to the same directory at the same time)."""
+    logs = os.path.join(os.environ.get("TEMP", ""), "kpp-server")
+    lines = []
+    try:
+        names = [n for n in os.listdir(logs) if n.endswith(".log")]
+    except OSError:
+        return lines
+    for name in names:
+        log = os.path.join(logs, name)
+        try:
+            if os.path.getmtime(log) < since - 2:
+                continue
+            with open(log, encoding="utf-8", errors="replace") as f:
+                text = f.read().splitlines()
+        except OSError:
+            continue
+        mine, keep = [], False
+        for line in text:
+            try:
+                keep = time.mktime(time.strptime(line[:19], "%Y-%m-%d %H:%M:%S")) + float("0" + line[19:23]) >= since - 1
+            except ValueError:
+                pass # (a message's second line goes with the line before it)
+            if keep:
+                mine.append(line)
+        if any(line.endswith("the last " + last) for line in mine):
+            lines += mine
+    return lines
+
+
 def run_steps(path, info, work, options, result):
     """A snippet of steps: one compile server builds each step's version of the program, each build
     checked against one from scratch (--verify-incremental) and against the step's expectations."""
@@ -572,6 +606,10 @@ def run_steps(path, info, work, options, result):
     companions = os.path.join(work, os.path.splitext(os.path.basename(path))[0] + ".files")
     has_files = re.search(r"^//--- file:", text, flags=re.M) is not None
     arguments = ["--quiet", *extra_for(info), *shlex.split(info["kpp"]), *options, "--exe", exe, source, *([companions] if has_files else [])]
+    # `// steps: incremental`: every step after the first is built from the program the server kept, front end and codegen
+    # alike: a server's log line saying otherwise ("not incremental: ...", "codegen in full: ...", "rebuildLLVM declined ...")
+    # fails the step, whatever the program printed (a silent fallback to a build from scratch is right and slow).
+    incremental = info.get("steps", "").split()[:1] == ["incremental"]
     try:
         for i in range(1, len(parts), 2):
             title, body = parts[i].strip(), parts[i + 1]
@@ -598,12 +636,18 @@ def run_steps(path, info, work, options, result):
                     if not os.path.exists(target) or open(target, encoding="utf-8", newline="").read() != content:
                         with open(target, "w", encoding="utf-8", newline="\n") as f:
                             f.write(content)
+            started = time.time()
             try:
                 c = subprocess.run([KPP, "--server", "--verify-incremental", *arguments], capture_output=True, text=True, encoding="utf-8",
                                    errors="replace", timeout=300)
             except subprocess.TimeoutExpired:
                 result["status"] = "FAIL"; result["note"] = f"{step}: the compiler timed out"; return result
             output = c.stdout + c.stderr
+            if incremental and i > 1:
+                for line in server_log_since(started, arguments[-1]):
+                    m = re.search(r"(not incremental: .*|codegen in full: .*|rebuildLLVM declined .*)", line)
+                    if m and "codegen in full: no kept session" not in line:
+                        result["status"] = "FAIL"; result["note"] = f"{step}: not built from the kept program: {m.group(1)}"; return result
             if "--verify-incremental:" in output:
                 result["status"] = "FAIL"
                 result["note"] = f"{step}: " + next(l.strip() for l in output.splitlines() if "--verify-incremental:" in l)
