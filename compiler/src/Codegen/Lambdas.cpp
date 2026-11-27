@@ -909,7 +909,7 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
     bool hasSret = s.hasSret;
     if (hasSret)
     {
-      params += ", ptr %sret";
+      params += ", ptr" + s.attributesOf(1) + " %sret"; // (the result slot's and a copy's attributes: noalias, ...)
       sretAddr = "%sret";
     }
     std::vector<std::string> paramNames;
@@ -917,7 +917,7 @@ auto codegen::Emitter::emitLambda(LambdaExpr* l, const Ty* t, const Ty* callTy, 
     {
       std::string pn = "%p" + std::to_string(i);
       paramNames.push_back(pn);
-      params += ", " + s.paramTypes[i + (hasSret ? 2 : 1)] + " " + pn;
+      params += ", " + s.paramTypes[i + (hasSret ? 2 : 1)] + s.attributesOf(i + (hasSret ? 2 : 1)) + " " + pn;
     }
     std::string retType = s.returnType;
     std::string header = "define " + retType + " " + name + "(" + params + ") {\nentry:\n";

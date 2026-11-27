@@ -1,0 +1,26 @@
+// spec: a class result is built in an object of its own, never in the object an assignment of it changes: a function reading that object through a pointer sees it as it was until it returns (release: the result slot is noalias)
+// kpp: --release
+struct Pair
+{
+  i32 a = 0;
+  i32 b = 0;
+};
+
+Pair* seen = nullptr;
+
+[[noinline]] Pair swapped()
+{
+  Pair r;
+  r.a = seen->b;
+  r.b = seen->a;
+  return r;
+}
+
+int main()
+{
+  Pair p(1, 2);
+  seen = &p;
+  p = swapped();
+  std::println(p.a, " ", p.b);
+  return 0;
+}

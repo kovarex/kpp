@@ -303,7 +303,7 @@ auto codegen::Emitter::emitFunction(FunctionDecl* original, const TemplateArgs& 
       {
         std::string pn = "%p" + std::to_string(i);
         paramNames.push_back(pn);
-        params += (i ? ", " : "") + s.paramTypes[i] + " " + pn;
+        params += (i ? ", " : "") + s.paramTypes[i] + s.attributesOf(i) + " " + pn; // (the result slot's and a copy's: noalias, ...)
       }
     if (s.variadic)
       params += params.empty() ? "..." : ", ...";

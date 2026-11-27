@@ -257,14 +257,29 @@ auto codegen::Emitter::lambdaSignatureOf(const Ty* callTy, Node* at) -> Signatur
     s.paramTys.push_back(pt);
   }
   s.returnType = s.hasSret ? "void" : ret->isReference() ? "ptr" : llType(ret, at);
+  withObjectAttributes(s, ret, at);
   return s;
+}
+
+auto codegen::Emitter::withObjectAttributes(Signature& s, const Ty* ret, Node* at) -> void
+{
+  s.attributes.assign(s.paramTypes.size(), std::string());
+  bool any = false;
+  for (size_t i = 0; i < s.paramTypes.size(); ++i)
+  {
+    bool slot = s.hasSret && i == (s.hasThis ? 1u : 0u);
+    s.attributes[i] = slot ? objectParameterAttributes(ret, false, at) : objectParameterAttributes(s.paramTys[i], true, at);
+    any = any || !s.attributes[i].empty();
+  }
+  if (!any)
+    s.attributes.clear();
 }
 
 auto codegen::Emitter::declarationText(const Signature& s, const std::string& name) -> std::string
 {
   std::string text = "declare" + std::string(s.resultExtension) + " " + s.returnType + " " + name + "(";
   for (size_t i = 0; i < s.paramTypes.size(); ++i)
-    text += (i ? ", " : "") + s.paramTypes[i];
+    text += (i ? ", " : "") + s.paramTypes[i] + s.attributesOf(i);
   if (s.variadic)
     text += s.paramTypes.empty() ? "..." : ", ...";
   return text + ")";

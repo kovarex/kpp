@@ -6084,6 +6084,20 @@ Done before Q1 and Q2 were decided; what changed with them is in the next sectio
   interop/c_function_pointer_struct_by_value (8, 16 and 24 bytes, a header's typedef, pointers C
   filled in, on Windows and Linux), interop/c_callable_struct_by_value_through_pointer (D's, now
   passing) and interop/c_function_pointer_conventions_differ_is_error.
+- **A kpp function's result slot and argument copies are `noalias` (2026-11-27, thread "Try vectorcall-style
+  calling convention in kpp", the study's recommended step).** kpp's own convention stays a pointer to a copy and a
+  result slot, but a definition's slot and each class argument's copy now carry `noalias` (a copy also `nocapture`),
+  `dereferenceable` and the class's `align`, as clang's `sret` and `-fpass-by-value-is-noalias` give C++'s: both are
+  objects no one else reaches during the call (the slot an object being initialized, a temporary or the caller's own
+  slot; the copy made by argumentText). Only for trivially copyable classes (no destructor, no copy or move constructor
+  of their own): a class whose copy constructor keeps `this` somewhere (IDConnector) may be reached another way.
+  LLVM may then keep the fields in registers across the callee's other stores, drop the slot's dead zeroing, and
+  in full LTO promote such an argument to values (ArgumentPromotion), which it never did while the callee wrote its
+  result before reading its arguments. The declarations carry the same attributes (Signature::attributes:
+  declarationText, the barrier's declarations). The calls written by hand with an object's address pass a copy to a
+  by-value parameter (argumentCopy, language/by_value_operand_of_a_comparison_is_a_copy). Specs
+  language/result_slot_is_an_object_of_its_own_release and argument_copy_is_an_object_of_its_own_release fail if a slot
+  or a copy is ever the caller's own object.
 
 ### Stage 6, FreeBSD: the sysroot, the static link and the C import (2026-11-03)
 
