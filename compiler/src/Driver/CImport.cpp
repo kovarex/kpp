@@ -248,6 +248,10 @@ std::set<std::string> valueNames(const std::string& text)
   std::vector<int> enumDepths; // the brace depths that are an enum's body
   bool itemStart = false;      // in an enum's body: the next identifier begins an item
   char before = 0;             // the last character before the current one, spaces skipped
+  // the `)` that ends an attribute (`__attribute__((...))`, `__declspec(...)`): a name after it follows a type, as after the type
+  // itself (clang's bmiintrin.h: `static __inline__ unsigned long long __attribute__((__always_inline__, __nodebug__))
+  // __tzcnt_u64(...)`, which `#define _tzcnt_u64 __tzcnt_u64` names: until 2026-11-27 not a function, so no alias)
+  size_t attributeClose = std::string::npos;
   for (size_t i = 0; i < text.size();)
   {
     char c = text[i];
@@ -304,6 +308,18 @@ std::set<std::string> valueNames(const std::string& text)
       }
       else if (after == '(' && depth == 0 && parens == 0 && !inTypedef && !keywords.count(word) && (identChar(before) || before == '*'))
         names.insert(word);
+      if ((word == "__attribute__" || word == "__attribute" || word == "__declspec") && after == '(')
+      {
+        int open = 0;
+        for (size_t k = next; k < text.size(); ++k)
+          if (text[k] == '(')
+            ++open;
+          else if (text[k] == ')' && --open == 0)
+          {
+            attributeClose = k;
+            break;
+          }
+      }
       before = word.back();
       i = j;
       continue;
@@ -340,7 +356,7 @@ std::set<std::string> valueNames(const std::string& text)
     {
       if (c != '{')
         afterEnum = false; // `enum E;`, `enum E* p`, `enum E f(`: no enum body
-      before = c;
+      before = i == attributeClose ? 'a' : c;
     }
     ++i;
   }
@@ -1206,7 +1222,30 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
     wrapper += "unsigned short __popcnt16(unsigned short);\nunsigned int __popcnt(unsigned int);\nunsigned __int64 __popcnt64(unsigned __int64);\n"
                "unsigned char _rotl8(unsigned char, unsigned char);\nunsigned char _rotr8(unsigned char, unsigned char);\n"
                "unsigned short _rotl16(unsigned short, unsigned char);\nunsigned short _rotr16(unsigned short, unsigned char);\n"
-               "void __debugbreak(void);\nvoid* _ReturnAddress(void);\n";
+               "void __debugbreak(void);\nvoid* _ReturnAddress(void);\n"
+               // (MSVC's interlocked operations: clang's intrin.h declares some, leaving the others to its builtins; Unreal's
+               // WindowsPlatformAtomics calls them all)
+               "char _InterlockedExchangeAdd8(char volatile*, char);\nchar _InterlockedExchange8(char volatile*, char);\n"
+               "char _InterlockedAnd8(char volatile*, char);\nchar _InterlockedOr8(char volatile*, char);\n"
+               "char _InterlockedXor8(char volatile*, char);\nchar _InterlockedCompareExchange8(char volatile*, char, char);\n"
+               "short _InterlockedExchangeAdd16(short volatile*, short);\n"
+               "short _InterlockedExchange16(short volatile*, short);\nshort _InterlockedAnd16(short volatile*, short);\n"
+               "short _InterlockedOr16(short volatile*, short);\nshort _InterlockedXor16(short volatile*, short);\n"
+               "short _InterlockedCompareExchange16(short volatile*, short, short);\n"
+               "short _InterlockedIncrement16(short volatile*);\nshort _InterlockedDecrement16(short volatile*);\n"
+               "long _InterlockedExchangeAdd(long volatile*, long);\nlong _InterlockedExchange(long volatile*, long);\n"
+               "long _InterlockedAnd(long volatile*, long);\nlong _InterlockedOr(long volatile*, long);\n"
+               "long _InterlockedXor(long volatile*, long);\nlong _InterlockedCompareExchange(long volatile*, long, long);\n"
+               "long _InterlockedIncrement(long volatile*);\nlong _InterlockedDecrement(long volatile*);\n"
+               "__int64 _InterlockedExchangeAdd64(__int64 volatile*, __int64);\n"
+               "__int64 _InterlockedExchange64(__int64 volatile*, __int64);\n"
+               "__int64 _InterlockedAnd64(__int64 volatile*, __int64);\n"
+               "__int64 _InterlockedOr64(__int64 volatile*, __int64);\n"
+               "__int64 _InterlockedXor64(__int64 volatile*, __int64);\n"
+               "__int64 _InterlockedCompareExchange64(__int64 volatile*, __int64, __int64);\n"
+               "__int64 _InterlockedIncrement64(__int64 volatile*);\n__int64 _InterlockedDecrement64(__int64 volatile*);\n"
+               "void* _InterlockedExchangePointer(void* volatile*, void*);\n"
+               "void* _InterlockedCompareExchangePointer(void* volatile*, void*, void*);\nvoid _ReadWriteBarrier(void);\n";
   // malloc.h's alloca is `#define alloca _alloca` (only where __STDC__ is not defined, as it is
   // here), which the import does not carry: declared as the function, the code generator's
   // stack allocation like _alloca.
@@ -1232,7 +1271,10 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
         "int __builtin_popcount(unsigned int)", "int __builtin_popcountl(unsigned long)", "int __builtin_popcountll(unsigned long long)",
         "unsigned short __builtin_bswap16(unsigned short)", "unsigned int __builtin_bswap32(unsigned int)",
         "unsigned long long __builtin_bswap64(unsigned long long)", "long __builtin_expect(long, long)",
-        "void __builtin_prefetch(const void*, ...)", "void* __builtin_alloca(__SIZE_TYPE__)"})
+        "void __builtin_prefetch(const void*, ...)", "void* __builtin_alloca(__SIZE_TYPE__)",
+        // (the tzcnt instruction, clang's bmiintrin.h's __tzcnt_u64 is a call of)
+        "unsigned short __builtin_ia32_tzcnt_u16(unsigned short)", "unsigned int __builtin_ia32_tzcnt_u32(unsigned int)",
+        "unsigned long long __builtin_ia32_tzcnt_u64(unsigned long long)"})
   {
     std::string text = declaration;
     size_t start = text.find("__builtin_"), end = text.find('(', start);
@@ -1253,7 +1295,7 @@ void importCHeaders(std::vector<SourceFile>& files, std::vector<LexResult>& lexe
   }
   uint64_t hash = 1469598103934665603ull;
   // the version of what the cache holds (macroConstants' rules, vaListForSysV: 12 for AAPCS64's va_list), then what it is made from
-  for (unsigned char c : "kpp import 14\n" + wrapper + includeArgs + "\n" + toolchain)
+  for (unsigned char c : "kpp import 15\n" + wrapper + includeArgs + "\n" + toolchain)
     hash = (hash ^ c) * 1099511628211ull;
   std::filesystem::path cacheDir = std::filesystem::temp_directory_path(ec) / "kpp-imports";
   std::filesystem::create_directories(cacheDir, ec);

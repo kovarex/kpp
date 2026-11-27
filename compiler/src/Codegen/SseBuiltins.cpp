@@ -1108,6 +1108,61 @@ auto codegen::Emitter::msvcBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Va
     fn += "  " + r + " = zext i1 " + found + " to i8\n";
     return Value{r, types.intType(8, true)};
   }
+  if (name.starts_with("_Interlocked"))
+  {
+    // MSVC's interlocked operations (Unreal's WindowsPlatformAtomics), each one instruction, sequentially consistent as
+    // MSVC's full-barrier forms are: an operation, then its width (8, 16, 64, Pointer, none for long's 32 bits). They
+    // were calls of functions no library has (MSVC has them as intrinsics only), a link error.
+    std::string rest = name.substr(12), width;
+    for (const char* w : {"Pointer", "64", "16", "8"})
+      if (rest.ends_with(w))
+      {
+        width = w;
+        rest = rest.substr(0, rest.size() - width.size());
+        break;
+      }
+    static const std::map<std::string, std::pair<std::string, size_t>> operations = {
+      {"ExchangeAdd", {"add", 2}}, {"Exchange", {"xchg", 2}}, {"And", {"and", 2}},       {"Or", {"or", 2}},
+      {"Xor", {"xor", 2}},         {"Increment", {"add", 1}}, {"Decrement", {"sub", 1}}, {"CompareExchange", {"cmpxchg", 3}}};
+    auto op = operations.find(rest);
+    auto* f = n->resolved && n->resolved->kind == NodeKind::FunctionDecl ? static_cast<FunctionDecl*>(n->resolved) : nullptr;
+    bool pointer = width == "Pointer";
+    if (op == operations.end() || !f || (pointer && rest != "Exchange" && rest != "CompareExchange"))
+      return std::nullopt;
+    if (c->args.size() != op->second.second)
+      unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+    int bits = pointer ? 64 : width.empty() ? (sh.target.windows() ? 32 : 64) : std::stoi(width); // (none: long)
+    const Ty* valueTy = pointer ? types.pointer(types.voidType()) : types.intType(bits);
+    std::string ty = pointer ? "ptr" : "i" + std::to_string(bits), align = std::to_string(bits / 8);
+    std::string place = convert(rvalue(c->args[0]), types.pointer(types.voidType()), c, true).text; // (the place, whatever its type)
+    auto arg = [&](size_t i) { return convert(rvalue(c->args[i]), valueTy, c).text; };
+    std::string r = newTemp();
+    if (rest == "CompareExchange")
+    {
+      // (destination, exchange, comparand): the value it held
+      std::string exchange = arg(1), comparand = arg(2), pair = newTemp();
+      fn += "  " + pair + " = cmpxchg ptr " + place + ", " + ty + " " + comparand + ", " + ty + " " + exchange + " seq_cst seq_cst, align " + align + "\n";
+      fn += "  " + r + " = extractvalue { " + ty + ", i1 } " + pair + ", 0\n";
+    }
+    else if (op->second.second == 1)
+    {
+      // Increment and Decrement give the new value
+      std::string old = newTemp();
+      fn += "  " + old + " = atomicrmw " + op->second.first + " ptr " + place + ", " + ty + " 1 seq_cst, align " + align + "\n";
+      fn += "  " + r + " = " + op->second.first + " " + ty + " " + old + ", 1\n";
+    }
+    else
+      fn += "  " + r + " = atomicrmw " + op->second.first + " ptr " + place + ", " + ty + " " + arg(1) + " seq_cst, align " + align + "\n";
+    return convert(Value{r, valueTy}, declType(f)->inner, c);
+  }
+  if (name == "_ReadWriteBarrier")
+  {
+    // No reordering of memory accesses across it by the compiler (no instruction): a fence within the thread.
+    if (!c->args.empty())
+      unsupported(c, name + " with " + std::to_string(c->args.size()) + " arguments");
+    fn += "  fence syncscope(\"singlethread\") seq_cst\n";
+    return Value{"", types.voidType(), false};
+  }
   if (name == "__debugbreak")
   {
     // A breakpoint where the call is (int3 on x86-64, brk on arm64), as MSVC and clang-cl emit it: llvm.debugtrap.
@@ -1255,6 +1310,17 @@ auto codegen::Emitter::gccBuiltin(NameExpr* n, CallExpr* c) -> std::optional<Val
       r = narrow;
     }
     return Value{r, types.intType(32)};
+  }
+  if (base == "ia32_tzcnt_u16" || base == "ia32_tzcnt_u32" || base == "ia32_tzcnt_u64")
+  {
+    // The tzcnt instruction (clang's bmiintrin.h: __tzcnt_u64's body, which Unreal's lz4hc calls as _tzcnt_u64): the
+    // trailing zeros, a zero's its width, of the operand's type
+    arguments(1, 1);
+    int bits = std::stoi(base.substr(12));
+    std::string iN = "i" + std::to_string(bits);
+    const Ty* operand = types.intType(uint8_t(bits), true);
+    std::string v = convert(rvalue(c->args[0]), operand, c).text;
+    return Value{sseCall(sseIntrinsic("llvm.cttz." + iN, iN, iN + ", i1"), iN, iN + " " + v + ", i1 false"), operand};
   }
   if (base == "bswap16" || base == "bswap32" || base == "bswap64")
   {
