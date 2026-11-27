@@ -502,6 +502,109 @@ static std::string withNotEqualsDropped(const std::string& text, Counts& counts,
     Node e;
     if (!(onlyReturn(f, from, to) || (!eq && lastReturn(f, from, to))) || !parse(from, to, e))
     {
+      // Statement by statement the =='s, each return its negation (Unreal's TRange: `if (IsEmpty() && Other.IsEmpty())
+      // return false; return (LowerBound != Other.LowerBound) || ...;` beside == returning true and the `==`s and `&&`s)
+      auto closing = [&](uint32_t open) -> uint32_t
+      {
+        int depth = 0;
+        for (uint32_t k = open; k < toks.size(); ++k)
+        {
+          if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::LBrace))
+            ++depth;
+          else if ((toks[k].is(P::RParen) || toks[k].is(P::RBracket) || toks[k].is(P::RBrace)) && --depth == 0)
+            return k;
+        }
+        return UINT32_MAX;
+      };
+      auto semicolon = [&](uint32_t start) -> uint32_t // (the `;` that ends a simple statement, at its depth)
+      {
+        int depth = 0;
+        for (uint32_t k = start; k < toks.size(); ++k)
+        {
+          if (toks[k].is(P::LParen) || toks[k].is(P::LBracket) || toks[k].is(P::LBrace))
+            ++depth;
+          else if (toks[k].is(P::RParen) || toks[k].is(P::RBracket) || toks[k].is(P::RBrace))
+            --depth;
+          else if (depth == 0 && toks[k].is(P::Semi))
+            return k;
+        }
+        return UINT32_MAX;
+      };
+      auto negates = [&](uint32_t xf, uint32_t xt, FunctionDecl* fx, uint32_t ef, uint32_t et, FunctionDecl* fe) -> bool
+      {
+        while (xt > xf + 1 && toks[xf].is(P::LParen) && closing(xf) == xt - 1)
+          ++xf, --xt;
+        while (et > ef + 1 && toks[ef].is(P::LParen) && closing(ef) == et - 1)
+          ++ef, --et;
+        if (xt == xf + 1 && et == ef + 1)
+          return (spell(xf) == "false" && spell(ef) == "true") || (spell(xf) == "true" && spell(ef) == "false");
+        Node x, y;
+        if (!parse(xf, xt, x) || !parse(ef, et, y))
+          return false;
+        if (x.kind == '!' && joinedOf(x.kids[0].from, x.kids[0].to, fx) == joinedOf(ef, et, fe))
+          return true;
+        if (y.kind == '!' && joinedOf(y.kids[0].from, y.kids[0].to, fe) == joinedOf(xf, xt, fx))
+          return true;
+        std::multiset<std::pair<std::string, std::string>> xs, ys;
+        return terms(x, '|', 'n', xs, fx) && terms(y, '&', '=', ys, fe) && xs == ys;
+      };
+      std::function<bool(Stmt*, Stmt*)> negatedStatement = [&](Stmt* a, Stmt* b) -> bool
+      {
+        if (!a || !b || a->kind != b->kind)
+          return false;
+        switch (a->kind)
+        {
+          case NodeKind::BlockStmt:
+          {
+            auto* x = static_cast<BlockStmt*>(a);
+            auto* y = static_cast<BlockStmt*>(b);
+            if (x->stmts.size() != y->stmts.size())
+              return false;
+            for (uint32_t k = 0; k < x->stmts.size(); ++k)
+              if (!negatedStatement(x->stmts[k], y->stmts[k]))
+                return false;
+            return true;
+          }
+          case NodeKind::ReturnStmt:
+          {
+            uint32_t xe = semicolon(a->token + 1), ye = semicolon(b->token + 1);
+            return xe != UINT32_MAX && ye != UINT32_MAX && xe > a->token + 1 && ye > b->token + 1 &&
+                   negates(a->token + 1, xe, f, b->token + 1, ye, eq->f);
+          }
+          case NodeKind::IfStmt:
+          {
+            auto* x = static_cast<IfStmt*>(a);
+            auto* y = static_cast<IfStmt*>(b);
+            if (x->init || y->init || x->ifConsteval || y->ifConsteval || x->isConstexpr != y->isConstexpr || !x->cond || !y->cond ||
+                !toks[a->token + 1].is(P::LParen) || !toks[b->token + 1].is(P::LParen))
+              return false;
+            uint32_t xc = closing(a->token + 1), yc = closing(b->token + 1);
+            if (xc == UINT32_MAX || yc == UINT32_MAX || joinedOf(a->token + 2, xc, f) != joinedOf(b->token + 2, yc, eq->f))
+              return false;
+            if (!negatedStatement(x->then, y->then))
+              return false;
+            return (!x->else_ && !y->else_) || negatedStatement(x->else_, y->else_);
+          }
+          default:
+          {
+            // (any other statement: the same, returning nothing)
+            uint32_t xe = semicolon(a->token), ye = semicolon(b->token);
+            if (xe == UINT32_MAX || ye == UINT32_MAX)
+              return false;
+            for (uint32_t k = a->token; k < xe; ++k)
+              if (toks[k].is(Kw::return_) || toks[k].is(Kw::throw_))
+                return false;
+            return joinedOf(a->token, xe, f) == joinedOf(b->token, ye, eq->f);
+          }
+        }
+      };
+      if (eq && eq->f->body && f->body && eq->f->params.size() == f->params.size() && negatedStatement(f->body, eq->f->body))
+      {
+        removeDeclaration(f);
+        decided[keyOf(n)] = 'd';
+        counts.add("operator!= dropped: statement by statement the negation of ==");
+        continue;
+      }
       keep(n, "a body other than one return");
       continue;
     }
