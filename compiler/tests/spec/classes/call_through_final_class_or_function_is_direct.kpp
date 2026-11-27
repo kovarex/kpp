@@ -1,0 +1,76 @@
+// spec: a virtual call that no override can change is a direct call, as C++ compilers make it ([class.virtual] 4): through a final class (`static_cast<Leaf&>(base).update()`, as the game's update loop walks each type), or to a function marked final, also through a class derived from its own. It calls what the vtable would: the static type's default arguments, a covariant result, a base at an offset (whose call stays one through the vtable's thunk), a class template's instance. Until 2026-11-27 every one went through the vtable, so none could be inlined; tests\finalcalls.ps1 checks the IR
+class Base
+{
+public:
+  virtual i32 update(i32 step = 1) = 0;
+  virtual Base* self() { return &this; }
+  i32 count = 0;
+};
+
+class Leaf final : public Base
+{
+public:
+  virtual i32 update(i32 step = 10) override { return this.count += step; }
+  virtual Leaf* self() override { return &this; }
+};
+
+class Open : public Base
+{
+public:
+  virtual i32 update(i32 step = 100) override final { return this.count += 2 * step; }
+};
+
+class Deeper : public Open
+{
+public:
+  i32 extra = 7;
+};
+
+class Named
+{
+public:
+  virtual i32 id() const { return 1; }
+  i32 tag = 3;
+};
+
+class Both final : public Base, public Named
+{
+public:
+  virtual i32 update(i32 step = 5) override { return this.count += step; }
+  virtual i32 id() const override { return 40 + this.tag; }
+};
+
+template<typename T>
+class Holder final : public Base
+{
+public:
+  virtual i32 update(i32 step = 3) override { return this.count += step * i32(sizeof(T)); }
+};
+
+i32 viaFinalClass(Base& b) { return static_cast<Leaf&>(b).update(); }
+i32 viaBase(Base& b) { return b.update(); }
+i32 viaFinalFunction(Deeper& d) { return d.update(); }
+i32 idOf(Both& both) { return both.id(); }
+
+i32 main()
+{
+  Leaf leaf;
+  Deeper deeper;
+  Both both;
+  Holder<i64> holder;
+  i32 a = viaFinalClass(leaf);
+  i32 b = viaBase(leaf);
+  i32 c = leaf.update(4);
+  std::println(a, " ", b, " ", c);
+  i32 d = viaFinalFunction(deeper);
+  i32 e = viaBase(deeper);
+  std::println(d, " ", e, " ", deeper.extra);
+  i32 f = both.update();
+  std::println(f, " ", idOf(both), " ", static_cast<Named&>(both).id());
+  i32 g = holder.update();
+  i32 h = viaBase(holder);
+  std::println(g, " ", h);
+  Leaf* same = leaf.self();
+  std::println(same == &leaf, " ", same->count);
+  return 0;
+}

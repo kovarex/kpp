@@ -1557,6 +1557,11 @@ kpp/test_check_char_pointers_is_error.
   in the class's primary vtable (the Itanium ABI's choice; MSVC adjusts `this` in the overrider
   instead), so a call through the class itself needs no thunk. A call moves `this` to the subobject
   of the class that declares the function and calls through that subobject's vtable pointer.
+  A call that no override can change is a direct call, as C++ compilers make it: through a final
+  class, or to a function marked final, where the slot holds the function itself (no thunk), so
+  LLVM may inline it (2026-11-27, kovarex's choice after the switch-dispatch study; the game's
+  update loop calls `static_cast<T&>(entity).update()` per type, 63 of its 68 types final; spec
+  classes/call_through_final_class_or_function_is_direct, tests\finalcalls.ps1).
   A covariant override whose result does not start with the class the slot gives back takes a new
   slot in the primary vtable (both C++ ABIs' choice), which calls through its class use; the
   slots it overrides keep their callers through a thunk that moves the result to the base they

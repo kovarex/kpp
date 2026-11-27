@@ -241,6 +241,10 @@
 
     // Loads a vtable slot of the object at addr: a function's (from 0), or the class descriptor (-1).
     std::string loadSlot(const std::string& addr, int slot);
+    // The function a virtual call through classTy's slot calls, for the object at addr: the function itself where no
+    // override can change it (classTy is final, or the function is: [class.virtual] 4, as C++ compilers call it), so
+    // that the call is direct and may be inlined; else the slot loaded from the object's vtable (loadSlot).
+    std::string virtualCallee(const std::string& addr, const Ty* classTy, int slot, Node* at);
 
     std::string gep(const std::string& structName, const std::string& addr, uint32_t index);
 
