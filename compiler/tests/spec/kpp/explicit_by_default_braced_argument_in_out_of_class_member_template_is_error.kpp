@@ -1,0 +1,49 @@
+// spec: a function template declared first and defined later (a member defined after its class, of a class or a class template, or a free one) is checked in each instance as one defined where it is declared, so its function arguments' braces name their type there too; such an instance was checked only for a member's `auto` return, which needed the body, until 2026-11-27 (`G::outside` below compiled, three such calls in the game)
+// error: explicit_by_default_braced_argument_in_out_of_class_member_template_is_error.kpp:16: error: the braces of a function argument name their type: write `Item{1, 2}`, not `{1, 2}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_in_out_of_class_member_template_is_error.kpp:23: error: the braces of a function argument name their type: write `Item{3, 4}`, not `{3, 4}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_in_out_of_class_member_template_is_error.kpp:26: error: the braces of a function argument name their type: write `Item{5, 6}`, not `{5, 6}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_in_out_of_class_member_template_is_error.kpp:36: error: the braces of a function argument name their type: write `Item{7, 8}`, not `{7, 8}` (design.md "Explicit by default")
+// error: explicit_by_default_braced_argument_in_out_of_class_member_template_is_error.kpp:39: error: the braces of a function argument name their type: write `Item{9, 10}`, not `{9, 10}` (design.md "Explicit by default")
+struct Item
+{
+  i32 a = 0;
+  i32 b = 0;
+};
+
+class G
+{
+public:
+  template<class T> static void inside(std::Vector<Item>& v) { v.push_back({1, 2}); }
+  template<class T> static void outside(std::Vector<Item>& v);
+  template<class T> i32 constant(std::Vector<Item>& v) const;
+
+  i32 count = 0;
+};
+
+template<class T> void G::outside(std::Vector<Item>& v) { v.push_back({3, 4}); }
+template<class T> i32 G::constant(std::Vector<Item>& v) const
+{
+  v.push_back({5, 6});
+  return this.count;
+}
+
+template<class U> class H
+{
+public:
+  template<class T> static void outside(std::Vector<Item>& v);
+};
+
+template<class U> template<class T> void H<U>::outside(std::Vector<Item>& v) { v.push_back({7, 8}); }
+
+template<class T> void declaredFirst(std::Vector<Item>& v);
+template<class T> void declaredFirst(std::Vector<Item>& v) { v.push_back({9, 10}); }
+
+i32 main()
+{
+  std::Vector<Item> v;
+  G::inside<i32>(v);
+  G::outside<i32>(v);
+  H<i32>::outside<i32>(v);
+  declaredFirst<i32>(v);
+  return G().constant<i32>(v) + i32(v.size());
+}

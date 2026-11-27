@@ -2577,36 +2577,14 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
         if (!element || !element->isKnown() || types.isDependent(element))
           return nullptr;
   }
-  // A member function template declared in its class and defined after it (`template<bool B>
-  // auto* Net::maybeGet(int) const {...}`): the definition's body, its own template parameters
-  // taking the declaration's arguments in order; the instance stays the declaration's.
+  // A function template declared first and defined later, a member defined after its class (`template<bool B> auto*
+  // Net::maybeGet(int) const {...}`) or a free one: the definition's body, the one codegen emits (definitionOf). Until
+  // 2026-11-27 only a member whose `auto` return was needed found it, so no other such instance was checked, and the
+  // checks only an instance makes (a function argument's braces naming their type) passed it by.
   FunctionDecl* def = f;
-  if (!f->body && needReturn && f->returnType && !f->trailingReturn && Impl::astMentionsAuto(f->returnType))
-    if (Decl* cls = impl.owningClassOf(f); cls && cls->ownScope && !f->templateParams.empty())
-    {
-      uint32_t symbol = impl.functionSymbol(f->name);
-      const Ty* ft = impl.matchedType(f);
-      // (The declaration's `auto` return against whatever the definition's type has deduced:
-      // the parameters and the method's constness decide.)
-      auto sameParameters = [&](const Ty* a, const Ty* b)
-      {
-        if (!a || !b || a->kind != TyKind::Function || b->kind != TyKind::Function || a->args.size() != b->args.size() || a->variadic != b->variadic)
-          return false;
-        for (size_t i = 0; i < a->args.size(); ++i)
-          if (a->args[i] != b->args[i])
-            return false;
-        return true;
-      };
-      for (FunctionDecl* candidate : cls->ownScope->outOfLineMembers)
-        if (candidate->body && impl.functionSymbol(candidate->name) == symbol && !Impl::isMemberSpecialization(candidate) &&
-            candidate->templateParams.size() == f->templateParams.size() && (candidate->flags & (DF_Const | DF_Volatile)) == (f->flags & (DF_Const | DF_Volatile)) &&
-            candidate->refQualifier == f->refQualifier)
-          if (const Ty* ct = impl.typeAs(candidate, f); ct == ft || (ft && ft->kind == TyKind::Function && impl.containsAuto(ft->inner) && sameParameters(ct, ft)))
-          {
-            def = candidate;
-            break;
-          }
-    }
+  if (!f->body)
+    if (Decl* d = impl.outer->definitionOf(f); d && d->kind == NodeKind::FunctionDecl)
+      def = static_cast<FunctionDecl*>(d);
   if (!def->body || instantiationDepth > 16)
     return nullptr;
   if (classSubst)
@@ -2618,10 +2596,36 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
     for (const Subst::Pair& pair : classSubst->pairs)
       if (!full.find(pair.param))
         full.pairs.push_back(pair);
-  Subst defFull = full;
+  // The instance is the definition's under its own parameters, as codegen names it (Emitter::definitionArguments: the
+  // declaration's parameters as the definition's, a class template's then its), so that the body checked here is the
+  // one emitted and its instance errors count (GlobalScope::functionEmitted); defFull, what the body is walked with,
+  // has the declaration's as well.
+  Subst key = full;
   if (def != f)
-    for (size_t i = 0; i < f->templateParams.size(); ++i)
-      defFull.pairs.push_back({def->templateParams[i], subst.find(f->templateParams[i])});
+  {
+    Span<Decl*> classParams;
+    for (Decl* o = impl.owningClassOf(f); o && (o->kind == NodeKind::ClassDecl || o->kind == NodeKind::EnumDecl) && classParams.empty(); o = o->parent)
+      classParams = o->templateParams;
+    size_t classCount = def->templateParams.size() > f->templateParams.size() ? def->templateParams.size() - f->templateParams.size() : 0;
+    if (classCount != classParams.size() || classCount + f->templateParams.size() != def->templateParams.size())
+      return nullptr; // (no definition codegen would pair with the declaration's arguments: one of fewer parameters, a generic lambda's)
+    std::vector<Subst::Pair> added;
+    for (Subst::Pair& pair : key.pairs)
+    {
+      for (size_t i = 0; i < classCount; ++i)
+        if (pair.param == classParams[i])
+          added.push_back({def->templateParams[i], pair.type});
+      for (size_t i = 0; i < f->templateParams.size(); ++i)
+        if (pair.param == f->templateParams[i])
+          pair.param = def->templateParams[classCount + i];
+    }
+    for (const Subst::Pair& pair : added)
+      key.pairs.push_back(pair);
+  }
+  Subst defFull = full;
+  for (const Subst::Pair& pair : key.pairs)
+    if (!defFull.find(pair.param))
+      defFull.pairs.push_back(pair);
   Scope* bodyScope = def->name.parts.size() > 1 ? semanticScopeFor(def->name) : impl.lexicalScopeOf(def);
   const Ty* bodyThis = nullptr;
   if (objectType)
@@ -2630,7 +2634,7 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
     bodyThis = types.pointer(impl.substitute(impl.selfType(cls), full));
   ++impl.instRequests;
   bool producer;
-  Impl::InstanceRecord* inst = impl.claimInstance(f, full, bodyThis, producer);
+  Impl::InstanceRecord* inst = impl.claimInstance(def, key, bodyThis, producer);
   if (record)
     *record = inst;
   if (!producer)
@@ -2656,7 +2660,7 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
     }
     return inst->deducedReturn;
   }
-  Impl::FunctionInstanceTask task{f, def, full, defFull, bodyScope, bodyThis, current && file ? file : nullptr,
+  Impl::FunctionInstanceTask task{f, def, key, defFull, bodyScope, bodyThis, current && file ? file : nullptr,
                                   current && file ? current->token : UINT32_MAX, instantiationDepth};
   task.rootFile = activeSubst ? rootFile : task.requestFile;
   task.rootToken = activeSubst ? rootToken : task.requestToken;
