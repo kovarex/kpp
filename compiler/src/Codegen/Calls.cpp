@@ -1570,7 +1570,8 @@ auto codegen::Emitter::objectsEqual(const std::string& a, const std::string& b, 
     if (canonicalClass(t, at) != foundIn)
       baseAddress(t, foundIn, a, thisArg, at);
     std::string r = newTemp();
-    emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + b + ")", callMayThrow(op, args, false));
+    std::string other = argumentCopy(s.paramTys.size() > 1 ? s.paramTys.back() : nullptr, b, at); // (by value: a copy of its own)
+    emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + other + ")", callMayThrow(op, args, false));
     if (s.returnType == "i1")
       return {r, types.boolType(), false};
     return convert(Value{r, types.intType(32), false}, types.boolType(), at);
@@ -1662,6 +1663,16 @@ auto codegen::Emitter::argumentsNeverPassed() -> void
         statementTemps[i].unwindOnly = false;
         break;
       }
+}
+
+auto codegen::Emitter::argumentCopy(const Ty* pt, const std::string& addr, Node* at) -> std::string
+{
+  if (!pt || pt->isReference() || !isClass(types.unqualified(pt)))
+    return addr;
+  const Ty* t = types.unqualified(pt);
+  std::string copy = newObjectSlot(t, at);
+  copyConstruct(copy, addr, t, at);
+  return copy;
 }
 
 auto codegen::Emitter::argumentText(const Ty* pt, Expr* arg, Node* at) -> std::string

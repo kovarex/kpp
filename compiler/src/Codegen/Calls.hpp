@@ -264,6 +264,12 @@
 
     // One call argument as "<type> <operand>", converted to the parameter type (null: variadic).
     std::string argumentText(const Ty* pt, Expr* arg, Node* at);
+
+    // For a call written by hand with an object's address (a struct's member comparison, `<=>`, a range for's end): a
+    // copy of the object at addr when parameter type pt takes a class by value, which the callee owns and destroys; addr
+    // itself for a reference. The object itself was passed until 2026-11-27, and a callee that changed or destroyed its
+    // parameter changed or destroyed the caller's object.
+    std::string argumentCopy(const Ty* pt, const std::string& addr, Node* at);
     // The call about to be emitted takes these arguments (argumentText's texts): the parameter objects argumentText built
     // for them (argumentObjects) are the callee's from here, no longer destroyed by an exception in the caller. Every
     // call of a kpp function whose arguments argumentText made calls it right before its call instruction.

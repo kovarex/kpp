@@ -1,0 +1,51 @@
+// spec: an operator== that takes the other object by value gets a copy of its own, in a comparison `c == c`, in a struct's comparison of its members and in a range for's test of its end: what it does to its parameter changes neither the operand nor `this`
+struct Counter
+{
+  i32 n = 0;
+
+  bool operator==(Counter other) const
+  {
+    bool same = this.n == other.n;
+    other.n = 100;
+    return same;
+  }
+};
+
+struct Holder
+{
+  Counter c;
+  i32 tag = 0;
+};
+
+struct Steps
+{
+  i32 at = 0;
+
+  i32 operator*() const { return this.at; }
+  void operator++() { ++this.at; }
+  bool operator==(Steps other) const
+  {
+    bool same = this.at == other.at;
+    other.at = 1000;
+    return same;
+  }
+};
+
+struct Three
+{
+  Steps begin() const { return Steps(0); }
+  Steps end() const { return Steps(3); }
+};
+
+int main()
+{
+  Counter c(5);
+  bool self = c == c;
+  Holder h(Counter(7), 1);
+  bool members = h == h;
+  i32 sum = 0;
+  for (i32 v : Three())
+    sum += v;
+  std::println(self, " ", c.n, " ", members, " ", h.c.n, " ", sum);
+  return 0;
+}

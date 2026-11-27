@@ -1550,7 +1550,8 @@ auto codegen::Emitter::iteratorLoop(RangeForStmt* f, Value begin, Value end) -> 
   std::string thisArg = begin.text;
   if (canonicalClass(begin.ty, f) != in)
     baseAddress(begin.ty, in, begin.text, thisArg, f);
-  std::string endArg = "ptr " + end.text;
+  // (a comparison taking the iterator by value gets a copy of the end, its own: argumentCopy)
+  std::string endArg = "ptr " + (isClass(end.ty) && compareSig.paramTys.size() > 1 ? argumentCopy(compareSig.paramTys[1], end.text, f) : end.text);
   if (!isClass(end.ty) && compareSig.paramTys.size() > 1 && compareSig.paramTys[1])
   {
     const Ty* pt = compareSig.paramTys[1];

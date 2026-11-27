@@ -3100,11 +3100,13 @@ auto codegen::Emitter::orderOfObjects(const std::string& a, const std::string& b
     if (!ot)
       unsupported(at, "operator<=> returning an object without the library's strong_ordering");
     std::string tmp = newObjectSlot(ot, at); // the result object: this, sret, other
-    emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + tmp + ", ptr " + b + ")", callMayThrow(op, args, false));
+    std::string other = argumentCopy(s.paramTys.size() > 2 ? s.paramTys.back() : nullptr, b, at); // (by value: a copy of its own)
+    emitCall("", "void " + name + "(ptr " + thisArg + ", ptr " + tmp + ", ptr " + other + ")", callMayThrow(op, args, false));
     return orderOf(Value{tmp, ot, true}, at);
   }
   std::string r = newTemp();
-  emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + b + ")", callMayThrow(op, args, false));
+  std::string other = argumentCopy(s.paramTys.size() > 1 ? s.paramTys.back() : nullptr, b, at);
+  emitCall(r + " = ", s.returnType + " " + name + "(ptr " + thisArg + ", ptr " + other + ")", callMayThrow(op, args, false));
   return convert(Value{r, types.intType(32), false}, types.intType(8), at);
 }
 
