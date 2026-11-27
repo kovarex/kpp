@@ -37,16 +37,18 @@
     // --- kpp's register convention (a prototype, docs/register-abi.md; KPP_REGISTER_ABI) ---
     // Off (KPP_REGISTER_ABI=off; the default except on the prototype's branch, where CI runs everything with
     // it on): kpp passes every class by value as a pointer to a copy and returns one through a result slot.
-    // With KPP_REGISTER_ABI=sysv (or =c), a kpp function (not a C one, not variadic, not a
+    // With KPP_REGISTER_ABI=vectorcall (or =sysv, =c), a kpp function (not a C one, not variadic, not a
     // closure's call operator) that takes or returns a small trivially copyable class (no destructor,
     // no copy or move constructor of its own, no virtual function; up to 32 bytes as a parameter, 16 as
     // a result) passes it as its eightbytes in registers (SysV's classes: an integer part, a float, a
-    // `<2 x float>`, a double, a 16-byte vector), and returns it in registers. With =sysv such a
-    // function on Windows x64 also takes LLVM's x86_64_sysvcc (6 integer and 8 vector registers, results
-    // in RAX:RDX and XMM0:XMM1), MS x64's 4 positional registers being too few. A function that passes
+    // `<2 x float>`, a double, a 16-byte vector), and returns it in registers. On Windows x64 such a
+    // function also takes LLVM's x86_vectorcallcc with =vectorcall (MS x64's callee-saved registers, floats
+    // and vectors in XMM0-5, results in RAX:RDX or XMM0-3), or x86_64_sysvcc with =sysv (6 integer and 8
+    // vector registers; unsafe where the function has a catch or cleanup funclet, withRegisters), MS x64's 4
+    // positional registers being too few; =c keeps the target's C convention. A function that passes
     // no such class keeps the target's C convention: C may call it through a pointer (a function type
     // that passes no class by value is one type for both conventions).
-    enum class RegisterAbi : uint8_t { Off, Sysv, C };
+    enum class RegisterAbi : uint8_t { Off, Vectorcall, Sysv, C };
     static RegisterAbi registerAbi();
     // How the register convention passes (result: returns) an object of type t: in registers (its
     // parts), or not (a pointer to a copy, a result slot).

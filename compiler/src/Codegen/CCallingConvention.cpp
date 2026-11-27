@@ -708,18 +708,20 @@ auto codegen::Emitter::registerAbi() -> RegisterAbi
 {
   static const RegisterAbi mode = []
   {
-    // PROTOTYPE BRANCH: on (sysv) when unset, so that CI runs every suite with it; KPP_REGISTER_ABI=off is kpp
-    // as on master. Off by default before anything of it lands.
+    // PROTOTYPE BRANCH: on (vectorcall) when unset, so that CI runs every suite with it; KPP_REGISTER_ABI=off is
+    // kpp as on master. Off by default before anything of it lands.
     const char* v = getenv("KPP_REGISTER_ABI");
     if (!v || !*v)
-      return RegisterAbi::Sysv;
+      return RegisterAbi::Vectorcall;
     if (!strcmp(v, "off"))
       return RegisterAbi::Off;
+    if (!strcmp(v, "vectorcall"))
+      return RegisterAbi::Vectorcall;
     if (!strcmp(v, "sysv"))
       return RegisterAbi::Sysv;
     if (!strcmp(v, "c"))
       return RegisterAbi::C;
-    fprintf(stderr, "kpp: KPP_REGISTER_ABI is off, sysv or c, not %s\n", v);
+    fprintf(stderr, "kpp: KPP_REGISTER_ABI is off, vectorcall, sysv or c, not %s\n", v);
     exit(2);
   }();
   return mode;
@@ -845,8 +847,12 @@ auto codegen::Emitter::withRegisters(Signature& s, const Ty* ret, Node* at) -> v
   s.registers = true;
   s.lowered = std::move(lowered);
   s.result = std::move(result);
-  if (mode == RegisterAbi::Sysv && sh.target.windows() && !sh.target.arm64())
-    s.cc = "x86_64_sysvcc";
+  // (MS x64's C convention has four positional registers and passes a 16-byte vector by pointer; vectorcall
+  // has MS x64's callee-saved registers, six vector registers and vectors in them; SysV's has more registers,
+  // but LLVM's funclets of such a function keep only SysV's callee-saved registers, while Windows' exception
+  // runtime calls them as MS x64 functions: a catch block that uses RSI, RDI or XMM6-15 corrupts its caller)
+  if (sh.target.windows() && !sh.target.arm64())
+    s.cc = mode == RegisterAbi::Sysv ? "x86_64_sysvcc" : mode == RegisterAbi::Vectorcall ? "x86_vectorcallcc" : "";
 }
 
 auto codegen::Emitter::emitKppCall(const Signature& s, const std::string& fnText, const std::vector<std::string>& args, bool mayThrow, bool typed) -> std::string
