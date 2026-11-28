@@ -2626,7 +2626,17 @@ auto GlobalScope::Impl::Walker::instantiateFunction(FunctionDecl* f, const Subst
   for (const Subst::Pair& pair : key.pairs)
     if (!defFull.find(pair.param))
       defFull.pairs.push_back(pair);
-  Scope* bodyScope = def->name.parts.size() > 1 ? semanticScopeFor(def->name) : impl.lexicalScopeOf(def);
+  // (the qualifier looked up where the definition is written, not from the walk that asked for the instance: Unreal's
+  // `namespace UE::SharedBuffer::Private { template <typename FOps> template <typename FOtherOps> bool
+  // TBufferOwnerPtr<FOps>::operator==(...) }` asked for by FSharedBuffer's ==, whose scope has no TBufferOwnerPtr: until
+  // 2026-11-28 the body was the asking class's, `this.Owner` its member, "FSharedBuffer::Owner is private")
+  Scope* bodyScope = impl.lexicalScopeOf(def);
+  if (def->name.parts.size() > 1)
+  {
+    Scope* asking = std::exchange(scope, bodyScope);
+    bodyScope = semanticScopeFor(def->name);
+    scope = asking;
+  }
   const Ty* bodyThis = nullptr;
   if (objectType)
     bodyThis = types.pointer(types.unqualified(types.stripRef(objectType)));

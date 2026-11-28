@@ -1,0 +1,39 @@
+// spec: a member template of a class template defined outside its class in a namespace opened again (`namespace Priv { template <typename Ops> template <typename Other> bool Ptr<Ops>::same(const Ptr<Other>& p) const {...} }`), its qualifier named as the namespace has it, is checked as a member of its class for each instance, whoever asks for the instance: `this.Owner` is its class's, also when a class outside the namespace asks for it from its own member function
+// found by thread UE (2026-11-28): Unreal's TBufferOwnerPtr<FOps>::operator==, asked for by FSharedBuffer's ==: the instance's body was looked up from the asking class, `this.Owner` its member ("Buffer::Owner is private, named in Ptr::same")
+namespace Priv
+{
+  template <typename Ops>
+  class Ptr
+  {
+  public:
+    Ptr(i32 v) : Owner(v) {}
+    template <typename Other>
+    bool same(const Ptr<Other>& p) const;
+
+  private:
+    i32 Owner;
+  };
+}
+
+class Buffer
+{
+public:
+  Buffer(i32 v) : Owner(v) {}
+  bool operator==(const Buffer& b) const { return this.Owner.same(b.Owner); }
+
+private:
+  Priv::Ptr<i32> Owner;
+};
+
+namespace Priv
+{
+  template <typename Ops>
+  template <typename Other>
+  bool Ptr<Ops>::same(const Ptr<Other>& p) const { return this.Owner == p.Owner; }
+}
+
+i32 main()
+{
+  std::println(Buffer(2) == Buffer(2), " ", Buffer(2) == Buffer(3));
+  return 0;
+}
