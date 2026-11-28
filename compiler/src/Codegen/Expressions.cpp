@@ -1322,7 +1322,11 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         if (!global.owningClass(n->allocator) && n->placement.empty() && heapOverAligned(t, e))
           unsupported(e, "new of " + types.toString(t, &symbols) + ", aligned to " + std::to_string(alignOf(t, e)) +
                            " bytes, in a program with its own operator new (std::align_val_t's aligned operator new)");
-        r = callFunction(n->allocator, in ? global.classArgsOf(in) : TemplateArgs{}, in, "", "", n->placement, e, "", {"i64 " + std::to_string(sizeOf(t, e))}, &placed).text;
+        // (the aligned form: the type's alignment, a std::align_val_t, after the size)
+        std::vector<std::string> leading{"i64 " + std::to_string(sizeOf(t, e))};
+        if (n->alignedAllocation)
+          leading.push_back("i64 " + std::to_string(alignOf(t, e)));
+        r = callFunction(n->allocator, in ? global.classArgsOf(in) : TemplateArgs{}, in, "", "", n->placement, e, "", leading, &placed).text;
       }
       else if (n->placement.size() == 1)
       {
@@ -1359,7 +1363,14 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         allocation.unwindOnly = true;
         allocation.freeMemory = true;
         if (n->deallocator)
-          allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation && n->placement.empty() ? std::to_string(sizeOf(t, e)) : "", t, r, placed, e);
+        {
+          // (the alignment after the size: a placement form's, whose parameters after the block are its operator new's,
+          // when that took it; a usual one's when it takes it)
+          std::vector<std::string> extra = placed;
+          if (n->placement.empty() ? n->alignedDeallocation : n->alignedAllocation)
+            extra.insert(extra.begin(), "i64 " + std::to_string(alignOf(t, e)));
+          allocation.freeCall = deallocationCall(n->deallocator, n->sizedDeallocation && n->placement.empty() ? std::to_string(sizeOf(t, e)) : "", t, r, extra, e);
+        }
         else if (programAllocationFunctions())
           allocation.freeCall = globalFreeCall(r, std::to_string(sizeOf(t, e)), false, e);
         else if (heapOverAligned(t, e))
@@ -1471,7 +1482,10 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
           startBlock(endL);
           return {"", types.voidType()};
         }
-        emitCall("", d->deallocator ? deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, block, {}, e)
+        emitCall("", d->deallocator ? deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, block,
+                                                       d->alignedDeallocation ? std::vector<std::string>{"i64 " + std::to_string(alignOf(p.ty->inner, e))}
+                                                                              : std::vector<std::string>{},
+                                                       e)
                     : !programAllocationFunctions() && heapOverAligned(p.ty->inner, e) ? alignedFreeCall(block)
                                     : globalFreeCall(block, std::to_string(sizeOf(p.ty->inner, e)), false, e),
                  false);
@@ -1501,7 +1515,11 @@ auto codegen::Emitter::rvalueOf(Expr* e) -> Value
         fn += "  br i1 " + isNull + ", label %" + endL + ", label %" + objectL + "\n";
         blockTerminated = true;
         startBlock(objectL);
-        emitCall("", deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, p.text, {}, e), false);
+        emitCall("", deallocationCall(d->deallocator, d->sizedDeallocation ? std::to_string(sizeOf(p.ty->inner, e)) : "", p.ty->inner, p.text,
+                                      d->alignedDeallocation ? std::vector<std::string>{"i64 " + std::to_string(alignOf(p.ty->inner, e))}
+                                                             : std::vector<std::string>{},
+                                      e),
+                 false);
         emitBranch(endL);
         startBlock(endL);
         return {"", types.voidType()};
@@ -1561,6 +1579,22 @@ auto codegen::Emitter::classDeallocation(const Ty* cls, const Ty*& owner, bool& 
     if (f->name.empty() || f->name.last().special != 0 || sym(f->name.last().symbol) != "operator delete")
       continue;
     declared = true;
+    // (a form taking std::align_val_t is no usual one here: the vtable's delete of an over-aligned class through it is not
+    // built, and `(void*, align_val_t)` taken for the sized form would get the size as the alignment)
+    bool takesAlignment = false;
+    for (Decl* p : f->params)
+    {
+      Type* pt = static_cast<ParamDecl*>(p)->type;
+      if (pt && pt->kind == NodeKind::NamedType && !static_cast<NamedType*>(pt)->name.empty() &&
+          static_cast<NamedType*>(pt)->name.last().symbol != UINT32_MAX && sym(static_cast<NamedType*>(pt)->name.last().symbol) == "align_val_t")
+        takesAlignment = true;
+    }
+    if (takesAlignment)
+    {
+      if (heapOverAligned(key, at))
+        unsupported(at, "the delete of " + types.toString(key, &symbols) + " through its virtual destructor, by its operator delete taking std::align_val_t");
+      continue;
+    }
     if (f->params.size() == 1 && !unsized)
       unsized = f;
     else if (f->params.size() == 2 && !withSize)

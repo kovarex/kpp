@@ -555,7 +555,7 @@
     {"none_of", "std::noneOf"}, {"lower_bound", "std::lowerBound"}, {"upper_bound", "std::upperBound"}, {"reverse", "std::reverse"},
     {"fill", "std::fill"}, {"copy", "std::copy"}, {"accumulate", "std::accumulate"}, {"begin", "std::begin"}, {"end", "std::end"}, {"size", "std::size"},
     {"isnan", "std::isnan"}, {"isinf", "std::isinf"}, {"abs", "std::abs"}, {"floor", "std::floor"}, {"ceil", "std::ceil"}, {"round", "std::round"},
-    {"sqrt", "std::sqrt"}, {"pow", "std::pow"}, {"tolower", "::tolower"}, {"toupper", "::toupper"}, {"size_t", "size_t"},
+    {"sqrt", "std::sqrt"}, {"pow", "std::pow"}, {"tolower", "::tolower"}, {"toupper", "::toupper"}, {"size_t", "size_t"}, {"align_val_t", "std::align_val_t"},
     {"nullptr_t", "nullptr_t"}, {"to_string", "std::toString"}, {"make_unique", "std::makeUnique"}, {"make_shared", "std::makeShared"},
     {"make_pair", "std::makePair"}, {"make_tuple", "std::makeTuple"}, {"get", "std::get"}, {"declval", "std::declval"}, {"memcpy", "std::memcpy"},
     {"memset", "std::memset"}, {"strlen", "std::strlen"}, {"is_same_v", "std::isSame"}, {"is_constructible_v", "std::isConstructible"}, {"is_array_v", "std::isArray"}, {"is_signed_v", "std::isSigned"},

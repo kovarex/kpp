@@ -1,0 +1,79 @@
+// spec: a new-expression of a type aligned to more than 16 bytes calls the allocation function taking std::align_val_t after the size when its class (or, for a placement form, the program) declares one, with the type's alignment, and gives the block back through the operator delete taking it ([expr.new] 19, [expr.delete] 10, C++17); a type of 16 bytes' alignment or less calls the form without it; clang prints the same
+// found by thread UE (2026-11-28): Unreal's TConcurrentLinearObject and FMemStackBase declare `operator new(size_t, std::align_val_t, ...)`, and kpp had no std::align_val_t ("'align_val_t' is not declared", 14 errors in converted Core)
+struct alignas(64) Pool
+{
+  char bytes[256];
+  size_t used = 0;
+};
+Pool pool;
+
+struct alignas(64) Wide
+{
+  int x = 7;
+  static void* operator new(size_t size) { std::println("new ", size); return std::malloc(size); }
+  static void* operator new(size_t size, std::align_val_t align)
+  {
+    std::println("aligned new ", size, " ", size_t(align));
+    void* at = pool.bytes + pool.used;
+    pool.used += size;
+    return at;
+  }
+  static void operator delete(void* block) { std::println("delete"); std::free(block); }
+  static void operator delete(void*, std::align_val_t align) { std::println("aligned delete ", size_t(align)); }
+};
+
+struct Narrow
+{
+  int x = 8;
+  static void* operator new(size_t size) { std::println("new ", size); return std::malloc(size); }
+  static void* operator new(size_t size, std::align_val_t) { std::println("wrong ", size); return std::malloc(size); }
+  static void operator delete(void* block) { std::println("delete"); std::free(block); }
+};
+
+struct alignas(64) Block
+{
+  int x = 7;
+};
+
+struct Small
+{
+  int x = 8;
+};
+
+struct Arena
+{
+  char storage[512];
+  size_t used = 0;
+};
+
+void* operator new(size_t size, Arena& arena)
+{
+  std::println("arena new ", size);
+  void* at = arena.storage + arena.used;
+  arena.used += size;
+  return at;
+}
+
+void* operator new(size_t size, std::align_val_t align, Arena& arena)
+{
+  size_t start = (size_t)&arena.storage[0];
+  size_t at = (start + arena.used + size_t(align) - 1) / size_t(align) * size_t(align);
+  std::println("arena aligned new ", size, " ", size_t(align));
+  arena.used = at - start + size;
+  return (void*)at;
+}
+
+int main()
+{
+  Wide* w = new Wide;
+  std::println(w->x, " ", (size_t)w % 64 == 0);
+  delete w;
+  Narrow* n = new Narrow;
+  std::println(n->x);
+  delete n;
+  Arena arena;
+  Block* placed = new (arena) Block;
+  Small* small = new (arena) Small;
+  std::println(placed->x, " ", small->x, " ", (size_t)placed % 64 == 0);
+  return 0;
+}

@@ -636,7 +636,11 @@
     // own `operator delete(void*)`, else its `operator delete(void*, size_t)` (sized). Null when the
     // class (or a base) declares none (declared false) or only other forms (declared true).
     // array: its operator delete[] (delete[]).
-    FunctionDecl* usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared, bool array);
+    FunctionDecl* usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared, bool array, bool* aligned = nullptr);
+    // std::align_val_t (null without the library), and whether t is aligned to more than a new-expression's default 16
+    // bytes (new-extended, [basic.align] 3), so that its allocation and deallocation functions take its alignment
+    const Ty* alignValType();
+    bool newExtended(const Ty* t);
 
     FunctionDecl* pickOverload(Decl* primary, const std::vector<Entry>* overloads, const std::vector<const Ty*>& argTypes, const Subst* classSubst, const Ty* objectTy, bool& ambiguous, const NamePart* namePart = nullptr, Span<Expr*> callArgs = {}, std::vector<FunctionDecl*>* tied = nullptr);
 

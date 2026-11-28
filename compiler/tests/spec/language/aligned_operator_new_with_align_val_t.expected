@@ -1,0 +1,9 @@
+aligned new 64 64
+7 true
+aligned delete 64
+new 4
+8
+delete
+arena aligned new 64 64
+arena new 4
+7 8 true

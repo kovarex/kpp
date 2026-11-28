@@ -73,11 +73,16 @@ struct NewExpr : Expr
   bool global = false;
   bool parenthesized = false;
   bool sizedDeallocation = false;
+  // alignedAllocation: the allocator takes std::align_val_t after the size (the type aligned to more than 16 bytes, C++17's
+  // aligned form, [expr.new] 19); alignedDeallocation: the usual deallocator takes it last ([expr.delete] 10)
+  bool alignedAllocation = false;
+  bool alignedDeallocation = false;
   FunctionDecl* allocator = nullptr;
   FunctionDecl* deallocator = nullptr;
 };
 // deallocator: the class's own operator delete the type checker chose (null: free).
-struct DeleteExpr : Expr { Expr* operand; bool isArray; bool global; bool sizedDeallocation = false; FunctionDecl* deallocator = nullptr; };
+// alignedDeallocation: it takes std::align_val_t last (an object aligned to more than 16 bytes, [expr.delete] 10).
+struct DeleteExpr : Expr { Expr* operand; bool isArray; bool global; bool sizedDeallocation = false; bool alignedDeallocation = false; FunctionDecl* deallocator = nullptr; };
 struct LambdaCapture
 {
   uint32_t symbol = UINT32_MAX; // Captured variable (UINT32_MAX for `this`).

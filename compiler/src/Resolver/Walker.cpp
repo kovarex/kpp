@@ -4694,10 +4694,26 @@ auto GlobalScope::Impl::Walker::reportAmbiguousCall(CallExpr* c, const NamePart&
   impl.reportCheckerError(file, c->token, message);
 }
 
-auto GlobalScope::Impl::Walker::usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared, bool array) -> FunctionDecl*
+auto GlobalScope::Impl::Walker::alignValType() -> const Ty*
+{
+  Decl* d = impl.libraryDecl("align_val_t", NodeKind::EnumDecl);
+  return d ? impl.selfType(d) : nullptr;
+}
+
+auto GlobalScope::Impl::Walker::newExtended(const Ty* t) -> bool
+{
+  if (!t || !t->isKnown() || types.isDependent(t))
+    return false;
+  std::optional<int64_t> a = impl.constAlignOf(t, 0);
+  return a && *a > 16;
+}
+
+auto GlobalScope::Impl::Walker::usualDeallocation(const Ty* t, uint32_t token, bool& sized, bool& declared, bool array, bool* aligned) -> FunctionDecl*
 {
   sized = false;
   declared = false;
+  if (aligned)
+    *aligned = false;
   MemberResult r = memberOf(t, array ? impl.symOperatorDeleteArray : impl.symOperatorDelete, nullptr, token, false);
   if (!r.decl || r.decl->kind != NodeKind::FunctionDecl)
     return nullptr;
@@ -4711,6 +4727,36 @@ auto GlobalScope::Impl::Walker::usualDeallocation(const Ty* t, uint32_t token, b
   }
   else
     candidates.push_back(static_cast<FunctionDecl*>(r.decl));
+  // An object aligned to more than 16 bytes: the forms taking std::align_val_t last, `(void*, align_val_t)` before
+  // `(void*, size_t, align_val_t)`, when the class declares one ([expr.delete] 10); else the others
+  const Ty* alignTy = aligned && !array && newExtended(t) ? alignValType() : nullptr;
+  auto paramIs = [&](FunctionDecl* f, size_t i, const Ty* want)
+  {
+    const Ty* p = impl.declaredTypeOf(f->params[i], &r.subst, 0);
+    return p && types.unqualified(types.stripRef(p)) == want;
+  };
+  if (alignTy)
+  {
+    FunctionDecl* alignedWithSize = nullptr;
+    for (FunctionDecl* f : candidates)
+    {
+      if (!f->templateParams.empty())
+        continue;
+      if (f->params.size() == 2 && paramIs(f, 1, alignTy))
+      {
+        *aligned = true;
+        return f;
+      }
+      if (f->params.size() == 3 && !alignedWithSize && paramIs(f, 1, types.sizeType()) && paramIs(f, 2, alignTy))
+        alignedWithSize = f;
+    }
+    if (alignedWithSize)
+    {
+      *aligned = true;
+      sized = true;
+      return alignedWithSize;
+    }
+  }
   FunctionDecl* withSize = nullptr;
   for (FunctionDecl* f : candidates)
   {
@@ -4731,6 +4777,8 @@ auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t, bool a
   n->allocator = nullptr;
   n->deallocator = nullptr;
   n->sizedDeallocation = false;
+  n->alignedAllocation = false;
+  n->alignedDeallocation = false;
   MemberResult r;
   if (t && t->kind == TyKind::Class && !n->global)
     r = memberOf(t, array ? impl.symOperatorNewArray : impl.symOperatorNew, nullptr, n->token, false);
@@ -4743,7 +4791,22 @@ auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t, bool a
   for (const Ty* a : argTypesOf(n->placement))
     argTypes.push_back(a);
   bool ambiguous = false;
-  FunctionDecl* f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, nullptr, ambiguous);
+  FunctionDecl* f = nullptr;
+  // A type aligned to more than 16 bytes: the form with its alignment after the size first ([expr.new] 19, C++17)
+  if (const Ty* alignTy = !array && newExtended(t) ? alignValType() : nullptr)
+  {
+    std::vector<const Ty*> alignedTypes = argTypes;
+    alignedTypes.insert(alignedTypes.begin() + 1, alignTy);
+    FunctionDecl* g = pickOverload(r.decl, r.overloads, alignedTypes, &r.subst, nullptr, ambiguous);
+    if (g && !ambiguous)
+    {
+      f = g;
+      n->alignedAllocation = true;
+    }
+    ambiguous = false;
+  }
+  if (!f)
+    f = pickOverload(r.decl, r.overloads, argTypes, &r.subst, nullptr, ambiguous);
   if (!f || ambiguous)
   {
     std::string with;
@@ -4764,12 +4827,14 @@ auto GlobalScope::Impl::Walker::chooseAllocation(NewExpr* n, const Ty* t, bool a
   // (sizedDeallocation: the class's usual operator delete takes the size; an array's then has a
   // cookie, whatever operator new[] made it, for delete[] to know its size)
   bool declared = false;
-  FunctionDecl* usual = usualDeallocation(t, n->token, n->sizedDeallocation, declared, array);
+  FunctionDecl* usual = usualDeallocation(t, n->token, n->sizedDeallocation, declared, array, &n->alignedDeallocation);
   if (n->placement.empty())
   {
     n->deallocator = usual;
     return;
   }
+  n->sizedDeallocation = false;
+  n->alignedDeallocation = false;
   // A placement form's: the operator delete whose parameters after the first are the operator
   // new's, none when the class declares no such one (the memory is then not given back, as in C++).
   MemberResult d = memberOf(t, array ? impl.symOperatorDeleteArray : impl.symOperatorDelete, nullptr, n->token, false);
@@ -4810,7 +4875,23 @@ auto GlobalScope::Impl::Walker::chooseGlobalAllocation(NewExpr* n, const Ty* t, 
   for (const Ty* a : argTypesOf(n->placement))
     argTypes.push_back(a);
   bool ambiguous = false;
-  FunctionDecl* f = pickOverload(l.decl, l.overloads, argTypes, nullptr, nullptr, ambiguous);
+  FunctionDecl* f = nullptr;
+  // (a placement form aligned to more than 16 bytes: the program's with its alignment after the size first, Unreal's
+  // `operator new(size_t, std::align_val_t, FMemStackBase&, int32)`; the usual aligned one is not built, codegen's refusal)
+  if (const Ty* alignTy = !array && !n->placement.empty() && newExtended(t) ? alignValType() : nullptr)
+  {
+    std::vector<const Ty*> alignedTypes = argTypes;
+    alignedTypes.insert(alignedTypes.begin() + 1, alignTy);
+    FunctionDecl* g = pickOverload(l.decl, l.overloads, alignedTypes, nullptr, nullptr, ambiguous);
+    if (g && !ambiguous)
+    {
+      f = g;
+      n->alignedAllocation = true;
+    }
+    ambiguous = false;
+  }
+  if (!f)
+    f = pickOverload(l.decl, l.overloads, argTypes, nullptr, nullptr, ambiguous);
   if (!f || ambiguous)
   {
     const Ty* place = n->placement.size() == 1 ? types.unqualified(types.stripRef(argTypes[1])) : nullptr;
@@ -14331,7 +14412,7 @@ auto GlobalScope::Impl::Walker::walkExprDispatch(Expr* e) -> const Ty*
           reportHere(d->token, types.toString(cls, &symbols) + " has [[foreign_vtable]]" +
                                    (marked != cls ? " (from " + types.toString(marked, &symbols) + ")" : std::string()) +
                                    ": its vtable has no destructor, so delete cannot destroy it: release it the way its ABI says");
-        d->deallocator = usualDeallocation(cls, d->token, d->sizedDeallocation, declared, d->isArray);
+        d->deallocator = usualDeallocation(cls, d->token, d->sizedDeallocation, declared, d->isArray, &d->alignedDeallocation);
         std::string name = d->isArray ? "operator delete[]" : "operator delete";
         if (!d->deallocator && declared)
           reportHere(d->token, std::string(d->isArray ? "the delete[] of " : "the delete of a ") + types.toString(cls, &symbols) + " finds its class's " + name +

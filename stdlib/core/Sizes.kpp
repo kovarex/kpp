@@ -10,6 +10,10 @@
 // cannot give throws BadAlloc, as std's operator new does.
 using ContainerSize = u64;
 
+// An alignment given to an allocation function ([new.syn]): `operator new(usize, std::align_val_t)`, which a new-expression
+// calls for a type aligned to more than malloc's 16 bytes when the class or program declares it, with the type's alignment.
+using align_val_t = explicit usize;
+
 // The largest element count, or byte length, a container holds.
 const ContainerSize maxContainerSize = ContainerSize(-1) - 1;
 
