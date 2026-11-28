@@ -1,0 +1,25 @@
+// A scripted editor session for tests\lsp.ps1 on tests\lsp\incomplete: a statement left half written above the old body
+// it replaces (`return agui::iconButton` with no `;`), and its names found by go to definition and completion.
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"$ROOT","capabilities":{}}}
+{"jsonrpc":"2.0","method":"initialized","params":{}}
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$ROOT/main.kpp","languageId":"kpp","version":1,"text":"// The language server's incomplete test (tests/lsp.ps1, incomplete.jsonl): a statement left half written while a body\n// is rewritten (`return agui::iconButton` with no `;`, the old body below it), and the names in it still found.\nclass IconButton\n{\npublic:\n  IconButton(i32 sprite) : sprite(sprite) {}\n\n  i32 sprite = 0;\n};\n\nnamespace agui\n{\n  i32 iconSize();\n}\n\n// Declared only by their definitions, as the game's agui::iconButton is: no declaration in the namespace.\nIconButton& agui::iconButton(i32 sprite) { return *new IconButton(sprite); }\nIconButton& agui::iconButton(i32 sprite, i32 style) { return *new IconButton(sprite + style); }\n\ni32 agui::iconSize() { return 32; }\n\nIconButton* makeButton(i32 sprite)\n{\n  i32 shifted = sprite + 1;\n  IconButton* button = new IconButton(shifted);\n  return button;\n}\n\nint main()\n{\n  IconButton* button = makeButton(1);\n  int result = button->sprite - 2 + agui::iconButton(1).sprite - 1 + agui::iconSize() - 32;\n  delete button;\n  return result;\n}\n"}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":2},"contentChanges":[{"range":{"start":{"line":24,"character":0},"end":{"line":24,"character":0}},"text":"  return agui::iconButton\n"}]}}
+// `iconButton` in `return agui::iconButton` with no `;`, the old body below it: the overloads (go to definition lists them).
+{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":24,"character":18}}}
+// `agui` there: the namespace.
+{"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":24,"character":10}}}
+// `IconButton` in the old body below, which the check still read: the class.
+{"jsonrpc":"2.0","id":4,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":25,"character":4}}}
+// `shifted` below: the local above the half-written line.
+{"jsonrpc":"2.0","id":5,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":25,"character":40}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":3},"contentChanges":[{"range":{"start":{"line":24,"character":0},"end":{"line":25,"character":0}},"text":"  return agui::iconSize\n"}]}}
+// `iconSize` so written, declared in the namespace and defined outside it: one function.
+{"jsonrpc":"2.0","id":9,"method":"textDocument/definition","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":24,"character":18}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":4},"contentChanges":[{"range":{"start":{"line":24,"character":0},"end":{"line":25,"character":0}},"text":"  return agui::iconB\n"}]}}
+// `agui::iconB` being typed: the namespace's functions so named, those declared only by their definitions too.
+{"jsonrpc":"2.0","id":6,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":24,"character":20},"context":{"triggerKind":1}}}
+{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$ROOT/main.kpp","version":5},"contentChanges":[{"range":{"start":{"line":24,"character":0},"end":{"line":25,"character":0}},"text":"  return agui::\n"}]}}
+// `agui::` just typed, the old body below: every name of the namespace.
+{"jsonrpc":"2.0","id":7,"method":"textDocument/completion","params":{"textDocument":{"uri":"$ROOT/main.kpp"},"position":{"line":24,"character":16},"context":{"triggerKind":2,"triggerCharacter":":"}}}
+{"jsonrpc":"2.0","id":8,"method":"shutdown"}
+{"jsonrpc":"2.0","method":"exit"}

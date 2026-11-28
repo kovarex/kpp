@@ -23,6 +23,8 @@
 # templates: tests\lsp\templates, the names in a template's own body that only its instances resolve (a member
 # template's `Helper<Writer>::save(this, v)`): declaration, definition, hover, references, colors.
 # unions: tests\lsp\unions, a class's references through the creators of the union enum class alternatives holding it.
+# incomplete: tests\lsp\incomplete, a statement left half written above the old body it replaces (`return agui::iconButton`
+# with no `;`): go to definition of its names and of the old body's, completion after its `agui::` and `agui::iconB`.
 # constants: tests\lsp\constants, hover of sizeof, alignof (the code generator's layouts) and static_assert (its values).
 # queue: tests\lsp\program with every message queued before the first is handled (--read-input-first, no
 # --check-each-change), as behind a long check: the changes queued behind a request taken ahead of its check (one
@@ -54,6 +56,7 @@ foreach ($session in @(@{ Name = 'session'; Program = 'program'; Args = '--stdio
                       @{ Name = 'templates'; Program = 'templates'; Args = '--stdio' },
                       @{ Name = 'unions'; Program = 'unions'; Args = '--stdio' },
                       @{ Name = 'scopes'; Program = 'scopes'; Args = '--stdio' },
+                      @{ Name = 'incomplete'; Program = 'incomplete'; Args = '--stdio' },
                       @{ Name = 'constants'; Program = 'constants'; Args = '--stdio' },
                       @{ Name = 'reopened'; Program = 'reopened'; Args = '--stdio' },
                       @{ Name = 'queue'; Program = 'program'; Args = '--stdio --read-input-first'; Queued = $true }))

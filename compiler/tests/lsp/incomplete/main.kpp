@@ -1,0 +1,35 @@
+// The language server's incomplete test (tests/lsp.ps1, incomplete.jsonl): a statement left half written while a body
+// is rewritten (`return agui::iconButton` with no `;`, the old body below it), and the names in it still found.
+class IconButton
+{
+public:
+  IconButton(i32 sprite) : sprite(sprite) {}
+
+  i32 sprite = 0;
+};
+
+namespace agui
+{
+  i32 iconSize();
+}
+
+// Declared only by their definitions, as the game's agui::iconButton is: no declaration in the namespace.
+IconButton& agui::iconButton(i32 sprite) { return *new IconButton(sprite); }
+IconButton& agui::iconButton(i32 sprite, i32 style) { return *new IconButton(sprite + style); }
+
+i32 agui::iconSize() { return 32; }
+
+IconButton* makeButton(i32 sprite)
+{
+  i32 shifted = sprite + 1;
+  IconButton* button = new IconButton(shifted);
+  return button;
+}
+
+int main()
+{
+  IconButton* button = makeButton(1);
+  int result = button->sprite - 2 + agui::iconButton(1).sprite - 1 + agui::iconSize() - 32;
+  delete button;
+  return result;
+}

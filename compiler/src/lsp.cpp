@@ -2188,29 +2188,39 @@ namespace
       return nullptr;
     }
 
-    // A name in code the parser could not read (a line being typed, `RidingState(RidingState::|));`), which
-    // the compiler resolved nowhere: what the name means there, by its spelling, as completion finds it;
-    // after `A::B::`, a member of a scope so named. Null when nothing is so named, or more than one scope's.
-    Decl* declarationByName(const KeptProgram& program, const ParsedFile* f, uint32_t token)
+    // A name in code the parser could not read (a line being typed, `RidingState(RidingState::|));`, a `return agui::iconButton`
+    // with no `;` above the body it replaces), which the compiler resolved nowhere: what the name means there, by its spelling,
+    // as completion finds it; after `A::B::`, the members of a scope so named: each overload of a function (go to definition
+    // lists them). Empty when nothing is so named, or when names of more than one scope are (`A::f` of two scopes named A).
+    std::vector<Decl*> declarationsByName(const KeptProgram& program, const ParsedFile* f, uint32_t token)
     {
       const std::vector<Token>& tokens = *f->tokens;
       if (tokens[token].getKind() != TokenKind::Identifier)
-        return nullptr;
+        return {};
       std::string_view name = program.symbols->name(tokens[token].id);
       if (token < 2 || !tokens[token - 1].is(P::ColonColon) || tokens[token - 2].getKind() != TokenKind::Identifier)
-        return lookupBefore(program, f, tokens[token].id, token, enclosingFunction(f->decls, token));
+      {
+        if (Decl* d = lookupBefore(program, f, tokens[token].id, token, enclosingFunction(f->decls, token)))
+          return {d};
+        return {};
+      }
       std::string scope(program.symbols->name(tokens[token - 2].id));
       for (uint32_t j = token - 2; j >= 2 && tokens[j - 1].is(P::ColonColon) && tokens[j - 2].getKind() == TokenKind::Identifier; j -= 2)
         scope = std::string(program.symbols->name(tokens[j - 2].id)) + "::" + scope;
       knowSymbols(program);
-      Decl* found = nullptr;
+      std::vector<Decl*> found;
+      const std::string* container = nullptr;
       for (const Cache::Symbol& s : cache.symbols)
         if (s.name == name && s.container.size() >= scope.size() && s.container.compare(s.container.size() - scope.size(), scope.size(), scope) == 0 &&
             (s.container.size() == scope.size() || s.container.compare(s.container.size() - scope.size() - 2, 2, "::") == 0))
         {
-          if (found && canonical(*program.global, found) != canonical(*program.global, s.decl))
-            return nullptr;
-          found = s.decl;
+          Decl* d = canonical(*program.global, s.decl);
+          if (std::find(found.begin(), found.end(), d) != found.end())
+            continue;
+          if (container && *container != s.container) // (overloads are one scope's: two scopes', each with an f, is a guess)
+            return {};
+          container = &s.container;
+          found.push_back(d);
         }
       return found;
     }
@@ -2236,8 +2246,16 @@ namespace
           uint32_t t = tokenAt(*file->tokens, offsetOf(file->text, startsOf(file), params["position"]));
           if (t == UINT32_MAX)
             return;
-          if (Decl* d = declarationByName(program, file, t))
-            result = locationOf(targetOf(d));
+          std::vector<Decl*> found = declarationsByName(program, file, t);
+          if (found.size() == 1)
+            result = locationOf(targetOf(found[0]));
+          else if (found.size() > 1)
+          {
+            result = Json::array();
+            for (Decl* d : found)
+              if (Json at = locationOf(targetOf(d)); at.kind != Json::Null)
+                result.push(std::move(at));
+          }
           return;
         }
         if (o->overloaded)
@@ -3147,11 +3165,30 @@ namespace
       return result;
     }
 
+    // A namespace's name with the namespaces around it (`a::b` for `namespace a { namespace b {} }` and for `namespace a::b {}`).
+    std::string namespaceName(const Decl* ns, const SymbolTable& symbols)
+    {
+      std::string out;
+      for (const Decl* p = ns; p && p->kind == NodeKind::NamespaceDecl; p = p->parent)
+      {
+        auto* n = static_cast<const NamespaceDecl*>(p);
+        std::string own;
+        for (const NamePart& part : n->nested.parts)
+          own += (own.empty() ? "" : "::") + std::string(symbols.name(part.symbol));
+        if (own.empty())
+          continue; // (an anonymous namespace's names are its enclosing's)
+        out = out.empty() ? own : own + "::" + out;
+      }
+      return out;
+    }
+
     void knowSymbols(const KeptProgram& program)
     {
       if (cache.symbolsKnown)
         return;
-      std::function<void(Span<Decl*>, const std::string&)> add = [&](Span<Decl*> decls, const std::string& container)
+      std::vector<size_t> outside; // the functions defined outside their namespace, which may be declared in it too
+      // owner: the declaration whose children decls are (a scoped library's namespace for its file's top level).
+      std::function<void(Span<Decl*>, const std::string&, const Decl*)> add = [&](Span<Decl*> decls, const std::string& written, const Decl* owner)
       {
         for (Decl* d : decls)
         {
@@ -3161,6 +3198,10 @@ namespace
           std::string name = declarationName(d, *program.symbols);
           if (name.empty() || name == "(anonymous)")
             continue;
+          // `void agui::f() {...}` outside its namespace is the namespace's (attachOutOfLine gives it the namespace for
+          // its parent and its own name alone): named so, not as a top-level f.
+          bool moved = d->parent != owner && d->parent && d->parent->kind == NodeKind::NamespaceDecl;
+          std::string container = moved ? namespaceName(d->parent, *program.symbols) : written;
           // An out-of-line definition goes by its declaration.
           if (d->kind == NodeKind::FunctionDecl && static_cast<FunctionDecl*>(d)->name.parts.size() > 1 && program.global->declarationOf(static_cast<FunctionDecl*>(d)))
             continue;
@@ -3169,16 +3210,38 @@ namespace
           std::string lower = own;
           for (char& c : lower)
             c = char(tolower((unsigned char)c));
+          if (moved && d->kind == NodeKind::FunctionDecl)
+            outside.push_back(cache.symbols.size());
           cache.symbols.push_back({own, lower, container + (colons == std::string::npos ? "" : (container.empty() ? "" : "::") + name.substr(0, colons)), kind, d});
           if (d->kind != NodeKind::EnumDecl || static_cast<EnumDecl*>(d)->isClass)
-            add(childrenOf(d), (container.empty() ? "" : container + "::") + name);
+            add(childrenOf(d), (container.empty() ? "" : container + "::") + name, d);
           else
-            add(childrenOf(d), container); // an unscoped enumerator is named without its enum
+            add(childrenOf(d), container, d); // an unscoped enumerator is named without its enum
         }
       };
       // A scoped library's top-level names are its name's (design.md 16: `json::parseJson`).
       for (ParsedFile* f : program.files)
-        add(f->decls, f->libraryScope != UINT32_MAX ? f->library : std::string());
+        add(f->decls, f->libraryScope != UINT32_MAX ? f->library : std::string(), f->libraryScope != UINT32_MAX ? f->libraryNamespace : nullptr);
+      // A function defined outside its namespace that the namespace declares goes by its declaration, as a member's does.
+      if (!outside.empty())
+      {
+        std::unordered_map<std::string, std::vector<const Ty*>> declared;
+        for (const Cache::Symbol& s : cache.symbols)
+          if (s.decl->kind == NodeKind::FunctionDecl && !static_cast<FunctionDecl*>(s.decl)->body)
+            declared[s.container + "::" + s.name].push_back(program.global->typeOfDecl(s.decl));
+        std::vector<bool> drop(cache.symbols.size());
+        for (size_t i : outside)
+        {
+          auto found = declared.find(cache.symbols[i].container + "::" + cache.symbols[i].name);
+          const Ty* type = program.global->typeOfDecl(cache.symbols[i].decl);
+          drop[i] = found != declared.end() && type && std::find(found->second.begin(), found->second.end(), type) != found->second.end();
+        }
+        size_t kept = 0;
+        for (size_t i = 0; i < cache.symbols.size(); ++i)
+          if (!drop[i])
+            cache.symbols[kept++] = std::move(cache.symbols[i]);
+        cache.symbols.resize(kept);
+      }
       cache.symbolsKnown = true;
     }
 
